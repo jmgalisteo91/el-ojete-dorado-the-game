@@ -16,7 +16,7 @@ export class Boss extends Enemy {
     y,
     width = 24,
     height = 24,
-    hp = 80,
+    hp = 24,
     speed = 35,
     sceneId,
     trackName,
@@ -73,6 +73,14 @@ export class Boss extends Enemy {
     };
   }
 
+  get isStunned() {
+    return (
+      (typeof this.stunTimer === 'number' && this.stunTimer > 0) ||
+      this.state === 'stunned' ||
+      (typeof this.stunnedTimer === 'number' && this.stunnedTimer > 0)
+    );
+  }
+
   resetCombatState() {
     if (this.dead) {
       this.projectiles = [];
@@ -109,7 +117,8 @@ export class Boss extends Enemy {
       return false;
     }
 
-    const damage = customDamage !== null ? customDamage : 1;
+    const baseDamage = customDamage !== null ? customDamage : 1;
+    const damage = this.isStunned ? baseDamage * 2 : baseDamage;
     this.hp = Math.max(0, this.hp - damage);
     this.hitFlashTimer = 0.22;
 
@@ -214,9 +223,12 @@ export class Boss extends Enemy {
       if (this.dead) return { hitPlayer: false };
     }
 
-    // Disminución del parpadeo de daño
+    // Disminución del parpadeo de daño y temporizador de aturdimiento
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
+    }
+    if (typeof this.stunTimer === 'number' && this.stunTimer > 0) {
+      this.stunTimer = Math.max(0, this.stunTimer - dt);
     }
 
     // Actualización de proyectiles genéricos

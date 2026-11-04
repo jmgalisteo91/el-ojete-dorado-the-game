@@ -5,16 +5,16 @@ import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
  * Boss 1: "El Garbage Collector Furioso"
  * Ubicación: Alcantarillas de Valleverde (Fosa de Memoria).
  * Melodía: 'track_garbage_collector'.
- * Barra de vida: 80 HP.
+ * Barra de vida: 24 HP (calibrada para un combate equilibrado: 6 combos neutros o 3 castigos al aturdirlo contra el muro).
  * 
  * Mecánicas:
- * 1. Memory Leak: Esparce charcos de ácido corrosivo de punteros rotos cada 3.5s.
+ * 1. Memory Leak: Esparce charcos de ácido corrosivo de punteros rotos cada 3.8s.
  * 2. Fase de Compactación: Se detiene 1.5s telegrafiado y embiste a gran velocidad.
- *    Si choca con un muro, queda aturdido 2.5s como ventana de vulnerabilidad.
+ *    Si choca con un muro, queda aturdido 2.5s como ventana de vulnerabilidad (daño x2).
  * Recompensa: Habilidad 'Dash Asíncrono' (Shift + Dirección).
  */
 export class GarbageCollectorBoss extends Boss {
-  constructor({ x, y, sceneId = 'sewers_dungeon' }) {
+  constructor({ x, y, sceneId = 'sewers_dungeon', hp = 24 }) {
     super({
       id: 'boss_garbage_collector',
       name: 'El Garbage Collector Furioso',
@@ -23,8 +23,8 @@ export class GarbageCollectorBoss extends Boss {
       y,
       width: 26,
       height: 26,
-      hp: 80,
-      speed: 36,
+      hp,
+      speed: 34,
       sceneId,
       trackName: 'track_garbage_collector',
       rewardAbility: 'hasDash',
@@ -34,7 +34,7 @@ export class GarbageCollectorBoss extends Boss {
     });
 
     this.state = 'chase'; // 'chase' | 'telegraph' | 'charge' | 'stunned'
-    this.acidTimer = 3.5;
+    this.acidTimer = 3.8;
     this.chargeCooldown = 7.0;
     this.stateTimer = 0;
     this.chargeVx = 0;
@@ -44,7 +44,7 @@ export class GarbageCollectorBoss extends Boss {
   resetCombatState() {
     super.resetCombatState();
     this.state = 'chase';
-    this.acidTimer = 3.5;
+    this.acidTimer = 3.8;
     this.chargeCooldown = 7.0;
     this.stateTimer = 0;
     this.chargeVx = 0;
@@ -52,10 +52,8 @@ export class GarbageCollectorBoss extends Boss {
   }
 
   takeSwordHit(player, soundEngine = null, customDamage = null) {
-    // Si está aturdido tras chocar contra el muro, recibe un 50% extra de daño o daño crítico
-    const bonusDmg = this.state === 'stunned' ? 2 : 1;
-    const finalDmg = customDamage !== null ? customDamage : bonusDmg;
-    return super.takeSwordHit(player, soundEngine, finalDmg);
+    // Al estar aturdido contra el muro, Boss.takeSwordHit aplica automáticamente el multiplicador x2 de daño
+    return super.takeSwordHit(player, soundEngine, customDamage);
   }
 
   update(dt, tilemap, player, paused = false, soundEngine = null) {

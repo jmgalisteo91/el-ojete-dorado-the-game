@@ -14,7 +14,7 @@ export const SCENE_INTRO_GARBAGE_COLLECTOR = [
   {
     imageKey: "BOSS_GARBAGE_COLLECTOR_INTRO",
     speaker: "GARBAGE COLLECTOR",
-    speakerTitle: "Limpiador de Punteros Huérfanos · 80 HP",
+    speakerTitle: "Limpiador de Punteros Huérfanos · 24 HP",
     dialogue: "¡ALERTA DE FUGAS DETECTADA! Demasiadas variables declaradas con 'var' pudriéndose en los sótanos...",
     cameraShake: false,
     flash: false
@@ -22,7 +22,7 @@ export const SCENE_INTRO_GARBAGE_COLLECTOR = [
   {
     imageKey: "BOSS_GARBAGE_COLLECTOR_INTRO",
     speaker: "GARBAGE COLLECTOR",
-    speakerTitle: "Limpiador de Punteros Huérfanos · 80 HP",
+    speakerTitle: "Limpiador de Punteros Huérfanos · 24 HP",
     dialogue: "¿Qué hace un programador sin referencia viva caminando por mis cloacas? Todo lo que no esté en el árbol raíz será RECOLECTADO Y PURGADO.",
     cameraShake: true,
     flash: true
@@ -40,7 +40,7 @@ export const SCENE_INTRO_STACK_OVERFLOW = [
   {
     imageKey: "BOSS_STACK_OVERFLOW_INTRO",
     speaker: "GUARDIÁN DEL STACK",
-    speakerTitle: "Espectro Recursivo · 120 HP",
+    speakerTitle: "Espectro Recursivo · 32 HP",
     dialogue: "Bienvenido al bucle perpetuo, forastero. Cada paso que diste en este templo fue una llamada apilada en tu memoria...",
     cameraShake: false,
     flash: false
@@ -48,7 +48,7 @@ export const SCENE_INTRO_STACK_OVERFLOW = [
   {
     imageKey: "BOSS_STACK_OVERFLOW_INTRO",
     speaker: "GUARDIÁN DEL STACK",
-    speakerTitle: "Espectro Recursivo · 120 HP",
+    speakerTitle: "Espectro Recursivo · 32 HP",
     dialogue: "¡No existe caso base que detenga mi invocación! ¡Tu pila de ejecución va a reventar!",
     cameraShake: true,
     flash: true
@@ -66,7 +66,7 @@ export const SCENE_INTRO_PROTOTYPE_MICROWAVE = [
   {
     imageKey: "BOSS_PROTOTYPE_MICROWAVE_INTRO",
     speaker: "MICROONDAS ALPHA V0.1",
-    speakerTitle: "Prototipo Inestable de Alex · 160 HP",
+    speakerTitle: "Prototipo Inestable de Alex · 42 HP",
     dialogue: "*BEEP BEEP BEEP* ... ERROR 500: TEMPERATURA NO ASIGNADA. INICIANDO CICLO DE CALENTAMIENTO IRREVERSIBLE...",
     cameraShake: true,
     flash: false
@@ -74,7 +74,7 @@ export const SCENE_INTRO_PROTOTYPE_MICROWAVE = [
   {
     imageKey: "BOSS_PROTOTYPE_MICROWAVE_INTRO",
     speaker: "MICROONDAS ALPHA V0.1",
-    speakerTitle: "Prototipo Inestable de Alex · 160 HP",
+    speakerTitle: "Prototipo Inestable de Alex · 42 HP",
     dialogue: "Mister AI Alex me descartó por exceso de radiación. ¡Demostraré que puedo desintegrar código en tiempo O(1) antes de que suene la alarma!",
     cameraShake: true,
     flash: true

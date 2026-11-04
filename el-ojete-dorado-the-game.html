@@ -7721,7 +7721,7 @@ class Boss extends Enemy {
     y,
     width = 24,
     height = 24,
-    hp = 80,
+    hp = 24,
     speed = 35,
     sceneId,
     trackName,
@@ -7778,6 +7778,14 @@ class Boss extends Enemy {
     };
   }
 
+  get isStunned() {
+    return (
+      (typeof this.stunTimer === 'number' && this.stunTimer > 0) ||
+      this.state === 'stunned' ||
+      (typeof this.stunnedTimer === 'number' && this.stunnedTimer > 0)
+    );
+  }
+
   resetCombatState() {
     if (this.dead) {
       this.projectiles = [];
@@ -7814,7 +7822,8 @@ class Boss extends Enemy {
       return false;
     }
 
-    const damage = customDamage !== null ? customDamage : 1;
+    const baseDamage = customDamage !== null ? customDamage : 1;
+    const damage = this.isStunned ? baseDamage * 2 : baseDamage;
     this.hp = Math.max(0, this.hp - damage);
     this.hitFlashTimer = 0.22;
 
@@ -7919,9 +7928,12 @@ class Boss extends Enemy {
       if (this.dead) return { hitPlayer: false };
     }
 
-    // Disminución del parpadeo de daño
+    // Disminución del parpadeo de daño y temporizador de aturdimiento
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
+    }
+    if (typeof this.stunTimer === 'number' && this.stunTimer > 0) {
+      this.stunTimer = Math.max(0, this.stunTimer - dt);
     }
 
     // Actualización de proyectiles genéricos
@@ -8028,16 +8040,16 @@ class Boss extends Enemy {
  * Boss 1: "El Garbage Collector Furioso"
  * Ubicación: Alcantarillas de Valleverde (Fosa de Memoria).
  * Melodía: 'track_garbage_collector'.
- * Barra de vida: 80 HP.
+ * Barra de vida: 24 HP (calibrada para un combate equilibrado: 6 combos neutros o 3 castigos al aturdirlo contra el muro).
  * 
  * Mecánicas:
- * 1. Memory Leak: Esparce charcos de ácido corrosivo de punteros rotos cada 3.5s.
+ * 1. Memory Leak: Esparce charcos de ácido corrosivo de punteros rotos cada 3.8s.
  * 2. Fase de Compactación: Se detiene 1.5s telegrafiado y embiste a gran velocidad.
- *    Si choca con un muro, queda aturdido 2.5s como ventana de vulnerabilidad.
+ *    Si choca con un muro, queda aturdido 2.5s como ventana de vulnerabilidad (daño x2).
  * Recompensa: Habilidad 'Dash Asíncrono' (Shift + Dirección).
  */
 class GarbageCollectorBoss extends Boss {
-  constructor({ x, y, sceneId = 'sewers_dungeon' }) {
+  constructor({ x, y, sceneId = 'sewers_dungeon', hp = 24 }) {
     super({
       id: 'boss_garbage_collector',
       name: 'El Garbage Collector Furioso',
@@ -8046,8 +8058,8 @@ class GarbageCollectorBoss extends Boss {
       y,
       width: 26,
       height: 26,
-      hp: 80,
-      speed: 36,
+      hp,
+      speed: 34,
       sceneId,
       trackName: 'track_garbage_collector',
       rewardAbility: 'hasDash',
@@ -8057,7 +8069,7 @@ class GarbageCollectorBoss extends Boss {
     });
 
     this.state = 'chase'; // 'chase' | 'telegraph' | 'charge' | 'stunned'
-    this.acidTimer = 3.5;
+    this.acidTimer = 3.8;
     this.chargeCooldown = 7.0;
     this.stateTimer = 0;
     this.chargeVx = 0;
@@ -8067,7 +8079,7 @@ class GarbageCollectorBoss extends Boss {
   resetCombatState() {
     super.resetCombatState();
     this.state = 'chase';
-    this.acidTimer = 3.5;
+    this.acidTimer = 3.8;
     this.chargeCooldown = 7.0;
     this.stateTimer = 0;
     this.chargeVx = 0;
@@ -8075,10 +8087,8 @@ class GarbageCollectorBoss extends Boss {
   }
 
   takeSwordHit(player, soundEngine = null, customDamage = null) {
-    // Si está aturdido tras chocar contra el muro, recibe un 50% extra de daño o daño crítico
-    const bonusDmg = this.state === 'stunned' ? 2 : 1;
-    const finalDmg = customDamage !== null ? customDamage : bonusDmg;
-    return super.takeSwordHit(player, soundEngine, finalDmg);
+    // Al estar aturdido contra el muro, Boss.takeSwordHit aplica automáticamente el multiplicador x2 de daño
+    return super.takeSwordHit(player, soundEngine, customDamage);
   }
 
   update(dt, tilemap, player, paused = false, soundEngine = null) {
@@ -8268,17 +8278,17 @@ class GarbageCollectorBoss extends Boss {
  * Boss 2: "El Guardián del Stack Overflow"
  * Ubicación: Fin del Templo de la Espada (Ruinas del Despertar).
  * Melodía: 'track_stack_overflow'.
- * Barra de vida: 120 HP.
+ * Barra de vida: 32 HP (calibrada para un combate equilibrado: ~8 aperturas de combo y 2 oleadas recursivas).
  * 
  * Mecánicas:
- * 1. Llamada Recursiva: Cada 30 de daño invoca 2 sombras menores de recursividad (10 HP).
- * 2. Desbordamiento de Pila: Canaliza 2s una onda de choque radial expansiva (60px) que obliga
- *    a alejarse o cruzar con el Dash Asíncrono.
+ * 1. Llamada Recursiva: Al 66% y 33% de vida invoca 2 sombras de recursividad (3 HP cada una).
+ * 2. Desbordamiento de Pila: Canaliza 1.8s una onda de choque radial expansiva (60px) que obliga
+ *    a esquivar con el Dash Asíncrono o retroceder.
  * 3. Navegación Inteligente A*: Supera obstáculos y pilares sin quedarse atascado.
  * Recompensa: Habilidad 'Corte en Cascada (Caso Base)' (mantener Espacio/F 1s para tajo 360°).
  */
 class StackOverflowBoss extends Boss {
-  constructor({ x, y, sceneId = 'sword_temple' }) {
+  constructor({ x, y, sceneId = 'sword_temple', hp = 32 }) {
     super({
       id: 'boss_stack_overflow',
       name: 'El Guardián del Stack Overflow',
@@ -8287,7 +8297,7 @@ class StackOverflowBoss extends Boss {
       y,
       width: 24,
       height: 28,
-      hp: 120,
+      hp,
       speed: 32,
       sceneId,
       trackName: 'track_stack_overflow',
@@ -8305,7 +8315,8 @@ class StackOverflowBoss extends Boss {
     this.shockwaveCooldown = 9.0;
     this.shockwaves = [];
     this.clones = [];
-    this.lastMilestoneHp = 120;
+    this.cloneThresholds = [Math.round(this.maxHp * 0.66), Math.round(this.maxHp * 0.33)];
+    this.clonesTriggered = new Set();
 
     // Navegación inteligente y evasión de obstáculos A*
     this.path = [];
@@ -8323,7 +8334,8 @@ class StackOverflowBoss extends Boss {
     this.shockwaveCooldown = 9.0;
     this.shockwaves = [];
     this.clones = [];
-    this.lastMilestoneHp = 120;
+    this.cloneThresholds = [Math.round(this.maxHp * 0.66), Math.round(this.maxHp * 0.33)];
+    this.clonesTriggered = new Set();
     this.path = [];
     this.pathGoal = null;
     this.repathTimer = 0;
@@ -8344,9 +8356,13 @@ class StackOverflowBoss extends Boss {
     const hit = super.takeSwordHit(player, soundEngine, customDamage);
     if (!hit) return false;
 
-    // Chequeo de hito: cada 30 de daño dispara Llamada Recursiva
-    if (Math.floor(this.hp / 30) < Math.floor(prevHp / 30) && this.hp > 0) {
-      this.spawnRecursiveClones(soundEngine, tilemap);
+    // Dispara Llamada Recursiva al 66% y 33% de vida
+    for (const thresh of this.cloneThresholds) {
+      if (prevHp > thresh && this.hp <= thresh && !this.clonesTriggered.has(thresh) && this.hp > 0) {
+        this.clonesTriggered.add(thresh);
+        this.spawnRecursiveClones(soundEngine, tilemap);
+        break;
+      }
     }
 
     return true;
@@ -8365,9 +8381,9 @@ class StackOverflowBoss extends Boss {
       this.clones.push({
         x: spawnX,
         y: spawnY,
-        hp: 10,
-        maxHp: 10,
-        speed: 40,
+        hp: 3,
+        maxHp: 3,
+        speed: 38,
         attackCooldown: 0,
         hitFlash: 0
       });
@@ -8458,7 +8474,8 @@ class StackOverflowBoss extends Boss {
           c.hp -= spin.damage;
           c.hitFlash = 0.15;
         } else if (sword && CollisionSystem.checkAABB(sword, { x: c.x - 6, y: c.y - 6, width: 12, height: 12 })) {
-          c.hp -= 1;
+          const dmg = typeof player.getSwordDamage === 'function' ? player.getSwordDamage() : 1;
+          c.hp -= dmg;
           c.hitFlash = 0.15;
         }
 
@@ -8700,16 +8717,16 @@ class StackOverflowBoss extends Boss {
  * Boss 3: "El Microondas Prototipo (V0.1 Alpha)"
  * Ubicación: Umbral de la Fortaleza de AI Alex.
  * Melodía: 'track_prototype_microwave'.
- * Barra de vida: 160 HP.
+ * Barra de vida: 42 HP (calibrada para un combate equilibrado: ~10 aperturas y 2 ciclos de fusibles térmicos con castigo x2).
  * 
  * Mecánicas:
  * 1. Radiación Térmica: Dispara en abanico proyectiles de calor con pitidos agudos de microondas.
  * 2. Ciclo de Calentamiento: Se vuelve invulnerable durante 6s activando una espiral térmica.
- *    El jugador debe golpear 2 fusibles en las esquinas de la sala para cortarle la corriente.
+ *    El jugador debe golpear 2 fusibles en las esquinas de la sala para cortarle la corriente y aturdirlo 2.5s (daño x2).
  * Recompensa: Habilidad 'Barrera de Tipado Estricto' (tecla Q).
  */
 class PrototypeMicrowaveBoss extends Boss {
-  constructor({ x, y, sceneId = 'ai_fortress_gate' }) {
+  constructor({ x, y, sceneId = 'ai_fortress_gate', hp = 42 }) {
     super({
       id: 'boss_prototype_microwave',
       name: 'El Microondas Prototipo (V0.1 Alpha)',
@@ -8718,7 +8735,7 @@ class PrototypeMicrowaveBoss extends Boss {
       y,
       width: 28,
       height: 26,
-      hp: 160,
+      hp,
       speed: 26,
       sceneId,
       trackName: 'track_prototype_microwave',
@@ -8739,7 +8756,8 @@ class PrototypeMicrowaveBoss extends Boss {
       { id: 'right', x: x + 54, y: y - 20, active: false, hit: false }
     ];
 
-    this.cycleThresholds = [80, 40]; // Se activa al 50% y 25% de HP
+    this.cycleThresholds = [Math.round(this.maxHp * 0.60), Math.round(this.maxHp * 0.30)];
+    this.cycleTriggers = new Set();
     this.stunnedTimer = 0;
   }
 
@@ -8750,6 +8768,8 @@ class PrototypeMicrowaveBoss extends Boss {
     this.heatCycleTimer = 0;
     this.heatSpiralAngle = 0;
     this.stunnedTimer = 0;
+    this.cycleThresholds = [Math.round(this.maxHp * 0.60), Math.round(this.maxHp * 0.30)];
+    this.cycleTriggers = new Set();
     for (const f of this.fuses) {
       f.active = false;
       f.hit = false;
@@ -8761,6 +8781,7 @@ class PrototypeMicrowaveBoss extends Boss {
     this.heatCycleActive = false;
     this.heatCycleTimer = 0;
     this.stunnedTimer = 0;
+    this.cycleTriggers = new Set();
     for (const f of this.fuses) {
       f.active = false;
       f.hit = false;
@@ -8779,9 +8800,10 @@ class PrototypeMicrowaveBoss extends Boss {
     const hit = super.takeSwordHit(player, soundEngine, customDamage);
     if (!hit) return false;
 
-    // Chequeo de activación de Ciclo de Calentamiento
+    // Chequeo de activación de Ciclo de Calentamiento al 60% y 30% de HP
     for (const thresh of this.cycleThresholds) {
-      if (prevHp > thresh && this.hp <= thresh && !this.heatCycleActive && this.hp > 0) {
+      if (prevHp > thresh && this.hp <= thresh && !this.cycleTriggers.has(thresh) && !this.heatCycleActive && this.hp > 0) {
+        this.cycleTriggers.add(thresh);
         this.triggerHeatCycle(soundEngine);
         break;
       }
@@ -8988,12 +9010,12 @@ class PrototypeMicrowaveBoss extends Boss {
  * Boss Final: "Mister AI Alex"
  * Ubicación: Ciudadela de AI Alex · El Gran Ojal ('ai_citadel').
  * Melodía: 'theme_main_villain' (o 'villain').
- * Barra de vida: 200 HP.
+ * Barra de vida: 55 HP (calibrada para un combate culminante épico: Fase 1 hasta 28 HP y Fase 2 Kernel Panic).
  * 
  * Mecánicas de Combate:
  * 1. Rayo Láser Binario: Dispara ráfagas dirigidas de bits [0] y [1] de alta velocidad.
  * 2. Ondas Térmicas Cuánticas: Pulso radial del Microondas Cuántico que expande un anillo térmico.
- * 3. Fase 2 - KERNEL PANIC OVERCLOCK (HP <= 100):
+ * 3. Fase 2 - KERNEL PANIC OVERCLOCK (HP <= 50%):
  *    - Velocidad incrementada y teletransporte cuántico con glitches en el espacio.
  *    - Disparo espiral omnidireccional de 8 orbes cuánticos carmesí.
  *    - Summons de hologramas ilusorios que imitan su presencia.
@@ -9003,7 +9025,7 @@ class PrototypeMicrowaveBoss extends Boss {
  * y emite partículas de fallo catastrófico para dar paso a la cinemática SCENE_ENDING_VICTORY.
  */
 class FinalBossAlex extends Boss {
-  constructor({ x, y, sceneId = 'ai_citadel' }) {
+  constructor({ x, y, sceneId = 'ai_citadel', hp = 55 }) {
     super({
       id: 'boss_final_ai_alex',
       name: 'Mister AI Alex',
@@ -9012,7 +9034,7 @@ class FinalBossAlex extends Boss {
       y,
       width: 32,
       height: 32,
-      hp: 200,
+      hp,
       speed: 36,
       sceneId,
       trackName: 'theme_main_villain',
@@ -9075,10 +9097,10 @@ class FinalBossAlex extends Boss {
       this._performQuantumTeleport();
     }
 
-    // Activación de Fase 2: KERNEL PANIC (<= 100 HP)
-    if (this.hp <= 100 && !this.isOverclocked && !this.dead) {
+    // Activación de Fase 2: KERNEL PANIC (HP <= 50%)
+    if (this.hp <= Math.round(this.maxHp * 0.50) && !this.isOverclocked && !this.dead) {
       this.isOverclocked = true;
-      this.speed = 48;
+      this.speed = 45;
       this.statusText = `🔥 ${getRandomBattleBark('PHASE_2_TRIGGER')}`;
       if (soundEngine && typeof soundEngine.playHitHurt === 'function') {
         soundEngine.playHitHurt();
@@ -15877,7 +15899,7 @@ const SCENE_INTRO_GARBAGE_COLLECTOR = [
   {
     imageKey: "BOSS_GARBAGE_COLLECTOR_INTRO",
     speaker: "GARBAGE COLLECTOR",
-    speakerTitle: "Limpiador de Punteros Huérfanos · 80 HP",
+    speakerTitle: "Limpiador de Punteros Huérfanos · 24 HP",
     dialogue: "¡ALERTA DE FUGAS DETECTADA! Demasiadas variables declaradas con 'var' pudriéndose en los sótanos...",
     cameraShake: false,
     flash: false
@@ -15885,7 +15907,7 @@ const SCENE_INTRO_GARBAGE_COLLECTOR = [
   {
     imageKey: "BOSS_GARBAGE_COLLECTOR_INTRO",
     speaker: "GARBAGE COLLECTOR",
-    speakerTitle: "Limpiador de Punteros Huérfanos · 80 HP",
+    speakerTitle: "Limpiador de Punteros Huérfanos · 24 HP",
     dialogue: "¿Qué hace un programador sin referencia viva caminando por mis cloacas? Todo lo que no esté en el árbol raíz será RECOLECTADO Y PURGADO.",
     cameraShake: true,
     flash: true
@@ -15903,7 +15925,7 @@ const SCENE_INTRO_STACK_OVERFLOW = [
   {
     imageKey: "BOSS_STACK_OVERFLOW_INTRO",
     speaker: "GUARDIÁN DEL STACK",
-    speakerTitle: "Espectro Recursivo · 120 HP",
+    speakerTitle: "Espectro Recursivo · 32 HP",
     dialogue: "Bienvenido al bucle perpetuo, forastero. Cada paso que diste en este templo fue una llamada apilada en tu memoria...",
     cameraShake: false,
     flash: false
@@ -15911,7 +15933,7 @@ const SCENE_INTRO_STACK_OVERFLOW = [
   {
     imageKey: "BOSS_STACK_OVERFLOW_INTRO",
     speaker: "GUARDIÁN DEL STACK",
-    speakerTitle: "Espectro Recursivo · 120 HP",
+    speakerTitle: "Espectro Recursivo · 32 HP",
     dialogue: "¡No existe caso base que detenga mi invocación! ¡Tu pila de ejecución va a reventar!",
     cameraShake: true,
     flash: true
@@ -15929,7 +15951,7 @@ const SCENE_INTRO_PROTOTYPE_MICROWAVE = [
   {
     imageKey: "BOSS_PROTOTYPE_MICROWAVE_INTRO",
     speaker: "MICROONDAS ALPHA V0.1",
-    speakerTitle: "Prototipo Inestable de Alex · 160 HP",
+    speakerTitle: "Prototipo Inestable de Alex · 42 HP",
     dialogue: "*BEEP BEEP BEEP* ... ERROR 500: TEMPERATURA NO ASIGNADA. INICIANDO CICLO DE CALENTAMIENTO IRREVERSIBLE...",
     cameraShake: true,
     flash: false
@@ -15937,7 +15959,7 @@ const SCENE_INTRO_PROTOTYPE_MICROWAVE = [
   {
     imageKey: "BOSS_PROTOTYPE_MICROWAVE_INTRO",
     speaker: "MICROONDAS ALPHA V0.1",
-    speakerTitle: "Prototipo Inestable de Alex · 160 HP",
+    speakerTitle: "Prototipo Inestable de Alex · 42 HP",
     dialogue: "Mister AI Alex me descartó por exceso de radiación. ¡Demostraré que puedo desintegrar código en tiempo O(1) antes de que suene la alarma!",
     cameraShake: true,
     flash: true
@@ -21134,28 +21156,28 @@ class RPGGame {
       }),
 
       // ==================== MINI-JEFES CON BANDA SONORA Y HABILIDADES ÚNICAS ====================
-      // Boss 1: El Garbage Collector Furioso (Alcantarillas de Valleverde · 80 HP)
+      // Boss 1: El Garbage Collector Furioso (Alcantarillas de Valleverde · 24 HP)
       new GarbageCollectorBoss({
         x: 11.5 * 16,
         y: 7 * 16,
         sceneId: 'sewers_dungeon'
       }),
 
-      // Boss 2: El Guardián del Stack Overflow (Templo de la Espada · 120 HP)
+      // Boss 2: El Guardián del Stack Overflow (Templo de la Espada · 32 HP)
       new StackOverflowBoss({
         x: 11.5 * 16,
         y: 4.5 * 16,
         sceneId: 'sword_temple'
       }),
 
-      // Boss 3: El Microondas Prototipo V0.1 Alpha (Umbral de la Fortaleza · 160 HP)
+      // Boss 3: El Microondas Prototipo V0.1 Alpha (Umbral de la Fortaleza · 42 HP)
       new PrototypeMicrowaveBoss({
         x: 11.5 * 16,
         y: 6.5 * 16,
         sceneId: 'ai_fortress_gate'
       }),
 
-      // Boss Final: Mister AI Alex y El Microondas Cuántico (Ciudadela · El Gran Ojal · 200 HP)
+      // Boss Final: Mister AI Alex y El Microondas Cuántico (Ciudadela · El Gran Ojal · 55 HP)
       new FinalBossAlex({
         x: 11.5 * 16,
         y: 6.5 * 16,

@@ -4,16 +4,16 @@ import { Boss } from './Boss.js?v=7';
  * Boss 3: "El Microondas Prototipo (V0.1 Alpha)"
  * Ubicación: Umbral de la Fortaleza de AI Alex.
  * Melodía: 'track_prototype_microwave'.
- * Barra de vida: 160 HP.
+ * Barra de vida: 42 HP (calibrada para un combate equilibrado: ~10 aperturas y 2 ciclos de fusibles térmicos con castigo x2).
  * 
  * Mecánicas:
  * 1. Radiación Térmica: Dispara en abanico proyectiles de calor con pitidos agudos de microondas.
  * 2. Ciclo de Calentamiento: Se vuelve invulnerable durante 6s activando una espiral térmica.
- *    El jugador debe golpear 2 fusibles en las esquinas de la sala para cortarle la corriente.
+ *    El jugador debe golpear 2 fusibles en las esquinas de la sala para cortarle la corriente y aturdirlo 2.5s (daño x2).
  * Recompensa: Habilidad 'Barrera de Tipado Estricto' (tecla Q).
  */
 export class PrototypeMicrowaveBoss extends Boss {
-  constructor({ x, y, sceneId = 'ai_fortress_gate' }) {
+  constructor({ x, y, sceneId = 'ai_fortress_gate', hp = 42 }) {
     super({
       id: 'boss_prototype_microwave',
       name: 'El Microondas Prototipo (V0.1 Alpha)',
@@ -22,7 +22,7 @@ export class PrototypeMicrowaveBoss extends Boss {
       y,
       width: 28,
       height: 26,
-      hp: 160,
+      hp,
       speed: 26,
       sceneId,
       trackName: 'track_prototype_microwave',
@@ -43,7 +43,8 @@ export class PrototypeMicrowaveBoss extends Boss {
       { id: 'right', x: x + 54, y: y - 20, active: false, hit: false }
     ];
 
-    this.cycleThresholds = [80, 40]; // Se activa al 50% y 25% de HP
+    this.cycleThresholds = [Math.round(this.maxHp * 0.60), Math.round(this.maxHp * 0.30)];
+    this.cycleTriggers = new Set();
     this.stunnedTimer = 0;
   }
 
@@ -54,6 +55,8 @@ export class PrototypeMicrowaveBoss extends Boss {
     this.heatCycleTimer = 0;
     this.heatSpiralAngle = 0;
     this.stunnedTimer = 0;
+    this.cycleThresholds = [Math.round(this.maxHp * 0.60), Math.round(this.maxHp * 0.30)];
+    this.cycleTriggers = new Set();
     for (const f of this.fuses) {
       f.active = false;
       f.hit = false;
@@ -65,6 +68,7 @@ export class PrototypeMicrowaveBoss extends Boss {
     this.heatCycleActive = false;
     this.heatCycleTimer = 0;
     this.stunnedTimer = 0;
+    this.cycleTriggers = new Set();
     for (const f of this.fuses) {
       f.active = false;
       f.hit = false;
@@ -83,9 +87,10 @@ export class PrototypeMicrowaveBoss extends Boss {
     const hit = super.takeSwordHit(player, soundEngine, customDamage);
     if (!hit) return false;
 
-    // Chequeo de activación de Ciclo de Calentamiento
+    // Chequeo de activación de Ciclo de Calentamiento al 60% y 30% de HP
     for (const thresh of this.cycleThresholds) {
-      if (prevHp > thresh && this.hp <= thresh && !this.heatCycleActive && this.hp > 0) {
+      if (prevHp > thresh && this.hp <= thresh && !this.cycleTriggers.has(thresh) && !this.heatCycleActive && this.hp > 0) {
+        this.cycleTriggers.add(thresh);
         this.triggerHeatCycle(soundEngine);
         break;
       }

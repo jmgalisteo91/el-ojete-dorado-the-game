@@ -2641,28 +2641,28 @@ export class RPGGame {
       }),
 
       // ==================== MINI-JEFES CON BANDA SONORA Y HABILIDADES ÚNICAS ====================
-      // Boss 1: El Garbage Collector Furioso (Alcantarillas de Valleverde · 80 HP)
+      // Boss 1: El Garbage Collector Furioso (Alcantarillas de Valleverde · 24 HP)
       new GarbageCollectorBoss({
         x: 11.5 * 16,
         y: 7 * 16,
         sceneId: 'sewers_dungeon'
       }),
 
-      // Boss 2: El Guardián del Stack Overflow (Templo de la Espada · 120 HP)
+      // Boss 2: El Guardián del Stack Overflow (Templo de la Espada · 32 HP)
       new StackOverflowBoss({
         x: 11.5 * 16,
         y: 4.5 * 16,
         sceneId: 'sword_temple'
       }),
 
-      // Boss 3: El Microondas Prototipo V0.1 Alpha (Umbral de la Fortaleza · 160 HP)
+      // Boss 3: El Microondas Prototipo V0.1 Alpha (Umbral de la Fortaleza · 42 HP)
       new PrototypeMicrowaveBoss({
         x: 11.5 * 16,
         y: 6.5 * 16,
         sceneId: 'ai_fortress_gate'
       }),
 
-      // Boss Final: Mister AI Alex y El Microondas Cuántico (Ciudadela · El Gran Ojal · 200 HP)
+      // Boss Final: Mister AI Alex y El Microondas Cuántico (Ciudadela · El Gran Ojal · 55 HP)
       new FinalBossAlex({
         x: 11.5 * 16,
         y: 6.5 * 16,

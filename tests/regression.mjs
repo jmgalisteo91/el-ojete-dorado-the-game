@@ -9,7 +9,10 @@ import { Player } from '../src/entities/Player.js';
 import { getDoorBlock, getDoorDestinationInfo } from '../src/core/DoorGatekeeper.js';
 import { AI_STATE, inferArchetype } from '../src/ai/EnemyBrain.js';
 import { SpeechBubble, drawSpeechBalloonPath, drawRoundedRect } from '../src/ui/SpeechBubble.js';
+import { GarbageCollectorBoss } from '../src/entities/bosses/GarbageCollectorBoss.js';
 import { StackOverflowBoss } from '../src/entities/bosses/StackOverflowBoss.js';
+import { PrototypeMicrowaveBoss } from '../src/entities/bosses/PrototypeMicrowaveBoss.js';
+import { FinalBossAlex } from '../src/entities/bosses/FinalBossAlex.js';
 
 let passed = 0;
 const failures = [];
@@ -436,6 +439,62 @@ test('StackOverflowBoss (Boss 2) tiene hitbox de pies optimizada y navega obstá
 
   // El jefe debe avanzar en X superando el pilar central hacia el jugador
   assert.ok(boss.x > 2.5 * 16, `Boss debería haberse desplazado en X rodeando el pilar: x=${boss.x}`);
+});
+
+test('Rebalanceo de Bosses: HP calibrada y daño ajustado al héroe', () => {
+  const b1 = new GarbageCollectorBoss({ x: 0, y: 0 });
+  const b2 = new StackOverflowBoss({ x: 0, y: 0 });
+  const b3 = new PrototypeMicrowaveBoss({ x: 0, y: 0 });
+  const b4 = new FinalBossAlex({ x: 0, y: 0 });
+
+  // 1. Verificación de HP calibrada
+  assert.equal(b1.maxHp, 24, 'Garbage Collector debe tener 24 HP');
+  assert.equal(b2.maxHp, 32, 'Stack Overflow debe tener 32 HP');
+  assert.equal(b3.maxHp, 42, 'Microondas Prototipo debe tener 42 HP');
+  assert.equal(b4.maxHp, 55, 'Final Boss Alex debe tener 55 HP');
+
+  // 2. Multiplicador x2 de daño cuando el boss está aturdido
+  const mockPlayer = {
+    centerX: 0,
+    centerY: 0,
+    getSwordDamage: () => 1
+  };
+
+  // Golpe neutro (sin aturdir): daño 1
+  const startHp = b1.hp;
+  b1.takeSwordHit(mockPlayer, null, 1);
+  assert.equal(b1.hp, startHp - 1, 'Golpe neutro debe restar 1 HP');
+
+  // Golpe con boss aturdido (state = stunned): daño x2 (2 de daño)
+  b1.hitFlashTimer = 0;
+  b1.state = 'stunned';
+  assert.ok(b1.isStunned, 'b1 debe reportar isStunned=true');
+  const hpBeforeStunHit = b1.hp;
+  b1.takeSwordHit(mockPlayer, null, 1);
+  assert.equal(b1.hp, hpBeforeStunHit - 2, 'Golpe durante aturdimiento debe restar 2 HP (daño x2)');
+
+  // Finisher de combo (daño 2) con boss aturdido: daño x2 = 4 de daño
+  b1.hitFlashTimer = 0;
+  const hpBeforeFinisher = b1.hp;
+  b1.takeSwordHit(mockPlayer, null, 2);
+  assert.equal(b1.hp, hpBeforeFinisher - 4, 'Finisher con aturdimiento debe restar 4 HP');
+
+  // 3. Clones de Stack Overflow tienen vida justa (3 HP) y thresholds
+  assert.equal(b2.cloneThresholds.length, 2);
+  assert.ok(b2.cloneThresholds[0] === 21 && b2.cloneThresholds[1] === 11);
+  b2.spawnRecursiveClones();
+  assert.equal(b2.clones.length, 2);
+  assert.equal(b2.clones[0].maxHp, 3, 'Los clones deben tener 3 HP');
+  assert.equal(b2.clones[1].maxHp, 3);
+
+  // 4. Ciclos térmicos de Microondas Prototipo al 60% y 30%
+  assert.equal(b3.cycleThresholds[0], 25, 'Primer ciclo al 60% (25 HP)');
+  assert.equal(b3.cycleThresholds[1], 13, 'Segundo ciclo al 30% (13 HP)');
+
+  // 5. Final Boss Alex: Fase 2 Kernel Panic al 50% de vida
+  b4.takeSwordHit(mockPlayer, null, 28); // 55 - 28 = 27 HP (<= 28 HP -> 50%)
+  assert.ok(b4.isOverclocked, 'Alex debe activar Fase 2 Overclocked al 50% de HP');
+  assert.equal(b4.speed, 45, 'Velocidad en Fase 2 debe ser 45');
 });
 
 console.log(`\n${passed} pruebas OK, ${failures.length} fallos.`);

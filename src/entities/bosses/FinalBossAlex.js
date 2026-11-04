@@ -6,12 +6,12 @@ import { BATTLE_BARK_PHASES, getRandomBattleBark } from '../../assets/VillainDia
  * Boss Final: "Mister AI Alex"
  * Ubicación: Ciudadela de AI Alex · El Gran Ojal ('ai_citadel').
  * Melodía: 'theme_main_villain' (o 'villain').
- * Barra de vida: 200 HP.
+ * Barra de vida: 55 HP (calibrada para un combate culminante épico: Fase 1 hasta 28 HP y Fase 2 Kernel Panic).
  * 
  * Mecánicas de Combate:
  * 1. Rayo Láser Binario: Dispara ráfagas dirigidas de bits [0] y [1] de alta velocidad.
  * 2. Ondas Térmicas Cuánticas: Pulso radial del Microondas Cuántico que expande un anillo térmico.
- * 3. Fase 2 - KERNEL PANIC OVERCLOCK (HP <= 100):
+ * 3. Fase 2 - KERNEL PANIC OVERCLOCK (HP <= 50%):
  *    - Velocidad incrementada y teletransporte cuántico con glitches en el espacio.
  *    - Disparo espiral omnidireccional de 8 orbes cuánticos carmesí.
  *    - Summons de hologramas ilusorios que imitan su presencia.
@@ -21,7 +21,7 @@ import { BATTLE_BARK_PHASES, getRandomBattleBark } from '../../assets/VillainDia
  * y emite partículas de fallo catastrófico para dar paso a la cinemática SCENE_ENDING_VICTORY.
  */
 export class FinalBossAlex extends Boss {
-  constructor({ x, y, sceneId = 'ai_citadel' }) {
+  constructor({ x, y, sceneId = 'ai_citadel', hp = 55 }) {
     super({
       id: 'boss_final_ai_alex',
       name: 'Mister AI Alex',
@@ -30,7 +30,7 @@ export class FinalBossAlex extends Boss {
       y,
       width: 32,
       height: 32,
-      hp: 200,
+      hp,
       speed: 36,
       sceneId,
       trackName: 'theme_main_villain',
@@ -93,10 +93,10 @@ export class FinalBossAlex extends Boss {
       this._performQuantumTeleport();
     }
 
-    // Activación de Fase 2: KERNEL PANIC (<= 100 HP)
-    if (this.hp <= 100 && !this.isOverclocked && !this.dead) {
+    // Activación de Fase 2: KERNEL PANIC (HP <= 50%)
+    if (this.hp <= Math.round(this.maxHp * 0.50) && !this.isOverclocked && !this.dead) {
       this.isOverclocked = true;
-      this.speed = 48;
+      this.speed = 45;
       this.statusText = `🔥 ${getRandomBattleBark('PHASE_2_TRIGGER')}`;
       if (soundEngine && typeof soundEngine.playHitHurt === 'function') {
         soundEngine.playHitHurt();

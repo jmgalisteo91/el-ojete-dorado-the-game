@@ -6,17 +6,17 @@ import { findPath, hasLineOfSight } from '../../ai/Pathfinding.js?v=7';
  * Boss 2: "El Guardián del Stack Overflow"
  * Ubicación: Fin del Templo de la Espada (Ruinas del Despertar).
  * Melodía: 'track_stack_overflow'.
- * Barra de vida: 120 HP.
+ * Barra de vida: 32 HP (calibrada para un combate equilibrado: ~8 aperturas de combo y 2 oleadas recursivas).
  * 
  * Mecánicas:
- * 1. Llamada Recursiva: Cada 30 de daño invoca 2 sombras menores de recursividad (10 HP).
- * 2. Desbordamiento de Pila: Canaliza 2s una onda de choque radial expansiva (60px) que obliga
- *    a alejarse o cruzar con el Dash Asíncrono.
+ * 1. Llamada Recursiva: Al 66% y 33% de vida invoca 2 sombras de recursividad (3 HP cada una).
+ * 2. Desbordamiento de Pila: Canaliza 1.8s una onda de choque radial expansiva (60px) que obliga
+ *    a esquivar con el Dash Asíncrono o retroceder.
  * 3. Navegación Inteligente A*: Supera obstáculos y pilares sin quedarse atascado.
  * Recompensa: Habilidad 'Corte en Cascada (Caso Base)' (mantener Espacio/F 1s para tajo 360°).
  */
 export class StackOverflowBoss extends Boss {
-  constructor({ x, y, sceneId = 'sword_temple' }) {
+  constructor({ x, y, sceneId = 'sword_temple', hp = 32 }) {
     super({
       id: 'boss_stack_overflow',
       name: 'El Guardián del Stack Overflow',
@@ -25,7 +25,7 @@ export class StackOverflowBoss extends Boss {
       y,
       width: 24,
       height: 28,
-      hp: 120,
+      hp,
       speed: 32,
       sceneId,
       trackName: 'track_stack_overflow',
@@ -43,7 +43,8 @@ export class StackOverflowBoss extends Boss {
     this.shockwaveCooldown = 9.0;
     this.shockwaves = [];
     this.clones = [];
-    this.lastMilestoneHp = 120;
+    this.cloneThresholds = [Math.round(this.maxHp * 0.66), Math.round(this.maxHp * 0.33)];
+    this.clonesTriggered = new Set();
 
     // Navegación inteligente y evasión de obstáculos A*
     this.path = [];
@@ -61,7 +62,8 @@ export class StackOverflowBoss extends Boss {
     this.shockwaveCooldown = 9.0;
     this.shockwaves = [];
     this.clones = [];
-    this.lastMilestoneHp = 120;
+    this.cloneThresholds = [Math.round(this.maxHp * 0.66), Math.round(this.maxHp * 0.33)];
+    this.clonesTriggered = new Set();
     this.path = [];
     this.pathGoal = null;
     this.repathTimer = 0;
@@ -82,9 +84,13 @@ export class StackOverflowBoss extends Boss {
     const hit = super.takeSwordHit(player, soundEngine, customDamage);
     if (!hit) return false;
 
-    // Chequeo de hito: cada 30 de daño dispara Llamada Recursiva
-    if (Math.floor(this.hp / 30) < Math.floor(prevHp / 30) && this.hp > 0) {
-      this.spawnRecursiveClones(soundEngine, tilemap);
+    // Dispara Llamada Recursiva al 66% y 33% de vida
+    for (const thresh of this.cloneThresholds) {
+      if (prevHp > thresh && this.hp <= thresh && !this.clonesTriggered.has(thresh) && this.hp > 0) {
+        this.clonesTriggered.add(thresh);
+        this.spawnRecursiveClones(soundEngine, tilemap);
+        break;
+      }
     }
 
     return true;
@@ -103,9 +109,9 @@ export class StackOverflowBoss extends Boss {
       this.clones.push({
         x: spawnX,
         y: spawnY,
-        hp: 10,
-        maxHp: 10,
-        speed: 40,
+        hp: 3,
+        maxHp: 3,
+        speed: 38,
         attackCooldown: 0,
         hitFlash: 0
       });
@@ -196,7 +202,8 @@ export class StackOverflowBoss extends Boss {
           c.hp -= spin.damage;
           c.hitFlash = 0.15;
         } else if (sword && CollisionSystem.checkAABB(sword, { x: c.x - 6, y: c.y - 6, width: 12, height: 12 })) {
-          c.hp -= 1;
+          const dmg = typeof player.getSwordDamage === 'function' ? player.getSwordDamage() : 1;
+          c.hp -= dmg;
           c.hitFlash = 0.15;
         }
 
