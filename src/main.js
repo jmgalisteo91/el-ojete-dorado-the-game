@@ -3042,7 +3042,8 @@ export class RPGGame {
       if (Math.hypot(this.player.centerX - panX, this.player.centerY - panY) <= 30) {
         return {
           kind: 'armor_compiler_panel',
-          label: '[E] Leer Panel de Compilación Booleana'
+          label: '[E] Leer Panel de Compilación Booleana',
+          target: { centerX: panX, y: panY }
         };
       }
     }
@@ -3055,7 +3056,7 @@ export class RPGGame {
         if (Math.hypot(this.player.centerX - mx, this.player.centerY - my) <= 26) {
           return {
             kind: 'sword_monolith',
-            target: mono,
+            target: { ...mono, centerX: mx, y: my },
             label: `[E] Sintonizar ${mono.name} (${mono.symbol})`
           };
         }
@@ -3163,10 +3164,19 @@ export class RPGGame {
           }
         }
         if (nearWater) {
+          const fishAnchor = { centerX: pCol * 16 + 8, y: pRow * 16 };
           if (this.inventory && this.inventory.hasItem('bread')) {
-            return { kind: 'river_fishing', label: '[E] Pescar Trucha en el Río Alba (Usa Pan)' };
+            return {
+              kind: 'river_fishing',
+              target: fishAnchor,
+              label: '[E] Pescar Trucha en el Río Alba (Usa Pan)'
+            };
           } else {
-            return { kind: 'river_fishing_nobread', label: 'Río Alba (Necesitas Pan Campesino como cebo)' };
+            return {
+              kind: 'river_fishing_nobread',
+              target: fishAnchor,
+              label: 'Río Alba (Necesitas Pan Campesino como cebo)'
+            };
           }
         }
       }
@@ -3457,7 +3467,9 @@ export class RPGGame {
     }
 
     if (action.kind === 'sword_monolith') {
-      this._handleSwordMonolithStrike(action.target.id);
+      if (action.target?.id) {
+        this._handleSwordMonolithStrike(action.target.id);
+      }
       return;
     }
 
@@ -4781,7 +4793,13 @@ export class RPGGame {
   }
 
   _renderActionPrompt(ctx, action) {
-    SpeechBubble.renderActionPromptBubble(ctx, action, this.camera, this.promptTimer);
+    SpeechBubble.renderActionPromptBubble(
+      ctx,
+      action,
+      this.camera,
+      this.promptTimer,
+      this.player
+    );
   }
 
   /**

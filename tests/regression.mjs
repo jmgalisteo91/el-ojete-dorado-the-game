@@ -343,5 +343,34 @@ test('renderCombatBanner traza banner con borde', () => {
   assert.ok(ctx.calls.some((c) => c.includes('fillText(¡PARRY PERFECTO!')));
 });
 
+test('renderActionPromptBubble es resiliente si action.target es undefined (panel booleano / pesca)', () => {
+  const ctx = makeMockCtx();
+  const camera = { renderX: 0, renderY: 0, viewportWidth: 320, viewportHeight: 180 };
+  const player = { centerX: 168, centerY: 60, y: 52 };
+
+  // Caso exacto del bug reportado: panel booleano sin target explícito
+  const actionWithoutTarget = {
+    kind: 'armor_compiler_panel',
+    label: '[E] Leer Panel de Compilación Booleana'
+  };
+
+  assert.doesNotThrow(() => {
+    SpeechBubble.renderActionPromptBubble(ctx, actionWithoutTarget, camera, 0, player);
+  });
+  assert.ok(ctx.calls.some((c) => c.includes('fillText(Panel')));
+  assert.ok(ctx.calls.some((c) => c.includes('Booleano')));
+
+  // Caso monolito con col/row
+  const monolithAction = {
+    kind: 'sword_monolith',
+    target: { col: 5, row: 8, name: 'Suma', symbol: '∑' },
+    label: '[E] Sintonizar Suma (∑)'
+  };
+  assert.doesNotThrow(() => {
+    SpeechBubble.renderActionPromptBubble(ctx, monolithAction, camera, 0, player);
+  });
+  assert.ok(ctx.calls.some((c) => c.includes('fillText(Monolito')));
+});
+
 console.log(`\n${passed} pruebas OK, ${failures.length} fallos.`);
 if (failures.length) process.exit(1);

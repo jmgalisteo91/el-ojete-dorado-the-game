@@ -62,21 +62,54 @@ export class SpeechBubble {
   /**
    * Renderiza el bocadillo de interacción contextual sobre el NPC, puerta, cofre o elemento del mundo.
    */
-  static renderActionPromptBubble(ctx, action, camera, timer = 0) {
+  static renderActionPromptBubble(ctx, action, camera, timer = 0, fallbackEntity = null) {
     if (!action) return;
 
     const bob = Math.round(Math.sin(timer * 4.0) * 1.5);
-    const anchorX =
-      action.kind === 'door' || action.kind === 'bed' || action.kind === 'signpost'
-        ? (action.kind === 'signpost' ? action.target.c * 16 + 8 : action.target.worldX)
-        : action.target.centerX;
-    const anchorY =
-      action.kind === 'door' || action.kind === 'bed' || action.kind === 'signpost'
-        ? (action.kind === 'signpost' ? action.target.r * 16 : action.target.worldY - 14)
-        : action.target.y;
+    let anchorX = null;
+    let anchorY = null;
 
-    const screenX = Math.round(anchorX - camera.renderX);
-    const screenY = Math.round(anchorY - camera.renderY);
+    const t = action.target;
+    if (t) {
+      if (typeof t.centerX === 'number' && typeof t.y === 'number') {
+        anchorX = t.centerX;
+        anchorY = t.y;
+      } else if (typeof t.worldX === 'number' && typeof t.worldY === 'number') {
+        anchorX = t.worldX + (t.width ? t.width / 2 : 0);
+        anchorY = action.kind === 'bed' ? t.worldY - 14 : t.worldY;
+      } else if (typeof t.c === 'number' && typeof t.r === 'number') {
+        anchorX = t.c * 16 + 8;
+        anchorY = t.r * 16;
+      } else if (typeof t.col === 'number' && typeof t.row === 'number') {
+        anchorX = t.col * 16 + 8;
+        anchorY = t.row * 16;
+      } else if (typeof t.x === 'number' && typeof t.y === 'number') {
+        anchorX = t.x + (t.width ? t.width / 2 : 0);
+        anchorY = t.y;
+      }
+    }
+
+    // Si la acción define coordenadas directas o requiere fallback defensivo
+    if (anchorX === null || anchorY === null) {
+      if (typeof action.x === 'number' && typeof action.y === 'number') {
+        anchorX = action.x;
+        anchorY = action.y;
+      } else if (fallbackEntity && typeof fallbackEntity.centerX === 'number') {
+        anchorX = fallbackEntity.centerX;
+        anchorY = (fallbackEntity.y ?? fallbackEntity.centerY) - 12;
+      } else if (camera) {
+        anchorX = (camera.renderX || 0) + (camera.viewportWidth || 320) / 2;
+        anchorY = (camera.renderY || 0) + 40;
+      } else {
+        anchorX = 160;
+        anchorY = 40;
+      }
+    }
+
+    const camX = camera?.renderX || 0;
+    const camY = camera?.renderY || 0;
+    const screenX = Math.round(anchorX - camX);
+    const screenY = Math.round(anchorY - camY);
 
     // Parseo semántico del tipo de acción para formato compacto moderno
     let key = 'E';
@@ -492,8 +525,8 @@ function screenSafeAnchorX(sx) {
   return Math.max(10, Math.min(310, sx));
 }
 
-export function renderActionPromptBubble(ctx, action, camera, timer = 0) {
-  return SpeechBubble.renderActionPromptBubble(ctx, action, camera, timer);
+export function renderActionPromptBubble(ctx, action, camera, timer = 0, fallbackEntity = null) {
+  return SpeechBubble.renderActionPromptBubble(ctx, action, camera, timer, fallbackEntity);
 }
 
 export function renderNPCBarkBubble(ctx, sx, sy, text, timer, maxTimer = 3.0) {
