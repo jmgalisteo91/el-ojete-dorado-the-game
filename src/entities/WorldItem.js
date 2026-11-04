@@ -72,6 +72,15 @@ export class WorldItem extends Entity {
           ctx.fillRect(screenX + 3 + Math.sin(this.floatTimer) * 2, screenY + 13 - pY1, 1.5, 1.5);
           ctx.fillStyle = 'rgba(192, 132, 252, 0.9)';
           ctx.fillRect(screenX + 12 - Math.cos(this.floatTimer) * 2, screenY + 11 - (pY1 * 0.7), 1.5, 1.5);
+        } else if (this.id === 'golden_apple') {
+          // Resplandor celestial dorado bajo el Cofre de la Reliquia Divina del Microondas
+          ctx.fillStyle = `rgba(253, 224, 71, ${pulse * 0.65})`;
+          ctx.fillRect(screenX + 1, screenY + 11, 14, 4);
+          const pY1 = (this.floatTimer * 12) % 16;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+          ctx.fillRect(screenX + 3 + Math.sin(this.floatTimer * 1.5) * 2, screenY + 13 - pY1, 1.5, 1.5);
+          ctx.fillStyle = 'rgba(251, 191, 36, 0.9)';
+          ctx.fillRect(screenX + 11 - Math.cos(this.floatTimer * 1.5) * 2, screenY + 11 - (pY1 * 0.7), 1.5, 1.5);
         } else {
           // Brillo dorado sutil bajo el cofre cerrado
           ctx.fillStyle = `rgba(251, 191, 36, ${pulse * 0.4})`;

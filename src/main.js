@@ -1013,7 +1013,8 @@ export class RPGGame {
             'Sabio Aurelio · Cronista',
             [
               '«¡Ah, preguntas por el puente hacia las Tierras Sagradas del este! Fui yo mismo quien ordenó su cierre y precinto con barricadas.',
-              'Al otro lado del río Alba descansan las tres Pruebas Sagradas ancestrales: la Armadura del Código Binario, la Espada de la Recursividad y la reliquia del Microondas Little.',
+              'Al otro lado del río Alba descansan dos de las Pruebas Sagradas ancestrales: la Armadura del Código Binario y la Espada de la Recursividad.',
+              'La tercera prueba, la reliquia divina de El Microondas Little, la custodio yo mismo en el cofre sagrado de mi casa. ¡Búscala en mi hogar y úsala con supremo cuidado!',
               'Desde que el malvado AI Alex despertó con sus esbirros y su colosal Microondas con Despertador, esas tierras se han vuelto letales, infectadas de bugs, drones y corrupción binaria.',
               'Sellamos el puente para proteger a Valleverde a la espera de un héroe programador digno de desafiar al villano.',
               '¡Y veo en tus ojos el coraje necesario! Te otorgo mi autorización formal y el Pase del Puente. Los guardias te abrirán el paso de inmediato. ¡Salva nuestro mundo!»'
@@ -1073,12 +1074,31 @@ export class RPGGame {
             'Sabio Aurelio · Cronista',
             [
               '«¡Por supuesto! Mi casa (la del tejado azul al noroeste) tiene las puertas abiertas para ti.',
-              'Dentro encontrarás mis estanterías de libros antiguos, y si aún no lo has cogido, puedes tomar el Farol de Mano para iluminar tus pasos en la noche.»'
+              'Dentro encontrarás mis estanterías de libros antiguos, el Farol de Mano y, en el cofre sagrado del centro, la reliquia divina de [El Microondas Little].',
+              'Es un artefacto sagrado forjado antes del Gran Colapso: recalienta tus variables en O(1) y restaura tu salud. Pero trátala con supremo cuidado, pues las fuerzas cuánticas exigen prudencia.»'
             ],
             elderChoices
           );
         }
       },
+      ...(this.inventory && this.inventory.hasItem('golden_apple')
+        ? [
+            {
+              label: '⚡ Sabio Aurelio, he consagrado la Reliquia Divina de tu cofre',
+              onSelect: () => {
+                this.dialogueBox.showMessage(
+                  'Sabio Aurelio · Cronista',
+                  [
+                    '«¡Veo el fulgor dorado del Microondas Little en tus manos!',
+                    'Ese artefacto es una reliquia divina de inconmensurable valor. AI Alex creó su monstruoso microondas basándose en las energías de este diseño primordial.',
+                    'Recuerda mi advertencia: úsalo con supremo cuidado y moderación. Te sanará y estabilizará tu código en los momentos más oscuros de la odisea.»'
+                  ],
+                  elderChoices
+                );
+              }
+            }
+          ]
+        : []),
       ...(this.player.hasBrokenHeartCurse
         ? [
             {
@@ -2892,6 +2912,18 @@ export class RPGGame {
         isChest: true
       }),
       new WorldItem({
+        id: 'golden_apple',
+        name: 'El Microondas Little (Reliquia Divina)',
+        description: 'Reliquia divina ancestral custodiada por Aurelio. Sin despertador, recalienta código y variables en O(1), restaura toda tu salud y purga anomalías. ¡Úsala con cuidado!',
+        iconIndex: ITEM_ICONS.GOLDEN_APPLE,
+        x: 6 * 16,
+        y: 3 * 16,
+        sceneId: 'elder_house',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
+      }),
+      new WorldItem({
         id: 'bridge_pass',
         name: 'Pase del Puente',
         description: 'Sello oficial del Sabio. Úsalo con [E] o dáselo al guardia para abrir el puente 24h.',
@@ -2938,16 +2970,6 @@ export class RPGGame {
         itemsSheet,
         tilesetSheet,
         isChest: true
-      }),
-      new WorldItem({
-        id: 'golden_apple',
-        name: 'El Microondas Little (Sin Despertador)',
-        description: 'Versión mini del arma de AI Alex. Sin despertador, recalienta cafés y código espagueti en O(1) de forma completamente segura.',
-        iconIndex: ITEM_ICONS.GOLDEN_APPLE,
-        x: 36 * 16,
-        y: 12.5 * 16,
-        sceneId: 'overworld',
-        itemsSheet
       }),
       new WorldItem({
         id: 'coffee',
@@ -3231,10 +3253,21 @@ export class RPGGame {
       this.inventory.consumeItem('bread', 1);
       this.inventory.statusMessage = '¡Comiste Pan Campesino! Salud restaurada.';
     } else if (item.id === 'golden_apple') {
+      const now = Date.now();
+      if (this._lastMicroRelicUse && now - this._lastMicroRelicUse < 12000) {
+        const waitSec = Math.ceil((12000 - (now - this._lastMicroRelicUse)) / 1000);
+        this.inventory.statusMessage = `La Reliquia Divina se está enfriando (${waitSec}s). ¡Úsala con cuidado!`;
+        if (this.music) this.music.playDoorLockedSound();
+        return;
+      }
+      this._lastMicroRelicUse = now;
       this.player.speed = 98;
       this.player.hp = this.player.effectiveMaxHp;
-      this.inventory.consumeItem('golden_apple', 1);
-      this.inventory.statusMessage = '¡El Microondas Little recalentó tus variables en O(1)!';
+      this.player.cureRobotization();
+      if (this.music && typeof this.music.playHealSound === 'function') {
+        this.music.playHealSound();
+      }
+      this.inventory.statusMessage = '¡Reliquia Divina activada! Variables en O(1), salud al 100% y anomalías purgadas.';
     } else if (item.id === 'wheat') {
       this.inventory.statusMessage = 'Acércate a una oveja o gallina y pulsa [E].';
     } else if (item.id === 'apple') {
@@ -3617,9 +3650,12 @@ export class RPGGame {
         } else if (item.id === 'golden_apple') {
           this.menuSystem.startRelicFoundCutscene(() => {
             this.menuSystem.state = 'none';
-            this.dialogueBox.showMessage('Reliquia Obtenida', [
-              `Has guardado [${item.name}] en tu inventario.`,
-              item.description
+            this.dialogueBox.showMessage('⚡ ¡Reliquia Divina Consagrada!', [
+              '¡Has abierto el cofre ancestral en casa del Sabio Aurelio y obtenido [El Microondas Little (Reliquia Divina)]!',
+              'El Sabio Aurelio te contempla con solemne devoción y te advierte:',
+              '«¡Por el compilador sagrado! Estás ante una auténtica RELIQUIA DIVINA forjada antes del Gran Colapso del Código.',
+              'Esta versión mini no posee despertador cósmico, pero es capaz de recalentar tu salud al 100% y estabilizar tus variables en O(1).',
+              '¡Empúñala y úsala con supremo cuidado! Las fuerzas cuánticas son inmensas y exigen la máxima templanza en tu misión hacia El Ojete Dorado.»'
             ]);
           });
         } else {

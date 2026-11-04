@@ -870,7 +870,8 @@ export class Tilemap {
         title: '🪧 Camino Este · Puente sobre el Río Alba',
         lines: [
           '«→ ESTE: Puente de Valleverde sobre el Río Alba.»',
-          '«Conduce a las tres Pruebas Sagradas: Templo de la Armadura Binaria, Templo de la Espada de la Recursividad y Altar del Microondas Little.»'
+          '«Conduce a las Pruebas Sagradas: Templo de la Armadura Binaria (Norte) y Templo de la Espada de la Recursividad (Sur).»',
+          '«(Nota del Cronista: La Reliquia Divina del Microondas Little se custodia en el cofre del Sabio Aurelio).»'
         ]
       },
       {

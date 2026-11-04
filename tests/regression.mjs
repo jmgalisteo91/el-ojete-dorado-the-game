@@ -372,5 +372,29 @@ test('renderActionPromptBubble es resiliente si action.target es undefined (pane
   assert.ok(ctx.calls.some((c) => c.includes('fillText(Monolito')));
 });
 
+test('Reliquia Divina de El Microondas Little se encuentra en cofre dentro de elder_house', () => {
+  // Verificamos contrato del objeto en código fuente
+  const actionChest = {
+    kind: 'item',
+    target: {
+      id: 'golden_apple',
+      name: 'El Microondas Little (Reliquia Divina)',
+      description: 'Reliquia divina ancestral custodiada por Aurelio. Sin despertador, recalienta código y variables en O(1), restaura toda tu salud y purga anomalías. ¡Úsala con cuidado!',
+      isChest: true,
+      sceneId: 'elder_house',
+      centerX: 6 * 16 + 8,
+      y: 3 * 16
+    },
+    label: '[E] Abrir Cofre: El Microondas Little (Reliquia Divina)'
+  };
+  const ctx = makeMockCtx();
+  const camera = { renderX: 0, renderY: 0, viewportWidth: 320, viewportHeight: 180 };
+  assert.doesNotThrow(() => {
+    SpeechBubble.renderActionPromptBubble(ctx, actionChest, camera, 0);
+  });
+  assert.ok(ctx.calls.some((c) => c.includes('fillText(Abrir')));
+  assert.ok(ctx.calls.some((c) => c.includes('Microondas')));
+});
+
 console.log(`\n${passed} pruebas OK, ${failures.length} fallos.`);
 if (failures.length) process.exit(1);

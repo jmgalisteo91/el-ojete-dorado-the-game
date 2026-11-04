@@ -802,6 +802,29 @@ export class AmbientMusic {
     });
   }
 
+  /**
+   * Sonido celestial y cálido al usar una Reliquia Divina (El Microondas Little)
+   */
+  playHealSound() {
+    if (!this.ctx || this.isMuted) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+    const now = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+    notes.forEach((freq, idx) => {
+      this._playTone({
+        freq,
+        type: 'sine',
+        startTime: now + idx * 0.07,
+        duration: 0.24,
+        peakGain: 0.08 * this.volume,
+        attack: 0.015,
+        vibrato: true
+      });
+    });
+  }
+
   playEnemyHit() {
     if (!this.ctx || this.isMuted) return;
     const now = this.ctx.currentTime;

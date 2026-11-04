@@ -477,8 +477,8 @@ export class MainMenuAndScenes {
     this.cutsceneSlides = [
       {
         sceneType: 'relic_triumph',
-        chapter: '★ RELIQUIA · EL MICROONDAS LITTLE (SIN DESPERTADOR) ★',
-        text: '¡Has reclamado EL MICROONDAS LITTLE (SIN DESPERTADOR)! Versión mini del arma de AI Alex. Sin despertador, recalienta café y código espagueti en O(1) sin alterar el tejido dimensional.'
+        chapter: '★ RELIQUIA DIVINA · EL MICROONDAS LITTLE (SIN DESPERTADOR) ★',
+        text: '¡Has consagrado EL MICROONDAS LITTLE (SIN DESPERTADOR)! Una reliquia divina ancestral custodiada en el archivo del Sabio Aurelio. Sin despertador, recalienta café y código espagueti en O(1) restaurando tus energías al instante. ¡Úsala con sumo cuidado!'
       }
     ];
   }

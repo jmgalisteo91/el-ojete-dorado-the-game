@@ -136,7 +136,7 @@ export class AIBotBrain {
       `- Mochila del jugador: ${invList}.`,
       `- Farol equipado: ${ctx.hasLantern ? 'Sí' : 'No'}.`,
       '- Enemigo principal de la historia: el malvado y omnipotente Mister AI Alex; la humanidad solo se salvará encontrando El Ojete Dorado.',
-      '- Lugares del pueblo: Casa del Sabio Aurelio (NO, tejado azul, tiene el Farol y el Pase del Puente), Herrería de Brom (NE, tiene Pan Campesino), Cabaña de la Herbolaria Lyra (SO, tiene Poción Herbal y Trigo), Río del Este con la Manzana Dorada al cruzar el puente.'
+      '- Lugares del pueblo: Casa del Sabio Aurelio (NO, tejado azul, tiene el Farol, el cofre de la Reliquia Divina de El Microondas Little y el Pase del Puente), Herrería de Brom (NE, tiene Pan Campesino), Cabaña de la Herbolaria Lyra (SO, tiene Poción Herbal y Trigo), Pruebas Sagradas al cruzar el puente.'
     ].join('\n');
   }
 
