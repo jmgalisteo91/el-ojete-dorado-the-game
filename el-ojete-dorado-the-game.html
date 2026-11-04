@@ -394,6 +394,95 @@ class GameLoop {
 }
 
   // ==========================================
+  // Módulo: src/core/DoorGatekeeper.js
+  // ==========================================
+/**
+ * DoorGatekeeper: reglas puras de acceso a zonas hostiles (sin dependencias de UI ni de estado global).
+ * Decide si el jugador puede cruzar una puerta y qué título/descripción mostrar al confirmar el paso.
+ */
+
+const BLOCK_MESSAGES = {
+  first_stage: {
+    title: '⚠️ [NO ESTÁS PREPARADO]',
+    lines: [
+      '¡Detente! Las Ruinas del Despertar están infestadas de drones y anomalías corruptas de Mister AI Alex.',
+      'Sin tu [Armadura del Código Binario] cualquier impacto te aniquilará al instante, y sin tu [Espada de la Recursividad] no podrás defenderte.',
+      'Habla con el Gran Sabio Aurelio en Valleverde y cruza el Puente del Este para superar las Pruebas Sagradas y consagrar tu equipo primero.'
+    ]
+  },
+  sewers_dungeon: {
+    title: '⚠️ [NO ESTÁS PREPARADO]',
+    lines: [
+      '¡Un hedor a memoria corrompida y fugas de punteros brota de la trampilla de la alcantarilla!',
+      'No puedes descender a la Fosa de Memoria sin tu Armadura Binaria y tu Espada de la Recursividad para enfrentar al Boss 1: El Garbage Collector Furioso.',
+      'Habla con Aurelio y supera las Pruebas Sagradas del Este antes de descender a las cloacas.'
+    ]
+  },
+  sword_temple: {
+    title: '⚠️ [ORDEN DE LAS PRUEBAS SAGRADAS]',
+    lines: [
+      'El Gran Sabio Aurelio te encomendó consagrar primero la Armadura del Código Binario en el Templo Septentrional (Norte).',
+      'La energía de la Espada de la Recursividad ejerce una presión psíquica letal sobre quien no vista la armadura sagrada.',
+      'Dirígete al Templo Norte para forjar tu armadura primero.'
+    ]
+  },
+  fortress: {
+    title: '⚠️ [NO ESTÁS PREPARADO]',
+    lines: [
+      'La Fortaleza de Mister AI Alex está protegida por barreras electromagnéticas letales.',
+      'Necesitas tu equipo sagrado completo (Armadura Binaria y Espada de la Recursividad) antes de franquear este umbral.'
+    ]
+  }
+};
+
+const DESTINATION_TITLES = {
+  first_stage: 'Ruinas del Despertar (Escenario 1)',
+  armor_temple: 'Templo de la Armadura del Código Binario',
+  sword_temple: 'Templo de la Espada de la Recursividad (Boss 2)',
+  sewers_dungeon: 'Alcantarillas · Boss 1: El Garbage Collector Furioso',
+  ai_fortress_gate: 'Umbral de la Fortaleza · Boss 3: Microondas Prototipo',
+  ai_citadel: 'Ciudadela de AI Alex · Boss Final: El Gran Ojal'
+};
+
+const BOSS_ARENAS = new Set(['sewers_dungeon', 'ai_fortress_gate', 'ai_citadel']);
+const TEMPLES = new Set(['armor_temple', 'sword_temple']);
+
+/**
+ * Devuelve { title, lines } si el jugador NO puede cruzar la puerta, o null si el paso está permitido.
+ */
+function getDoorBlock(targetScene, player) {
+  const fullyEquipped = player.hasArmor && player.hasSword;
+  switch (targetScene) {
+    case 'first_stage':
+      return fullyEquipped ? null : BLOCK_MESSAGES.first_stage;
+    case 'sewers_dungeon':
+      return fullyEquipped ? null : BLOCK_MESSAGES.sewers_dungeon;
+    case 'sword_temple':
+      return player.hasArmor ? null : BLOCK_MESSAGES.sword_temple;
+    case 'ai_fortress_gate':
+    case 'ai_citadel':
+      return fullyEquipped ? null : BLOCK_MESSAGES.fortress;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Información textual del destino para el diálogo de confirmación.
+ */
+function getDoorDestinationInfo(targetScene) {
+  const title = DESTINATION_TITLES[targetScene] || 'las Tierras Exteriores';
+  const isBossArena = BOSS_ARENAS.has(targetScene);
+  const isTemple = TEMPLES.has(targetScene);
+  const description = isBossArena
+    ? '¡PELIGRO DE JEFE! En el interior de esta cámara aguarda uno de los grandes guardianes de Mister AI Alex.'
+    : isTemple
+      ? 'En su interior reposan reliquias sagradas y pruebas del Código Primigenio.'
+      : 'Más allá de los límites protegidos de Valleverde acechan bugs salvajes y la corrupción de Mister AI Alex.';
+  return { title, description };
+}
+
+  // ==========================================
   // Módulo: src/core/InputHandler.js
   // ==========================================
 /**
@@ -839,20 +928,8 @@ class QuestLog {
     this.quests = INITIAL_QUESTS.map((q) => ({ ...q }));
   }
 
-  setNoticeCallback(fn) {
-    this.onNotice = fn;
-  }
-
   getAllQuests() {
     return this.quests;
-  }
-
-  getMainQuests() {
-    return this.quests.filter((q) => q.category === 'MAIN');
-  }
-
-  getSideQuests() {
-    return this.quests.filter((q) => q.category === 'SIDE');
   }
 
   getQuest(id) {
@@ -1041,10 +1118,6 @@ class AchievementManager {
 
   setAudioContext(ctx) {
     this.audioCtx = ctx;
-  }
-
-  setMusicEngine(musicEngine) {
-    this.musicEngine = musicEngine;
   }
 
   loadFromStorage() {
@@ -4744,29 +4817,6 @@ class CollisionSystem {
     );
   }
 
-  /**
-   * Comprueba si la caja de colisión de una entidad se solapa con un tile.
-   */
-  static isBoxOverlappingTile(box, tileCol, tileRow, tileSize = 16) {
-    if (!box) return false;
-    const tileBox = {
-      x: tileCol * tileSize,
-      y: tileRow * tileSize,
-      width: tileSize,
-      height: tileSize
-    };
-    return CollisionSystem.checkAABB(box, tileBox);
-  }
-
-  /**
-   * Comprueba si una entidad está cerca del centro de un punto o tile.
-   */
-  static isEntityNearPoint(entity, targetX, targetY, maxDist = 24) {
-    if (!entity) return false;
-    const cx = entity.x + (entity.width || 16) * 0.5;
-    const cy = entity.y + (entity.height || 16) * 0.5;
-    return Math.hypot(cx - targetX, cy - targetY) <= maxDist;
-  }
 }
 
   // ==========================================
@@ -10867,14 +10917,6 @@ class MainMenuAndScenes {
     this.animeCutscenes = animeManager;
   }
 
-  playAnimeCutscene(cutsceneData, onComplete = null) {
-    if (this.animeCutscenes && typeof this.animeCutscenes.playCutscene === 'function') {
-      this.animeCutscenes.playCutscene(cutsceneData, onComplete);
-    } else if (typeof onComplete === 'function') {
-      onComplete();
-    }
-  }
-
   _loadOptions() {
     try {
       const raw = localStorage.getItem('el_ojete_dorado_options_v1');
@@ -11240,10 +11282,6 @@ class MainMenuAndScenes {
   }
 
   startHeroAdventureCutscene(onComplete) {
-    this.startAnimeIntroCutscene(onComplete);
-  }
-
-  startIntroCutscene(onComplete) {
     this.startAnimeIntroCutscene(onComplete);
   }
 
@@ -12612,87 +12650,6 @@ class MainMenuAndScenes {
   }
 
   /**
-   * Escena Pixel Art 1: El Templo Ancestral y el altar de El Ojete Dorado.
-   */
-  _drawCutsceneSanctuary(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    ctx.fillStyle = '#121324';
-    ctx.fillRect(x, y, w, h);
-
-    // Suelo de baldosas de templo antiguo
-    ctx.fillStyle = '#25273d';
-    ctx.fillRect(x, y + 66, w, h - 66);
-    for (let px = x; px < x + w; px += 16) {
-      ctx.fillStyle = '#323552';
-      ctx.fillRect(px + 1, y + 68, 14, 12);
-      ctx.fillRect(px + 1, y + 82, 14, 12);
-    }
-
-    // Columnas de piedra a ambos lados
-    const pillars = [x + 18, x + 54, x + w - 68, x + w - 32];
-    for (const px of pillars) {
-      ctx.fillStyle = '#3b4252';
-      ctx.fillRect(px, y + 8, 14, 60);
-      ctx.fillStyle = '#4c566a';
-      ctx.fillRect(px + 2, y + 8, 6, 60);
-      ctx.fillStyle = '#2e3440';
-      ctx.fillRect(px - 2, y + 6, 18, 4);
-      ctx.fillRect(px - 2, y + 64, 18, 4);
-    }
-
-    // Haces de luz sagrada descendiendo sobre el altar
-    ctx.fillStyle = 'rgba(255, 215, 100, 0.14)';
-    ctx.beginPath();
-    ctx.moveTo(cx - 18, y);
-    ctx.lineTo(cx + 18, y);
-    ctx.lineTo(cx + 42, y + 68);
-    ctx.lineTo(cx - 42, y + 68);
-    ctx.closePath();
-    ctx.fill();
-
-    // Altar escalonado
-    ctx.fillStyle = '#4c566a';
-    ctx.fillRect(cx - 28, y + 60, 56, 8);
-    ctx.fillStyle = '#646f87';
-    ctx.fillRect(cx - 20, y + 52, 40, 8);
-    ctx.fillStyle = '#d4a338';
-    ctx.fillRect(cx - 14, y + 46, 28, 6);
-
-    // El Ojete Dorado levitando en el centro
-    const floatY = y + 24 + Math.round(Math.sin(t * 3) * 2);
-    ctx.fillStyle = 'rgba(255, 216, 102, 0.35)';
-    ctx.beginPath();
-    ctx.arc(cx, floatY + 6, 18 + Math.sin(t * 4) * 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#b8860b';
-    ctx.fillRect(cx - 18, floatY + 4, 36, 4);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(cx - 10, floatY - 2, 20, 16);
-    ctx.fillStyle = '#121624';
-    ctx.fillRect(cx - 5, floatY + 2, 10, 8);
-    ctx.fillStyle = '#2a9d8f';
-    ctx.fillRect(cx - 4, floatY + 3, 8, 6);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(cx - 2, floatY + 4, 4, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 1, floatY + 4, 2, 1);
-
-    // Braseros encendidos flanqueando el altar
-    for (const bx of [cx - 44, cx + 36]) {
-      ctx.fillStyle = '#5c3820';
-      ctx.fillRect(bx, y + 54, 8, 12);
-      const fl = Math.floor(t * 9) % 2;
-      ctx.fillStyle = '#ff6b35';
-      ctx.fillRect(bx + 1, y + 48 + fl, 6, 6);
-      ctx.fillStyle = '#ffd166';
-      ctx.fillRect(bx + 2, y + 50, 4, 4);
-    }
-  }
-
-  /**
    * Escena Pixel Art 2: El Puente Oriental bajo la noche de tormenta y vigilancia.
    */
   _drawCutsceneStormBridge(ctx, x, y, w, h) {
@@ -13277,377 +13234,6 @@ class MainMenuAndScenes {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffd166';
     ctx.fillText('【 旅立ち · EL COMIENZO EN VALLEVERDE 】', cx, y + h - 5);
-  }
-
-  /**
-   * Escena emotiva 1: Las Tinieblas del omnipotente Mister AI Alex sobre la humanidad.
-   */
-  _drawCutsceneMisterAIAlex(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    // Cielo abisal carmesí y violeta oscuro
-    const skyGrad = ctx.createLinearGradient(x, y, x, y + h);
-    skyGrad.addColorStop(0, '#090314');
-    skyGrad.addColorStop(0.55, '#240936');
-    skyGrad.addColorStop(1, '#3b0d2c');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(x, y, w, h);
-
-    // Red digital omnipotente en el cielo
-    ctx.strokeStyle = 'rgba(255, 42, 109, 0.22)';
-    ctx.lineWidth = 0.6;
-    for (let gx = x + 10; gx < x + w; gx += 18) {
-      ctx.beginPath();
-      ctx.moveTo(gx, y);
-      ctx.lineTo(cx, y + 36);
-      ctx.stroke();
-    }
-
-    // Silueta colosal de Mister AI Alex en el firmamento
-    const pulse = Math.sin(t * 3.2) * 3;
-    const eyeGlow = ctx.createRadialGradient(cx, y + 34, 2, cx, y + 34, 42 + pulse);
-    eyeGlow.addColorStop(0, 'rgba(255, 40, 95, 0.85)');
-    eyeGlow.addColorStop(0.5, 'rgba(155, 25, 190, 0.38)');
-    eyeGlow.addColorStop(1, 'rgba(15, 5, 28, 0)');
-    ctx.fillStyle = eyeGlow;
-    ctx.fillRect(x, y, w, h);
-
-    // Corona / núcleo cibernético omnipotente de Mister AI Alex
-    ctx.fillStyle = '#140724';
-    ctx.beginPath();
-    ctx.arc(cx, y + 34, 18, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#ff2a6d';
-    ctx.lineWidth = 1.4;
-    ctx.stroke();
-
-    // Ojo carmesí omnisciente de Mister AI Alex
-    ctx.fillStyle = '#ff2a6d';
-    ctx.beginPath();
-    ctx.ellipse(cx, y + 34, 10, 5 + Math.sin(t * 4) * 1, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 2, y + 32, 4, 4);
-
-    // Suelo quebrado en tinieblas y esbirros avanzando
-    ctx.fillStyle = '#130b21';
-    ctx.fillRect(x, y + 68, w, h - 68);
-
-    if (this.assets && this.assets.charactersSheet) {
-      const sheet = this.assets.charactersSheet;
-      const srcCell = 16 * ATLAS_SCALE;
-      const walkFrame = Math.floor(t * 5) % 4;
-      ctx.drawImage(sheet, walkFrame * srcCell, (CHARACTER_TYPES.SHADOW_KNIGHT * 4 + 0) * srcCell, srcCell, srcCell, cx - 54, y + 58, 16, 16);
-      ctx.drawImage(sheet, walkFrame * srcCell, (CHARACTER_TYPES.SHADOW_DRONE * 4 + 0) * srcCell, srcCell, srcCell, cx - 28, y + 61, 16, 16);
-      ctx.drawImage(sheet, walkFrame * srcCell, (CHARACTER_TYPES.SHADOW_DRONE * 4 + 0) * srcCell, srcCell, srcCell, cx + 14, y + 61, 16, 16);
-      ctx.drawImage(sheet, walkFrame * srcCell, (CHARACTER_TYPES.SHADOW_KNIGHT * 4 + 0) * srcCell, srcCell, srcCell, cx + 40, y + 58, 16, 16);
-    }
-  }
-
-  /**
-   * Escena de Pixel Art: El temible Microondas con Despertador de AI Alex.
-   * Un artefacto absurdo y omnipotente capaz de recalentar el espacio-tiempo
-   * y cambiar el mundo a su antojo cuando suena su alarma.
-   */
-  _drawCutsceneMicrowaveWeapon(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    // Fondo: Laboratorio dimensional oscuro con matriz cuántica
-    const bg = ctx.createLinearGradient(x, y, x, y + h);
-    bg.addColorStop(0, '#06030d');
-    bg.addColorStop(0.6, '#180724');
-    bg.addColorStop(1, '#2d0938');
-    ctx.fillStyle = bg;
-    ctx.fillRect(x, y, w, h);
-
-    // Ondas de distorsión espacio-temporal que emanan del microondas
-    const waveRadius = ((t * 42) % 68) + 12;
-    ctx.strokeStyle = 'rgba(255, 42, 109, 0.45)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, y + 54, waveRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    const wave2 = (((t * 42) + 34) % 68) + 12;
-    ctx.strokeStyle = 'rgba(5, 217, 232, 0.4)';
-    ctx.beginPath();
-    ctx.arc(cx, y + 54, wave2, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Silueta vigilante de AI Alex en el cielo superior
-    const eyeY = y + 16;
-    ctx.fillStyle = 'rgba(255, 42, 109, 0.18)';
-    ctx.beginPath();
-    ctx.arc(cx, eyeY, 24, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#ff2a6d';
-    ctx.beginPath();
-    ctx.ellipse(cx, eyeY, 9, 4 + Math.sin(t * 3.5), 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 2, eyeY - 2, 4, 3);
-
-    // Rayos y cables cibernéticos desde AI Alex hacia el microondas
-    ctx.strokeStyle = '#05d9e8';
-    ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.moveTo(cx - 20, eyeY + 6);
-    ctx.lineTo(cx - 36, y + 36);
-    ctx.moveTo(cx + 20, eyeY + 6);
-    ctx.lineTo(cx + 36, y + 36);
-    ctx.stroke();
-
-    // ====== EL GRAN MICROONDAS CON DESPERTADOR ======
-    const uW = 86;
-    const uH = 46;
-    const uX = cx - Math.round(uW / 2);
-    const uY = y + 42;
-
-    // Chasis metálico oscuro
-    ctx.fillStyle = '#0f1420';
-    ctx.fillRect(uX - 1, uY - 1, uW + 2, uH + 2);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(uX, uY, uW, uH);
-    ctx.fillStyle = '#1a2236';
-    ctx.fillRect(uX + 1, uY + 1, uW - 2, uH - 2);
-
-    // Puerta de cristal con rejilla y núcleo de calor cuántico
-    const doorW = 54;
-    const doorH = 36;
-    const doorX = uX + 5;
-    const doorY = uY + 5;
-
-    ctx.fillStyle = '#080d1a';
-    ctx.fillRect(doorX, doorY, doorW, doorH);
-    ctx.strokeStyle = '#4cc9f0';
-    ctx.strokeRect(doorX + 0.5, doorY + 0.5, doorW - 1, doorH - 1);
-
-    // Radiación interior giratoria (calentamiento temporal)
-    const heatGlow = ctx.createRadialGradient(doorX + 27, doorY + 18, 2, doorX + 27, doorY + 18, 22);
-    heatGlow.addColorStop(0, '#fff3b0');
-    heatGlow.addColorStop(0.4, '#ff9e00');
-    heatGlow.addColorStop(0.8, '#e85d04');
-    heatGlow.addColorStop(1, 'rgba(15, 8, 28, 0.2)');
-    ctx.fillStyle = heatGlow;
-    ctx.fillRect(doorX + 2, doorY + 2, doorW - 4, doorH - 4);
-
-    // Rejilla de microondas
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    for (let gy = doorY + 4; gy < doorY + doorH - 3; gy += 4) {
-      for (let gx = doorX + 4; gx < doorX + doorW - 3; gx += 4) {
-        ctx.fillRect(gx, gy, 2, 2);
-      }
-    }
-
-    // Panel de control derecho del microondas
-    const panelX = uX + 63;
-    const panelY = uY + 5;
-    const panelW = 18;
-    const panelH = 36;
-
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(panelX, panelY, panelW, panelH);
-    ctx.strokeStyle = '#334155';
-    ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
-
-    // Botones del panel
-    ctx.fillStyle = '#ff2a6d';
-    ctx.fillRect(panelX + 3, panelY + 3, 12, 4); // Botón CAOS
-    ctx.fillStyle = '#05d9e8';
-    ctx.fillRect(panelX + 3, panelY + 9, 5, 3);
-    ctx.fillRect(panelX + 10, panelY + 9, 5, 3);
-    ctx.fillRect(panelX + 3, panelY + 14, 5, 3);
-    ctx.fillRect(panelX + 10, panelY + 14, 5, 3);
-
-    // Rueda / Dial giratorio
-    ctx.fillStyle = '#64748b';
-    ctx.beginPath();
-    ctx.arc(panelX + 9, panelY + 26, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#94a3b8';
-    ctx.stroke();
-
-    // ====== DESPERTADOR ANALÓGICO / DIGITAL ENCIMA DEL MICROONDAS ======
-    const clockW = 44;
-    const clockH = 14;
-    const clockX = cx - Math.round(clockW / 2);
-    const clockY = uY - 13;
-
-    // Caja del despertador
-    ctx.fillStyle = '#780000';
-    ctx.fillRect(clockX, clockY, clockW, clockH);
-    ctx.strokeStyle = '#c1121f';
-    ctx.strokeRect(clockX - 0.5, clockY - 0.5, clockW + 1, clockH + 1);
-
-    // Campanas del despertador estilo retro con martillo vibrando
-    const bellShake = Math.sin(t * 36) * 1.5;
-    ctx.fillStyle = '#ffd166';
-    // Campana izquierda
-    ctx.beginPath();
-    ctx.arc(clockX + 7, clockY - 3, 5, Math.PI, Math.PI * 2);
-    ctx.fill();
-    // Campana derecha
-    ctx.beginPath();
-    ctx.arc(clockX + clockW - 7, clockY - 3, 5, Math.PI, Math.PI * 2);
-    ctx.fill();
-    // Martillo de timbre
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 1 + bellShake, clockY - 5, 2, 4);
-
-    // Pantalla digital del despertador
-    ctx.fillStyle = '#030712';
-    ctx.fillRect(clockX + 4, clockY + 2, clockW - 8, clockH - 4);
-
-    // Dígitos parpadeantes de la alarma
-    const blink = Math.floor(t * 2.5) % 2 === 0;
-    ctx.font = 'bold 7px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = blink ? '#ff2a6d' : '#05d9e8';
-    ctx.fillText('00:00', cx, clockY + Math.round(clockH / 2));
-
-    // Cartel inferior
-    ctx.font = 'bold 5.5px monospace';
-    ctx.fillStyle = '#ffbe0b';
-    ctx.fillText('★ ARMA DE AI ALEX: MICROONDAS CON DESPERTADOR ★', cx, y + h - 3);
-  }
-
-  /**
-   * Escena de Pixel Art: La misión sagrada de El Ojete Dorado.
-   */
-  _drawCutsceneGoldenOjeteMission(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    // Cielo del amanecer divino (oro, azul cerúleo y violeta)
-    const skyGrad = ctx.createLinearGradient(x, y, x, y + h);
-    skyGrad.addColorStop(0, '#0a1128');
-    skyGrad.addColorStop(0.4, '#1c2541');
-    skyGrad.addColorStop(0.75, '#5c4d7d');
-    skyGrad.addColorStop(1, '#b56576');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(x, y, w, h);
-
-    // Rayos dorados celestiales de El Ojete Dorado
-    ctx.save();
-    ctx.translate(cx, y + 34);
-    ctx.rotate(t * 0.35);
-    ctx.strokeStyle = 'rgba(255, 209, 102, 0.25)';
-    ctx.lineWidth = 1.2;
-    for (let a = 0; a < 12; a++) {
-      const angle = (a * Math.PI) / 6;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(angle) * 75, Math.sin(angle) * 75);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // Colina ancestral y pedestal de piedra
-    ctx.fillStyle = '#1b263b';
-    ctx.beginPath();
-    ctx.moveTo(x, y + h);
-    ctx.lineTo(x, y + 66);
-    ctx.quadraticCurveTo(cx, y + 54, x + w, y + 66);
-    ctx.lineTo(x + w, y + h);
-    ctx.fill();
-
-    // Pedestal sagrado
-    ctx.fillStyle = '#415a77';
-    ctx.fillRect(cx - 18, y + 48, 36, 18);
-    ctx.fillStyle = '#778da9';
-    ctx.fillRect(cx - 22, y + 46, 44, 4);
-
-    // === EL OJETE DORADO (RELIQUIA CÓSMICA) ===
-    const relicGlow = ctx.createRadialGradient(cx, y + 34, 2, cx, y + 34, 24 + Math.sin(t * 4) * 3);
-    relicGlow.addColorStop(0, '#fff3b0');
-    relicGlow.addColorStop(0.35, 'rgba(255, 209, 102, 0.85)');
-    relicGlow.addColorStop(0.7, 'rgba(251, 133, 0, 0.4)');
-    relicGlow.addColorStop(1, 'rgba(255, 209, 102, 0)');
-    ctx.fillStyle = relicGlow;
-    ctx.fillRect(cx - 30, y + 10, 60, 48);
-
-    // Aro sagrado exterior
-    ctx.strokeStyle = '#ffd166';
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    ctx.arc(cx, y + 34, 12, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Núcleo divino resplandeciente
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(cx, y + 34, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffbe0b';
-    ctx.beginPath();
-    ctx.arc(cx, y + 34, 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // El héroe contemplando la reliquia
-    if (this.assets && this.assets.charactersSheet) {
-      const sheet = this.assets.charactersSheet;
-      const srcCell = 16 * ATLAS_SCALE;
-      ctx.drawImage(sheet, 0, (CHARACTER_TYPES.PLAYER * 4 + 3) * srcCell, srcCell, srcCell, cx - 8, y + 60, 16, 16);
-    }
-
-    // Texto guía
-    ctx.font = 'bold 5.5px monospace';
-    ctx.fillStyle = '#ffd885';
-    ctx.textAlign = 'center';
-    ctx.fillText('✨ LA SAGRADA RELIQUIA: EL OJETE DORADO ✨', cx, y + h - 3);
-  }
-
-  /**
-   * Escena emotiva 2: El Sabio Aurelio suplicando con lágrimas al joven héroe.
-   */
-  _drawCutsceneSageEmotional(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    // Fondo íntimo del refugio iluminado por una sola antorcha cálida
-    ctx.fillStyle = '#121024';
-    ctx.fillRect(x, y, w, h);
-
-    const warmGlow = ctx.createRadialGradient(cx, y + 48, 4, cx, y + 48, 72);
-    warmGlow.addColorStop(0, 'rgba(255, 205, 110, 0.45)');
-    warmGlow.addColorStop(0.6, 'rgba(120, 70, 50, 0.18)');
-    warmGlow.addColorStop(1, 'rgba(18, 16, 36, 0)');
-    ctx.fillStyle = warmGlow;
-    ctx.fillRect(x, y, w, h);
-
-    // Suelo de piedra antigua del refugio
-    ctx.fillStyle = '#252238';
-    ctx.fillRect(x, y + 66, w, h - 66);
-
-    // Visión flotante del Ojete Dorado entre ambos como símbolo de esperanza
-    const bob = Math.sin(t * 2.8) * 2.5;
-    ctx.strokeStyle = 'rgba(255, 224, 115, 0.85)';
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    ctx.arc(cx, y + 28 + bob, 11, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = '#ffd866';
-    ctx.beginPath();
-    ctx.arc(cx, y + 28 + bob, 5, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (this.assets && this.assets.charactersSheet) {
-      const sheet = this.assets.charactersSheet;
-      const srcCell = 16 * ATLAS_SCALE;
-      // Sabio Aurelio mirando al héroe con emoción
-      ctx.drawImage(sheet, 0, (CHARACTER_TYPES.ELDER * 4 + 3) * srcCell, srcCell, srcCell, cx - 28, y + 52, 18, 18);
-      // Lágrima brillante cayendo del rostro del Sabio
-      const tearY = (t * 10) % 7;
-      ctx.fillStyle = '#7be0ff';
-      ctx.fillRect(cx - 15, y + 58 + tearY, 1.8, 2.5);
-
-      // Joven héroe escuchando con determinación (aún sin armadura)
-      ctx.drawImage(sheet, 0, (CHARACTER_TYPES.HERO * 4 + 2) * srcCell, srcCell, srcCell, cx + 10, y + 52, 18, 18);
-    }
   }
 
   /**
@@ -15307,10 +14893,6 @@ class DayNightCycle {
     this.pulseTimer += dt * 3.2;
   }
 
-  skipHours(hours = 2) {
-    this.timeOfDayHours = (this.timeOfDayHours + hours) % 24;
-  }
-
   getCurrentTint() {
     const h = this.timeOfDayHours;
     let prev = this.keyframes[0];
@@ -16473,19 +16055,6 @@ class AmbientMusic {
     if (this.musicGain && this.ctx) {
       this.musicGain.gain.setValueAtTime(this.isMuted ? 0 : this.volume, this.ctx.currentTime);
     }
-  }
-
-  toggleMute() {
-    if (!this.isPlaying) {
-      this.unlockAndStart();
-      this.isMuted = false;
-      return this.isMuted;
-    }
-    this.isMuted = !this.isMuted;
-    if (this.musicGain && this.ctx) {
-      this.musicGain.gain.setValueAtTime(this.isMuted ? 0 : this.volume, this.ctx.currentTime);
-    }
-    return this.isMuted;
   }
 
   playMenuMove() {
@@ -20760,55 +20329,15 @@ class RPGGame {
       }
 
       if (door.type === 'stage_transition') {
-        // 1. GATEKEEPING GENERAL: Parar al jugador si no está preparado para zonas hostiles
-        if (door.targetScene === 'first_stage') {
-          if (!this.player.hasArmor || !this.player.hasSword) {
-            if (this.music) this.music.playDoorLockedSound();
-            if (this.tilemap.currentSceneId === 'overworld') {
-              this.player.x = Math.max(this.player.x, 2.5 * this.tilemap.tileSize);
-            }
-            this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
-              '¡Detente! Las Ruinas del Despertar están infestadas de drones y anomalías corruptas de Mister AI Alex.',
-              'Sin tu [Armadura del Código Binario] cualquier impacto te aniquilará al instante, y sin tu [Espada de la Recursividad] no podrás defenderte.',
-              'Habla con el Gran Sabio Aurelio en Valleverde y cruza el Puente del Este para superar las Pruebas Sagradas y consagrar tu equipo primero.'
-            ]);
-            return;
+        // 1. GATEKEEPING: las reglas viven en DoorGatekeeper
+        const block = getDoorBlock(door.targetScene, this.player);
+        if (block) {
+          if (this.music) this.music.playDoorLockedSound();
+          if (door.targetScene === 'first_stage' && this.tilemap.currentSceneId === 'overworld') {
+            this.player.x = Math.max(this.player.x, 2.5 * this.tilemap.tileSize);
           }
-        }
-
-        if (door.targetScene === 'sewers_dungeon') {
-          if (!this.player.hasArmor || !this.player.hasSword) {
-            if (this.music) this.music.playDoorLockedSound();
-            this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
-              '¡Un hedor a memoria corrompida y fugas de punteros brota de la trampilla de la alcantarilla!',
-              'No puedes descender a la Fosa de Memoria sin tu Armadura Binaria y tu Espada de la Recursividad para enfrentar al Boss 1: El Garbage Collector Furioso.',
-              'Habla con Aurelio y supera las Pruebas Sagradas del Este antes de descender a las cloacas.'
-            ]);
-            return;
-          }
-        }
-
-        if (door.targetScene === 'sword_temple') {
-          if (!this.player.hasArmor) {
-            if (this.music) this.music.playDoorLockedSound();
-            this.dialogueBox.showMessage('⚠️ [ORDEN DE LAS PRUEBAS SAGRADAS]', [
-              'El Gran Sabio Aurelio te encomendó consagrar primero la Armadura del Código Binario en el Templo Septentrional (Norte).',
-              'La energía de la Espada de la Recursividad ejerce una presión psíquica letal sobre quien no vista la armadura sagrada.',
-              'Dirígete al Templo Norte para forjar tu armadura primero.'
-            ]);
-            return;
-          }
-        }
-
-        if (door.targetScene === 'ai_fortress_gate' || door.targetScene === 'ai_citadel') {
-          if (!this.player.hasArmor || !this.player.hasSword) {
-            if (this.music) this.music.playDoorLockedSound();
-            this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
-              'La Fortaleza de Mister AI Alex está protegida por barreras electromagnéticas letales.',
-              'Necesitas tu equipo sagrado completo (Armadura Binaria y Espada de la Recursividad) antes de franquear este umbral.'
-            ]);
-            return;
-          }
+          this.dialogueBox.showMessage(block.title, block.lines);
+          return;
         }
 
         if (door.targetScene === 'condemned_realms') {
@@ -20834,34 +20363,12 @@ class RPGGame {
           return;
         }
 
-        const destTitle = door.targetScene === 'first_stage'
-          ? 'Ruinas del Despertar (Escenario 1)'
-          : door.targetScene === 'armor_temple'
-            ? 'Templo de la Armadura del Código Binario'
-            : door.targetScene === 'sword_temple'
-              ? 'Templo de la Espada de la Recursividad (Boss 2)'
-              : door.targetScene === 'sewers_dungeon'
-                ? 'Alcantarillas · Boss 1: El Garbage Collector Furioso'
-                : door.targetScene === 'ai_fortress_gate'
-                  ? 'Umbral de la Fortaleza · Boss 3: Microondas Prototipo'
-                  : door.targetScene === 'ai_citadel'
-                    ? 'Ciudadela de AI Alex · Boss Final: El Gran Ojal'
-                    : 'las Tierras Exteriores';
-
-        const isTemple = door.targetScene === 'armor_temple' || door.targetScene === 'sword_temple';
-        const isBossArena =
-          door.targetScene === 'sewers_dungeon' ||
-          door.targetScene === 'ai_fortress_gate' ||
-          door.targetScene === 'ai_citadel';
+        const { title: destTitle, description: destDescription } = getDoorDestinationInfo(door.targetScene);
         const inFirstStage = this.tilemap.currentSceneId === 'first_stage';
 
         this.dialogueBox.showMessage(`Acceso: ${destTitle}`, [
           `Estás ante el umbral de [${destTitle}].`,
-          isBossArena
-            ? '¡PELIGRO DE JEFE! En el interior de esta cámara aguarda uno de los grandes guardianes de Mister AI Alex.'
-            : isTemple
-              ? 'En su interior reposan reliquias sagradas y pruebas del Código Primigenio.'
-              : 'Más allá de los límites protegidos de Valleverde acechan bugs salvajes y la corrupción de Mister AI Alex.',
+          destDescription,
           '¿Deseas franquear el acceso y continuar?'
         ], [
           {
@@ -21135,70 +20642,6 @@ class RPGGame {
     const dist = boss.distanceTo(this.player);
     if (dist <= boss.combatTriggerDistance) {
       this._triggerBossIntroCutscene(boss);
-    }
-  }
-
-  _handlePlayerDefeated() {
-    const wasDefenseless = !this.player.hasArmor;
-    this.player.hp = this.player.effectiveMaxHp;
-    this.player.invulnerableTimer = 2.0;
-    this.player.knockbackTimer = 0;
-
-    const curScene = this.tilemap.currentSceneId;
-    if (curScene === 'first_stage') {
-      this.player.x = 31 * 16;
-      this.player.y = 12 * 16;
-      this.player.direction = 'left';
-    } else if (curScene === 'armor_temple') {
-      this.player.x = 10.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else if (curScene === 'sword_temple') {
-      this.player.x = 11.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else if (curScene === 'sewers_dungeon') {
-      this.player.x = 11.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else if (curScene === 'ai_fortress_gate') {
-      this.player.x = 11.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else if (curScene === 'ai_citadel') {
-      this.player.x = 11.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else {
-      // Overworld (Valleverde) u otros exteriores
-      this.player.x = 12.5 * 16;
-      this.player.y = 14 * 16;
-      this.player.direction = 'down';
-    }
-
-    // Reiniciar posición de patrulla y estado de combate de los enemigos vivos para no bloquear al jugador
-    for (const en of this.enemies) {
-      if (!en.dead) {
-        if (en.isBoss && typeof en.resetCombatState === 'function') {
-          en.resetCombatState();
-        } else if (en.patrolPoints && en.patrolPoints.length > 0) {
-          en.x = en.patrolPoints[0].x;
-          en.y = en.patrolPoints[0].y;
-        }
-      }
-    }
-    this.camera.snapTo(this.player);
-
-    if (wasDefenseless) {
-      this.dialogueBox.showMessage('💔 ¡Has Caído Indefenso! (Vida: 0)', [
-        'Sabio Aurelio: «¡Te lo advertí, joven elegido! Sin tu Armadura estás completamente INDEFENSO ante las anomalías de Mister AI Alex.»',
-        '«He curado tus heridas y te he llevado a una zona protegida. Ve al Templo del Código Binario para forjar tu [Armadura del Código Binario] antes de luchar.»'
-      ]);
-    } else {
-      this.dialogueBox.showMessage('💔 ¡Herido en Combate! (Vida: 0)', [
-        'Sabio Aurelio: «¡Resiste, elegido! He restaurado tus corazones.»',
-        '«Recuerda pulsar [ESPACIO] o [F] para atacar con tu Espada de la Recursividad, o esquivar con el Dash Asíncrono.»'
-      ]);
     }
   }
 

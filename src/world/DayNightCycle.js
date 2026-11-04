@@ -38,10 +38,6 @@ export class DayNightCycle {
     this.pulseTimer += dt * 3.2;
   }
 
-  skipHours(hours = 2) {
-    this.timeOfDayHours = (this.timeOfDayHours + hours) % 24;
-  }
-
   getCurrentTint() {
     const h = this.timeOfDayHours;
     let prev = this.keyframes[0];

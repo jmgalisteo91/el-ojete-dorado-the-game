@@ -92,28 +92,5 @@ export class CollisionSystem {
     );
   }
 
-  /**
-   * Comprueba si la caja de colisión de una entidad se solapa con un tile.
-   */
-  static isBoxOverlappingTile(box, tileCol, tileRow, tileSize = 16) {
-    if (!box) return false;
-    const tileBox = {
-      x: tileCol * tileSize,
-      y: tileRow * tileSize,
-      width: tileSize,
-      height: tileSize
-    };
-    return CollisionSystem.checkAABB(box, tileBox);
-  }
-
-  /**
-   * Comprueba si una entidad está cerca del centro de un punto o tile.
-   */
-  static isEntityNearPoint(entity, targetX, targetY, maxDist = 24) {
-    if (!entity) return false;
-    const cx = entity.x + (entity.width || 16) * 0.5;
-    const cy = entity.y + (entity.height || 16) * 0.5;
-    return Math.hypot(cx - targetX, cy - targetY) <= maxDist;
-  }
 }
 

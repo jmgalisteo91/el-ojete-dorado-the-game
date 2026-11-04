@@ -122,20 +122,8 @@ export class QuestLog {
     this.quests = INITIAL_QUESTS.map((q) => ({ ...q }));
   }
 
-  setNoticeCallback(fn) {
-    this.onNotice = fn;
-  }
-
   getAllQuests() {
     return this.quests;
-  }
-
-  getMainQuests() {
-    return this.quests.filter((q) => q.category === 'MAIN');
-  }
-
-  getSideQuests() {
-    return this.quests.filter((q) => q.category === 'SIDE');
   }
 
   getQuest(id) {

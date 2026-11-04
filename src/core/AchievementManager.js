@@ -111,10 +111,6 @@ export class AchievementManager {
     this.audioCtx = ctx;
   }
 
-  setMusicEngine(musicEngine) {
-    this.musicEngine = musicEngine;
-  }
-
   loadFromStorage() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);

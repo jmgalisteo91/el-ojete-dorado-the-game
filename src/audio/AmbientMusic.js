@@ -585,19 +585,6 @@ export class AmbientMusic {
     }
   }
 
-  toggleMute() {
-    if (!this.isPlaying) {
-      this.unlockAndStart();
-      this.isMuted = false;
-      return this.isMuted;
-    }
-    this.isMuted = !this.isMuted;
-    if (this.musicGain && this.ctx) {
-      this.musicGain.gain.setValueAtTime(this.isMuted ? 0 : this.volume, this.ctx.currentTime);
-    }
-    return this.isMuted;
-  }
-
   playMenuMove() {
     if (!this.ctx || this.isMuted) return;
     if (this.ctx.state === 'suspended') {

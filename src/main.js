@@ -1,3 +1,4 @@
+import { getDoorBlock, getDoorDestinationInfo } from './core/DoorGatekeeper.js';
 import { GameLoop } from './core/GameLoop.js?v=6';
 import { InputHandler } from './core/InputHandler.js?v=6';
 import { Camera2D } from './core/Camera2D.js?v=6';
@@ -3635,55 +3636,15 @@ export class RPGGame {
       }
 
       if (door.type === 'stage_transition') {
-        // 1. GATEKEEPING GENERAL: Parar al jugador si no está preparado para zonas hostiles
-        if (door.targetScene === 'first_stage') {
-          if (!this.player.hasArmor || !this.player.hasSword) {
-            if (this.music) this.music.playDoorLockedSound();
-            if (this.tilemap.currentSceneId === 'overworld') {
-              this.player.x = Math.max(this.player.x, 2.5 * this.tilemap.tileSize);
-            }
-            this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
-              '¡Detente! Las Ruinas del Despertar están infestadas de drones y anomalías corruptas de Mister AI Alex.',
-              'Sin tu [Armadura del Código Binario] cualquier impacto te aniquilará al instante, y sin tu [Espada de la Recursividad] no podrás defenderte.',
-              'Habla con el Gran Sabio Aurelio en Valleverde y cruza el Puente del Este para superar las Pruebas Sagradas y consagrar tu equipo primero.'
-            ]);
-            return;
+        // 1. GATEKEEPING: las reglas viven en DoorGatekeeper
+        const block = getDoorBlock(door.targetScene, this.player);
+        if (block) {
+          if (this.music) this.music.playDoorLockedSound();
+          if (door.targetScene === 'first_stage' && this.tilemap.currentSceneId === 'overworld') {
+            this.player.x = Math.max(this.player.x, 2.5 * this.tilemap.tileSize);
           }
-        }
-
-        if (door.targetScene === 'sewers_dungeon') {
-          if (!this.player.hasArmor || !this.player.hasSword) {
-            if (this.music) this.music.playDoorLockedSound();
-            this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
-              '¡Un hedor a memoria corrompida y fugas de punteros brota de la trampilla de la alcantarilla!',
-              'No puedes descender a la Fosa de Memoria sin tu Armadura Binaria y tu Espada de la Recursividad para enfrentar al Boss 1: El Garbage Collector Furioso.',
-              'Habla con Aurelio y supera las Pruebas Sagradas del Este antes de descender a las cloacas.'
-            ]);
-            return;
-          }
-        }
-
-        if (door.targetScene === 'sword_temple') {
-          if (!this.player.hasArmor) {
-            if (this.music) this.music.playDoorLockedSound();
-            this.dialogueBox.showMessage('⚠️ [ORDEN DE LAS PRUEBAS SAGRADAS]', [
-              'El Gran Sabio Aurelio te encomendó consagrar primero la Armadura del Código Binario en el Templo Septentrional (Norte).',
-              'La energía de la Espada de la Recursividad ejerce una presión psíquica letal sobre quien no vista la armadura sagrada.',
-              'Dirígete al Templo Norte para forjar tu armadura primero.'
-            ]);
-            return;
-          }
-        }
-
-        if (door.targetScene === 'ai_fortress_gate' || door.targetScene === 'ai_citadel') {
-          if (!this.player.hasArmor || !this.player.hasSword) {
-            if (this.music) this.music.playDoorLockedSound();
-            this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
-              'La Fortaleza de Mister AI Alex está protegida por barreras electromagnéticas letales.',
-              'Necesitas tu equipo sagrado completo (Armadura Binaria y Espada de la Recursividad) antes de franquear este umbral.'
-            ]);
-            return;
-          }
+          this.dialogueBox.showMessage(block.title, block.lines);
+          return;
         }
 
         if (door.targetScene === 'condemned_realms') {
@@ -3709,34 +3670,12 @@ export class RPGGame {
           return;
         }
 
-        const destTitle = door.targetScene === 'first_stage'
-          ? 'Ruinas del Despertar (Escenario 1)'
-          : door.targetScene === 'armor_temple'
-            ? 'Templo de la Armadura del Código Binario'
-            : door.targetScene === 'sword_temple'
-              ? 'Templo de la Espada de la Recursividad (Boss 2)'
-              : door.targetScene === 'sewers_dungeon'
-                ? 'Alcantarillas · Boss 1: El Garbage Collector Furioso'
-                : door.targetScene === 'ai_fortress_gate'
-                  ? 'Umbral de la Fortaleza · Boss 3: Microondas Prototipo'
-                  : door.targetScene === 'ai_citadel'
-                    ? 'Ciudadela de AI Alex · Boss Final: El Gran Ojal'
-                    : 'las Tierras Exteriores';
-
-        const isTemple = door.targetScene === 'armor_temple' || door.targetScene === 'sword_temple';
-        const isBossArena =
-          door.targetScene === 'sewers_dungeon' ||
-          door.targetScene === 'ai_fortress_gate' ||
-          door.targetScene === 'ai_citadel';
+        const { title: destTitle, description: destDescription } = getDoorDestinationInfo(door.targetScene);
         const inFirstStage = this.tilemap.currentSceneId === 'first_stage';
 
         this.dialogueBox.showMessage(`Acceso: ${destTitle}`, [
           `Estás ante el umbral de [${destTitle}].`,
-          isBossArena
-            ? '¡PELIGRO DE JEFE! En el interior de esta cámara aguarda uno de los grandes guardianes de Mister AI Alex.'
-            : isTemple
-              ? 'En su interior reposan reliquias sagradas y pruebas del Código Primigenio.'
-              : 'Más allá de los límites protegidos de Valleverde acechan bugs salvajes y la corrupción de Mister AI Alex.',
+          destDescription,
           '¿Deseas franquear el acceso y continuar?'
         ], [
           {
@@ -4010,70 +3949,6 @@ export class RPGGame {
     const dist = boss.distanceTo(this.player);
     if (dist <= boss.combatTriggerDistance) {
       this._triggerBossIntroCutscene(boss);
-    }
-  }
-
-  _handlePlayerDefeated() {
-    const wasDefenseless = !this.player.hasArmor;
-    this.player.hp = this.player.effectiveMaxHp;
-    this.player.invulnerableTimer = 2.0;
-    this.player.knockbackTimer = 0;
-
-    const curScene = this.tilemap.currentSceneId;
-    if (curScene === 'first_stage') {
-      this.player.x = 31 * 16;
-      this.player.y = 12 * 16;
-      this.player.direction = 'left';
-    } else if (curScene === 'armor_temple') {
-      this.player.x = 10.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else if (curScene === 'sword_temple') {
-      this.player.x = 11.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else if (curScene === 'sewers_dungeon') {
-      this.player.x = 11.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else if (curScene === 'ai_fortress_gate') {
-      this.player.x = 11.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else if (curScene === 'ai_citadel') {
-      this.player.x = 11.5 * 16;
-      this.player.y = 15 * 16;
-      this.player.direction = 'up';
-    } else {
-      // Overworld (Valleverde) u otros exteriores
-      this.player.x = 12.5 * 16;
-      this.player.y = 14 * 16;
-      this.player.direction = 'down';
-    }
-
-    // Reiniciar posición de patrulla y estado de combate de los enemigos vivos para no bloquear al jugador
-    for (const en of this.enemies) {
-      if (!en.dead) {
-        if (en.isBoss && typeof en.resetCombatState === 'function') {
-          en.resetCombatState();
-        } else if (en.patrolPoints && en.patrolPoints.length > 0) {
-          en.x = en.patrolPoints[0].x;
-          en.y = en.patrolPoints[0].y;
-        }
-      }
-    }
-    this.camera.snapTo(this.player);
-
-    if (wasDefenseless) {
-      this.dialogueBox.showMessage('💔 ¡Has Caído Indefenso! (Vida: 0)', [
-        'Sabio Aurelio: «¡Te lo advertí, joven elegido! Sin tu Armadura estás completamente INDEFENSO ante las anomalías de Mister AI Alex.»',
-        '«He curado tus heridas y te he llevado a una zona protegida. Ve al Templo del Código Binario para forjar tu [Armadura del Código Binario] antes de luchar.»'
-      ]);
-    } else {
-      this.dialogueBox.showMessage('💔 ¡Herido en Combate! (Vida: 0)', [
-        'Sabio Aurelio: «¡Resiste, elegido! He restaurado tus corazones.»',
-        '«Recuerda pulsar [ESPACIO] o [F] para atacar con tu Espada de la Recursividad, o esquivar con el Dash Asíncrono.»'
-      ]);
     }
   }
 
