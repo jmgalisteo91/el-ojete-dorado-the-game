@@ -14,6 +14,7 @@ const MODULE_ORDER = [
   'src/core/AchievementManager.js',
   'src/graphics/SpriteSheetGenerator.js',
   'src/graphics/Animator.js',
+  'src/ui/SpeechBubble.js',
   'src/world/Tilemap.js',
   'src/physics/CollisionSystem.js',
   'src/entities/Entity.js',

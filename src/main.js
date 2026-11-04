@@ -42,6 +42,7 @@ import {
 import { DayNightCycle } from './world/DayNightCycle.js?v=6';
 import { AIBotBrain } from './ai/AIBotBrain.js?v=6';
 import { AmbientMusic } from './audio/AmbientMusic.js?v=6';
+import { SpeechBubble, renderActionPromptBubble } from './ui/SpeechBubble.js?v=6';
 
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
@@ -4780,40 +4781,7 @@ export class RPGGame {
   }
 
   _renderActionPrompt(ctx, action) {
-    const bob = Math.round(Math.sin(this.promptTimer) * 1.5);
-    const anchorX =
-      action.kind === 'door' || action.kind === 'bed' || action.kind === 'signpost'
-        ? (action.kind === 'signpost' ? action.target.c * 16 + 8 : action.target.worldX)
-        : action.target.centerX;
-    const anchorY =
-      action.kind === 'door' || action.kind === 'bed' || action.kind === 'signpost'
-        ? (action.kind === 'signpost' ? action.target.r * 16 : action.target.worldY - 14)
-        : action.target.y;
-
-    const screenX = Math.round(anchorX - this.camera.renderX);
-    const screenY = Math.round(anchorY - this.camera.renderY - 11 + bob);
-
-    ctx.save();
-    ctx.font = 'bold 7px monospace';
-    const textW = Math.ceil(ctx.measureText(action.label).width);
-    const boxW = textW + 8;
-    const boxH = 10;
-    const boxX = Math.max(
-      4,
-      Math.min(VIEWPORT_WIDTH - boxW - 4, Math.round(screenX - boxW / 2))
-    );
-    const boxY = Math.max(18, screenY);
-
-    ctx.fillStyle = '#121624';
-    ctx.fillRect(boxX - 1, boxY - 1, boxW + 2, boxH + 2);
-    ctx.fillStyle = '#fff5d6';
-    ctx.fillRect(boxX, boxY, boxW, boxH);
-
-    ctx.fillStyle = '#1f2433';
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'center';
-    ctx.fillText(action.label, boxX + boxW / 2, boxY + 2);
-    ctx.restore();
+    SpeechBubble.renderActionPromptBubble(ctx, action, this.camera, this.promptTimer);
   }
 
   /**
@@ -4948,9 +4916,7 @@ export class RPGGame {
       }
     }
     if (this.player.parryFlashTimer > 0) {
-      ctx.fillStyle = '#fde047';
-      ctx.textAlign = 'center';
-      ctx.fillText('¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, 30);
+      SpeechBubble.renderCombatBanner(ctx, '¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, 28);
     }
 
     // Indicador visual sutil si está sin armadura (pequeño punto carmesí discreto sin rótulo agresivo)

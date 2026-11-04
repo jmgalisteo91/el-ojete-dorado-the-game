@@ -1,6 +1,7 @@
 import { CHARACTER_TYPES, ITEM_ICONS, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=6';
 import { WorldMap } from './WorldMap.js?v=6';
 import { EndingCredits } from './EndingCredits.js?v=6';
+import { SpeechBubble, GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=6';
 
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art
@@ -1619,21 +1620,27 @@ export class MainMenuAndScenes {
 
   _renderToastNotice(ctx, text) {
     ctx.save();
-    ctx.font = 'bold 7px monospace';
+    ctx.font = `600 6.5px ${GAME_FONT_UI}`;
     const tw = Math.ceil(ctx.measureText(text).width) + 16;
     const th = 14;
     const tx = Math.round((this.viewportWidth - tw) / 2);
     const ty = 84;
 
-    ctx.fillStyle = '#121624';
-    ctx.fillRect(tx, ty, tw, th);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    drawRoundedRect(ctx, tx + 1, ty + 1.5, tw, th, 4);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(18, 22, 36, 0.95)';
+    drawRoundedRect(ctx, tx, ty, tw, th, 4);
+    ctx.fill();
     ctx.strokeStyle = '#7ae582';
-    ctx.strokeRect(tx + 0.5, ty + 0.5, tw - 1, th - 1);
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
     ctx.fillStyle = '#7ae582';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(text, Math.round(this.viewportWidth / 2), ty + 3);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, Math.round(this.viewportWidth / 2), ty + th / 2);
     ctx.restore();
   }
 

@@ -1,4 +1,5 @@
 import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=6';
+import { SpeechBubble, renderFloatingBadge } from '../ui/SpeechBubble.js?v=6';
 
 /**
  * Tilemap multicapa con soporte para:
@@ -1830,43 +1831,7 @@ export class Tilemap {
       if (sx < -90 || sx > camera.viewportWidth + 90 || sy < -40 || sy > camera.viewportHeight + 40) {
         return;
       }
-
-      ctx.save();
-      ctx.font = 'bold 5px monospace';
-      const w1 = ctx.measureText(label).width;
-      const w2 = subLabel ? ctx.measureText(subLabel).width : 0;
-      const boxW = Math.ceil(Math.max(w1, w2)) + 10;
-      const boxH = subLabel ? 15 : 9;
-      const bx = Math.round(sx - boxW / 2);
-      const by = Math.round(sy - boxH);
-
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.88)';
-      ctx.fillRect(bx, by, boxW, boxH);
-      ctx.strokeStyle = borderColor;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = textColor;
-      ctx.fillText(label, sx, by + (subLabel ? 4.5 : 4.5));
-
-      if (subLabel) {
-        ctx.font = '4.5px monospace';
-        ctx.fillStyle = '#cbd5e1';
-        ctx.fillText(subLabel, sx, by + 11);
-      }
-
-      if (pulseArrow) {
-        ctx.fillStyle = borderColor;
-        ctx.beginPath();
-        ctx.moveTo(sx - 3, by + boxH + 1);
-        ctx.lineTo(sx + 3, by + boxH + 1);
-        ctx.lineTo(sx, by + boxH + 4);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.restore();
+      SpeechBubble.renderFloatingBadge(ctx, sx, sy, label, subLabel, borderColor, textColor, pulseArrow);
     };
 
     if (this.currentSceneId === 'overworld') {

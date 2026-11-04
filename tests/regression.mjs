@@ -8,6 +8,7 @@ import { Enemy } from '../src/entities/Enemy.js';
 import { Player } from '../src/entities/Player.js';
 import { getDoorBlock, getDoorDestinationInfo } from '../src/core/DoorGatekeeper.js';
 import { AI_STATE, inferArchetype } from '../src/ai/EnemyBrain.js';
+import { SpeechBubble, drawSpeechBalloonPath, drawRoundedRect } from '../src/ui/SpeechBubble.js';
 
 let passed = 0;
 const failures = [];
@@ -271,6 +272,75 @@ test('Gatekeeper bloquea sin equipo y permite con equipo', () => {
 });
 test('Gatekeeper describe arenas de jefe', () => {
   assert.match(getDoorDestinationInfo('sewers_dungeon').description, /JEFE/);
+});
+
+console.log('Bocadillos y Textos Flotantes');
+function makeMockCtx() {
+  const calls = [];
+  return {
+    calls,
+    save: () => calls.push('save'),
+    restore: () => calls.push('restore'),
+    beginPath: () => calls.push('beginPath'),
+    closePath: () => calls.push('closePath'),
+    moveTo: (x, y) => calls.push(`moveTo(${x},${y})`),
+    lineTo: (x, y) => calls.push(`lineTo(${x},${y})`),
+    arcTo: (x1, y1, x2, y2, r) => calls.push(`arcTo(${x1},${y1},${x2},${y2},${r})`),
+    fill: () => calls.push('fill'),
+    stroke: () => calls.push('stroke'),
+    strokeRect: () => calls.push('strokeRect'),
+    fillRect: () => calls.push('fillRect'),
+    fillText: (text, x, y) => calls.push(`fillText(${text},${x},${y})`),
+    measureText: (text) => ({ width: (text || '').length * 4 }),
+    translate: () => calls.push('translate'),
+    scale: () => calls.push('scale')
+  };
+}
+
+test('drawSpeechBalloonPath construye trazado con rabillo inferior', () => {
+  const ctx = makeMockCtx();
+  drawSpeechBalloonPath(ctx, 10, 10, 60, 20, 4, 40, 36, 6);
+  assert.ok(ctx.calls.includes('beginPath'));
+  assert.ok(ctx.calls.includes('closePath'));
+  assert.ok(ctx.calls.some((c) => c.startsWith('arcTo')));
+  assert.ok(ctx.calls.some((c) => c.startsWith('lineTo(40,36)')));
+});
+
+test('renderActionPromptBubble formatea acción de NPC con tecla y bocadillo', () => {
+  const ctx = makeMockCtx();
+  const action = {
+    kind: 'npc',
+    target: { centerX: 100, y: 80, name: 'Anciano Aurelio (Cronista)' },
+    label: '[E] Hablar con Anciano Aurelio'
+  };
+  const camera = { renderX: 0, renderY: 0, viewportWidth: 320, viewportHeight: 180 };
+  SpeechBubble.renderActionPromptBubble(ctx, action, camera, 0);
+  assert.ok(ctx.calls.some((c) => c.includes('fillText(E')));
+  assert.ok(ctx.calls.some((c) => c.includes('fillText(Hablar')));
+  assert.ok(ctx.calls.some((c) => c.includes('Aurelio')));
+});
+
+test('renderNPCBarkBubble ajusta texto largo en varias líneas y dibuja bocadillo', () => {
+  const ctx = makeMockCtx();
+  const text = '¡Pan recién horneado y manzanas frescas de la huerta de Valleverde!';
+  SpeechBubble.renderNPCBarkBubble(ctx, 160, 90, text, 2.5, 3.0);
+  assert.ok(ctx.calls.includes('fill'));
+  assert.ok(ctx.calls.includes('stroke'));
+  const textCalls = ctx.calls.filter((c) => c.startsWith('fillText'));
+  assert.ok(textCalls.length >= 2, `debería dividirse en varias líneas: ${textCalls.length}`);
+});
+
+test('renderFloatingBadge dibuja indicador con flecha pulsante', () => {
+  const ctx = makeMockCtx();
+  SpeechBubble.renderFloatingBadge(ctx, 120, 80, '💀 BOSS 1', 'Alcantarillas', '#ef4444', '#fca5a5', true);
+  assert.ok(ctx.calls.some((c) => c.includes('fillText(💀 BOSS 1')));
+  assert.ok(ctx.calls.some((c) => c.includes('fillText(Alcantarillas')));
+});
+
+test('renderCombatBanner traza banner con borde', () => {
+  const ctx = makeMockCtx();
+  SpeechBubble.renderCombatBanner(ctx, '¡PARRY PERFECTO!', 160, 30, '#fde047');
+  assert.ok(ctx.calls.some((c) => c.includes('fillText(¡PARRY PERFECTO!')));
 });
 
 console.log(`\n${passed} pruebas OK, ${failures.length} fallos.`);

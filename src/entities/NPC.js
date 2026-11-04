@@ -1,5 +1,6 @@
 import { Entity } from './Entity.js?v=5';
 import { CollisionSystem } from '../physics/CollisionSystem.js?v=5';
+import { SpeechBubble, renderNPCBarkBubble, renderActivityIcon } from '../ui/SpeechBubble.js?v=6';
 
 const DIRECTIONS = ['down', 'up', 'left', 'right'];
 
@@ -268,36 +269,13 @@ export class NPC extends Entity {
     const sx = Math.round(this.centerX - camera.renderX);
     const sy = Math.round(this.y - camera.renderY);
 
-    // Bocadillo ambiental de vida cotidiana
+    // Bocadillo ambiental de vida cotidiana (bocadillo estilo cómic / juego indie moderno)
     if (this.ambientBubbleTimer > 0 && this.ambientBubbleText) {
-      ctx.save();
-      ctx.font = '6px monospace';
-      const textW = Math.ceil(ctx.measureText(this.ambientBubbleText).width);
-      const boxW = textW + 8;
-      const boxH = 10;
-      const bx = Math.max(4, Math.min(320 - boxW - 4, Math.round(sx - boxW / 2)));
-      const by = Math.max(16, sy - 13);
-
-      ctx.fillStyle = 'rgba(18, 22, 36, 0.88)';
-      ctx.fillRect(bx, by, boxW, boxH);
-      ctx.strokeStyle = 'rgba(229, 192, 123, 0.75)';
-      ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
-
-      ctx.fillStyle = '#f0f4f8';
-      ctx.textBaseline = 'top';
-      ctx.textAlign = 'center';
-      ctx.fillText(this.ambientBubbleText, bx + boxW / 2, by + 2);
-      ctx.restore();
+      renderNPCBarkBubble(ctx, sx, sy, this.ambientBubbleText, this.ambientBubbleTimer, 3.0);
     } else if (this.currentActivityIcon && !this.isMoving) {
-      // Pequeño icono de actividad cuando está trabajando en su oficio
+      // Pequeño bocadillo de actividad cuando está trabajando en su oficio
       const bob = Math.round(Math.sin(this.promptBobTimer) * 1.2);
-      ctx.save();
-      ctx.font = '7px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillStyle = '#ffd885';
-      ctx.fillText(this.currentActivityIcon, sx, sy - 2 + bob);
-      ctx.restore();
+      renderActivityIcon(ctx, sx, sy, this.currentActivityIcon, bob);
     }
   }
 }
