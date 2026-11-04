@@ -76,7 +76,10 @@ export const ITEM_ICONS = {
   GOLDEN_APPLE: 5,
   ARMOR: 6,
   SWORD: 7,
-  ABYSSAL_POINTER: 8
+  ABYSSAL_POINTER: 8,
+  SILICON_FLOWER: 9,
+  DRONE_SCRAP: 10,
+  FISH: 11
 };
 
 function canvasToImage(canvas) {
@@ -811,7 +814,7 @@ async function generateTilesetSheet() {
  * Genera el spritesheet de objetos (Items 16x16 en alta densidad) para el suelo y el Inventario.
  */
 async function generateItemsSheet() {
-  const count = 9;
+  const count = 12;
   const canvas = document.createElement('canvas');
   canvas.width = count * TILE_SIZE * ATLAS_SCALE;
   canvas.height = TILE_SIZE * ATLAS_SCALE;
@@ -903,6 +906,62 @@ async function generateItemsSheet() {
     px(ctx, ox + 3, oy(4), 1, 1, '#d8b4fe');
     px(ctx, ox + 12, oy(8), 1, 1, '#c084fc');
     px(ctx, ox + 4, oy(11), 1, 1, '#e9d5ff');
+  }
+  // 9: SILICON_FLOWER (Flor de Silicio bioluminiscente de noche)
+  {
+    const ox = ITEM_ICONS.SILICON_FLOWER * 16;
+    // Tallo y hojas de circuito
+    px(ctx, ox + 7, oy(10), 2, 5, '#0f766e');
+    px(ctx, ox + 5, oy(12), 2, 2, '#14b8a6');
+    px(ctx, ox + 9, oy(11), 2, 2, '#14b8a6');
+    // Pétalos de silicio cian neón
+    px(ctx, ox + 6, oy(4), 4, 3, '#38bdf8');
+    px(ctx, ox + 4, oy(6), 3, 4, '#06b6d4');
+    px(ctx, ox + 9, oy(6), 3, 4, '#06b6d4');
+    px(ctx, ox + 6, oy(9), 4, 2, '#0284c7');
+    // Centro bioluminiscente
+    px(ctx, ox + 7, oy(6), 2, 2, '#fde047');
+    px(ctx, ox + 7, oy(7), 2, 1, '#ffffff');
+    // Brillos de silicio
+    px(ctx, ox + 5, oy(5), 1, 1, '#bae6fd');
+    px(ctx, ox + 10, oy(5), 1, 1, '#bae6fd');
+  }
+  // 10: DRONE_SCRAP (Restos de Chatarra de Dron de AI Alex)
+  {
+    const ox = ITEM_ICONS.DRONE_SCRAP * 16;
+    // Chasis metálico angular
+    px(ctx, ox + 3, oy(4), 9, 8, '#334155');
+    px(ctx, ox + 4, oy(5), 7, 6, '#475569');
+    px(ctx, ox + 5, oy(6), 5, 4, '#64748b');
+    // Circuito grabado y microchip
+    px(ctx, ox + 6, oy(7), 3, 2, '#0f172a');
+    px(ctx, ox + 7, oy(7), 1, 1, '#22c55e'); // Led verde de circuito
+    // Trazas doradas de placa
+    px(ctx, ox + 4, oy(9), 4, 1, '#fbbf24');
+    px(ctx, ox + 8, oy(5), 2, 1, '#fbbf24');
+    // Cableado expuesto y cobre
+    px(ctx, ox + 11, oy(3), 2, 4, '#ea580c');
+    px(ctx, ox + 2, oy(10), 2, 3, '#f97316');
+    px(ctx, ox + 11, oy(8), 2, 3, '#94a3b8');
+  }
+  // 11: FISH (Trucha fresca del Río Alba)
+  {
+    const ox = ITEM_ICONS.FISH * 16;
+    // Cuerpo hidrodinámico de trucha plateada
+    px(ctx, ox + 3, oy(7), 9, 4, '#93c5fd');
+    px(ctx, ox + 4, oy(6), 7, 6, '#60a5fa');
+    px(ctx, ox + 5, oy(7), 5, 3, '#dbeafe'); // Vientre plateado
+    // Ojo y boca
+    px(ctx, ox + 3, oy(8), 2, 1, '#1e3a8a');
+    px(ctx, ox + 4, oy(7), 1, 1, '#ffffff');
+    // Cola en V
+    px(ctx, ox + 12, oy(6), 2, 1, '#3b82f6');
+    px(ctx, ox + 13, oy(5), 1, 2, '#2563eb');
+    px(ctx, ox + 12, oy(10), 2, 1, '#3b82f6');
+    px(ctx, ox + 13, oy(10), 1, 2, '#2563eb');
+    // Aleta dorsal
+    px(ctx, ox + 7, oy(4), 2, 2, '#38bdf8');
+    px(ctx, ox + 7, oy(12), 2, 1, '#38bdf8');
   }
 
   return canvasToImage(canvas);

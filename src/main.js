@@ -21,6 +21,7 @@ import { DialogueBox } from './ui/DialogueBox.js?v=6';
 import { Inventory } from './ui/Inventory.js?v=6';
 import { CharacterStats } from './ui/CharacterStats.js?v=6';
 import { QuestLog } from './core/QuestLog.js?v=6';
+import { AchievementManager } from './core/AchievementManager.js?v=6';
 import { QuestLogView } from './ui/QuestLogView.js?v=6';
 import { MainMenuAndScenes } from './ui/MainMenuAndScenes.js?v=6';
 import {
@@ -62,6 +63,9 @@ export class RPGGame {
     this.music = new AmbientMusic();
     this.input = new InputHandler(() => {
       this.music.unlockAndStart();
+      if (this.achievementManager && this.music.ctx) {
+        this.achievementManager.setAudioContext(this.music.ctx);
+      }
     }, canvas);
 
     this.tilemap = new Tilemap(assets.tilesetSheet, assets.tileSize);
@@ -75,9 +79,23 @@ export class RPGGame {
     this.dialogueBox = new DialogueBox(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, this.music);
     this.inventory = new Inventory(assets.itemsSheet, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
     this.characterStats = new CharacterStats(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+    this.achievementManager = new AchievementManager(
+      VIEWPORT_WIDTH,
+      VIEWPORT_HEIGHT,
+      this.music ? this.music.ctx : null
+    );
     this.questLog = new QuestLog((msg) => {
       if (this.menuSystem) this.menuSystem.showNotice(msg, 3.5);
     });
+    const origCompleteQuest = this.questLog.completeQuest.bind(this.questLog);
+    this.questLog.completeQuest = (questId, finalNote) => {
+      const res = origCompleteQuest(questId, finalNote);
+      if (res && this.achievementManager) {
+        this.achievementManager.unlock('ach_first_quest');
+        this._checkAllSideQuestsAchievement();
+      }
+      return res;
+    };
     this.questLogView = new QuestLogView(this.questLog, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
     this.dayNight = new DayNightCycle(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, 720);
 
@@ -186,6 +204,20 @@ export class RPGGame {
       (dt) => this.update(dt),
       (alpha) => this.render(alpha)
     );
+  }
+
+  _checkAllSideQuestsAchievement() {
+    if (!this.questLog || !this.achievementManager) return;
+    const qFishing = this.questLog.getQuest('quest_side_fishing');
+    const qFractal = this.questLog.getQuest('quest_side_fractal_temper');
+    const qSilicon = this.questLog.getQuest('quest_side_silicon_flowers');
+    if (
+      qFishing && qFishing.status === 'COMPLETED' &&
+      qFractal && qFractal.status === 'COMPLETED' &&
+      qSilicon && qSilicon.status === 'COMPLETED'
+    ) {
+      this.achievementManager.unlock('ach_all_side_quests');
+    }
   }
 
   _applyGameOptions(opts) {
@@ -342,6 +374,7 @@ export class RPGGame {
         abyssalPortalOrigin: this.abyssalPortalOrigin ? { ...this.abyssalPortalOrigin } : null,
         activeAbyssalPortal: this.activeAbyssalPortal ? { ...this.activeAbyssalPortal } : null,
         questLogData: this.questLog ? this.questLog.serialize() : null,
+        achievementsData: this.achievementManager ? this.achievementManager.serialize() : null,
         collectedItemIds: this.worldItems.filter((w) => w.collected).map((w) => w.id),
         defeatedEnemyIds: this.enemies.filter((e) => e.dead).map((e) => e.id)
       };
@@ -528,6 +561,10 @@ export class RPGGame {
 
       if (data.questLogData && this.questLog) {
         this.questLog.deserialize(data.questLogData);
+      }
+
+      if (data.achievementsData && this.achievementManager) {
+        this.achievementManager.deserialize(data.achievementsData);
       }
 
       if (Array.isArray(data.collectedItemIds)) {
@@ -955,14 +992,63 @@ export class RPGGame {
     return elderChoices;
   }
 
-  _createVillageNPCs() {
-    const sheet = this.assets.charactersSheet;
+  _getSmithChoices() {
+    const qFractal = this.questLog ? this.questLog.getQuest('quest_side_fractal_temper') : null;
+    const isFractalDone = qFractal && qFractal.status === 'COMPLETED';
+    const scrapCount = this.inventory ? this.inventory.getItemCount('drone_scrap') : 0;
 
-    // 2. Herrero Brom — Oficio: Maestro Forjador y Hornero (Casa: blacksmith_house)
     const smithChoices = [
       {
+        label: isFractalDone
+          ? '⚒️ [Encargo] "El Templado Fractal" (Completado)'
+          : `⚒️ [Encargo] "El Templado Fractal" (Entregar Chatarra: ${scrapCount}/2)`,
+        onSelect: () => {
+          if (isFractalDone) {
+            this.dialogueBox.showMessage('Herrero Brom · Forjador', [
+              '¡Clang, clang! Tu espada mantiene ese zumbido fractal de alta frecuencia.',
+              'Corta los bugs como si fueran mantequilla recién horneada.'
+            ], this._getSmithChoices());
+            return;
+          }
+
+          if (scrapCount >= 2) {
+            this.inventory.consumeItem('drone_scrap', 2);
+            this.player.coins += 20;
+            if (this.music) this.music.playFanfare();
+            if (this.questLog) {
+              this.questLog.completeQuest(
+                'quest_side_fractal_temper',
+                '¡El Herrero Brom templó tu espada con aleación fractal de drones!'
+              );
+            }
+            if (this.achievementManager) {
+              this.achievementManager.unlock('ach_side_fractal');
+              this._checkAllSideQuestsAchievement();
+            }
+            this._saveGameToStorage();
+            this.dialogueBox.showMessage('Herrero Brom · Forjador', [
+              '¡Por el fuego sagrado de la fragua! ¡Esta aleación de titanio fractal es soberbia!',
+              '¡CLANG! ¡CLANG! ¡CLANG! (El yunque despide destellos dorados y chispas binarias).',
+              'Tu filo ha sido templado a nivel molecular. ¡Toma [🪙 20 Bytes] por tu valentía abatiendo drones!'
+            ], this._getSmithChoices());
+          } else {
+            if (this.questLog) {
+              this.questLog.advanceStep(
+                'quest_side_fractal_temper',
+                `Derrota drones sombríos en Tierras Hostiles (al oeste). Llevas [${scrapCount}/2] restos de chatarra.`
+              );
+            }
+            this.dialogueBox.showMessage('Herrero Brom · Forjador', [
+              'Para forjar un templado fractal necesito aleaciones de titanio que solo tienen los drones de AI Alex en las Tierras Hostiles (al oeste de Valleverde).',
+              'Abate a un par de esos molestos centinelas voladores con tu espada y tráeme 2 restos de chatarra.',
+              `Actualmente llevas: [${scrapCount}/2]. ¡Tráemelos para que encienda la fragua!`
+            ], this._getSmithChoices());
+          }
+        }
+      },
+      {
         label: 'Cuéntame tu vida y oficio (Chapa)',
-        onSelect: () => this._startNPCLifeRant('blacksmith', smithChoices)
+        onSelect: () => this._startNPCLifeRant('blacksmith', this._getSmithChoices())
       },
       {
         label: '¿Me das permiso para entrar en tu herrería?',
@@ -974,7 +1060,7 @@ export class RPGGame {
             [
               '¡Así se habla! Pasa cuando quieras a mi herrería, pero no me toques el yunque con las manos sucias.'
             ],
-            smithChoices
+            this._getSmithChoices()
           );
         }
       },
@@ -996,13 +1082,13 @@ export class RPGGame {
                 '¡Claro que sí! Toma una hogaza recién salida del horno de leña de mi forja.',
                 'Se ha añadido [Pan Campesino x1] a tu mochila.'
               ],
-              smithChoices
+              this._getSmithChoices()
             );
           } else {
             this.dialogueBox.showMessage(
               'Herrero Brom · Forjador',
               ['Veo que ya llevas Pan Campesino en tu mochila. ¡Dáselo al perro Toby!'],
-              smithChoices
+              this._getSmithChoices()
             );
           }
         }
@@ -1012,12 +1098,73 @@ export class RPGGame {
         onSelect: () => this.dialogueBox.close()
       }
     ];
+    return smithChoices;
+  }
 
-    // 3. Herbolaria Lyra — Oficio: Botánica y Alquimista (Casa: herbalist_house)
+  _getHerbChoices() {
+    const qSilicon = this.questLog ? this.questLog.getQuest('quest_side_silicon_flowers') : null;
+    const isSiliconDone = qSilicon && qSilicon.status === 'COMPLETED';
+    const flowerCount = this.inventory ? this.inventory.getItemCount('silicon_flower') : 0;
+
     const herbChoices = [
       {
+        label: isSiliconDone
+          ? '✿ [Encargo] "Flores de Silicio" (Completado)'
+          : `✿ [Encargo] "Flores de Silicio" (Entregar Flores: ${flowerCount}/3)`,
+        onSelect: () => {
+          if (isSiliconDone) {
+            this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
+              'Gracias a tus Flores de Silicio, el huerto alquímico emite un rocío purificador.',
+              'Valleverde siempre te estará agradecida, botánico del alba.'
+            ], this._getHerbChoices());
+            return;
+          }
+
+          if (flowerCount >= 3) {
+            this.inventory.consumeItem('silicon_flower', 3);
+            this.player.coins += 25;
+            this.inventory.addItem({
+              id: 'potion',
+              name: 'Poción Herbal',
+              description: 'Elixir de flores curativas. Restaura toda la salud y aporta brío.',
+              iconIndex: ITEM_ICONS.POTION,
+              qty: 1
+            });
+            if (this.music) this.music.playFanfare();
+            if (this.questLog) {
+              this.questLog.completeQuest(
+                'quest_side_silicon_flowers',
+                '¡Entregaste las 3 Flores de Silicio nocturnas a Lyra! Alquimia consagrada.'
+              );
+            }
+            if (this.achievementManager) {
+              this.achievementManager.unlock('ach_side_silicon');
+              this._checkAllSideQuestsAchievement();
+            }
+            this._saveGameToStorage();
+            this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
+              '¡Oh, qué maravilla! Mira qué fulgor cian desprenden en la penumbra... ¡Bioluminiscencia pura!',
+              'Con estas 3 Flores de Silicio podré destilar los elixires más potentes contra los bugs de AI Alex.',
+              'Aquí tienes tu recompensa: [🪙 25 Bytes] y una [Poción Herbal x1] destilada en mi alambique.'
+            ], this._getHerbChoices());
+          } else {
+            if (this.questLog) {
+              this.questLog.advanceStep(
+                'quest_side_silicon_flowers',
+                `Espera a la noche profunda (22:00 PM con tu cama) y recolecta 3 Flores de Silicio. Llevas [${flowerCount}/3].`
+              );
+            }
+            this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
+              'Las Flores de Silicio son una especie mágica y misteriosa: solo florecen y abren sus pétalos de noche (a las 22:00 PM).',
+              'Puedes descansar en la cama de tu Casa del Programador para avanzar el reloj hasta la noche, y luego explorar las lindes del valle para recolectarlas.',
+              `Necesito 3 flores intactas. Llevas en tu mochila: [${flowerCount}/3]. ¡Ten cuidado con la oscuridad!`
+            ], this._getHerbChoices());
+          }
+        }
+      },
+      {
         label: 'Cuéntame tu vida y oficio (Chapa)',
-        onSelect: () => this._startNPCLifeRant('herbalist', herbChoices)
+        onSelect: () => this._startNPCLifeRant('herbalist', this._getHerbChoices())
       },
       {
         label: '¿Puedo entrar a ver tu cabaña?',
@@ -1029,7 +1176,7 @@ export class RPGGame {
             [
               '¡Por supuesto! Limpia tus botas en el felpudo al entrar. Puedes recoger la Poción Herbal de mi mesa.'
             ],
-            herbChoices
+            this._getHerbChoices()
           );
         }
       },
@@ -1050,7 +1197,7 @@ export class RPGGame {
               '¡Toma dos manojos de Trigo Fresco de mi cosecha!',
               'Acércate a las ovejas o gallinas y pulsa [E] para darles de comer.'
             ],
-            herbChoices
+            this._getHerbChoices()
           );
         }
       },
@@ -1059,6 +1206,122 @@ export class RPGGame {
         onSelect: () => this.dialogueBox.close()
       }
     ];
+    return herbChoices;
+  }
+
+  _getFinnChoices() {
+    const qFishing = this.questLog ? this.questLog.getQuest('quest_side_fishing') : null;
+    const isFishingDone = qFishing && qFishing.status === 'COMPLETED';
+    const fishCount = this.inventory ? this.inventory.getItemCount('fish') : 0;
+
+    const fishChoices = [
+      {
+        label: isFishingDone
+          ? '🎣 [Encargo] "Pesca en Aguas Profundas" (Completado)'
+          : `🎣 [Encargo] "Pesca en Aguas Profundas" (Entregar Truchas: ${fishCount}/3)`,
+        onSelect: () => {
+          if (isFishingDone) {
+            this.dialogueBox.showMessage('Finn · Pescador del Río Alba', [
+              '¡Aupa, amigo! Las truchas que me trajiste estaban insuperables.',
+              'El Río Alba siempre premiará a quienes respetan sus corrientes.'
+            ], this._getFinnChoices());
+            return;
+          }
+
+          if (fishCount >= 3) {
+            this.inventory.consumeItem('fish', 3);
+            this.player.coins += 15;
+            if (this.music) this.music.playFanfare();
+            if (this.questLog) {
+              this.questLog.completeQuest(
+                'quest_side_fishing',
+                '¡Entregaste las 3 truchas del Río Alba a Finn! Eres un maestro pescador.'
+              );
+            }
+            if (this.achievementManager) {
+              this.achievementManager.unlock('ach_side_fishing');
+              this._checkAllSideQuestsAchievement();
+            }
+            this._saveGameToStorage();
+            this.dialogueBox.showMessage('Finn · Pescador del Río Alba', [
+              '¡Rediós, qué ejemplares tan magníficos! Frescas, relucientes y pescadas con buen cebo de pan.',
+              '¡Te has ganado a pulso el título de Maestro Pescador del Río Alba!',
+              'Aquí tienes tu recompensa: [🪙 15 Bytes]. ¡Que la corriente te acompañe!'
+            ], this._getFinnChoices());
+          } else {
+            if (this.questLog) {
+              this.questLog.advanceStep(
+                'quest_side_fishing',
+                `Acércate a la orilla del Río Alba con Pan Campesino y pulsa [E]. Llevas [${fishCount}/3] truchas.`
+              );
+            }
+            this.dialogueBox.showMessage('Finn · Pescador del Río Alba', [
+              'Las truchas del Río Alba son desconfiadas y nadan en aguas profundas.',
+              'Si te paras en la orilla del río (al este del pueblo) llevando [Pan Campesino] en la mochila y pulsas [E], arrojarás migajas de cebo y picarán al instante.',
+              `Necesito 3 truchas frescas. Actualmente llevas: [${fishCount}/3]. ¡Vuelve en cuanto las tengas!`
+            ], this._getFinnChoices());
+          }
+        }
+      },
+      {
+        label: `🐟 Comprar Trucha del Río Alba (3 🪙) [Tienes: ${this.player.coins}🪙]`,
+        onSelect: () => {
+          if (this.player.coins < 3) {
+            this.dialogueBox.showMessage('Finn · Pescador', [
+              'La trucha plateada cuesta 3 monedas.'
+            ], this._getFinnChoices());
+            return;
+          }
+          this.player.coins -= 3;
+          this.inventory.addItem({
+            id: 'fish',
+            name: 'Trucha del Río Alba',
+            description: 'Pescado fresco del río. Restaura 1.5 corazones al instante.',
+            iconIndex: ITEM_ICONS.FISH,
+            qty: 1
+          });
+          this.music.playFanfare();
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('Finn · Pescador', [
+            '¡Marchando una trucha fresca! Jugosa y repleta de proteínas para la aventura.'
+          ], this._getFinnChoices());
+        }
+      },
+      {
+        label: `🍶 Comprar Botella de Agua de Manantial (1 🪙) [Tienes: ${this.player.coins}🪙]`,
+        onSelect: () => {
+          if (this.player.coins < 1) {
+            this.dialogueBox.showMessage('Finn · Pescador', [
+              'El agua fresca del pozo cuesta solo 1 🪙.'
+            ], this._getFinnChoices());
+            return;
+          }
+          this.player.coins -= 1;
+          this.inventory.addItem({
+            id: 'spring_water',
+            name: 'Agua de Manantial',
+            description: 'Agua purificada del pozo central de Valleverde. Refresca y calma.',
+            iconIndex: ITEM_ICONS.POTION,
+            qty: 1
+          });
+          this.music.playFanfare();
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('Finn · Pescador', [
+            '¡Agua cristalina y fresca! Perfecta para recuperar el aliento en el camino.'
+          ], this._getFinnChoices());
+        }
+      },
+      {
+        label: 'Hasta luego, Finn',
+        onSelect: () => this.dialogueBox.close()
+      }
+    ];
+
+    return fishChoices;
+  }
+
+  _createVillageNPCs() {
+    const sheet = this.assets.charactersSheet;
 
     return [
       new NPC({
@@ -1146,7 +1409,7 @@ export class RPGGame {
           lines: [
             '¡Clang, clang! Soy Brom, el Maestro Forjador y Panadero de horno de leña.'
           ],
-          choices: smithChoices
+          choices: this._getSmithChoices()
         })
       }),
       new NPC({
@@ -1174,7 +1437,7 @@ export class RPGGame {
           lines: [
             '¡Hola! Soy Lyra, la Botánica y Alquimista de Valleverde. Cuido las plantas y pociones.'
           ],
-          choices: herbChoices
+          choices: this._getHerbChoices()
         })
       }),
       new NPC({
@@ -1246,6 +1509,9 @@ export class RPGGame {
                 if (this.questLog) {
                   this.questLog.completeQuest('quest_main_bridge', 'El puente del Río Alba está abierto. ¡Cruza al este hacia las Pruebas Sagradas!');
                   this.questLog.advanceStep('quest_code_temples', 'El puente está abierto. Explora el Santuario Este y supera los Templos Binarios.');
+                }
+                if (this.achievementManager) {
+                  this.achievementManager.unlock('ach_bridge_pass');
                 }
                 this._saveGameToStorage();
                 this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
@@ -1684,67 +1950,12 @@ export class RPGGame {
           'Al otro lado del puente el río se vuelve misterioso y salvaje...'
         ],
         getDialogues: () => {
-          const fishChoices = [
-            {
-              label: `🐟 Comprar Trucha del Río Alba (3 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 3) {
-                  this.dialogueBox.showMessage('Finn · Pescador', [
-                    'La trucha plateada cuesta 3 monedas.'
-                  ], fishChoices);
-                  return;
-                }
-                this.player.coins -= 3;
-                this.inventory.addItem({
-                  id: 'fish',
-                  name: 'Trucha del Río Alba',
-                  description: 'Pescado fresco del río. Restaura 1.5 corazones al instante.',
-                  iconIndex: ITEM_ICONS.BREAD,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Finn · Pescador', [
-                  '¡Marchando una trucha fresca! Jugosa y repleta de proteínas para la aventura.'
-                ], fishChoices);
-              }
-            },
-            {
-              label: `🍶 Comprar Botella de Agua de Manantial (1 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 1) {
-                  this.dialogueBox.showMessage('Finn · Pescador', [
-                    'El agua fresca del pozo cuesta solo 1 🪙.'
-                  ], fishChoices);
-                  return;
-                }
-                this.player.coins -= 1;
-                this.inventory.addItem({
-                  id: 'spring_water',
-                  name: 'Agua de Manantial',
-                  description: 'Agua purificada del pozo central de Valleverde. Refresca y calma.',
-                  iconIndex: ITEM_ICONS.POTION,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Finn · Pescador', [
-                  '¡Agua cristalina y fresca! Perfecta para recuperar el aliento en el camino.'
-                ], fishChoices);
-              }
-            },
-            {
-              label: 'Hasta luego, Finn',
-              onSelect: () => this.dialogueBox.close()
-            }
-          ];
-
           return {
             lines: [
               '¡Aupa, viajero! Aquí tengo las mejores truchas del Río Alba y agua fresca del pozo.',
               `¿Qué te apetece llevar hoy? Saldo: 💰 ${this.player.coins}🪙.`
             ],
-            choices: fishChoices
+            choices: this._getFinnChoices()
           };
         }
       }),
@@ -2664,6 +2875,39 @@ export class RPGGame {
         y: 4 * 16,
         sceneId: 'player_house',
         itemsSheet
+      }),
+      new WorldItem({
+        id: 'silicon_flower_1',
+        name: 'Flor de Silicio',
+        description: 'Flor bioluminiscente que solo florece durante la noche (22:00 PM). Llévasela a Lyra.',
+        iconIndex: ITEM_ICONS.SILICON_FLOWER,
+        x: 6 * 16,
+        y: 7 * 16,
+        sceneId: 'overworld',
+        itemsSheet,
+        nightOnly: true
+      }),
+      new WorldItem({
+        id: 'silicon_flower_2',
+        name: 'Flor de Silicio',
+        description: 'Flor bioluminiscente que solo florece durante la noche (22:00 PM). Llévasela a Lyra.',
+        iconIndex: ITEM_ICONS.SILICON_FLOWER,
+        x: 23 * 16,
+        y: 4 * 16,
+        sceneId: 'overworld',
+        itemsSheet,
+        nightOnly: true
+      }),
+      new WorldItem({
+        id: 'silicon_flower_3',
+        name: 'Flor de Silicio',
+        description: 'Flor bioluminiscente que solo florece durante la noche (22:00 PM). Llévasela a Lyra.',
+        iconIndex: ITEM_ICONS.SILICON_FLOWER,
+        x: 9 * 16,
+        y: 22 * 16,
+        sceneId: 'overworld',
+        itemsSheet,
+        nightOnly: true
       })
     ];
   }
@@ -2685,7 +2929,11 @@ export class RPGGame {
       if (e.nightOnly && !isNight) return false;
       return true;
     });
-    const items = this.worldItems.filter((i) => i.sceneId === scene && !i.collected);
+    const items = this.worldItems.filter((i) => {
+      if (i.sceneId !== scene || i.collected) return false;
+      if (i.nightOnly && !isNight) return false;
+      return true;
+    });
     return { npcs, animals, enemies, items };
   }
 
@@ -2791,6 +3039,36 @@ export class RPGGame {
       return { kind: 'animal', target: closestAnimal, label: `[E] ${closestAnimal.name}` };
     }
 
+    // Pesca en el Río Alba (overworld, columnas 25 a 32 cerca del agua)
+    if (currentScene === 'overworld') {
+      const pCol = Math.floor(this.player.centerX / 16);
+      const pRow = Math.floor(this.player.centerY / 16);
+      if (pCol >= 25 && pCol <= 32) {
+        let nearWater = false;
+        const ground = this.tilemap.scenes.overworld?.ground;
+        if (ground) {
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              const r = pRow + dr;
+              const c = pCol + dc;
+              if (ground[r] && (ground[r][c] === 4 || ground[r][c] === 5)) { // WATER_1 o WATER_2
+                nearWater = true;
+                break;
+              }
+            }
+            if (nearWater) break;
+          }
+        }
+        if (nearWater) {
+          if (this.inventory && this.inventory.hasItem('bread')) {
+            return { kind: 'river_fishing', label: '[E] Pescar Trucha en el Río Alba (Usa Pan)' };
+          } else {
+            return { kind: 'river_fishing_nobread', label: 'Río Alba (Necesitas Pan Campesino como cebo)' };
+          }
+        }
+      }
+    }
+
     return null;
   }
 
@@ -2827,6 +3105,9 @@ export class RPGGame {
     } else if (item.id === 'bridge_pass') {
       this.tilemap.unlockBridgePermanently();
       this.inventory.statusMessage = '¡Pase activado! Puente abierto 24h.';
+      if (this.achievementManager) {
+        this.achievementManager.unlock('ach_bridge_pass');
+      }
     } else if (item.id === 'potion') {
       this.player.speed = 92;
       this.player.hp = this.player.effectiveMaxHp;
@@ -3016,6 +3297,43 @@ export class RPGGame {
       return;
     }
 
+    if (action.kind === 'river_fishing') {
+      this.inventory.consumeItem('bread', 1);
+      this.inventory.addItem({
+        id: 'fish',
+        name: 'Trucha del Río Alba',
+        description: 'Pescado fresco del río. Restaura 1.5 corazones al instante.',
+        iconIndex: ITEM_ICONS.FISH,
+        qty: 1
+      });
+      if (this.music) {
+        this.music.playFanfare();
+      }
+      const curFish = this.inventory.getItemCount('fish');
+      if (this.questLog) {
+        this.questLog.advanceStep(
+          'quest_side_fishing',
+          `Has pescado ${curFish}/3 Truchas del Río Alba con cebo de pan. Llévalas a Finn en la plaza.`
+        );
+      }
+      this._saveGameToStorage();
+      this.dialogueBox.showMessage('🎣 ¡Trucha del Río Alba Capturada!', [
+        'Arrojaste migajas de Pan Campesino a las aguas cristalinas del Río Alba...',
+        '¡Una hermosa trucha plateada mordió el cebo de inmediato!',
+        `Se ha añadido [Trucha del Río Alba x1] a tu mochila. (Llevas: ${curFish}/3)`
+      ]);
+      return;
+    }
+
+    if (action.kind === 'river_fishing_nobread') {
+      this.dialogueBox.showMessage('Río Alba · Aguas Profundas', [
+        'Las aguas del Río Alba fluyen frescas y cristalinas hacia el este.',
+        'Se aprecian sombras de truchas esquivas nadando en el fondo del río.',
+        'Necesitas llevar [Pan Campesino] en tu mochila para arrojar migajas como cebo y pescarlas.'
+      ]);
+      return;
+    }
+
     if (action.kind === 'sword_monolith') {
       this._handleSwordMonolithStrike(action.target.id);
       return;
@@ -3057,8 +3375,14 @@ export class RPGGame {
         return;
       }
 
+      const invId = item.id.startsWith('silicon_flower')
+        ? 'silicon_flower'
+        : item.id.startsWith('drone_scrap')
+        ? 'drone_scrap'
+        : item.id;
+
       const added = this.inventory.addItem({
-        id: item.id,
+        id: invId,
         name: item.name,
         description: item.description,
         iconIndex: item.iconIndex,
@@ -3066,6 +3390,38 @@ export class RPGGame {
       });
       if (added) {
         item.collected = true;
+
+        if (invId === 'silicon_flower') {
+          const fCount = this.inventory.getItemCount('silicon_flower');
+          if (this.questLog) {
+            this.questLog.advanceStep(
+              'quest_side_silicon_flowers',
+              `Has recolectado ${fCount}/3 Flores de Silicio. Llévaselas a la Herbolaria Lyra en Valleverde.`
+            );
+          }
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('✿ Flor de Silicio Recogida', [
+            'Has recogido una rara Flor de Silicio bioluminiscente de noche.',
+            `Sus pétalos desprenden un fulgor cian hipnótico. (Llevas: ${fCount}/3)`
+          ]);
+          return;
+        }
+
+        if (invId === 'drone_scrap') {
+          const sCount = this.inventory.getItemCount('drone_scrap');
+          if (this.questLog) {
+            this.questLog.advanceStep(
+              'quest_side_fractal_temper',
+              `Has conseguido ${sCount}/2 restos de chatarra de drones. Llévaselos al Herrero Brom.`
+            );
+          }
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('⚙️ Chatarra de Dron Recogida', [
+            'Has recuperado fragmentos de aleación fractal y circuitos de un dron de AI Alex.',
+            `Llévaselos al Herrero Brom para forjar el templado de tu espada. (Llevas: ${sCount}/2)`
+          ]);
+          return;
+        }
 
         if (item.id === 'dawn_armor') {
           this.player.equipArmor();
@@ -3343,8 +3699,13 @@ export class RPGGame {
       this._saveGameToStorage();
     }
 
-    if (door.targetScene === 'condemned_realms' && this.questLog) {
-      this.questLog.advanceStep('quest_condemned_pointer', 'Habla con el Dios Supremo en el altar sagrado para purificar tu corazón e historial penal.');
+    if (door.targetScene === 'condemned_realms') {
+      if (this.questLog) {
+        this.questLog.advanceStep('quest_condemned_pointer', 'Habla con el Dios Supremo en el altar sagrado para purificar tu corazón e historial penal.');
+      }
+      if (this.achievementManager) {
+        this.achievementManager.unlock('ach_condemned');
+      }
     } else if (door.targetScene === 'sewers_dungeon' && this.questLog) {
       this.questLog.advanceStep('quest_boss_garbage', 'Enfréntate al Garbage Collector Furioso en el fondo de las alcantarillas.');
     } else if (door.targetScene === 'ai_fortress_gate' && this.questLog) {
@@ -3765,6 +4126,9 @@ export class RPGGame {
 
     // Ventana Activa: Ficha Técnica y Progresión del Personaje (Tecla 'C')
     if (this.characterStats.isOpen) {
+      if (this.characterStats.handleInput(this.input)) {
+        if (this.music) this.music.playMenuMove();
+      }
       if (this.input.consumeKey('KeyM')) {
         this.characterStats.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
@@ -3981,14 +4345,56 @@ export class RPGGame {
       // Actualizar misiones asociadas a la derrota de cada mini-jefe y jefe final
       if (enemy.isBoss && enemy.dead && !enemy.questCompletedTriggered) {
         enemy.questCompletedTriggered = true;
-        if (enemy.id === 'boss_garbage_collector' && this.questLog) {
-          this.questLog.completeQuest('quest_boss_garbage', '¡Garbage Collector purgado! Dash Asíncrono desbloqueado.');
-        } else if (enemy.id === 'boss_stack_overflow' && this.questLog) {
-          this.questLog.completeQuest('quest_boss_stack', '¡Guardián del Stack Overflow abatido! Corte en Cascada desbloqueado.');
-        } else if (enemy.id === 'boss_prototype_microwave' && this.questLog) {
-          this.questLog.completeQuest('quest_boss_microwave', '¡Prototipo del Microondas destruido! Barrera TypeScript desbloqueada.');
-        } else if (enemy.id === 'boss_final_ai_alex' && this.questLog) {
-          this.questLog.completeQuest('quest_boss_final', '¡Mister AI Alex ha caído! El Ojete Dorado ha sido consagrado.');
+        if (enemy.id === 'boss_garbage_collector') {
+          if (this.questLog) {
+            this.questLog.completeQuest('quest_boss_garbage', '¡Garbage Collector purgado! Dash Asíncrono desbloqueado.');
+          }
+          if (this.achievementManager) {
+            this.achievementManager.unlock('ach_boss_gc');
+          }
+        } else if (enemy.id === 'boss_stack_overflow') {
+          if (this.questLog) {
+            this.questLog.completeQuest('quest_boss_stack', '¡Guardián del Stack Overflow abatido! Corte en Cascada desbloqueado.');
+          }
+          if (this.achievementManager) {
+            this.achievementManager.unlock('ach_boss_stack');
+          }
+        } else if (enemy.id === 'boss_prototype_microwave') {
+          if (this.questLog) {
+            this.questLog.completeQuest('quest_boss_microwave', '¡Prototipo del Microondas destruido! Barrera TypeScript desbloqueada.');
+          }
+          if (this.achievementManager) {
+            this.achievementManager.unlock('ach_boss_microwave');
+          }
+        } else if (enemy.id === 'boss_final_ai_alex') {
+          if (this.questLog) {
+            this.questLog.completeQuest('quest_boss_final', '¡Mister AI Alex ha caído! El Ojete Dorado ha sido consagrado.');
+          }
+          if (this.achievementManager) {
+            this.achievementManager.unlock('ach_golden_anus');
+          }
+        }
+      }
+
+      // Soltar chatarra si es un dron enemigo abatido
+      if (!enemy.isBoss && enemy.dead && !enemy.lootDropped) {
+        enemy.lootDropped = true;
+        if (enemy.id && enemy.id.startsWith('drone')) {
+          this.worldItems.push(
+            new WorldItem({
+              id: `drone_scrap_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+              name: 'Restos de Chatarra de Dron',
+              description: 'Aleación fractal de titanio de un dron de AI Alex. Llévasela al Herrero Brom.',
+              iconIndex: ITEM_ICONS.DRONE_SCRAP,
+              x: enemy.x,
+              y: enemy.y,
+              sceneId: enemy.sceneId,
+              itemsSheet: this.assets.itemsSheet
+            })
+          );
+          if (this.menuSystem) {
+            this.menuSystem.showNotice('⚙️ ¡El dron soltó Restos de Chatarra!', 2.5);
+          }
         }
       }
 
@@ -4016,6 +4422,9 @@ export class RPGGame {
 
     this.camera.update(this.player, dt);
     this.dialogueBox.update(dt);
+    if (this.achievementManager) {
+      this.achievementManager.update(dt);
+    }
 
     this.input.endFrame();
   }
@@ -4093,11 +4502,14 @@ export class RPGGame {
     this._renderHUD(ctx);
     this.dialogueBox.render(ctx);
     this.inventory.render(ctx, this.player);
-    this.characterStats.render(ctx, this.player);
+    this.characterStats.render(ctx, this.player, this.achievementManager);
     if (this.questLogView) {
       this.questLogView.render(ctx);
     }
     this.menuSystem.render(ctx);
+    if (this.achievementManager) {
+      this.achievementManager.renderToast(ctx);
+    }
   }
 
   _renderAbyssalPortal(ctx) {

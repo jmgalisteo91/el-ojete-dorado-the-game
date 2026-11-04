@@ -70,6 +70,33 @@ export const INITIAL_QUESTS = [
     reward: 'Purificación del Corazón Roto y Absolución Penal'
   },
   {
+    id: 'quest_side_fishing',
+    title: 'Pesca en Aguas Profundas',
+    category: 'SIDE',
+    status: 'ACTIVE',
+    description: 'Finn, el pescador de la plaza de Valleverde, necesita 3 Truchas del Río Alba capturadas usando pan campesino como cebo.',
+    currentStep: 'Acércate a la orilla del Río Alba con Pan Campesino, pesca 3 truchas y llévaselas a Finn en la plaza.',
+    reward: '15 Bytes + Destreza Fluvial'
+  },
+  {
+    id: 'quest_side_fractal_temper',
+    title: 'El Templado Fractal',
+    category: 'SIDE',
+    status: 'ACTIVE',
+    description: 'El Herrero Brom necesita 2 restos de chatarra de drones de AI Alex para aplicar un templado fractal a tu espada.',
+    currentStep: 'Derrota drones sombríos en Tierras Hostiles (al oeste) para recolectar 2 restos de chatarra y llévaselos a Brom.',
+    reward: '20 Bytes + Filo Fractal Mejorado'
+  },
+  {
+    id: 'quest_side_silicon_flowers',
+    title: 'Flores de Silicio',
+    category: 'SIDE',
+    status: 'ACTIVE',
+    description: 'La Herbolaria Lyra investiga unas raras flores bioluminiscentes que solo abren sus pétalos durante la noche (22:00 PM).',
+    currentStep: 'Espera a la noche profunda (22:00 PM usando tu cama) y recolecta 3 Flores de Silicio para la Herbolaria Lyra.',
+    reward: '25 Bytes + Poción Curativa Alquímica'
+  },
+  {
     id: 'quest_farm_animals',
     title: 'Compañeros Campesinos',
     category: 'SIDE',

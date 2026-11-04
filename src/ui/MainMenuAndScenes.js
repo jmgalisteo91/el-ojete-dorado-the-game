@@ -1190,7 +1190,7 @@ export class MainMenuAndScenes {
     // 2. Menús y Pantallas
     drawCategoryBox(col1X, winY + 76, col1W, 68, '📜 MENÚS Y PANTALLAS', '#ffd885', [
       { label: 'Mochila de Objetos:', keys: '[I] / [Tab]', keyColor: '#fde047' },
-      { label: 'Ficha de Desarrollo:', keys: '[C]', keyColor: '#38bdf8' },
+      { label: 'Ficha y Trofeos:', keys: '[C]', keyColor: '#38bdf8' },
       { label: 'Diario de Misiones:', keys: '[L]', keyColor: '#fbbf24' },
       { label: 'Cartografía Sagrada:', keys: '[M]', keyColor: '#34d399' },
       { label: 'Pausa / Cerrar ventana:', keys: '[Escape]', keyColor: '#f87171' }

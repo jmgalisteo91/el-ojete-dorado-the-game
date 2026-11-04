@@ -9,6 +9,7 @@ const MODULE_ORDER = [
   'src/core/InputHandler.js',
   'src/core/Camera2D.js',
   'src/core/QuestLog.js',
+  'src/core/AchievementManager.js',
   'src/graphics/SpriteSheetGenerator.js',
   'src/graphics/Animator.js',
   'src/world/Tilemap.js',

@@ -23,7 +23,7 @@ export class InputHandler {
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerDown = this._onPointerDown.bind(this);
 
-    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keydown', this._onKeyDown, { passive: false });
     window.addEventListener('keyup', this._onKeyUp);
     window.addEventListener('blur', this._onBlur);
     window.addEventListener('pointermove', this._onPointerMove);
@@ -70,14 +70,29 @@ export class InputHandler {
     }
 
     const code = event.code;
+    const key = event.key;
+
+    // Lista de códigos de teclas de juego
     const gameCodes = [
       'KeyW', 'KeyA', 'KeyS', 'KeyD',
       'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
       'KeyE', 'Space', 'Enter', 'KeyF', 'KeyJ', 'KeyK', 'KeyI', 'KeyC', 'KeyX', 'Tab', 'Escape', 'KeyM',
-      'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyL'
+      'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyL', 'Digit1', 'Digit2'
     ];
 
-    if (gameCodes.includes(code)) {
+    // Prevenir el scroll por defecto de la página web (Espacio, Flechas, Tab) en el navegador / Vercel
+    const isScrollKey =
+      code === 'Space' ||
+      key === ' ' ||
+      key === 'Spacebar' ||
+      code.startsWith('Arrow') ||
+      key.startsWith('Arrow') ||
+      code === 'Tab' ||
+      key === 'Tab' ||
+      code === 'PageUp' ||
+      code === 'PageDown';
+
+    if (gameCodes.includes(code) || isScrollKey) {
       event.preventDefault();
     }
 
