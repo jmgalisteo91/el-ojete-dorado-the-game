@@ -304,6 +304,10 @@ export class Player extends Entity {
       return;
     }
 
+    // Autodesbloqueo preventivo: si el jugador quedó solapado con una baldosa sólida,
+    // desplazarlo inmediatamente a la celda libre más cercana para que nunca quede pillado.
+    this._ensureUnstuck(tilemap);
+
     // Ejecución de Dash Asíncrono
     if (input && typeof input.consumeDash === 'function' && input.consumeDash()) {
       this.tryDash(input, soundEngine);
@@ -371,6 +375,35 @@ export class Player extends Entity {
     }
 
     super.update(dt);
+  }
+
+  /**
+   * Comprueba si el hitbox actual del jugador colisiona con el tilemap sólido y,
+   * en caso afirmativo, lo reposiciona suavemente en la coordenada libre más cercana.
+   */
+  _ensureUnstuck(tilemap) {
+    if (!tilemap) return;
+    const currentBox = this.getHitbox(this.x, this.y);
+    if (!CollisionSystem.isAreaBlocked(currentBox, tilemap, [], this)) {
+      return;
+    }
+
+    const dirs = [
+      [0, 1], [0, -1], [1, 0], [-1, 0],
+      [1, 1], [-1, 1], [1, -1], [-1, -1]
+    ];
+    for (let dist = 2; dist <= 48; dist += 2) {
+      for (const [dx, dy] of dirs) {
+        const candX = this.x + dx * dist;
+        const candY = this.y + dy * dist;
+        const candBox = this.getHitbox(candX, candY);
+        if (!CollisionSystem.isAreaBlocked(candBox, tilemap, [], this)) {
+          this.x = candX;
+          this.y = candY;
+          return;
+        }
+      }
+    }
   }
 
   render(ctx, camera) {

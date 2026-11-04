@@ -2789,24 +2789,24 @@ export class RPGGame {
       new Animal({
         name: 'Gallina Pinta',
         species: 'chicken',
-        x: 11 * 16,
+        x: 8 * 16,
         y: 20 * 16,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.CHICKEN, 16, 16, 0.12),
         soundText: '¡Cloc, cloc! La gallina picotea entre el pasto.',
         fedText: '¡Gallina Pinta picotea las semillas de trigo a toda velocidad! ♥',
         speed: 28,
-        homeRadius: 36
+        homeRadius: 28
       }),
       new Animal({
         name: 'Gallina Dorada',
         species: 'chicken',
-        x: 14 * 16,
-        y: 20 * 16,
+        x: 9 * 16,
+        y: 21 * 16,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.CHICKEN, 16, 16, 0.12),
         soundText: '¡Co-co-ro-có! Busca granos cerca del vallado.',
         fedText: '¡Le diste trigo a Gallina Dorada! Aletea muy contenta. ♥',
         speed: 28,
-        homeRadius: 36
+        homeRadius: 28
       }),
       new Animal({
         name: 'Perro Toby',
@@ -3613,6 +3613,8 @@ export class RPGGame {
       this._openBedSleepMenu();
     } else if (action.kind === 'door') {
       const door = action.target;
+      this.player.stopMovement();
+
       if (door.type === 'bridge_gate') {
         if (this.music) this.music.playDoorLockedSound();
         this.dialogueBox.showMessage('Puente del Este · Precintado', [
@@ -3638,7 +3640,7 @@ export class RPGGame {
           if (!this.player.hasArmor || !this.player.hasSword) {
             if (this.music) this.music.playDoorLockedSound();
             if (this.tilemap.currentSceneId === 'overworld') {
-              this.player.x = 3.5 * this.tilemap.tileSize;
+              this.player.x = Math.max(this.player.x, 2.5 * this.tilemap.tileSize);
             }
             this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
               '¡Detente! Las Ruinas del Despertar están infestadas de drones y anomalías corruptas de Mister AI Alex.',
@@ -3652,10 +3654,9 @@ export class RPGGame {
         if (door.targetScene === 'sewers_dungeon') {
           if (!this.player.hasArmor || !this.player.hasSword) {
             if (this.music) this.music.playDoorLockedSound();
-            this.player.y = 19 * this.tilemap.tileSize;
             this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
-              '¡Un hedor a memoria corrompida y fugas de punteros brota de la trampilla!',
-              'No puedes descender a la Fosa de Memoria sin tu Armadura Binaria y tu Espada de la Recursividad para enfrentar al Garbage Collector Furioso.',
+              '¡Un hedor a memoria corrompida y fugas de punteros brota de la trampilla de la alcantarilla!',
+              'No puedes descender a la Fosa de Memoria sin tu Armadura Binaria y tu Espada de la Recursividad para enfrentar al Boss 1: El Garbage Collector Furioso.',
               'Habla con Aurelio y supera las Pruebas Sagradas del Este antes de descender a las cloacas.'
             ]);
             return;
@@ -3665,11 +3666,6 @@ export class RPGGame {
         if (door.targetScene === 'sword_temple') {
           if (!this.player.hasArmor) {
             if (this.music) this.music.playDoorLockedSound();
-            if (this.tilemap.currentSceneId === 'overworld') {
-              this.player.y = 18 * this.tilemap.tileSize;
-            } else {
-              this.player.y = door.worldY + 24;
-            }
             this.dialogueBox.showMessage('⚠️ [ORDEN DE LAS PRUEBAS SAGRADAS]', [
               'El Gran Sabio Aurelio te encomendó consagrar primero la Armadura del Código Binario en el Templo Septentrional (Norte).',
               'La energía de la Espada de la Recursividad ejerce una presión psíquica letal sobre quien no vista la armadura sagrada.',
@@ -3682,7 +3678,6 @@ export class RPGGame {
         if (door.targetScene === 'ai_fortress_gate' || door.targetScene === 'ai_citadel') {
           if (!this.player.hasArmor || !this.player.hasSword) {
             if (this.music) this.music.playDoorLockedSound();
-            this.player.y = door.worldY + 24;
             this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
               'La Fortaleza de Mister AI Alex está protegida por barreras electromagnéticas letales.',
               'Necesitas tu equipo sagrado completo (Armadura Binaria y Espada de la Recursividad) antes de franquear este umbral.'
@@ -3708,7 +3703,6 @@ export class RPGGame {
               label: 'No, permanecer en Valleverde',
               onSelect: () => {
                 this.dialogueBox.close();
-                this.player.y = 4 * this.tilemap.tileSize;
               }
             }
           ]);
@@ -3720,17 +3714,29 @@ export class RPGGame {
           : door.targetScene === 'armor_temple'
             ? 'Templo de la Armadura del Código Binario'
             : door.targetScene === 'sword_temple'
-              ? 'Templo de la Espada de la Recursividad'
-              : 'las Tierras Exteriores';
+              ? 'Templo de la Espada de la Recursividad (Boss 2)'
+              : door.targetScene === 'sewers_dungeon'
+                ? 'Alcantarillas · Boss 1: El Garbage Collector Furioso'
+                : door.targetScene === 'ai_fortress_gate'
+                  ? 'Umbral de la Fortaleza · Boss 3: Microondas Prototipo'
+                  : door.targetScene === 'ai_citadel'
+                    ? 'Ciudadela de AI Alex · Boss Final: El Gran Ojal'
+                    : 'las Tierras Exteriores';
 
         const isTemple = door.targetScene === 'armor_temple' || door.targetScene === 'sword_temple';
+        const isBossArena =
+          door.targetScene === 'sewers_dungeon' ||
+          door.targetScene === 'ai_fortress_gate' ||
+          door.targetScene === 'ai_citadel';
         const inFirstStage = this.tilemap.currentSceneId === 'first_stage';
 
         this.dialogueBox.showMessage(`Acceso: ${destTitle}`, [
           `Estás ante el umbral de [${destTitle}].`,
-          isTemple
-            ? 'En su interior reposan reliquias sagradas y pruebas del Código Primigenio.'
-            : 'Más allá de los límites protegidos de Valleverde acechan bugs salvajes y la corrupción de Mister AI Alex.',
+          isBossArena
+            ? '¡PELIGRO DE JEFE! En el interior de esta cámara aguarda uno de los grandes guardianes de Mister AI Alex.'
+            : isTemple
+              ? 'En su interior reposan reliquias sagradas y pruebas del Código Primigenio.'
+              : 'Más allá de los límites protegidos de Valleverde acechan bugs salvajes y la corrupción de Mister AI Alex.',
           '¿Deseas franquear el acceso y continuar?'
         ], [
           {
@@ -3764,14 +3770,8 @@ export class RPGGame {
             label: 'No, permanecer aquí',
             onSelect: () => {
               this.dialogueBox.close();
-              if (inFirstStage) {
-                this.player.y = door.worldY + 24;
-              } else if (door.targetScene === 'first_stage' && this.tilemap.currentSceneId === 'overworld') {
-                this.player.x = 3.5 * this.tilemap.tileSize;
-              } else if (door.targetScene === 'armor_temple' && this.tilemap.currentSceneId === 'overworld') {
-                this.player.y = 7 * this.tilemap.tileSize;
-              } else if (door.targetScene === 'sword_temple' && this.tilemap.currentSceneId === 'overworld') {
-                this.player.y = 18 * this.tilemap.tileSize;
+              if (door.targetScene === 'first_stage' && this.tilemap.currentSceneId === 'overworld') {
+                this.player.x = Math.max(this.player.x, 2.5 * this.tilemap.tileSize);
               }
             }
           }
@@ -4726,7 +4726,7 @@ export class RPGGame {
     ctx.fillStyle = '#0e111a';
     ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
 
-    this.tilemap.render(ctx, this.camera);
+    this.tilemap.render(ctx, this.camera, this.enemies, this.player);
 
     // Renderizado del Portal Abisal estilo Diablo (tanto en la escena de origen como en el retorno de Reinos Condenados)
     if (this.activeAbyssalPortal && this.activeAbyssalPortal.sceneId === this.tilemap.currentSceneId) {

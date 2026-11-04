@@ -527,6 +527,22 @@ export class Tilemap {
       { x: 19.5 * 16, y: 3.5 * 16, radius: 46, intensity: 0.9 }
     );
 
+    // 3b. Umbral de la Fortaleza de AI Alex en el Noreste (Boss 3: Microondas Prototipo + Acceso a Boss Final)
+    fillRect(ground, 26, 2, 5, 4, TILES.STONE_FLOOR);
+    fillRect(ground, 28, 6, 2, 6, TILES.PATH);
+    setDeco(26, 2, TILES.WALL_INTERIOR, true);
+    setDeco(27, 2, TILES.WALL_INTERIOR, true);
+    setDeco(28, 2, TILES.PORTAL_GATE_OPEN, true);
+    setDeco(29, 2, TILES.PORTAL_GATE_OPEN, true);
+    setDeco(30, 2, TILES.WALL_INTERIOR, true);
+    setDeco(26, 3, TILES.LAMPPOST, true);
+    setDeco(30, 3, TILES.LAMPPOST, true);
+    lightSources.push(
+      { x: 28.5 * 16, y: 2.5 * 16, radius: 64, intensity: 1.0, color: '#ef4444' },
+      { x: 26.5 * 16, y: 3.5 * 16, radius: 44, intensity: 0.85 },
+      { x: 30.5 * 16, y: 3.5 * 16, radius: 44, intensity: 0.85 }
+    );
+
     // 4. Farolas del Santuario del Sabio en el Sur
     setDeco(14, 17, TILES.LAMPPOST, true);
     setDeco(20, 17, TILES.LAMPPOST, true);
@@ -555,7 +571,9 @@ export class Tilemap {
     };
 
     for (let c = 0; c < cols; c += 2) {
-      placeTree(c, 1);
+      if (c < 26 || c > 30) {
+        placeTree(c, 1);
+      }
       placeTree(c + 1, 23);
     }
     for (let r = 3; r < rows - 2; r += 2) {
@@ -569,7 +587,7 @@ export class Tilemap {
     const tacticalTrees = [
       [11, 7], [12, 8], [22, 7], [23, 8],
       [11, 16], [12, 17], [22, 16], [23, 17],
-      [27, 8], [28, 16]
+      [25, 8], [28, 16]
     ];
     for (const [tc, tr] of tacticalTrees) {
       placeTree(tc, tr);
@@ -670,6 +688,17 @@ export class Tilemap {
     fillRect(ground, 7, 14, 2, 2, TILES.PATH);
     fillRect(ground, 19, 19, 4, 2, TILES.PATH);
     fillRect(ground, 18, 19, 2, 2, TILES.PATH);
+
+    // === PLAZA DE LA ALCANTARILLA MUNICIPAL (BOSS 1: EL GARBAGE COLLECTOR FURIOSO) ===
+    fillRect(ground, 11, 20, 4, 2, TILES.STONE_FLOOR);
+    fillRect(ground, 15, 20, 3, 2, TILES.PATH);
+    lightSources.push({
+      x: 12.5 * this.tileSize,
+      y: 20.5 * this.tileSize,
+      radius: 44,
+      intensity: 0.9,
+      color: '#22c55e'
+    });
 
     // === MERCADO CENTRAL DE LA PLAZA DE VALLEVERDE ===
     // 1. Puesto Noroeste: Panadería y Frutas de Clara
@@ -876,7 +905,18 @@ export class Tilemap {
         lines: [
           '«← Cabaña de Lyra (Alquimista y Herbolaria).»',
           '«→ Cuartel de la Guardia del Binario y Calabozo Municipal.»',
-          '«↓ Pastos comunales y corral de animales.»'
+          '«↙ SUROESTE: Alcantarillas Municipales (💀 Boss 1: Garbage Collector Furioso).»'
+        ]
+      },
+      {
+        c: 10,
+        r: 20,
+        shortName: 'Alcantarilla (Boss 1)',
+        title: '🪧 Entrada a las Alcantarillas · Boss 1: Garbage Collector',
+        lines: [
+          '«↓ TRAMPILLA DE HIERRO: Acceso a la Fosa de Memoria Subterránea.»',
+          '«💀 PELIGRO DE JEFE (BOSS 1): El Garbage Collector Furioso custodia las cloacas. Requiere Armadura Binaria y Espada de la Recursividad.»',
+          '«Recompensa al derrotarlo: Habilidad [Dash Asíncrono] (Tecla SHIFT).»'
         ]
       }
     ];
@@ -902,8 +942,9 @@ export class Tilemap {
       if (c >= 26 && r >= 10 && r <= 15) return true;
       // Camino Norte
       if (c >= 16 && c <= 19 && r <= 6) return true;
-      // Camino Sur
+      // Camino Sur y Plaza de la Alcantarilla (Boss 1)
       if (c >= 16 && c <= 19 && r >= 18) return true;
+      if (c >= 10 && c <= 16 && r >= 19 && r <= 22) return true;
       // Plaza central y mercado
       if (c >= 12 && c <= 22 && r >= 8 && r <= 16) return true;
       return false;
@@ -1720,7 +1761,7 @@ export class Tilemap {
     };
   }
 
-  render(ctx, camera) {
+  render(ctx, camera, enemies = [], player = null) {
     const camX = camera.renderX;
     const camY = camera.renderY;
 
@@ -1758,11 +1799,219 @@ export class Tilemap {
       }
     }
 
-    // Renderizar elementos dinámicos de los minijuegos según la escena actual
+    // Renderizar elementos dinámicos de los minijuegos y señalizaciones de Bosses/Mazmorras
     if (this.currentSceneId === 'armor_temple') {
       this.renderArmorPuzzle(ctx, camera);
     } else if (this.currentSceneId === 'sword_temple') {
       this.renderSwordPuzzle(ctx, camera);
+    }
+
+    this.renderBossAndDungeonIndicators(ctx, camera, enemies, player);
+  }
+
+  /**
+   * Renderiza la trampilla pixel-art de la Alcantarilla en Valleverde y las indicaciones
+   * flotantes de todos los Bosses y Templos principales para guiar visualmente al jugador.
+   */
+  renderBossAndDungeonIndicators(ctx, camera, enemies = [], player = null) {
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const t = performance.now() * 0.003;
+
+    const isBossDead = (bossId) => {
+      if (!Array.isArray(enemies)) return false;
+      const b = enemies.find((e) => e.id === bossId);
+      return Boolean(b && b.dead);
+    };
+
+    const drawFloatingMarker = (worldX, worldY, label, subLabel, borderColor, textColor, pulseArrow = true) => {
+      const sx = Math.round(worldX - camX);
+      const sy = Math.round(worldY - camY + Math.sin(t * 2.2) * 1.8);
+      if (sx < -90 || sx > camera.viewportWidth + 90 || sy < -40 || sy > camera.viewportHeight + 40) {
+        return;
+      }
+
+      ctx.save();
+      ctx.font = 'bold 5px monospace';
+      const w1 = ctx.measureText(label).width;
+      const w2 = subLabel ? ctx.measureText(subLabel).width : 0;
+      const boxW = Math.ceil(Math.max(w1, w2)) + 10;
+      const boxH = subLabel ? 15 : 9;
+      const bx = Math.round(sx - boxW / 2);
+      const by = Math.round(sy - boxH);
+
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.88)';
+      ctx.fillRect(bx, by, boxW, boxH);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = textColor;
+      ctx.fillText(label, sx, by + (subLabel ? 4.5 : 4.5));
+
+      if (subLabel) {
+        ctx.font = '4.5px monospace';
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillText(subLabel, sx, by + 11);
+      }
+
+      if (pulseArrow) {
+        ctx.fillStyle = borderColor;
+        ctx.beginPath();
+        ctx.moveTo(sx - 3, by + boxH + 1);
+        ctx.lineTo(sx + 3, by + boxH + 1);
+        ctx.lineTo(sx, by + boxH + 4);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    };
+
+    if (this.currentSceneId === 'overworld') {
+      // 1. DIBUJAR ALCANTARILLA / TRAMPILLA SUBTERRÁNEA EN (12..13, 20)
+      const gx = Math.round(12 * this.tileSize - camX);
+      const gy = Math.round(20 * this.tileSize - camY);
+      const boss1Dead = isBossDead('boss_garbage_collector');
+
+      ctx.save();
+      // Brocal de piedra oscura (24x16 px centrado en 12.5, 20.5)
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(gx + 4, gy + 1, 24, 15);
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(gx + 4.5, gy + 1.5, 23, 14);
+
+      // Foso abisal interior
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(gx + 6, gy + 3, 20, 11);
+
+      // Escalera metálica descendente en el lado derecho de la alcantarilla
+      ctx.fillStyle = '#b45309';
+      ctx.fillRect(gx + 18, gy + 3, 1, 11);
+      ctx.fillRect(gx + 23, gy + 3, 1, 11);
+      ctx.fillStyle = '#f59e0b';
+      for (let ry = 5; ry <= 12; ry += 3) {
+        ctx.fillRect(gx + 19, gy + ry, 4, 1);
+      }
+
+      // Barrotes de hierro forjado en la mitad izquierda
+      ctx.fillStyle = '#475569';
+      for (let bx = 8; bx <= 15; bx += 3) {
+        ctx.fillRect(gx + bx, gy + 3, 1, 11);
+      }
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(gx + 6, gy + 8, 11, 1);
+
+      // Vapores verdes de Memory Leak emanando si el Boss 1 sigue activo
+      if (!boss1Dead) {
+        const fumeAlpha = 0.35 + Math.sin(t * 2.5) * 0.2;
+        ctx.fillStyle = `rgba(34, 197, 94, ${fumeAlpha.toFixed(2)})`;
+        const fy1 = Math.round((t * 8) % 10);
+        const fy2 = Math.round(((t * 8) + 5) % 10);
+        ctx.fillRect(gx + 9, gy + 8 - fy1, 3, 3);
+        ctx.fillRect(gx + 15, gy + 9 - fy2, 2, 2);
+      }
+      ctx.restore();
+
+      // Indicador flotante sobre la Alcantarilla (Boss 1)
+      drawFloatingMarker(
+        12.5 * this.tileSize,
+        19.6 * this.tileSize,
+        boss1Dead ? '✓ ALCANTARILLA (BOSS 1 PURGADO)' : '💀 BOSS 1: ALCANTARILLAS [E]',
+        boss1Dead ? 'Habilidad: Dash Asíncrono' : 'El Garbage Collector Furioso',
+        boss1Dead ? '#22c55e' : '#ef4444',
+        boss1Dead ? '#86efac' : '#fca5a5'
+      );
+
+      // Indicador flotante sobre Templo 1 (Norte del Río: Armadura Binaria)
+      const hasArmor = Boolean(player && player.hasArmor);
+      drawFloatingMarker(
+        34.5 * this.tileSize,
+        4.4 * this.tileSize,
+        hasArmor ? '✓ TEMPLO 1: ARMADURA BINARIA' : '🛡️ 1º TEMPLO: ARMADURA BINARIA [E]',
+        'Prueba de Compilación Booleana',
+        hasArmor ? '#22c55e' : '#38bdf8',
+        hasArmor ? '#86efac' : '#7dd3fc'
+      );
+
+      // Indicador flotante sobre Templo 2 (Sur del Río: Espada + Boss 2)
+      const boss2Dead = isBossDead('boss_stack_overflow');
+      const hasSword = Boolean(player && player.hasSword);
+      drawFloatingMarker(
+        34.5 * this.tileSize,
+        18.4 * this.tileSize,
+        boss2Dead && hasSword ? '✓ TEMPLO 2: ESPADA Y BOSS 2' : '⚔️ 2º TEMPLO: ESPADA + 💀 BOSS 2 [E]',
+        ' Guardián del Stack Overflow',
+        boss2Dead && hasSword ? '#22c55e' : '#f59e0b',
+        boss2Dead && hasSword ? '#86efac' : '#fde047'
+      );
+
+      // Indicador en la salida Oeste hacia Ruinas del Despertar (Boss 3 y Boss Final)
+      drawFloatingMarker(
+        2.4 * this.tileSize,
+        11.3 * this.tileSize,
+        '◀ RUINAS DEL DESPERTAR',
+        '💀 Boss 3 (Fortaleza) y 👑 Boss Final',
+        '#c084fc',
+        '#e9d5ff'
+      );
+    } else if (this.currentSceneId === 'first_stage') {
+      const hasArmor = Boolean(player && player.hasArmor);
+      const hasSword = Boolean(player && player.hasSword);
+      const boss2Dead = isBossDead('boss_stack_overflow');
+      const boss3Dead = isBossDead('boss_prototype_microwave');
+
+      drawFloatingMarker(
+        6.5 * this.tileSize,
+        6.3 * this.tileSize,
+        hasArmor ? '✓ TEMPLO ARMADURA BINARIA' : '🛡️ TEMPLO ARMADURA BINARIA [E]',
+        'Oeste · Equípate primero aquí',
+        hasArmor ? '#22c55e' : '#38bdf8',
+        hasArmor ? '#86efac' : '#7dd3fc'
+      );
+
+      drawFloatingMarker(
+        17.5 * this.tileSize,
+        1.6 * this.tileSize,
+        boss2Dead && hasSword ? '✓ TEMPLO ESPADA + BOSS 2' : '⚔️ TEMPLO ESPADA + 💀 BOSS 2 [E]',
+        'Norte · Guardián del Stack Overflow',
+        boss2Dead && hasSword ? '#22c55e' : '#f59e0b',
+        boss2Dead && hasSword ? '#86efac' : '#fde047'
+      );
+
+      drawFloatingMarker(
+        28.5 * this.tileSize,
+        1.6 * this.tileSize,
+        boss3Dead ? '👑 ACCESO CIUDADELA (BOSS FINAL) [E]' : '💀 BOSS 3: FORTALEZA DE AI ALEX [E]',
+        boss3Dead ? 'Hacia Mister AI Alex' : 'Microondas Prototipo V0.1 + Ciudadela',
+        '#ef4444',
+        '#fca5a5'
+      );
+    } else if (this.currentSceneId === 'sword_temple') {
+      const boss2Dead = isBossDead('boss_stack_overflow');
+      if (!boss2Dead) {
+        drawFloatingMarker(
+          11.5 * this.tileSize,
+          1.3 * this.tileSize,
+          this.swordPuzzle?.portalOpen ? '💀 BOSS 2: STACK OVERFLOW (ACTIVO)' : '🔒 PORTAL SELLADO · BOSS 2',
+          this.swordPuzzle?.portalOpen ? '¡Derrota al jefe en la arena!' : 'Golpea los Monolitos: 3 -> 1 -> 2',
+          '#a855f7',
+          '#e9d5ff'
+        );
+      }
+    } else if (this.currentSceneId === 'ai_fortress_gate') {
+      const boss3Dead = isBossDead('boss_prototype_microwave');
+      const finalDead = isBossDead('boss_final_ai_alex');
+      drawFloatingMarker(
+        11.5 * this.tileSize,
+        1.3 * this.tileSize,
+        finalDead ? '✓ CIUDADELA DE AI ALEX LIBERADA' : '👑 BOSS FINAL: CIUDADELA DE AI ALEX [E]',
+        boss3Dead ? 'Cruza el portal norte hacia El Gran Ojal' : '¡Cuidado: Boss 3 Microondas Prototipo en sala!',
+        '#ef4444',
+        '#fde047'
+      );
     }
   }
 
