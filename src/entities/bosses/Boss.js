@@ -200,7 +200,7 @@ export class Boss extends Enemy {
     // Chequeo de espadazo estándar
     const swordBox = player ? player.getSwordHitbox() : null;
     if (swordBox && CollisionSystem.checkAABB(swordBox, this.worldBoundingBox)) {
-      this.takeSwordHit(player, soundEngine, 1);
+      this.takeSwordHit(player, soundEngine, player.getSwordDamage());
       if (this.dead) return { hitPlayer: false };
     }
 

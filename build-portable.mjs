@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MODULE_ORDER = [
   'src/core/GameLoop.js',
   'src/core/DoorGatekeeper.js',
+  'src/core/SkillCatalog.js',
   'src/core/InputHandler.js',
   'src/core/Camera2D.js',
   'src/core/QuestLog.js',
@@ -19,6 +20,8 @@ const MODULE_ORDER = [
   'src/entities/Player.js',
   'src/entities/NPC.js',
   'src/entities/Animal.js',
+  'src/ai/Pathfinding.js',
+  'src/ai/EnemyBrain.js',
   'src/entities/Enemy.js',
   'src/entities/bosses/Boss.js',
   'src/entities/bosses/GarbageCollectorBoss.js',

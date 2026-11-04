@@ -7,12 +7,16 @@
  * Se abre y cierra con la tecla 'C'.
  */
 
+import { SKILL_DEFS } from '../core/SkillCatalog.js?v=6';
+
 export class CharacterStats {
   constructor(viewportWidth = 320, viewportHeight = 180) {
     this.viewportWidth = viewportWidth;
     this.viewportHeight = viewportHeight;
     this.isOpen = false;
-    this.activeTab = 'stats'; // 'stats' | 'achievements'
+    this.activeTab = 'stats'; // 'stats' | 'achievements' | 'skills'
+    this.skillCursor = 0;
+    this.skillMessage = '';
   }
 
   open() {
@@ -28,13 +32,14 @@ export class CharacterStats {
   }
 
   switchTab(tab) {
-    if (tab === 'stats' || tab === 'achievements') {
+    if (tab === 'stats' || tab === 'achievements' || tab === 'skills') {
       this.activeTab = tab;
     }
   }
 
   cycleTab() {
-    this.activeTab = this.activeTab === 'stats' ? 'achievements' : 'stats';
+    const order = ['stats', 'achievements', 'skills'];
+    this.activeTab = order[(order.indexOf(this.activeTab) + 1) % order.length];
   }
 
   /**
@@ -63,8 +68,33 @@ export class CharacterStats {
   /**
    * Procesa pulsaciones de teclado y clics de ratón dentro de la ventana.
    */
-  handleInput(input) {
+  handleInput(input, player = null) {
     if (!this.isOpen || !input) return false;
+
+    // Pestaña de habilidades: W/S navegan, Enter/E compran. A/D/Tab siguen cambiando de pestaña.
+    if (this.activeTab === 'skills') {
+      if (input.consumeKey('KeyW') || input.consumeKey('ArrowUp')) {
+        this.skillCursor = (this.skillCursor + SKILL_DEFS.length - 1) % SKILL_DEFS.length;
+        return true;
+      }
+      if (input.consumeKey('KeyS') || input.consumeKey('ArrowDown')) {
+        this.skillCursor = (this.skillCursor + 1) % SKILL_DEFS.length;
+        return true;
+      }
+      if (input.consumeKey('Enter') || input.consumeKey('KeyE') || input.consumeKey('Space')) {
+        const def = SKILL_DEFS[this.skillCursor];
+        if (player && def) {
+          if (player.skills[def.key]) {
+            this.skillMessage = 'Ya dominas esta habilidad.';
+          } else if (player.purchaseSkill(def.key)) {
+            this.skillMessage = `¡${def.name} desbloqueada!`;
+          } else {
+            this.skillMessage = `Necesitas ${def.cost} punto(s) de habilidad.`;
+          }
+        }
+        return true;
+      }
+    }
 
     // Cambiar de pestaña mediante Tab, 1, 2, A, D, Flechas
     if (
@@ -85,6 +115,10 @@ export class CharacterStats {
       this.switchTab('achievements');
       return true;
     }
+    if (input.consumeKey('Digit3') || input.consumeKey('Numpad3')) {
+      this.switchTab('skills');
+      return true;
+    }
 
     // Interacción por clic de ratón en las pestañas superiores
     if (input.pointerJustClicked) {
@@ -100,6 +134,9 @@ export class CharacterStats {
           return true;
         } else if (px >= winX + 97 && px <= winX + 195) {
           this.switchTab('achievements');
+          return true;
+        } else if (px >= winX + 197 && px <= winX + 268) {
+          this.switchTab('skills');
           return true;
         }
       }
@@ -183,18 +220,26 @@ export class CharacterStats {
     ctx.fillStyle = isTab2 ? '#ffd885' : '#64748b';
     ctx.fillText(`[2] 🏆 TROFEOS (${unlockedCount}/${totalCount})`, winX + 98 + tab2W / 2, tabY + 5.5);
 
-    // Atajo superior derecho
-    ctx.font = '5px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
-    ctx.fillText('[Tab] Alternar  ·  [C/Esc] Salir', winX + winW - 8, winY + 7);
+    // Pestaña 3: Árbol de habilidades
+    const isTab3 = this.activeTab === 'skills';
+    ctx.fillStyle = isTab3 ? '#1e293b' : '#0b101c';
+    ctx.fillRect(winX + 198, tabY, 70, 11);
+    ctx.strokeStyle = isTab3 ? '#f59e0b' : '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(winX + 198.5, tabY + 0.5, 69, 10);
+    ctx.font = 'bold 5.5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isTab3 ? '#ffd885' : '#64748b';
+    ctx.fillText(`[3] ⭐ HABIL. (${player ? player.skillPoints : 0})`, winX + 198 + 35, tabY + 5.5);
 
     // =========================================================================
     // CONTENIDO SEGÚN LA PESTAÑA ACTIVA
     // =========================================================================
     if (this.activeTab === 'stats') {
       this._renderStatsTab(ctx, winX, winY, winW, winH, player, t);
+    } else if (this.activeTab === 'skills') {
+      this._renderSkillsTab(ctx, winX, winY, winW, winH, player);
     } else {
       this._renderAchievementsTab(ctx, winX, winY, winW, winH, achievementManager);
     }
@@ -207,9 +252,9 @@ export class CharacterStats {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(
-      this.activeTab === 'stats'
-        ? '[Tab / 2] Ver Trofeos  ·  [I] Mochila  ·  [L] Diario  ·  [C / Esc] Cerrar'
-        : '[Tab / 1] Ver Perfil  ·  [I] Mochila  ·  [L] Diario  ·  [C / Esc] Cerrar',
+      this.activeTab === 'skills'
+        ? '[W/S] Elegir  ·  [Enter/E] Comprar  ·  [Tab] Cambiar pestaña  ·  [C / Esc] Cerrar'
+        : '[Tab / 1-3] Cambiar pestaña  ·  [I] Mochila  ·  [L] Diario  ·  [C / Esc] Cerrar',
       winX + winW / 2,
       winY + winH - 7
     );
@@ -399,6 +444,55 @@ export class CharacterStats {
   /**
    * Renderiza la pestaña de Trofeos y Logros del sistema.
    */
+  /**
+   * Árbol de habilidades: se compran con puntos ganados al derrotar enemigos (1 cada 4, 2 por jefe).
+   */
+  _renderSkillsTab(ctx, winX, winY, winW, winH, player) {
+    const x = winX + 10;
+    let y = winY + 24;
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 6px monospace';
+    ctx.fillStyle = '#ffd885';
+    ctx.fillText(`PUNTOS DE HABILIDAD: ${player ? player.skillPoints : 0}`, x, y);
+    ctx.font = '5px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(`Enemigos derrotados: ${player ? player.killCount : 0}  ·  Combo: 3 golpes · Parry: [Q] justo antes del impacto`, x, y + 9);
+    y += 22;
+
+    SKILL_DEFS.forEach((def, i) => {
+      const owned = Boolean(player && player.skills[def.key]);
+      const selected = i === this.skillCursor;
+      const rowH = 24;
+      ctx.fillStyle = selected ? '#1e293b' : '#0e1322';
+      ctx.fillRect(x, y, winW - 20, rowH - 3);
+      ctx.strokeStyle = owned ? '#22c55e' : selected ? '#f59e0b' : '#334155';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, winW - 21, rowH - 4);
+
+      ctx.font = 'bold 6px monospace';
+      ctx.fillStyle = owned ? '#86efac' : '#e2e8f0';
+      ctx.fillText(`${selected ? '▶ ' : '  '}${def.name}`, x + 5, y + 4);
+      ctx.font = '5px monospace';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(def.desc, x + 12, y + 13);
+      ctx.textAlign = 'right';
+      ctx.font = 'bold 5.5px monospace';
+      ctx.fillStyle = owned ? '#22c55e' : (player && player.skillPoints >= def.cost ? '#fde047' : '#64748b');
+      ctx.fillText(owned ? '✓ ADQUIRIDA' : `${def.cost} pt`, x + winW - 26, y + 4);
+      ctx.textAlign = 'left';
+      y += rowH;
+    });
+
+    if (this.skillMessage) {
+      ctx.font = '5.5px monospace';
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(this.skillMessage, x, y + 2);
+    }
+    ctx.restore();
+  }
+
   _renderAchievementsTab(ctx, winX, winY, winW, winH, achievementManager) {
     const list = achievementManager ? achievementManager.getAll() : [];
     const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;

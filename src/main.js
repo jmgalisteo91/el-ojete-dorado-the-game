@@ -420,6 +420,9 @@ export class RPGGame {
         hasDash: !!this.player.hasDash,
         hasChargedAttack: !!this.player.hasChargedAttack,
         hasBarrier: !!this.player.hasBarrier,
+        skillPoints: this.player.skillPoints || 0,
+        killCount: this.player.killCount || 0,
+        skills: { ...this.player.skills },
         hasLanternEquipped: this.player.hasLanternEquipped,
         firstStageGateOpen: this.tilemap.firstStageGateOpen,
         timeOfDayHours: this.dayNight.timeOfDayHours,
@@ -580,6 +583,16 @@ export class RPGGame {
       this.player.hasDash = Boolean(data.hasDash);
       this.player.hasChargedAttack = Boolean(data.hasChargedAttack);
       this.player.hasBarrier = Boolean(data.hasBarrier);
+      this.player.skillPoints = Number.isFinite(data.skillPoints) ? data.skillPoints : 0;
+      this.player.killCount = Number.isFinite(data.killCount) ? data.killCount : 0;
+      const savedSkills = data.skills && typeof data.skills === 'object' ? data.skills : {};
+      this.player.skills = {
+        vigor: Boolean(savedSkills.vigor),
+        filo: Boolean(savedSkills.filo),
+        reflejo: Boolean(savedSkills.reflejo),
+        log: Boolean(savedSkills.log)
+      };
+      this.player.stamina = this.player.effectiveMaxStamina;
       if (typeof data.playerHp === 'number' && data.playerHp > 0) {
         this.player.hp = data.playerHp;
       } else {
@@ -4270,7 +4283,7 @@ export class RPGGame {
 
     // Ventana Activa: Ficha Técnica y Progresión del Personaje (Tecla 'C')
     if (this.characterStats.isOpen) {
-      if (this.characterStats.handleInput(this.input)) {
+      if (this.characterStats.handleInput(this.input, this.player)) {
         if (this.music) this.music.playMenuMove();
       }
       if (this.input.consumeKey('KeyM')) {
@@ -4333,6 +4346,14 @@ export class RPGGame {
       if (this.player.tryAttack()) {
         this.music.playSwordSlash();
       }
+    }
+
+    if (this.input.consumeKey('F3')) {
+      this.debugMode = !this.debugMode;
+    }
+    this.sceneSurvivalTimer = (this.sceneSurvivalTimer || 0) + dt;
+    if (this.sceneSurvivalTimer > 90 && this.deathsByScene && this.deathsByScene[this.tilemap.currentSceneId]) {
+      this.deathsByScene[this.tilemap.currentSceneId] = 0;
     }
 
     this.dayNight.update(dt);
@@ -4472,14 +4493,30 @@ export class RPGGame {
       return;
     }
 
+    // Contexto de IA compartido: lista de aliados (alarmas) y turnos de ataque simultáneos
+    if (this.player.hp > 0) this._deathRegistered = false;
+    const aiContext = { enemies, attackers: new Set() };
+    const difficultyScale = this._getDifficultyScale();
+
     for (const enemy of enemies) {
+      enemy.speedScale = enemy.isBoss ? 1 : difficultyScale;
       enemy.update(
         dt,
         this.tilemap,
         this.player,
         this.dialogueBox.active,
-        this.music
+        this.music,
+        aiContext
       );
+
+      // Puntos de habilidad por enemigos derrotados
+      if (enemy.dead && !enemy.xpGranted) {
+        enemy.xpGranted = true;
+        const gained = this.player.awardKill(Boolean(enemy.isBoss));
+        if (gained > 0 && this.menuSystem) {
+          this.menuSystem.showNotice(`⭐ +${gained} punto${gained > 1 ? 's' : ''} de habilidad [C → Habilidades]`, 3);
+        }
+      }
 
       // Actualizar misiones asociadas a la derrota de cada mini-jefe y jefe final
       if (enemy.isBoss && enemy.dead && !enemy.questCompletedTriggered) {
@@ -4559,6 +4596,7 @@ export class RPGGame {
           en.resetCombatState();
         }
       }
+      this._registerPlayerDeath();
       this.menuSystem.openGameOverScreen(!this.player.hasArmor);
       this.input.endFrame();
       return;
@@ -4571,6 +4609,24 @@ export class RPGGame {
     }
 
     this.input.endFrame();
+  }
+
+  /**
+   * Dificultad adaptativa: cada muerte seguida en la misma zona reduce un 8% la velocidad
+   * de los enemigos normales (mínimo 72%). Se restablece al sobrevivir 90 s en la zona.
+   */
+  _getDifficultyScale() {
+    const deaths = (this.deathsByScene && this.deathsByScene[this.tilemap.currentSceneId]) || 0;
+    return Math.max(0.72, 1 - 0.08 * deaths);
+  }
+
+  _registerPlayerDeath() {
+    if (this._deathRegistered) return;
+    this._deathRegistered = true;
+    if (!this.deathsByScene) this.deathsByScene = {};
+    const sceneId = this.tilemap.currentSceneId;
+    this.deathsByScene[sceneId] = (this.deathsByScene[sceneId] || 0) + 1;
+    this.sceneSurvivalTimer = 0;
   }
 
   render() {
@@ -4650,6 +4706,9 @@ export class RPGGame {
     }
 
     this._renderHUD(ctx);
+    if (this.debugMode) {
+      this._renderDebugOverlay(ctx);
+    }
     this.dialogueBox.render(ctx);
     this.inventory.render(ctx, this.player);
     this.characterStats.render(ctx, this.player, this.achievementManager);
@@ -4757,6 +4816,62 @@ export class RPGGame {
     ctx.restore();
   }
 
+  /**
+   * Overlay de depuración [F3]: hitboxes, estado de IA, ruta de A* y datos del jugador.
+   */
+  _renderDebugOverlay(ctx) {
+    const { enemies } = this._getActiveSceneEntities();
+    const camX = this.camera.renderX;
+    const camY = this.camera.renderY;
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.font = '5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+
+    const pb = this.player.worldBoundingBox;
+    ctx.strokeStyle = '#22c55e';
+    ctx.strokeRect(Math.round(pb.x - camX) + 0.5, Math.round(pb.y - camY) + 0.5, pb.width, pb.height);
+
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const b = e.worldBoundingBox;
+      ctx.strokeStyle = e.isBoss ? '#a855f7' : '#ef4444';
+      ctx.strokeRect(Math.round(b.x - camX) + 0.5, Math.round(b.y - camY) + 0.5, b.width, b.height);
+
+      if (e.brain && !e.isBoss) {
+        const path = e.brain.path;
+        if (path && path.length > 0) {
+          ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)';
+          ctx.beginPath();
+          ctx.moveTo(e.centerX - camX, e.centerY - camY);
+          for (const wp of path) ctx.lineTo(wp.x - camX, wp.y - camY);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
+        ctx.beginPath();
+        ctx.arc(e.centerX - camX, e.centerY - camY, e.aggroRange, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#fde047';
+        ctx.fillText(`${e.archetype}:${e.aiState}${e.brain.action !== 'none' ? '/' + e.brain.action : ''}`, e.centerX - camX, e.y - camY - 10);
+      }
+    }
+
+    const p = this.player;
+    const lines = [
+      `DEBUG [F3]  escena=${this.tilemap.currentSceneId}  x=${Math.round(p.x)} y=${Math.round(p.y)}`,
+      `hp=${p.hp}/${p.maxHp}  stamina=${Math.round(p.stamina)}/${p.maxStamina}  combo=${p.comboStep}  parry=${p.parryTimer.toFixed(2)}`,
+      `pts=${p.skillPoints} kills=${p.killCount}  dificultad=x${this._getDifficultyScale().toFixed(2)}  enemigos=${enemies.filter((e) => !e.dead).length}`
+    ];
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
+    ctx.fillRect(2, VIEWPORT_HEIGHT - 26, 230, 24);
+    ctx.fillStyle = '#4ade80';
+    lines.forEach((l, i) => ctx.fillText(l, 5, VIEWPORT_HEIGHT - 24 + i * 7));
+    ctx.restore();
+  }
+
   _renderHUD(ctx) {
     ctx.save();
     ctx.font = '7px monospace';
@@ -4815,6 +4930,28 @@ export class RPGGame {
     ctx.fillStyle = '#ff4d6d';
     ctx.textAlign = 'center';
     ctx.fillText(heartsStr, heartsX + heartsW / 2, heartsY + heartsH / 2);
+
+    // Barra de stamina bajo los corazones (solo visible si hay espada y no está llena)
+    if (this.player.hasSword && (this.player.stamina < this.player.maxStamina - 0.5 || this.player.comboStep > 0)) {
+      const sw = heartsW;
+      const sy = heartsY + heartsH + 2;
+      ctx.fillStyle = 'rgba(14, 18, 30, 0.75)';
+      ctx.fillRect(heartsX, sy, sw, 4);
+      const pct = Math.max(0, Math.min(1, this.player.stamina / this.player.maxStamina));
+      ctx.fillStyle = pct < 0.25 ? '#ef4444' : '#38bdf8';
+      ctx.fillRect(heartsX + 0.5, sy + 0.5, (sw - 1) * pct, 3);
+      if (this.player.comboStep > 0) {
+        ctx.fillStyle = '#fde047';
+        for (let i = 0; i < this.player.comboStep; i++) {
+          ctx.fillRect(heartsX + i * 5, sy + 5, 4, 2);
+        }
+      }
+    }
+    if (this.player.parryFlashTimer > 0) {
+      ctx.fillStyle = '#fde047';
+      ctx.textAlign = 'center';
+      ctx.fillText('¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, 30);
+    }
 
     // Indicador visual sutil si está sin armadura (pequeño punto carmesí discreto sin rótulo agresivo)
     if (!this.player.hasArmor) {

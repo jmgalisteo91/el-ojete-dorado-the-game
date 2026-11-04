@@ -483,6 +483,19 @@ function getDoorDestinationInfo(targetScene) {
 }
 
   // ==========================================
+  // Módulo: src/core/SkillCatalog.js
+  // ==========================================
+/**
+ * Catálogo del árbol de habilidades (se compra desde la Ficha Técnica [C] > Habilidades).
+ */
+const SKILL_DEFS = [
+  { key: 'vigor', name: 'Vigor de Hilo Principal', cost: 1, desc: 'Stamina máxima 100 → 140.' },
+  { key: 'filo', name: 'Filo Refactorizado', cost: 1, desc: 'El 3er golpe del combo hace 3 de daño (antes 2).' },
+  { key: 'reflejo', name: 'Reflejos de Callback', cost: 1, desc: 'Ventana de parry de la Barrera [Q]: 0.25s → 0.45s.' },
+  { key: 'log', name: 'console.log() [R]', cost: 2, desc: 'Lanza un log que daña, revela y aturde al enemigo.' }
+];
+
+  // ==========================================
   // Módulo: src/core/InputHandler.js
   // ==========================================
 /**
@@ -574,7 +587,7 @@ class InputHandler {
       'KeyW', 'KeyA', 'KeyS', 'KeyD',
       'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
       'KeyE', 'Space', 'Enter', 'KeyF', 'KeyJ', 'KeyK', 'KeyI', 'KeyC', 'KeyX', 'Tab', 'Escape', 'KeyM',
-      'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyL', 'Digit1', 'Digit2', 'Numpad1', 'Numpad2'
+      'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyL', 'Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3', 'F3'
     ];
 
     // Prevenir el scroll por defecto de la página web (Espacio, Flechas, Tab) en el navegador / Vercel
@@ -4896,6 +4909,8 @@ class Entity {
   // ==========================================
   // Módulo: src/entities/Player.js
   // ==========================================
+const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
+
 /**
  * Entidad controlada por el jugador.
  * En el Primer Escenario empieza indefenso (sin armadura ni espada: cualquier ataque reduce su vida a 0).
@@ -4951,6 +4966,83 @@ class Player extends Entity {
     this.attackTimer = 0;
     this.attackDuration = 0.22;
     this.attackCooldown = 0;
+
+    // Stamina: el dash, los ataques y los logs consumen energía
+    this.maxStamina = 100;
+    this.stamina = 100;
+    this.staminaRegenDelay = 0;
+
+    // Combo de espada (3 golpes), ataque tras dash y parry
+    this.comboStep = 0;
+    this.comboTimer = 0;
+    this.attackDamage = 1;
+    this.attackIsFinisher = false;
+    this.dashStrikeTimer = 0;
+    this.attackIsDashStrike = false;
+    this.parryTimer = 0;
+    this.parryFlashTimer = 0;
+    this.lastParryCount = 0;
+
+    // Progresión
+    this.skillPoints = 0;
+    this.killCount = 0;
+    this.skills = { vigor: false, filo: false, reflejo: false, log: false };
+    this.thrownLogs = [];
+    this.logCooldown = 0;
+  }
+
+  get effectiveMaxStamina() {
+    return this.skills.vigor ? 140 : 100;
+  }
+
+  spendStamina(amount) {
+    if (this.stamina < amount) return false;
+    this.stamina -= amount;
+    this.staminaRegenDelay = 0.6;
+    return true;
+  }
+
+  getSwordDamage() {
+    return this.attackDamage;
+  }
+
+  /** Concede puntos de habilidad por derrotar enemigos. Devuelve los puntos ganados. */
+  awardKill(isBoss = false) {
+    this.killCount += 1;
+    let gained = 0;
+    if (isBoss) {
+      gained = 2;
+    } else if (this.killCount % 4 === 0) {
+      gained = 1;
+    }
+    this.skillPoints += gained;
+    return gained;
+  }
+
+  purchaseSkill(key) {
+    const def = SKILL_DEFS.find((d) => d.key === key);
+    if (!def || this.skills[key] || this.skillPoints < def.cost) return false;
+    this.skillPoints -= def.cost;
+    this.skills[key] = true;
+    if (key === 'vigor') this.stamina = this.effectiveMaxStamina;
+    return true;
+  }
+
+  throwLog(soundEngine = null) {
+    if (!this.skills.log || this.logCooldown > 0 || !this.spendStamina(STAMINA_COSTS.log)) return false;
+    const vec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.direction] || [0, 1];
+    this.thrownLogs.push({
+      x: this.centerX,
+      y: this.centerY,
+      vx: vec[0] * 150,
+      vy: vec[1] * 150,
+      life: 1.1
+    });
+    this.logCooldown = 0.6;
+    if (soundEngine && typeof soundEngine.playDashSound === 'function') {
+      soundEngine.playDashSound();
+    }
+    return true;
   }
 
   get invulnerableTimer() {
@@ -4999,6 +5091,15 @@ class Player extends Entity {
     this.invulnTimer = 0;
     this.attackTimer = 0;
     this.attackCooldown = 0;
+    this.stamina = this.maxStamina;
+    this.comboStep = 0;
+    this.comboTimer = 0;
+    this.dashStrikeTimer = 0;
+    this.parryTimer = 0;
+    this.skillPoints = 0;
+    this.killCount = 0;
+    this.skills = { vigor: false, filo: false, reflejo: false, log: false };
+    this.thrownLogs = [];
     this.animator = this.unarmoredAnimator;
   }
 
@@ -5029,8 +5130,30 @@ class Player extends Entity {
 
   tryAttack(soundEngine = null) {
     if (!this.hasSword || this.attackCooldown > 0) return false;
+    if (!this.spendStamina(STAMINA_COSTS.attack)) return false;
+
+    if (this.dashStrikeTimer > 0) {
+      // Tajo tras dash: golpe de embestida de daño 2
+      this.attackIsDashStrike = true;
+      this.attackIsFinisher = false;
+      this.attackDamage = 2;
+      this.comboStep = 0;
+      this.comboTimer = 0;
+      this.dashStrikeTimer = 0;
+      this.attackDuration = 0.26;
+      this.attackCooldown = 0.4;
+    } else {
+      this.attackIsDashStrike = false;
+      const step = this.comboTimer > 0 && this.comboStep < 3 ? this.comboStep + 1 : 1;
+      this.comboStep = step;
+      this.attackIsFinisher = step === 3;
+      this.attackDamage = step === 3 ? (this.skills.filo ? 3 : 2) : 1;
+      this.attackDuration = step === 3 ? 0.3 : 0.22;
+      this.attackCooldown = step === 3 ? 0.5 : 0.26;
+      this.comboTimer = step === 3 ? 0 : 0.75;
+      if (step === 3) this.comboStep = 0;
+    }
     this.attackTimer = this.attackDuration;
-    this.attackCooldown = 0.32;
     if (soundEngine && typeof soundEngine.playSwordSlash === 'function') {
       soundEngine.playSwordSlash();
     }
@@ -5039,6 +5162,8 @@ class Player extends Entity {
 
   tryDash(input = null, soundEngine = null) {
     if (!this.hasDash || this.dashCooldown > 0) return false;
+    if (!this.spendStamina(STAMINA_COSTS.dash)) return false;
+    this.dashStrikeTimer = 0.55;
 
     let move = input ? input.getMovementVector() : { x: 0, y: 0 };
     if (move.x === 0 && move.y === 0) {
@@ -5063,6 +5188,7 @@ class Player extends Entity {
 
   tryChargedAttack(soundEngine = null) {
     if (!this.hasSword || !this.hasChargedAttack || this.attackCooldown > 0) return false;
+    if (!this.spendStamina(STAMINA_COSTS.charged)) return false;
     this.spinAttackTimer = 0.35;
     this.attackCooldown = 0.45;
     if (soundEngine && typeof soundEngine.playChargedAttack === 'function') {
@@ -5076,6 +5202,7 @@ class Player extends Entity {
     this.barrierActive = true;
     this.barrierTimer = 3.0;
     this.barrierCooldown = 8.0;
+    this.parryTimer = this.skills.reflejo ? 0.45 : 0.25;
     if (soundEngine && typeof soundEngine.playBarrier === 'function') {
       soundEngine.playBarrier();
     }
@@ -5095,8 +5222,9 @@ class Player extends Entity {
 
   getSwordHitbox() {
     if (!this.isAttacking) return null;
-    const reach = 15;
-    const size = 18;
+    const bigSwing = this.attackIsFinisher || this.attackIsDashStrike;
+    const reach = bigSwing ? 18 : 15;
+    const size = bigSwing ? 24 : 18;
     let hx = this.centerX - size / 2;
     let hy = this.centerY - size / 2;
 
@@ -5117,13 +5245,27 @@ class Player extends Entity {
    * Recibe un impacto enemigo.
    * Si el jugador está INDEFENSO (sin armadura), cualquier ataque reduce su vida a 0 inmediatamente.
    */
-  takeHit(soundEngine = null) {
+  takeHit(soundEngine = null, attacker = null) {
     if (this.invulnTimer > 0 || this.hp <= 0) return false;
 
     // Si la Barrera de Tipado Estricto está activa, absorbe completamente el daño
     if (this.barrierActive) {
       if (soundEngine && typeof soundEngine.playBarrier === 'function') {
         soundEngine.playBarrier();
+      }
+      // Parry perfecto: la barrera se activó justo antes del impacto
+      if (this.parryTimer > 0) {
+        this.parryTimer = 0;
+        this.parryFlashTimer = 0.6;
+        this.lastParryCount += 1;
+        this.barrierCooldown = Math.min(this.barrierCooldown, 2.5);
+        this.stamina = Math.min(this.effectiveMaxStamina, this.stamina + 40);
+        if (attacker && typeof attacker.stun === 'function') {
+          attacker.stun(1.4);
+        }
+        if (soundEngine && typeof soundEngine.playChargedAttack === 'function') {
+          soundEngine.playChargedAttack();
+        }
       }
       return false;
     }
@@ -5162,6 +5304,23 @@ class Player extends Entity {
     if (this.spinAttackTimer > 0) {
       this.spinAttackTimer = Math.max(0, this.spinAttackTimer - dt);
     }
+
+    // Stamina, combo y temporizadores de habilidades
+    this.maxStamina = this.effectiveMaxStamina;
+    if (this.staminaRegenDelay > 0) {
+      this.staminaRegenDelay = Math.max(0, this.staminaRegenDelay - dt);
+    } else if (this.stamina < this.maxStamina) {
+      this.stamina = Math.min(this.maxStamina, this.stamina + 35 * dt);
+    }
+    if (this.comboTimer > 0) {
+      this.comboTimer = Math.max(0, this.comboTimer - dt);
+      if (this.comboTimer === 0) this.comboStep = 0;
+    }
+    if (this.dashStrikeTimer > 0) this.dashStrikeTimer = Math.max(0, this.dashStrikeTimer - dt);
+    if (this.parryTimer > 0) this.parryTimer = Math.max(0, this.parryTimer - dt);
+    if (this.parryFlashTimer > 0) this.parryFlashTimer = Math.max(0, this.parryFlashTimer - dt);
+    if (this.logCooldown > 0) this.logCooldown = Math.max(0, this.logCooldown - dt);
+    this._updateThrownLogs(dt, tilemap);
 
     // Actualización de la Barrera de Tipado Estricto
     if (this.barrierTimer > 0) {
@@ -5211,6 +5370,11 @@ class Player extends Entity {
     // Ejecución de Barrera de Tipado Estricto (tecla Q)
     if (input && typeof input.consumeBarrier === 'function' && input.consumeBarrier()) {
       this.tryBarrier(soundEngine);
+    }
+
+    // console.log() arrojadizo (tecla R, requiere la habilidad)
+    if (input && typeof input.consumeKey === 'function' && input.consumeKey('KeyR')) {
+      this.throwLog(soundEngine);
     }
 
     // Carga del Corte en Cascada (mantener botón de ataque 1s)
@@ -5272,6 +5436,19 @@ class Player extends Entity {
     super.update(dt);
   }
 
+  _updateThrownLogs(dt, tilemap) {
+    for (let i = this.thrownLogs.length - 1; i >= 0; i--) {
+      const l = this.thrownLogs[i];
+      l.x += l.vx * dt;
+      l.y += l.vy * dt;
+      l.life -= dt;
+      const box = { x: l.x - 2, y: l.y - 2, width: 4, height: 4 };
+      if (l.life <= 0 || (tilemap && CollisionSystem.collidesWithMap(box, tilemap))) {
+        this.thrownLogs.splice(i, 1);
+      }
+    }
+  }
+
   /**
    * Comprueba si el hitbox actual del jugador colisiona con el tilemap sólido y,
    * en caso afirmativo, lo reposiciona suavemente en la coordenada libre más cercana.
@@ -5302,6 +5479,25 @@ class Player extends Entity {
   }
 
   render(ctx, camera) {
+    // 0. console.log() arrojadizos
+    if (this.thrownLogs.length > 0) {
+      ctx.save();
+      ctx.font = 'bold 5px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const l of this.thrownLogs) {
+        const lx = Math.round(l.x - camera.renderX);
+        const ly = Math.round(l.y - camera.renderY);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(lx - 7, ly - 3, 14, 7);
+        ctx.strokeStyle = '#22c55e';
+        ctx.strokeRect(lx - 6.5, ly - 2.5, 13, 6);
+        ctx.fillStyle = '#4ade80';
+        ctx.fillText('log', lx, ly + 0.5);
+      }
+      ctx.restore();
+    }
+
     // 1. Estela visual traslúcida del Dash Asíncrono
     if (this.dashGhosts && this.dashGhosts.length > 0) {
       ctx.save();
@@ -5928,26 +6124,649 @@ class Animal extends Entity {
 }
 
   // ==========================================
-  // Módulo: src/entities/Enemy.js
+  // Módulo: src/ai/Pathfinding.js
   // ==========================================
 /**
+ * Pathfinding: A* sobre la rejilla de colisión del Tilemap (8 direcciones, sin cortar esquinas).
+ * Módulo puro: solo necesita un objeto con { tileSize, isSolidAtTile(col, row) }.
+ */
+
+const SQRT2 = Math.SQRT2;
+
+class MinHeap {
+  constructor() {
+    this.items = [];
+  }
+
+  get size() {
+    return this.items.length;
+  }
+
+  push(node) {
+    const a = this.items;
+    a.push(node);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (a[p].f <= a[i].f) break;
+      [a[p], a[i]] = [a[i], a[p]];
+      i = p;
+    }
+  }
+
+  pop() {
+    const a = this.items;
+    const top = a[0];
+    const last = a.pop();
+    if (a.length > 0) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < a.length && a[l].f < a[m].f) m = l;
+        if (r < a.length && a[r].f < a[m].f) m = r;
+        if (m === i) break;
+        [a[m], a[i]] = [a[i], a[m]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+const NEIGHBORS = [
+  [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
+  [1, 1, SQRT2], [-1, 1, SQRT2], [1, -1, SQRT2], [-1, -1, SQRT2]
+];
+
+/**
+ * Busca la baldosa libre más cercana (hasta `radius` baldosas) a la indicada.
+ */
+function nearestFreeTile(tilemap, col, row, radius = 3) {
+  if (!tilemap.isSolidAtTile(col, row)) return { col, row };
+  for (let r = 1; r <= radius; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        if (!tilemap.isSolidAtTile(col + dx, row + dy)) {
+          return { col: col + dx, row: row + dy };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Calcula un camino en coordenadas de mundo (centro de baldosa) entre dos puntos.
+ * @returns {Array<{x:number,y:number}>} Camino sin el punto inicial; [] si no hay ruta o ya está en destino.
+ */
+function findPath(tilemap, startX, startY, goalX, goalY, maxNodes = 500) {
+  const ts = tilemap.tileSize;
+  const sc = Math.floor(startX / ts);
+  const sr = Math.floor(startY / ts);
+  const goal = nearestFreeTile(tilemap, Math.floor(goalX / ts), Math.floor(goalY / ts));
+  if (!goal) return [];
+  const start = nearestFreeTile(tilemap, sc, sr, 1) || { col: sc, row: sr };
+  if (start.col === goal.col && start.row === goal.row) return [];
+
+  const key = (c, r) => (r + 1000) * 4096 + (c + 1000);
+  const open = new MinHeap();
+  const best = new Map();
+  const parent = new Map();
+  const heuristic = (c, r) => {
+    const dx = Math.abs(c - goal.col);
+    const dy = Math.abs(r - goal.row);
+    return dx + dy + (SQRT2 - 2) * Math.min(dx, dy);
+  };
+
+  best.set(key(start.col, start.row), 0);
+  open.push({ c: start.col, r: start.row, g: 0, f: heuristic(start.col, start.row) });
+  let expanded = 0;
+  let found = false;
+
+  while (open.size > 0 && expanded < maxNodes) {
+    const cur = open.pop();
+    const curKey = key(cur.c, cur.r);
+    if (cur.g > (best.get(curKey) ?? Infinity)) continue;
+    expanded++;
+
+    if (cur.c === goal.col && cur.r === goal.row) {
+      found = true;
+      break;
+    }
+
+    for (const [dx, dy, cost] of NEIGHBORS) {
+      const nc = cur.c + dx;
+      const nr = cur.r + dy;
+      if (tilemap.isSolidAtTile(nc, nr)) continue;
+      if (dx !== 0 && dy !== 0 && (tilemap.isSolidAtTile(cur.c + dx, cur.r) || tilemap.isSolidAtTile(cur.c, cur.r + dy))) {
+        continue;
+      }
+      const g = cur.g + cost;
+      const nKey = key(nc, nr);
+      if (g < (best.get(nKey) ?? Infinity)) {
+        best.set(nKey, g);
+        parent.set(nKey, curKey);
+        open.push({ c: nc, r: nr, g, f: g + heuristic(nc, nr) });
+      }
+    }
+  }
+
+  if (!found) return [];
+
+  const path = [];
+  let k = key(goal.col, goal.row);
+  const startKey = key(start.col, start.row);
+  while (k !== startKey && k !== undefined) {
+    const c = (k % 4096) - 1000;
+    const r = Math.floor(k / 4096) - 1000;
+    path.push({ x: c * ts + ts / 2, y: r * ts + ts / 2 });
+    k = parent.get(k);
+  }
+  path.reverse();
+  return path;
+}
+
+/**
+ * Línea de visión entre dos puntos de mundo: ninguna baldosa sólida entre ambos (muestreo por pasos).
+ */
+function hasLineOfSight(tilemap, x0, y0, x1, y1) {
+  const ts = tilemap.tileSize;
+  const dist = Math.hypot(x1 - x0, y1 - y0);
+  const steps = Math.max(1, Math.ceil(dist / (ts / 2)));
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const x = x0 + (x1 - x0) * t;
+    const y = y0 + (y1 - y0) * t;
+    if (tilemap.isSolidAtTile(Math.floor(x / ts), Math.floor(y / ts))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+  // ==========================================
+  // Módulo: src/ai/EnemyBrain.js
+  // ==========================================
+/**
+ * EnemyBrain: máquina de estados de IA para enemigos normales (los jefes tienen su propia lógica).
+ *
+ * Estados:  PATROL → ALERT → CHASE → SEARCH → RETURN → PATROL
+ * Arquetipos (comportamiento en CHASE):
+ *   - grunt:    persigue y flanquea; solo 2 atacantes simultáneos, el resto rodea al jugador.
+ *   - sentinel: como grunt, pero da la alarma a los aliados cercanos al detectar al jugador.
+ *   - drone:    mantiene la distancia, se desplaza lateralmente y dispara proyectiles telegrafiados.
+ *   - knight:   carga con telegrafiado; tras la carga queda expuesto (recibe doble daño).
+ *   - glitch:   se teletransporta cerca del jugador tras un breve aviso visual.
+ */
+
+const AI_STATE = {
+  PATROL: 'PATROL',
+  ALERT: 'ALERT',
+  CHASE: 'CHASE',
+  SEARCH: 'SEARCH',
+  RETURN: 'RETURN'
+};
+
+function inferArchetype(id = '') {
+  if (id.startsWith('drone_west_2')) return 'sentinel';
+  if (id.startsWith('drone')) return 'drone';
+  if (id.startsWith('knight') || id === 'night_bug_east_2') return 'knight';
+  if (id.startsWith('night_glitch')) return 'glitch';
+  return 'grunt';
+}
+
+const ALERT_TIME = 0.4;
+const LOSE_SIGHT_TIME = 0.6;
+const SEARCH_WAIT = 1.4;
+const ALARM_RADIUS = 120;
+const MAX_SIMULTANEOUS_ATTACKERS = 2;
+
+class EnemyBrain {
+  constructor(enemy, archetype = 'grunt') {
+    this.enemy = enemy;
+    this.archetype = archetype;
+    this.state = AI_STATE.PATROL;
+    this.stateTimer = 0;
+    this.lastKnown = null;
+    this.loseTimer = 0;
+    this.path = [];
+    this.pathGoal = null;
+    this.repathTimer = 0;
+    this.flankAngle = Math.random() * Math.PI * 2;
+    this.strafeSign = Math.random() < 0.5 ? -1 : 1;
+
+    // Estado de acciones especiales (arquetipos)
+    this.action = 'none'; // none | telegraph | charge | recover | blink
+    this.actionTimer = 0;
+    this.actionCooldown = 0.8 + Math.random();
+    this.lockedDir = { x: 0, y: 0 };
+    this.searchLookTimer = 0;
+  }
+
+  get isTelegraphing() {
+    return this.action === 'telegraph' || this.action === 'blink';
+  }
+
+  get isCharging() {
+    return this.action === 'charge';
+  }
+
+  /** Verdadero si el enemigo está expuesto y recibe daño extra. */
+  get isVulnerable() {
+    return this.action === 'recover';
+  }
+
+  cancelAction() {
+    this.action = 'none';
+    this.actionTimer = 0;
+    this.actionCooldown = Math.max(this.actionCooldown, 0.6);
+  }
+
+  setState(state) {
+    this.state = state;
+    this.stateTimer = 0;
+    this.path = [];
+    this.pathGoal = null;
+    this.loseTimer = 0;
+    this._searchedFor = 0;
+  }
+
+  /** Alerta externa (alarma de un centinela o ruido): salta directamente a ALERT/CHASE. */
+  forceAlert(x, y) {
+    if (this.state === AI_STATE.CHASE || this.state === AI_STATE.ALERT) return;
+    this.lastKnown = { x, y };
+    this.setState(AI_STATE.ALERT);
+  }
+
+  /**
+   * @returns {{dirX:number, dirY:number, speedMul:number}} Intención de movimiento del frame.
+   */
+  update(dt, ctx) {
+    const { enemy, archetype } = this;
+    const { player, tilemap } = ctx;
+    this.stateTimer += dt;
+    if (this.repathTimer > 0) this.repathTimer -= dt;
+    if (this.actionCooldown > 0) this.actionCooldown -= dt;
+
+    const perception = this._perceive(ctx);
+    const idle = { dirX: 0, dirY: 0, speedMul: 1 };
+
+    // Acciones especiales en curso (bloquean la decisión de movimiento)
+    const actionResult = this._updateAction(dt, ctx, perception);
+    if (actionResult) return actionResult;
+
+    switch (this.state) {
+      case AI_STATE.PATROL: {
+        if (perception.sees) return this._onSpotted(ctx, perception);
+        const wp = enemy.patrolPoints[enemy.currentWaypointIndex];
+        const dir = this._steerTo(wp.x + enemy.width / 2, wp.y + enemy.height / 2, dt, ctx, 3);
+        if (!dir) {
+          enemy.currentWaypointIndex = (enemy.currentWaypointIndex + 1) % enemy.patrolPoints.length;
+          return idle;
+        }
+        return { dirX: dir.x, dirY: dir.y, speedMul: 1 };
+      }
+
+      case AI_STATE.ALERT: {
+        enemy.faceTowards(player.centerX, player.centerY);
+        if (this.stateTimer >= ALERT_TIME) {
+          this.setState(AI_STATE.CHASE);
+        }
+        return idle;
+      }
+
+      case AI_STATE.CHASE: {
+        if (perception.sees || perception.hears) {
+          this.lastKnown = { x: player.centerX, y: player.centerY };
+          this.loseTimer = 0;
+        } else {
+          this.loseTimer += dt;
+          if (this.loseTimer >= LOSE_SIGHT_TIME) {
+            this.setState(AI_STATE.SEARCH);
+            return idle;
+          }
+        }
+        if (perception.dist > enemy.aggroRange * 2.2) {
+          this.setState(AI_STATE.SEARCH);
+          return idle;
+        }
+        return this._chaseByArchetype(dt, ctx, perception);
+      }
+
+      case AI_STATE.SEARCH: {
+        if (perception.sees) return this._onSpotted(ctx, perception);
+        const target = this.lastKnown || { x: enemy.spawnX + enemy.width / 2, y: enemy.spawnY + enemy.height / 2 };
+        const dir = this._steerTo(target.x, target.y, dt, ctx, 6);
+        if (dir) return { dirX: dir.x, dirY: dir.y, speedMul: 1 };
+        // Ha llegado al último punto conocido: mira alrededor y se rinde
+        this.searchLookTimer -= dt;
+        if (this.searchLookTimer <= 0) {
+          this.searchLookTimer = 0.45;
+          const dirs = ['up', 'right', 'down', 'left'];
+          enemy.direction = dirs[(dirs.indexOf(enemy.direction) + 1) % 4];
+        }
+        if (this.stateTimer > SEARCH_WAIT + 4 || this._searchedFor >= SEARCH_WAIT) {
+          this._searchedFor = 0;
+          this.setState(AI_STATE.RETURN);
+        } else {
+          this._searchedFor = (this._searchedFor || 0) + dt;
+        }
+        return idle;
+      }
+
+      case AI_STATE.RETURN: {
+        if (perception.sees) return this._onSpotted(ctx, perception);
+        let nearest = 0;
+        let bestDist = Infinity;
+        enemy.patrolPoints.forEach((p, i) => {
+          const d = Math.hypot(p.x - enemy.x, p.y - enemy.y);
+          if (d < bestDist) {
+            bestDist = d;
+            nearest = i;
+          }
+        });
+        enemy.currentWaypointIndex = nearest;
+        const wp = enemy.patrolPoints[nearest];
+        const dir = this._steerTo(wp.x + enemy.width / 2, wp.y + enemy.height / 2, dt, ctx, 3);
+        if (!dir) {
+          this.setState(AI_STATE.PATROL);
+          return idle;
+        }
+        return { dirX: dir.x, dirY: dir.y, speedMul: 1 };
+      }
+
+      default:
+        return idle;
+    }
+  }
+
+  // ------------------------------------------------------------------ percepción
+
+  _perceive(ctx) {
+    const { enemy } = this;
+    const { player, tilemap } = ctx;
+    const dist = Math.hypot(player.centerX - enemy.centerX, player.centerY - enemy.centerY);
+    const inSafeSanctuary =
+      player.x >= 13 * 16 && player.x <= 21 * 16 && player.y >= 17 * 16 && enemy.sceneId === 'first_stage';
+    if (inSafeSanctuary || player.hp <= 0) {
+      return { dist, sees: false, hears: false };
+    }
+    const inRange = dist <= enemy.aggroRange;
+    const sees =
+      inRange &&
+      hasLineOfSight(tilemap, enemy.centerX, enemy.centerY, player.centerX, player.centerY);
+    const hears = dist <= enemy.aggroRange * 0.45;
+    return { dist, sees, hears };
+  }
+
+  _onSpotted(ctx, perception) {
+    const { player } = ctx;
+    this.lastKnown = { x: player.centerX, y: player.centerY };
+    this.setState(AI_STATE.ALERT);
+    if (this.archetype === 'sentinel' && Array.isArray(ctx.enemies)) {
+      for (const other of ctx.enemies) {
+        if (other === this.enemy || other.dead || other.isBoss || !other.brain) continue;
+        if (other.sceneId !== this.enemy.sceneId) continue;
+        if (Math.hypot(other.x - this.enemy.x, other.y - this.enemy.y) <= ALARM_RADIUS) {
+          other.brain.forceAlert(player.centerX, player.centerY);
+        }
+      }
+    }
+    return { dirX: 0, dirY: 0, speedMul: 1 };
+  }
+
+  // ------------------------------------------------------------------ persecución por arquetipo
+
+  _chaseByArchetype(dt, ctx, perception) {
+    const { enemy, archetype } = this;
+    const { player, tilemap } = ctx;
+    const target = { x: player.centerX, y: player.centerY };
+    const toPlayer = { x: target.x - enemy.centerX, y: target.y - enemy.centerY };
+    const dist = Math.max(0.001, perception.dist);
+    const nx = toPlayer.x / dist;
+    const ny = toPlayer.y / dist;
+    enemy.faceTowards(target.x, target.y);
+
+    if (archetype === 'drone') {
+      return this._chaseDrone(dt, ctx, perception, nx, ny);
+    }
+
+    if (archetype === 'knight' && perception.sees && this.actionCooldown <= 0 && dist <= 64 && dist > 20) {
+      this.action = 'telegraph';
+      this.actionTimer = 0.5;
+      this.lockedDir = { x: nx, y: ny };
+      return { dirX: 0, dirY: 0, speedMul: 1 };
+    }
+
+    if (archetype === 'glitch' && this.actionCooldown <= 0 && dist > 38) {
+      this.action = 'blink';
+      this.actionTimer = 0.3;
+      return { dirX: 0, dirY: 0, speedMul: 1 };
+    }
+
+    // Grunt / sentinel / knight / glitch: acercarse flanqueando con límite de atacantes
+    const attackers = ctx.attackers;
+    let slotHolder = true;
+    if (attackers && dist < 44) {
+      if (attackers.has(enemy) || attackers.size < MAX_SIMULTANEOUS_ATTACKERS) {
+        attackers.add(enemy);
+      } else {
+        slotHolder = false;
+      }
+    }
+
+    let goalX = target.x;
+    let goalY = target.y;
+    if (!slotHolder) {
+      // Rodea al jugador a distancia segura esperando su turno
+      this.flankAngle += dt * 0.9 * this.strafeSign;
+      goalX += Math.cos(this.flankAngle) * 30;
+      goalY += Math.sin(this.flankAngle) * 30;
+    } else if (dist > 36) {
+      goalX += Math.cos(this.flankAngle) * 14;
+      goalY += Math.sin(this.flankAngle) * 14;
+    }
+
+    const dir = this._steerTo(goalX, goalY, dt, ctx, 2);
+    if (!dir) return { dirX: 0, dirY: 0, speedMul: 1 };
+    return { dirX: dir.x, dirY: dir.y, speedMul: 1.15 };
+  }
+
+  _chaseDrone(dt, ctx, perception, nx, ny) {
+    const { enemy } = this;
+    const { tilemap } = ctx;
+    const dist = perception.dist;
+
+    if (perception.sees && this.actionCooldown <= 0 && dist <= enemy.aggroRange) {
+      this.action = 'telegraph';
+      this.actionTimer = 0.35;
+      return { dirX: 0, dirY: 0, speedMul: 1 };
+    }
+
+    if (dist < 44) {
+      // Retrocede manteniendo la distancia (si no puede, recurre a desplazarse lateralmente)
+      const probeX = enemy.centerX - nx * 8;
+      const probeY = enemy.centerY - ny * 8;
+      if (!tilemap.isSolidAtTile(Math.floor(probeX / tilemap.tileSize), Math.floor(probeY / tilemap.tileSize))) {
+        return { dirX: -nx, dirY: -ny, speedMul: 1.05 };
+      }
+      return { dirX: -ny * this.strafeSign, dirY: nx * this.strafeSign, speedMul: 1 };
+    }
+    if (dist > 72 || !perception.sees) {
+      const dir = this._steerTo(ctx.player.centerX, ctx.player.centerY, dt, ctx, 2);
+      return dir ? { dirX: dir.x, dirY: dir.y, speedMul: 1.1 } : { dirX: 0, dirY: 0, speedMul: 1 };
+    }
+    // Distancia ideal: orbita lateralmente
+    return { dirX: -ny * this.strafeSign, dirY: nx * this.strafeSign, speedMul: 0.75 };
+  }
+
+  // ------------------------------------------------------------------ acciones especiales
+
+  _updateAction(dt, ctx, perception) {
+    if (this.action === 'none') return null;
+    const { enemy } = this;
+    const { player, tilemap } = ctx;
+    this.actionTimer -= dt;
+
+    if (this.action === 'telegraph') {
+      enemy.faceTowards(player.centerX, player.centerY);
+      if (this.actionTimer <= 0) {
+        if (this.archetype === 'knight') {
+          this.action = 'charge';
+          this.actionTimer = 0.38;
+        } else {
+          // dron: dispara
+          this.action = 'none';
+          this.actionCooldown = 1.9;
+          const dx = player.centerX - enemy.centerX;
+          const dy = player.centerY - enemy.centerY;
+          const d = Math.max(0.001, Math.hypot(dx, dy));
+          enemy.fireShot(dx / d, dy / d, ctx.soundEngine);
+        }
+      }
+      return { dirX: 0, dirY: 0, speedMul: 1 };
+    }
+
+    if (this.action === 'charge') {
+      if (this.actionTimer <= 0) {
+        this.action = 'recover';
+        this.actionTimer = 0.7;
+        return { dirX: 0, dirY: 0, speedMul: 1 };
+      }
+      return { dirX: this.lockedDir.x, dirY: this.lockedDir.y, speedMul: 4.6 };
+    }
+
+    if (this.action === 'recover') {
+      if (this.actionTimer <= 0) {
+        this.action = 'none';
+        this.actionCooldown = 1.2;
+      }
+      return { dirX: 0, dirY: 0, speedMul: 1 };
+    }
+
+    if (this.action === 'blink') {
+      if (this.actionTimer <= 0) {
+        this.action = 'none';
+        this.actionCooldown = 2.8;
+        this._blinkNear(player, tilemap);
+      }
+      return { dirX: 0, dirY: 0, speedMul: 1 };
+    }
+
+    this.action = 'none';
+    return null;
+  }
+
+  _blinkNear(player, tilemap) {
+    const { enemy } = this;
+    const start = Math.random() * Math.PI * 2;
+    for (let i = 0; i < 8; i++) {
+      const a = start + (i * Math.PI) / 4;
+      const nx = player.x + Math.cos(a) * 26;
+      const ny = player.y + Math.sin(a) * 26;
+      const box = enemy.getBoundingBoxAt(nx, ny);
+      if (!CollisionSystem.collidesWithMap(box, tilemap)) {
+        enemy.x = nx;
+        enemy.y = ny;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ------------------------------------------------------------------ navegación
+
+  /**
+   * Devuelve el vector unitario hacia el destino (directo si hay visión; si no, siguiendo A*),
+   * o null si ya está dentro del radio de llegada.
+   */
+  _steerTo(tx, ty, dt, ctx, arriveRadius = 3) {
+    const { enemy } = this;
+    const { tilemap } = ctx;
+    const ex = enemy.centerX;
+    const ey = enemy.centerY;
+    // Convertimos el destino (x, y de esquina en patrullas) al centro de la entidad
+    const gx = tx;
+    const gy = ty;
+    const dx = gx - ex;
+    const dy = gy - ey;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= arriveRadius) return null;
+
+    if (hasLineOfSight(tilemap, ex, ey, gx, gy) && !this._pathBlocked(ex, ey, gx, gy, tilemap)) {
+      this.path = [];
+      return { x: dx / dist, y: dy / dist };
+    }
+
+    const goalMoved =
+      !this.pathGoal || Math.hypot(this.pathGoal.x - gx, this.pathGoal.y - gy) > tilemap.tileSize * 1.2;
+    if (this.path.length === 0 || goalMoved || this.repathTimer <= 0) {
+      this.path = findPath(tilemap, ex, ey, gx, gy);
+      this.pathGoal = { x: gx, y: gy };
+      this.repathTimer = 0.5;
+    }
+    while (this.path.length > 0 && Math.hypot(this.path[0].x - ex, this.path[0].y - ey) < 3) {
+      this.path.shift();
+    }
+    if (this.path.length === 0) {
+      return { x: dx / dist, y: dy / dist };
+    }
+    const wp = this.path[0];
+    const wdx = wp.x - ex;
+    const wdy = wp.y - ey;
+    const wd = Math.max(0.001, Math.hypot(wdx, wdy));
+    return { x: wdx / wd, y: wdy / wd };
+  }
+
+  /** Comprueba que el hitbox completo (no solo el centro) pueda recorrer el trayecto recto. */
+  _pathBlocked(ex, ey, gx, gy, tilemap) {
+    const { enemy } = this;
+    const dist = Math.hypot(gx - ex, gy - ey);
+    const steps = Math.min(6, Math.ceil(dist / 8));
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const px = enemy.x + (gx - ex) * t;
+      const py = enemy.y + (gy - ey) * t;
+      if (CollisionSystem.collidesWithMap(enemy.getBoundingBoxAt(px, py), tilemap)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+  // ==========================================
+  // Módulo: src/entities/Enemy.js
+  // ==========================================
+const SHOT_SPEED = 78;
+const SHOT_LIFE = 2.4;
+const CONTACT_RANGE = 12.5;
+
+/**
  * Enemigo / Esbirro de las Tinieblas de Mister AI Alex.
- * Patrulla su territorio en el Primer Escenario, persigue al jugador si se acerca demasiado,
- * y le quita toda la vida (llegando a 0) si el jugador está indefenso sin su Armadura.
- * Puede ser derrotado cuando el jugador consigue su primera Espada.
+ * La toma de decisiones vive en EnemyBrain (estados + arquetipos + A*); esta clase gestiona
+ * el cuerpo: movimiento con colisiones, daño, aturdimiento, proyectiles y render.
  */
 class Enemy extends Entity {
   constructor({
+    id = null,
     name = 'Centinela de AI Alex',
     x,
     y,
     animator,
     hp = 2,
+    maxHp = null,
     speed = 36,
     aggroRange = 54,
     patrolPoints = [],
     sceneId = 'first_stage',
-    nightOnly = false
+    nightOnly = false,
+    archetype = null,
+    boundingBox = { offsetX: 3, offsetY: 6, width: 10, height: 8 }
   }) {
     super({
       x,
@@ -5955,17 +6774,19 @@ class Enemy extends Entity {
       width: 16,
       height: 16,
       speed,
-      boundingBox: { offsetX: 3, offsetY: 6, width: 10, height: 8 },
+      boundingBox,
       animator,
       sceneId
     });
 
+    const startHp = maxHp !== null ? maxHp : hp;
+    this.id = id;
     this.name = name;
     this.nightOnly = Boolean(nightOnly);
     this.spawnX = x;
     this.spawnY = y;
-    this.maxHp = hp;
-    this.hp = hp;
+    this.maxHp = startHp;
+    this.hp = startHp;
     this.aggroRange = aggroRange;
     this.patrolPoints = patrolPoints.length > 0 ? patrolPoints : [{ x, y }];
     this.currentWaypointIndex = 0;
@@ -5976,7 +6797,16 @@ class Enemy extends Entity {
     this.knockbackVy = 0;
     this.knockbackTimer = 0;
     this.attackCooldown = 0;
+    this.stunTimer = 0;
+    this.revealedTimer = 0;
+    this.speedScale = 1;
     this.deathParticles = [];
+    this.shots = [];
+    this._lastTick = 0;
+
+    // Los jefes (isBoss) gestionan su propia IA; los enemigos normales usan EnemyBrain
+    this.archetype = archetype || inferArchetype(id || '');
+    this.brain = new EnemyBrain(this, this.archetype);
   }
 
   reset() {
@@ -5987,13 +6817,59 @@ class Enemy extends Entity {
     this.hitFlashTimer = 0;
     this.knockbackTimer = 0;
     this.attackCooldown = 0;
+    this.stunTimer = 0;
+    this.revealedTimer = 0;
     this.deathParticles = [];
+    this.shots = [];
+    if (this.brain) {
+      this.brain.setState(AI_STATE.PATROL);
+      this.brain.cancelAction();
+    }
   }
 
-  takeSwordHit(player, soundEngine = null) {
-    if (this.dead || this.hitFlashTimer > 0) return false;
+  faceTowards(px, py) {
+    const dx = px - this.centerX;
+    const dy = py - this.centerY;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      this.direction = dx > 0 ? 'right' : 'left';
+    } else {
+      this.direction = dy > 0 ? 'down' : 'up';
+    }
+  }
 
-    this.hp -= 1;
+  /** Aturde al enemigo (parry perfecto, impacto de log): no se mueve ni ataca. */
+  stun(seconds) {
+    this.stunTimer = Math.max(this.stunTimer, seconds);
+    if (this.brain) this.brain.cancelAction();
+  }
+
+  get aiState() {
+    return this.brain ? this.brain.state : 'N/A';
+  }
+
+  get isTelegraphing() {
+    return Boolean(this.brain && this.brain.isTelegraphing);
+  }
+
+  get isVulnerable() {
+    return this.stunTimer > 0 || Boolean(this.brain && this.brain.isVulnerable);
+  }
+
+  fireShot(dirX, dirY, soundEngine = null) {
+    this.shots.push({
+      x: this.centerX,
+      y: this.centerY,
+      vx: dirX * SHOT_SPEED,
+      vy: dirY * SHOT_SPEED,
+      life: SHOT_LIFE
+    });
+    if (soundEngine && typeof soundEngine.playDashSound === 'function') {
+      soundEngine.playDashSound();
+    }
+  }
+
+  _applyDamage(amount, player, soundEngine) {
+    this.hp -= amount;
     this.hitFlashTimer = 0.25;
 
     const dx = this.centerX - player.centerX;
@@ -6002,6 +6878,7 @@ class Enemy extends Entity {
     this.knockbackVx = (dx / dist) * 125;
     this.knockbackVy = (dy / dist) * 125;
     this.knockbackTimer = 0.14;
+    if (this.brain) this.brain.cancelAction();
 
     if (soundEngine && typeof soundEngine.playEnemyHit === 'function') {
       soundEngine.playEnemyHit();
@@ -6009,6 +6886,7 @@ class Enemy extends Entity {
 
     if (this.hp <= 0) {
       this.dead = true;
+      this.shots = [];
       this.deathParticles = Array.from({ length: 12 }, (_, i) => {
         const angle = (i / 12) * Math.PI * 2;
         return {
@@ -6020,10 +6898,29 @@ class Enemy extends Entity {
         };
       });
     }
+  }
+
+  takeSwordHit(player, soundEngine = null, customDamage = null) {
+    if (this.dead || this.hitFlashTimer > 0) return false;
+    let damage = customDamage !== null
+      ? customDamage
+      : (typeof player.getSwordDamage === 'function' ? player.getSwordDamage() : 1);
+    // Punto débil: aturdido o expuesto tras una carga => doble daño
+    if (this.isVulnerable) damage *= 2;
+    this._applyDamage(damage, player, soundEngine);
     return true;
   }
 
-  update(dt, tilemap, player, paused = false, soundEngine = null) {
+  /** Impacto de un `console.log()` arrojadizo: daño leve, revela al enemigo y lo aturde brevemente. */
+  takeLogHit(player, soundEngine = null) {
+    if (this.dead) return false;
+    this.revealedTimer = 4;
+    this._applyDamage(1, player, soundEngine);
+    if (!this.dead) this.stun(0.6);
+    return true;
+  }
+
+  update(dt, tilemap, player, paused = false, soundEngine = null, ai = null) {
     if (this.dead) {
       for (const p of this.deathParticles) {
         if (p.life > 0) {
@@ -6035,11 +6932,24 @@ class Enemy extends Entity {
       return { hitPlayer: false };
     }
 
+    // Proyectiles obsoletos de una escena en la que el jugador no estaba presente
+    const now = performance.now();
+    if (this._lastTick && now - this._lastTick > 500) {
+      this.shots.length = 0;
+    }
+    this._lastTick = now;
+
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
     }
     if (this.attackCooldown > 0) {
       this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+    }
+    if (this.stunTimer > 0) {
+      this.stunTimer = Math.max(0, this.stunTimer - dt);
+    }
+    if (this.revealedTimer > 0) {
+      this.revealedTimer = Math.max(0, this.revealedTimer - dt);
     }
 
     if (paused) {
@@ -6048,11 +6958,34 @@ class Enemy extends Entity {
       return { hitPlayer: false };
     }
 
-    // Comprobar si el tajo de espada del jugador alcanza a este enemigo
-    const swordBox = player ? player.getSwordHitbox() : null;
-    if (swordBox && CollisionSystem.checkAABB(swordBox, this.worldBoundingBox)) {
-      this.takeSwordHit(player, soundEngine);
-      if (this.dead) return { hitPlayer: false };
+    let hitPlayer = false;
+
+    // Impactos del jugador: espada, corte en cascada y logs arrojadizos
+    if (player) {
+      const swordBox = player.getSwordHitbox();
+      if (swordBox && CollisionSystem.checkAABB(swordBox, this.worldBoundingBox)) {
+        this.takeSwordHit(player, soundEngine);
+        if (this.dead) return { hitPlayer: false };
+      }
+      const spin = player.getSpinHitbox();
+      if (spin && Math.hypot(this.centerX - spin.centerX, this.centerY - spin.centerY) <= spin.radius + 8) {
+        this.takeSwordHit(player, soundEngine, spin.damage);
+        if (this.dead) return { hitPlayer: false };
+      }
+      if (Array.isArray(player.thrownLogs)) {
+        for (const log of player.thrownLogs) {
+          if (log.life > 0 && Math.hypot(this.centerX - log.x, this.centerY - log.y) <= 9) {
+            log.life = 0;
+            this.takeLogHit(player, soundEngine);
+            if (this.dead) return { hitPlayer: false };
+          }
+        }
+      }
+    }
+
+    // Proyectiles propios (drones)
+    if (this._updateShots(dt, tilemap, player, soundEngine)) {
+      hitPlayer = true;
     }
 
     // Retroceso tras recibir un espadazo
@@ -6066,56 +6999,53 @@ class Enemy extends Entity {
         []
       );
       super.update(dt);
-      return { hitPlayer: false };
+      return { hitPlayer, enemyName: this.name };
     }
 
-    // Movimiento: perseguir al jugador si entra en rango (salvo en el santuario inicial del Sabio)
-    const inSafeSanctuary =
-      player && player.x >= 13 * 16 && player.x <= 21 * 16 && player.y >= 17 * 16;
-    const distToPlayer = player ? this.distanceTo(player) : Infinity;
-
-    let targetX;
-    let targetY;
-    let currentSpeed = this.speed;
-
-    if (player && !inSafeSanctuary && distToPlayer <= this.aggroRange) {
-      targetX = player.x;
-      targetY = player.y;
-      currentSpeed = this.speed * 1.15;
-    } else {
-      const wp = this.patrolPoints[this.currentWaypointIndex];
-      targetX = wp.x;
-      targetY = wp.y;
-      if (Math.hypot(targetX - this.x, targetY - this.y) <= 2.5) {
-        this.currentWaypointIndex =
-          (this.currentWaypointIndex + 1) % this.patrolPoints.length;
-      }
+    // Aturdido: inmóvil e indefenso
+    if (this.stunTimer > 0) {
+      this.isMoving = false;
+      super.update(dt);
+      return { hitPlayer, enemyName: this.name };
     }
 
-    const dx = targetX - this.x;
-    const dy = targetY - this.y;
-    const dist = Math.hypot(dx, dy);
+    // Decisión de IA
+    const context = {
+      tilemap,
+      player,
+      soundEngine,
+      enemies: ai ? ai.enemies : null,
+      attackers: ai ? ai.attackers : null
+    };
+    const intent = player
+      ? this.brain.update(dt, context)
+      : this._patrolWithoutPlayer(dt);
 
-    if (dist > 1.5) {
-      const nx = dx / dist;
-      const ny = dy / dist;
-      if (Math.abs(nx) >= Math.abs(ny)) {
-        this.direction = nx > 0 ? 'right' : 'left';
-      } else {
-        this.direction = ny > 0 ? 'down' : 'up';
+    const speed = this.speed * (intent.speedMul || 1) * this.speedScale;
+    if (intent.dirX !== 0 || intent.dirY !== 0) {
+      if (this.brain.state !== AI_STATE.ALERT && !this.brain.isCharging) {
+        if (Math.abs(intent.dirX) >= Math.abs(intent.dirY)) {
+          this.direction = intent.dirX > 0 ? 'right' : 'left';
+        } else {
+          this.direction = intent.dirY > 0 ? 'down' : 'up';
+        }
       }
-
       const { blockedX, blockedY } = CollisionSystem.moveWithCollisions(
         this,
-        nx * currentSpeed * dt,
-        ny * currentSpeed * dt,
+        intent.dirX * speed * dt,
+        intent.dirY * speed * dt,
         tilemap,
         []
       );
       this.isMoving = !blockedX || !blockedY;
       if (blockedX && blockedY) {
-        this.currentWaypointIndex =
-          (this.currentWaypointIndex + 1) % this.patrolPoints.length;
+        // Atascado: forzar recálculo de ruta y, si patrulla, saltar al siguiente punto
+        this.brain.path = [];
+        this.brain.repathTimer = 0;
+        if (this.brain.state === AI_STATE.PATROL) {
+          this.currentWaypointIndex = (this.currentWaypointIndex + 1) % this.patrolPoints.length;
+        }
+        if (this.brain.isCharging) this.brain.cancelAction();
       }
     } else {
       this.isMoving = false;
@@ -6123,14 +7053,51 @@ class Enemy extends Entity {
 
     super.update(dt);
 
-    // Comprobar si alcanza y golpea al jugador
-    if (player && this.attackCooldown <= 0 && this.distanceTo(player) <= 12.5) {
+    // Contacto: solo atacantes con "turno" en CHASE (o cargando) golpean al jugador
+    const canContact =
+      this.archetype !== 'drone' &&
+      (this.brain.isCharging || this.brain.state === AI_STATE.CHASE) &&
+      !this.brain.isTelegraphing;
+    if (player && canContact && this.attackCooldown <= 0 && this.distanceTo(player) <= CONTACT_RANGE) {
       this.attackCooldown = 0.75;
-      const didHit = player.takeHit(soundEngine);
-      return { hitPlayer: didHit, enemyName: this.name };
+      const didHit = player.takeHit(soundEngine, this);
+      return { hitPlayer: didHit || hitPlayer, enemyName: this.name };
     }
 
-    return { hitPlayer: false };
+    return { hitPlayer, enemyName: this.name };
+  }
+
+  _patrolWithoutPlayer(dt) {
+    const wp = this.patrolPoints[this.currentWaypointIndex];
+    const dx = wp.x - this.x;
+    const dy = wp.y - this.y;
+    const d = Math.hypot(dx, dy);
+    if (d <= 2.5) {
+      this.currentWaypointIndex = (this.currentWaypointIndex + 1) % this.patrolPoints.length;
+      return { dirX: 0, dirY: 0, speedMul: 1 };
+    }
+    return { dirX: dx / d, dirY: dy / d, speedMul: 1 };
+  }
+
+  /** Mueve los proyectiles; devuelve true si alguno impactó al jugador. */
+  _updateShots(dt, tilemap, player, soundEngine) {
+    let hit = false;
+    for (let i = this.shots.length - 1; i >= 0; i--) {
+      const s = this.shots[i];
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.life -= dt;
+      const box = { x: s.x - 2, y: s.y - 2, width: 4, height: 4 };
+      if (s.life <= 0 || CollisionSystem.collidesWithMap(box, tilemap)) {
+        this.shots.splice(i, 1);
+        continue;
+      }
+      if (player && CollisionSystem.checkAABB(box, player.worldBoundingBox)) {
+        this.shots.splice(i, 1);
+        if (player.takeHit(soundEngine, this)) hit = true;
+      }
+    }
+    return hit;
   }
 
   render(ctx, camera) {
@@ -6157,6 +7124,18 @@ class Enemy extends Entity {
     const sx = this.x - camera.renderX;
     const sy = this.y - camera.renderY;
 
+    // Proyectiles de dron
+    if (this.shots.length > 0) {
+      ctx.save();
+      for (const shot of this.shots) {
+        ctx.fillStyle = '#f43f5e';
+        ctx.fillRect(Math.round(shot.x - camera.renderX - 2), Math.round(shot.y - camera.renderY - 2), 4, 4);
+        ctx.fillStyle = '#fecdd3';
+        ctx.fillRect(Math.round(shot.x - camera.renderX - 1), Math.round(shot.y - camera.renderY - 1), 2, 2);
+      }
+      ctx.restore();
+    }
+
     // Aura sombría de Mister AI Alex bajo el enemigo
     ctx.save();
     ctx.fillStyle =
@@ -6170,8 +7149,10 @@ class Enemy extends Entity {
 
     super.render(ctx, camera);
 
-    // Pequeña barra de vida sobre el enemigo si ha recibido daño
-    if (this.hp < this.maxHp) {
+    this._renderStatusIndicators(ctx, sx, sy);
+
+    // Pequeña barra de vida sobre el enemigo si ha recibido daño (o está revelado por un log)
+    if (this.hp < this.maxHp || this.revealedTimer > 0) {
       ctx.save();
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(sx + 2, sy - 4, 12, 2.5);
@@ -6179,6 +7160,38 @@ class Enemy extends Entity {
       ctx.fillRect(sx + 2.5, sy - 3.5, (11 * this.hp) / this.maxHp, 1.5);
       ctx.restore();
     }
+  }
+
+  /** Iconos de estado de la IA: alerta "!", búsqueda "?", telegrafiado, aturdido o expuesto. */
+  _renderStatusIndicators(ctx, sx, sy) {
+    if (!this.brain) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 8px monospace';
+    const cx = sx + 8;
+    if (this.stunTimer > 0) {
+      ctx.fillStyle = '#fde047';
+      ctx.fillText('✦', cx, sy - 8);
+    } else if (this.brain.isTelegraphing) {
+      ctx.fillStyle = '#ef4444';
+      ctx.fillText('‼', cx, sy - 8);
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, sy + 11, 10, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (this.brain.isVulnerable) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('◇', cx, sy - 8);
+    } else if (this.brain.state === AI_STATE.ALERT) {
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText('!', cx, sy - 8);
+    } else if (this.brain.state === AI_STATE.SEARCH) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('?', cx, sy - 8);
+    }
+    ctx.restore();
   }
 }
 
@@ -6384,7 +7397,7 @@ class Boss extends Enemy {
     // Chequeo de espadazo estándar
     const swordBox = player ? player.getSwordHitbox() : null;
     if (swordBox && CollisionSystem.checkAABB(swordBox, this.worldBoundingBox)) {
-      this.takeSwordHit(player, soundEngine, 1);
+      this.takeSwordHit(player, soundEngine, player.getSwordDamage());
       if (this.dead) return { hitPlayer: false };
     }
 
@@ -8587,12 +9600,15 @@ class Inventory {
  * Se abre y cierra con la tecla 'C'.
  */
 
+
 class CharacterStats {
   constructor(viewportWidth = 320, viewportHeight = 180) {
     this.viewportWidth = viewportWidth;
     this.viewportHeight = viewportHeight;
     this.isOpen = false;
-    this.activeTab = 'stats'; // 'stats' | 'achievements'
+    this.activeTab = 'stats'; // 'stats' | 'achievements' | 'skills'
+    this.skillCursor = 0;
+    this.skillMessage = '';
   }
 
   open() {
@@ -8608,13 +9624,14 @@ class CharacterStats {
   }
 
   switchTab(tab) {
-    if (tab === 'stats' || tab === 'achievements') {
+    if (tab === 'stats' || tab === 'achievements' || tab === 'skills') {
       this.activeTab = tab;
     }
   }
 
   cycleTab() {
-    this.activeTab = this.activeTab === 'stats' ? 'achievements' : 'stats';
+    const order = ['stats', 'achievements', 'skills'];
+    this.activeTab = order[(order.indexOf(this.activeTab) + 1) % order.length];
   }
 
   /**
@@ -8643,8 +9660,33 @@ class CharacterStats {
   /**
    * Procesa pulsaciones de teclado y clics de ratón dentro de la ventana.
    */
-  handleInput(input) {
+  handleInput(input, player = null) {
     if (!this.isOpen || !input) return false;
+
+    // Pestaña de habilidades: W/S navegan, Enter/E compran. A/D/Tab siguen cambiando de pestaña.
+    if (this.activeTab === 'skills') {
+      if (input.consumeKey('KeyW') || input.consumeKey('ArrowUp')) {
+        this.skillCursor = (this.skillCursor + SKILL_DEFS.length - 1) % SKILL_DEFS.length;
+        return true;
+      }
+      if (input.consumeKey('KeyS') || input.consumeKey('ArrowDown')) {
+        this.skillCursor = (this.skillCursor + 1) % SKILL_DEFS.length;
+        return true;
+      }
+      if (input.consumeKey('Enter') || input.consumeKey('KeyE') || input.consumeKey('Space')) {
+        const def = SKILL_DEFS[this.skillCursor];
+        if (player && def) {
+          if (player.skills[def.key]) {
+            this.skillMessage = 'Ya dominas esta habilidad.';
+          } else if (player.purchaseSkill(def.key)) {
+            this.skillMessage = `¡${def.name} desbloqueada!`;
+          } else {
+            this.skillMessage = `Necesitas ${def.cost} punto(s) de habilidad.`;
+          }
+        }
+        return true;
+      }
+    }
 
     // Cambiar de pestaña mediante Tab, 1, 2, A, D, Flechas
     if (
@@ -8665,6 +9707,10 @@ class CharacterStats {
       this.switchTab('achievements');
       return true;
     }
+    if (input.consumeKey('Digit3') || input.consumeKey('Numpad3')) {
+      this.switchTab('skills');
+      return true;
+    }
 
     // Interacción por clic de ratón en las pestañas superiores
     if (input.pointerJustClicked) {
@@ -8680,6 +9726,9 @@ class CharacterStats {
           return true;
         } else if (px >= winX + 97 && px <= winX + 195) {
           this.switchTab('achievements');
+          return true;
+        } else if (px >= winX + 197 && px <= winX + 268) {
+          this.switchTab('skills');
           return true;
         }
       }
@@ -8763,18 +9812,26 @@ class CharacterStats {
     ctx.fillStyle = isTab2 ? '#ffd885' : '#64748b';
     ctx.fillText(`[2] 🏆 TROFEOS (${unlockedCount}/${totalCount})`, winX + 98 + tab2W / 2, tabY + 5.5);
 
-    // Atajo superior derecho
-    ctx.font = '5px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
-    ctx.fillText('[Tab] Alternar  ·  [C/Esc] Salir', winX + winW - 8, winY + 7);
+    // Pestaña 3: Árbol de habilidades
+    const isTab3 = this.activeTab === 'skills';
+    ctx.fillStyle = isTab3 ? '#1e293b' : '#0b101c';
+    ctx.fillRect(winX + 198, tabY, 70, 11);
+    ctx.strokeStyle = isTab3 ? '#f59e0b' : '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(winX + 198.5, tabY + 0.5, 69, 10);
+    ctx.font = 'bold 5.5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isTab3 ? '#ffd885' : '#64748b';
+    ctx.fillText(`[3] ⭐ HABIL. (${player ? player.skillPoints : 0})`, winX + 198 + 35, tabY + 5.5);
 
     // =========================================================================
     // CONTENIDO SEGÚN LA PESTAÑA ACTIVA
     // =========================================================================
     if (this.activeTab === 'stats') {
       this._renderStatsTab(ctx, winX, winY, winW, winH, player, t);
+    } else if (this.activeTab === 'skills') {
+      this._renderSkillsTab(ctx, winX, winY, winW, winH, player);
     } else {
       this._renderAchievementsTab(ctx, winX, winY, winW, winH, achievementManager);
     }
@@ -8787,9 +9844,9 @@ class CharacterStats {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(
-      this.activeTab === 'stats'
-        ? '[Tab / 2] Ver Trofeos  ·  [I] Mochila  ·  [L] Diario  ·  [C / Esc] Cerrar'
-        : '[Tab / 1] Ver Perfil  ·  [I] Mochila  ·  [L] Diario  ·  [C / Esc] Cerrar',
+      this.activeTab === 'skills'
+        ? '[W/S] Elegir  ·  [Enter/E] Comprar  ·  [Tab] Cambiar pestaña  ·  [C / Esc] Cerrar'
+        : '[Tab / 1-3] Cambiar pestaña  ·  [I] Mochila  ·  [L] Diario  ·  [C / Esc] Cerrar',
       winX + winW / 2,
       winY + winH - 7
     );
@@ -8979,6 +10036,55 @@ class CharacterStats {
   /**
    * Renderiza la pestaña de Trofeos y Logros del sistema.
    */
+  /**
+   * Árbol de habilidades: se compran con puntos ganados al derrotar enemigos (1 cada 4, 2 por jefe).
+   */
+  _renderSkillsTab(ctx, winX, winY, winW, winH, player) {
+    const x = winX + 10;
+    let y = winY + 24;
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 6px monospace';
+    ctx.fillStyle = '#ffd885';
+    ctx.fillText(`PUNTOS DE HABILIDAD: ${player ? player.skillPoints : 0}`, x, y);
+    ctx.font = '5px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(`Enemigos derrotados: ${player ? player.killCount : 0}  ·  Combo: 3 golpes · Parry: [Q] justo antes del impacto`, x, y + 9);
+    y += 22;
+
+    SKILL_DEFS.forEach((def, i) => {
+      const owned = Boolean(player && player.skills[def.key]);
+      const selected = i === this.skillCursor;
+      const rowH = 24;
+      ctx.fillStyle = selected ? '#1e293b' : '#0e1322';
+      ctx.fillRect(x, y, winW - 20, rowH - 3);
+      ctx.strokeStyle = owned ? '#22c55e' : selected ? '#f59e0b' : '#334155';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, winW - 21, rowH - 4);
+
+      ctx.font = 'bold 6px monospace';
+      ctx.fillStyle = owned ? '#86efac' : '#e2e8f0';
+      ctx.fillText(`${selected ? '▶ ' : '  '}${def.name}`, x + 5, y + 4);
+      ctx.font = '5px monospace';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(def.desc, x + 12, y + 13);
+      ctx.textAlign = 'right';
+      ctx.font = 'bold 5.5px monospace';
+      ctx.fillStyle = owned ? '#22c55e' : (player && player.skillPoints >= def.cost ? '#fde047' : '#64748b');
+      ctx.fillText(owned ? '✓ ADQUIRIDA' : `${def.cost} pt`, x + winW - 26, y + 4);
+      ctx.textAlign = 'left';
+      y += rowH;
+    });
+
+    if (this.skillMessage) {
+      ctx.font = '5.5px monospace';
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(this.skillMessage, x, y + 2);
+    }
+    ctx.restore();
+  }
+
   _renderAchievementsTab(ctx, winX, winY, winW, winH, achievementManager) {
     const list = achievementManager ? achievementManager.getAll() : [];
     const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;
@@ -17113,6 +18219,9 @@ class RPGGame {
         hasDash: !!this.player.hasDash,
         hasChargedAttack: !!this.player.hasChargedAttack,
         hasBarrier: !!this.player.hasBarrier,
+        skillPoints: this.player.skillPoints || 0,
+        killCount: this.player.killCount || 0,
+        skills: { ...this.player.skills },
         hasLanternEquipped: this.player.hasLanternEquipped,
         firstStageGateOpen: this.tilemap.firstStageGateOpen,
         timeOfDayHours: this.dayNight.timeOfDayHours,
@@ -17273,6 +18382,16 @@ class RPGGame {
       this.player.hasDash = Boolean(data.hasDash);
       this.player.hasChargedAttack = Boolean(data.hasChargedAttack);
       this.player.hasBarrier = Boolean(data.hasBarrier);
+      this.player.skillPoints = Number.isFinite(data.skillPoints) ? data.skillPoints : 0;
+      this.player.killCount = Number.isFinite(data.killCount) ? data.killCount : 0;
+      const savedSkills = data.skills && typeof data.skills === 'object' ? data.skills : {};
+      this.player.skills = {
+        vigor: Boolean(savedSkills.vigor),
+        filo: Boolean(savedSkills.filo),
+        reflejo: Boolean(savedSkills.reflejo),
+        log: Boolean(savedSkills.log)
+      };
+      this.player.stamina = this.player.effectiveMaxStamina;
       if (typeof data.playerHp === 'number' && data.playerHp > 0) {
         this.player.hp = data.playerHp;
       } else {
@@ -20963,7 +22082,7 @@ class RPGGame {
 
     // Ventana Activa: Ficha Técnica y Progresión del Personaje (Tecla 'C')
     if (this.characterStats.isOpen) {
-      if (this.characterStats.handleInput(this.input)) {
+      if (this.characterStats.handleInput(this.input, this.player)) {
         if (this.music) this.music.playMenuMove();
       }
       if (this.input.consumeKey('KeyM')) {
@@ -21026,6 +22145,14 @@ class RPGGame {
       if (this.player.tryAttack()) {
         this.music.playSwordSlash();
       }
+    }
+
+    if (this.input.consumeKey('F3')) {
+      this.debugMode = !this.debugMode;
+    }
+    this.sceneSurvivalTimer = (this.sceneSurvivalTimer || 0) + dt;
+    if (this.sceneSurvivalTimer > 90 && this.deathsByScene && this.deathsByScene[this.tilemap.currentSceneId]) {
+      this.deathsByScene[this.tilemap.currentSceneId] = 0;
     }
 
     this.dayNight.update(dt);
@@ -21165,14 +22292,30 @@ class RPGGame {
       return;
     }
 
+    // Contexto de IA compartido: lista de aliados (alarmas) y turnos de ataque simultáneos
+    if (this.player.hp > 0) this._deathRegistered = false;
+    const aiContext = { enemies, attackers: new Set() };
+    const difficultyScale = this._getDifficultyScale();
+
     for (const enemy of enemies) {
+      enemy.speedScale = enemy.isBoss ? 1 : difficultyScale;
       enemy.update(
         dt,
         this.tilemap,
         this.player,
         this.dialogueBox.active,
-        this.music
+        this.music,
+        aiContext
       );
+
+      // Puntos de habilidad por enemigos derrotados
+      if (enemy.dead && !enemy.xpGranted) {
+        enemy.xpGranted = true;
+        const gained = this.player.awardKill(Boolean(enemy.isBoss));
+        if (gained > 0 && this.menuSystem) {
+          this.menuSystem.showNotice(`⭐ +${gained} punto${gained > 1 ? 's' : ''} de habilidad [C → Habilidades]`, 3);
+        }
+      }
 
       // Actualizar misiones asociadas a la derrota de cada mini-jefe y jefe final
       if (enemy.isBoss && enemy.dead && !enemy.questCompletedTriggered) {
@@ -21252,6 +22395,7 @@ class RPGGame {
           en.resetCombatState();
         }
       }
+      this._registerPlayerDeath();
       this.menuSystem.openGameOverScreen(!this.player.hasArmor);
       this.input.endFrame();
       return;
@@ -21264,6 +22408,24 @@ class RPGGame {
     }
 
     this.input.endFrame();
+  }
+
+  /**
+   * Dificultad adaptativa: cada muerte seguida en la misma zona reduce un 8% la velocidad
+   * de los enemigos normales (mínimo 72%). Se restablece al sobrevivir 90 s en la zona.
+   */
+  _getDifficultyScale() {
+    const deaths = (this.deathsByScene && this.deathsByScene[this.tilemap.currentSceneId]) || 0;
+    return Math.max(0.72, 1 - 0.08 * deaths);
+  }
+
+  _registerPlayerDeath() {
+    if (this._deathRegistered) return;
+    this._deathRegistered = true;
+    if (!this.deathsByScene) this.deathsByScene = {};
+    const sceneId = this.tilemap.currentSceneId;
+    this.deathsByScene[sceneId] = (this.deathsByScene[sceneId] || 0) + 1;
+    this.sceneSurvivalTimer = 0;
   }
 
   render() {
@@ -21343,6 +22505,9 @@ class RPGGame {
     }
 
     this._renderHUD(ctx);
+    if (this.debugMode) {
+      this._renderDebugOverlay(ctx);
+    }
     this.dialogueBox.render(ctx);
     this.inventory.render(ctx, this.player);
     this.characterStats.render(ctx, this.player, this.achievementManager);
@@ -21450,6 +22615,62 @@ class RPGGame {
     ctx.restore();
   }
 
+  /**
+   * Overlay de depuración [F3]: hitboxes, estado de IA, ruta de A* y datos del jugador.
+   */
+  _renderDebugOverlay(ctx) {
+    const { enemies } = this._getActiveSceneEntities();
+    const camX = this.camera.renderX;
+    const camY = this.camera.renderY;
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.font = '5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+
+    const pb = this.player.worldBoundingBox;
+    ctx.strokeStyle = '#22c55e';
+    ctx.strokeRect(Math.round(pb.x - camX) + 0.5, Math.round(pb.y - camY) + 0.5, pb.width, pb.height);
+
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const b = e.worldBoundingBox;
+      ctx.strokeStyle = e.isBoss ? '#a855f7' : '#ef4444';
+      ctx.strokeRect(Math.round(b.x - camX) + 0.5, Math.round(b.y - camY) + 0.5, b.width, b.height);
+
+      if (e.brain && !e.isBoss) {
+        const path = e.brain.path;
+        if (path && path.length > 0) {
+          ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)';
+          ctx.beginPath();
+          ctx.moveTo(e.centerX - camX, e.centerY - camY);
+          for (const wp of path) ctx.lineTo(wp.x - camX, wp.y - camY);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
+        ctx.beginPath();
+        ctx.arc(e.centerX - camX, e.centerY - camY, e.aggroRange, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#fde047';
+        ctx.fillText(`${e.archetype}:${e.aiState}${e.brain.action !== 'none' ? '/' + e.brain.action : ''}`, e.centerX - camX, e.y - camY - 10);
+      }
+    }
+
+    const p = this.player;
+    const lines = [
+      `DEBUG [F3]  escena=${this.tilemap.currentSceneId}  x=${Math.round(p.x)} y=${Math.round(p.y)}`,
+      `hp=${p.hp}/${p.maxHp}  stamina=${Math.round(p.stamina)}/${p.maxStamina}  combo=${p.comboStep}  parry=${p.parryTimer.toFixed(2)}`,
+      `pts=${p.skillPoints} kills=${p.killCount}  dificultad=x${this._getDifficultyScale().toFixed(2)}  enemigos=${enemies.filter((e) => !e.dead).length}`
+    ];
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
+    ctx.fillRect(2, VIEWPORT_HEIGHT - 26, 230, 24);
+    ctx.fillStyle = '#4ade80';
+    lines.forEach((l, i) => ctx.fillText(l, 5, VIEWPORT_HEIGHT - 24 + i * 7));
+    ctx.restore();
+  }
+
   _renderHUD(ctx) {
     ctx.save();
     ctx.font = '7px monospace';
@@ -21508,6 +22729,28 @@ class RPGGame {
     ctx.fillStyle = '#ff4d6d';
     ctx.textAlign = 'center';
     ctx.fillText(heartsStr, heartsX + heartsW / 2, heartsY + heartsH / 2);
+
+    // Barra de stamina bajo los corazones (solo visible si hay espada y no está llena)
+    if (this.player.hasSword && (this.player.stamina < this.player.maxStamina - 0.5 || this.player.comboStep > 0)) {
+      const sw = heartsW;
+      const sy = heartsY + heartsH + 2;
+      ctx.fillStyle = 'rgba(14, 18, 30, 0.75)';
+      ctx.fillRect(heartsX, sy, sw, 4);
+      const pct = Math.max(0, Math.min(1, this.player.stamina / this.player.maxStamina));
+      ctx.fillStyle = pct < 0.25 ? '#ef4444' : '#38bdf8';
+      ctx.fillRect(heartsX + 0.5, sy + 0.5, (sw - 1) * pct, 3);
+      if (this.player.comboStep > 0) {
+        ctx.fillStyle = '#fde047';
+        for (let i = 0; i < this.player.comboStep; i++) {
+          ctx.fillRect(heartsX + i * 5, sy + 5, 4, 2);
+        }
+      }
+    }
+    if (this.player.parryFlashTimer > 0) {
+      ctx.fillStyle = '#fde047';
+      ctx.textAlign = 'center';
+      ctx.fillText('¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, 30);
+    }
 
     // Indicador visual sutil si está sin armadura (pequeño punto carmesí discreto sin rótulo agresivo)
     if (!this.player.hasArmor) {

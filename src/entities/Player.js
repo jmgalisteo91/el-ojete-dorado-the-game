@@ -1,5 +1,8 @@
 import { Entity } from './Entity.js?v=6';
 import { CollisionSystem } from '../physics/CollisionSystem.js?v=6';
+import { SKILL_DEFS } from '../core/SkillCatalog.js?v=6';
+
+const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
 
 /**
  * Entidad controlada por el jugador.
@@ -56,6 +59,83 @@ export class Player extends Entity {
     this.attackTimer = 0;
     this.attackDuration = 0.22;
     this.attackCooldown = 0;
+
+    // Stamina: el dash, los ataques y los logs consumen energía
+    this.maxStamina = 100;
+    this.stamina = 100;
+    this.staminaRegenDelay = 0;
+
+    // Combo de espada (3 golpes), ataque tras dash y parry
+    this.comboStep = 0;
+    this.comboTimer = 0;
+    this.attackDamage = 1;
+    this.attackIsFinisher = false;
+    this.dashStrikeTimer = 0;
+    this.attackIsDashStrike = false;
+    this.parryTimer = 0;
+    this.parryFlashTimer = 0;
+    this.lastParryCount = 0;
+
+    // Progresión
+    this.skillPoints = 0;
+    this.killCount = 0;
+    this.skills = { vigor: false, filo: false, reflejo: false, log: false };
+    this.thrownLogs = [];
+    this.logCooldown = 0;
+  }
+
+  get effectiveMaxStamina() {
+    return this.skills.vigor ? 140 : 100;
+  }
+
+  spendStamina(amount) {
+    if (this.stamina < amount) return false;
+    this.stamina -= amount;
+    this.staminaRegenDelay = 0.6;
+    return true;
+  }
+
+  getSwordDamage() {
+    return this.attackDamage;
+  }
+
+  /** Concede puntos de habilidad por derrotar enemigos. Devuelve los puntos ganados. */
+  awardKill(isBoss = false) {
+    this.killCount += 1;
+    let gained = 0;
+    if (isBoss) {
+      gained = 2;
+    } else if (this.killCount % 4 === 0) {
+      gained = 1;
+    }
+    this.skillPoints += gained;
+    return gained;
+  }
+
+  purchaseSkill(key) {
+    const def = SKILL_DEFS.find((d) => d.key === key);
+    if (!def || this.skills[key] || this.skillPoints < def.cost) return false;
+    this.skillPoints -= def.cost;
+    this.skills[key] = true;
+    if (key === 'vigor') this.stamina = this.effectiveMaxStamina;
+    return true;
+  }
+
+  throwLog(soundEngine = null) {
+    if (!this.skills.log || this.logCooldown > 0 || !this.spendStamina(STAMINA_COSTS.log)) return false;
+    const vec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.direction] || [0, 1];
+    this.thrownLogs.push({
+      x: this.centerX,
+      y: this.centerY,
+      vx: vec[0] * 150,
+      vy: vec[1] * 150,
+      life: 1.1
+    });
+    this.logCooldown = 0.6;
+    if (soundEngine && typeof soundEngine.playDashSound === 'function') {
+      soundEngine.playDashSound();
+    }
+    return true;
   }
 
   get invulnerableTimer() {
@@ -104,6 +184,15 @@ export class Player extends Entity {
     this.invulnTimer = 0;
     this.attackTimer = 0;
     this.attackCooldown = 0;
+    this.stamina = this.maxStamina;
+    this.comboStep = 0;
+    this.comboTimer = 0;
+    this.dashStrikeTimer = 0;
+    this.parryTimer = 0;
+    this.skillPoints = 0;
+    this.killCount = 0;
+    this.skills = { vigor: false, filo: false, reflejo: false, log: false };
+    this.thrownLogs = [];
     this.animator = this.unarmoredAnimator;
   }
 
@@ -134,8 +223,30 @@ export class Player extends Entity {
 
   tryAttack(soundEngine = null) {
     if (!this.hasSword || this.attackCooldown > 0) return false;
+    if (!this.spendStamina(STAMINA_COSTS.attack)) return false;
+
+    if (this.dashStrikeTimer > 0) {
+      // Tajo tras dash: golpe de embestida de daño 2
+      this.attackIsDashStrike = true;
+      this.attackIsFinisher = false;
+      this.attackDamage = 2;
+      this.comboStep = 0;
+      this.comboTimer = 0;
+      this.dashStrikeTimer = 0;
+      this.attackDuration = 0.26;
+      this.attackCooldown = 0.4;
+    } else {
+      this.attackIsDashStrike = false;
+      const step = this.comboTimer > 0 && this.comboStep < 3 ? this.comboStep + 1 : 1;
+      this.comboStep = step;
+      this.attackIsFinisher = step === 3;
+      this.attackDamage = step === 3 ? (this.skills.filo ? 3 : 2) : 1;
+      this.attackDuration = step === 3 ? 0.3 : 0.22;
+      this.attackCooldown = step === 3 ? 0.5 : 0.26;
+      this.comboTimer = step === 3 ? 0 : 0.75;
+      if (step === 3) this.comboStep = 0;
+    }
     this.attackTimer = this.attackDuration;
-    this.attackCooldown = 0.32;
     if (soundEngine && typeof soundEngine.playSwordSlash === 'function') {
       soundEngine.playSwordSlash();
     }
@@ -144,6 +255,8 @@ export class Player extends Entity {
 
   tryDash(input = null, soundEngine = null) {
     if (!this.hasDash || this.dashCooldown > 0) return false;
+    if (!this.spendStamina(STAMINA_COSTS.dash)) return false;
+    this.dashStrikeTimer = 0.55;
 
     let move = input ? input.getMovementVector() : { x: 0, y: 0 };
     if (move.x === 0 && move.y === 0) {
@@ -168,6 +281,7 @@ export class Player extends Entity {
 
   tryChargedAttack(soundEngine = null) {
     if (!this.hasSword || !this.hasChargedAttack || this.attackCooldown > 0) return false;
+    if (!this.spendStamina(STAMINA_COSTS.charged)) return false;
     this.spinAttackTimer = 0.35;
     this.attackCooldown = 0.45;
     if (soundEngine && typeof soundEngine.playChargedAttack === 'function') {
@@ -181,6 +295,7 @@ export class Player extends Entity {
     this.barrierActive = true;
     this.barrierTimer = 3.0;
     this.barrierCooldown = 8.0;
+    this.parryTimer = this.skills.reflejo ? 0.45 : 0.25;
     if (soundEngine && typeof soundEngine.playBarrier === 'function') {
       soundEngine.playBarrier();
     }
@@ -200,8 +315,9 @@ export class Player extends Entity {
 
   getSwordHitbox() {
     if (!this.isAttacking) return null;
-    const reach = 15;
-    const size = 18;
+    const bigSwing = this.attackIsFinisher || this.attackIsDashStrike;
+    const reach = bigSwing ? 18 : 15;
+    const size = bigSwing ? 24 : 18;
     let hx = this.centerX - size / 2;
     let hy = this.centerY - size / 2;
 
@@ -222,13 +338,27 @@ export class Player extends Entity {
    * Recibe un impacto enemigo.
    * Si el jugador está INDEFENSO (sin armadura), cualquier ataque reduce su vida a 0 inmediatamente.
    */
-  takeHit(soundEngine = null) {
+  takeHit(soundEngine = null, attacker = null) {
     if (this.invulnTimer > 0 || this.hp <= 0) return false;
 
     // Si la Barrera de Tipado Estricto está activa, absorbe completamente el daño
     if (this.barrierActive) {
       if (soundEngine && typeof soundEngine.playBarrier === 'function') {
         soundEngine.playBarrier();
+      }
+      // Parry perfecto: la barrera se activó justo antes del impacto
+      if (this.parryTimer > 0) {
+        this.parryTimer = 0;
+        this.parryFlashTimer = 0.6;
+        this.lastParryCount += 1;
+        this.barrierCooldown = Math.min(this.barrierCooldown, 2.5);
+        this.stamina = Math.min(this.effectiveMaxStamina, this.stamina + 40);
+        if (attacker && typeof attacker.stun === 'function') {
+          attacker.stun(1.4);
+        }
+        if (soundEngine && typeof soundEngine.playChargedAttack === 'function') {
+          soundEngine.playChargedAttack();
+        }
       }
       return false;
     }
@@ -267,6 +397,23 @@ export class Player extends Entity {
     if (this.spinAttackTimer > 0) {
       this.spinAttackTimer = Math.max(0, this.spinAttackTimer - dt);
     }
+
+    // Stamina, combo y temporizadores de habilidades
+    this.maxStamina = this.effectiveMaxStamina;
+    if (this.staminaRegenDelay > 0) {
+      this.staminaRegenDelay = Math.max(0, this.staminaRegenDelay - dt);
+    } else if (this.stamina < this.maxStamina) {
+      this.stamina = Math.min(this.maxStamina, this.stamina + 35 * dt);
+    }
+    if (this.comboTimer > 0) {
+      this.comboTimer = Math.max(0, this.comboTimer - dt);
+      if (this.comboTimer === 0) this.comboStep = 0;
+    }
+    if (this.dashStrikeTimer > 0) this.dashStrikeTimer = Math.max(0, this.dashStrikeTimer - dt);
+    if (this.parryTimer > 0) this.parryTimer = Math.max(0, this.parryTimer - dt);
+    if (this.parryFlashTimer > 0) this.parryFlashTimer = Math.max(0, this.parryFlashTimer - dt);
+    if (this.logCooldown > 0) this.logCooldown = Math.max(0, this.logCooldown - dt);
+    this._updateThrownLogs(dt, tilemap);
 
     // Actualización de la Barrera de Tipado Estricto
     if (this.barrierTimer > 0) {
@@ -316,6 +463,11 @@ export class Player extends Entity {
     // Ejecución de Barrera de Tipado Estricto (tecla Q)
     if (input && typeof input.consumeBarrier === 'function' && input.consumeBarrier()) {
       this.tryBarrier(soundEngine);
+    }
+
+    // console.log() arrojadizo (tecla R, requiere la habilidad)
+    if (input && typeof input.consumeKey === 'function' && input.consumeKey('KeyR')) {
+      this.throwLog(soundEngine);
     }
 
     // Carga del Corte en Cascada (mantener botón de ataque 1s)
@@ -377,6 +529,19 @@ export class Player extends Entity {
     super.update(dt);
   }
 
+  _updateThrownLogs(dt, tilemap) {
+    for (let i = this.thrownLogs.length - 1; i >= 0; i--) {
+      const l = this.thrownLogs[i];
+      l.x += l.vx * dt;
+      l.y += l.vy * dt;
+      l.life -= dt;
+      const box = { x: l.x - 2, y: l.y - 2, width: 4, height: 4 };
+      if (l.life <= 0 || (tilemap && CollisionSystem.collidesWithMap(box, tilemap))) {
+        this.thrownLogs.splice(i, 1);
+      }
+    }
+  }
+
   /**
    * Comprueba si el hitbox actual del jugador colisiona con el tilemap sólido y,
    * en caso afirmativo, lo reposiciona suavemente en la coordenada libre más cercana.
@@ -407,6 +572,25 @@ export class Player extends Entity {
   }
 
   render(ctx, camera) {
+    // 0. console.log() arrojadizos
+    if (this.thrownLogs.length > 0) {
+      ctx.save();
+      ctx.font = 'bold 5px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const l of this.thrownLogs) {
+        const lx = Math.round(l.x - camera.renderX);
+        const ly = Math.round(l.y - camera.renderY);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(lx - 7, ly - 3, 14, 7);
+        ctx.strokeStyle = '#22c55e';
+        ctx.strokeRect(lx - 6.5, ly - 2.5, 13, 6);
+        ctx.fillStyle = '#4ade80';
+        ctx.fillText('log', lx, ly + 0.5);
+      }
+      ctx.restore();
+    }
+
     // 1. Estela visual traslúcida del Dash Asíncrono
     if (this.dashGhosts && this.dashGhosts.length > 0) {
       ctx.save();
