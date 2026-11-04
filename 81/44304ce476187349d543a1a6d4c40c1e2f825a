@@ -1,0 +1,16 @@
+package.json
+  h_5d2e00bbfe6d92 8
+vercel.json
+  h_5d2e00bbfe6d92 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "8144304ce476187349d543a1a6d4c40c1e2f825a",
+  "prompts": {},
+  "humans": {
+    "h_5d2e00bbfe6d92": {
+      "author": "Jose Manuel Peralta Galisteo <josempgal@ext.inditex.com>"
+    }
+  }
+}
