@@ -48,10 +48,10 @@ const RENDER_SCALE = 4; // Renderizado nativo HD 1280x720 (4x sobre base lógica
 const SAVE_STORAGE_KEY = 'el_ojete_dorado_save_v1';
 
 export const ABYSSAL_POINTER_SPAWN_CANDIDATES = [
-  { x: 4 * 16, y: 20 * 16, desc: 'Bosque Secreto de Valleverde' },
-  { x: 26 * 16, y: 18 * 16, desc: 'Orilla del Río Alba' },
-  { x: 33 * 16, y: 8 * 16, desc: 'Antesala del Santuario de las Pruebas' },
-  { x: 4 * 16, y: 12 * 16, desc: 'Borde de las Tierras Hostiles' }
+  { x: 29 * 16, y: 19 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Claro Sureste)' },
+  { x: 5 * 16, y: 19 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Rincón Suroeste)' },
+  { x: 25 * 16, y: 5 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Sendero Noreste)' },
+  { x: 9 * 16, y: 4 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Antiguo Bastión Noroeste)' }
 ];
 
 export class RPGGame {
@@ -609,22 +609,20 @@ export class RPGGame {
         }
       }
 
-      if (data.abyssalPointerSpawn) {
+      if (data.abyssalPointerSpawn && data.abyssalPointerSpawn.sceneId === 'first_stage') {
         this.abyssalPointerSpawn = { ...data.abyssalPointerSpawn };
-        const pointerItem = this.worldItems.find((w) => w.id === 'item_abyssal_pointer');
-        if (pointerItem) {
-          pointerItem.x = this.abyssalPointerSpawn.x;
-          pointerItem.y = this.abyssalPointerSpawn.y;
-        }
+      } else {
+        this.abyssalPointerSpawn = { ...ABYSSAL_POINTER_SPAWN_CANDIDATES[0] };
+      }
+      const pointerItem = this.worldItems.find((w) => w.id === 'item_abyssal_pointer');
+      if (pointerItem && this.abyssalPointerSpawn) {
+        pointerItem.x = this.abyssalPointerSpawn.x;
+        pointerItem.y = this.abyssalPointerSpawn.y;
+        pointerItem.sceneId = this.abyssalPointerSpawn.sceneId || 'first_stage';
       }
 
       if (data.abyssalPortalOrigin) {
         this.abyssalPortalOrigin = { ...data.abyssalPortalOrigin };
-        if (this.tilemap.scenes.condemned_realms && this.tilemap.scenes.condemned_realms.exitDoor) {
-          this.tilemap.scenes.condemned_realms.exitDoor.returnScene = this.abyssalPortalOrigin.sceneId;
-          this.tilemap.scenes.condemned_realms.exitDoor.returnX = this.abyssalPortalOrigin.x;
-          this.tilemap.scenes.condemned_realms.exitDoor.returnY = this.abyssalPortalOrigin.y;
-        }
       }
 
       if (data.activeAbyssalPortal) {
@@ -2826,22 +2824,25 @@ export class RPGGame {
 
   _createWorldItems() {
     const itemsSheet = this.assets.itemsSheet;
+    const tilesetSheet = this.assets.tilesetSheet;
 
-    if (!this.abyssalPointerSpawn) {
+    if (!this.abyssalPointerSpawn || this.abyssalPointerSpawn.sceneId !== 'first_stage') {
       const spawnIndex = Math.floor(Math.random() * ABYSSAL_POINTER_SPAWN_CANDIDATES.length);
-      this.abyssalPointerSpawn = ABYSSAL_POINTER_SPAWN_CANDIDATES[spawnIndex];
+      this.abyssalPointerSpawn = { ...ABYSSAL_POINTER_SPAWN_CANDIDATES[spawnIndex] };
     }
 
     return [
       new WorldItem({
         id: 'item_abyssal_pointer',
         name: 'Puntero al Abismo (Null Pointer)',
-        description: 'Cristal cósmico rúnico. Úsalo desde la mochila [I] para invocar una brecha dimensional a los Reinos Condenados del Dios Supremo.',
+        description: 'Reliquia cósmica reutilizable. Úsala desde la mochila [I] cuantas veces quieras para abrir tu Portal Abisal (estilo Diablo) hacia los Reinos Condenados y regresar por él.',
         iconIndex: ITEM_ICONS.ABYSSAL_POINTER,
         x: this.abyssalPointerSpawn.x,
         y: this.abyssalPointerSpawn.y,
-        sceneId: 'overworld',
-        itemsSheet
+        sceneId: this.abyssalPointerSpawn.sceneId || 'first_stage',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
       }),
       new WorldItem({
         id: 'dawn_armor',
@@ -2871,7 +2872,9 @@ export class RPGGame {
         x: 3 * 16,
         y: 3 * 16,
         sceneId: 'elder_house',
-        itemsSheet
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
       }),
       new WorldItem({
         id: 'bridge_pass',
@@ -2881,7 +2884,9 @@ export class RPGGame {
         x: 8 * 16,
         y: 3 * 16,
         sceneId: 'elder_house',
-        itemsSheet
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
       }),
       new WorldItem({
         id: 'bread',
@@ -2891,7 +2896,9 @@ export class RPGGame {
         x: 8 * 16,
         y: 3 * 16,
         sceneId: 'blacksmith_house',
-        itemsSheet
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
       }),
       new WorldItem({
         id: 'potion',
@@ -2901,7 +2908,9 @@ export class RPGGame {
         x: 3 * 16,
         y: 3 * 16,
         sceneId: 'herbalist_house',
-        itemsSheet
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
       }),
       new WorldItem({
         id: 'wheat',
@@ -2911,7 +2920,9 @@ export class RPGGame {
         x: 8 * 16,
         y: 5 * 16,
         sceneId: 'herbalist_house',
-        itemsSheet
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
       }),
       new WorldItem({
         id: 'golden_apple',
@@ -2931,7 +2942,9 @@ export class RPGGame {
         x: 8 * 16,
         y: 4 * 16,
         sceneId: 'player_house',
-        itemsSheet
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
       }),
       new WorldItem({
         id: 'silicon_flower_1',
@@ -2992,7 +3005,8 @@ export class RPGGame {
       return true;
     });
     const items = this.worldItems.filter((i) => {
-      if (i.sceneId !== scene || i.collected) return false;
+      if (i.sceneId !== scene) return false;
+      if (i.collected && !i.isChest) return false;
       if (i.nightOnly && !isNight) return false;
       return true;
     });
@@ -3002,6 +3016,9 @@ export class RPGGame {
   _findBestInteraction() {
     const { npcs, animals, items } = this._getActiveSceneEntities();
     const currentScene = this.tilemap.currentSceneId;
+    const isNight = typeof this.dayNight?.isNight === 'function'
+      ? this.dayNight.isNight()
+      : (this.dayNight && (this.dayNight.timeOfDayHours >= 20 || this.dayNight.timeOfDayHours < 6));
 
     // Puzle 1: Panel de Compilación en Templo de la Armadura
     if (currentScene === 'armor_temple' && this.tilemap.armorPuzzle) {
@@ -3030,34 +3047,43 @@ export class RPGGame {
       }
     }
 
-    // Brecha dimensional hacia los Reinos Condenados invocada por el Puntero Abisal
+    // Portal Abisal de retorno dentro de los Reinos Condenados (estilo Diablo)
+    if (currentScene === 'condemned_realms') {
+      const exitCenterX = 11.5 * 16;
+      const exitCenterY = 15.2 * 16;
+      if (Math.hypot(this.player.centerX - exitCenterX, this.player.centerY - exitCenterY) <= 26) {
+        return {
+          kind: 'abyssal_portal_exit',
+          label: '[E] Cruzar Portal Abisal (Regresar)',
+          target: { centerX: exitCenterX, y: exitCenterY }
+        };
+      }
+    }
+
+    // Portal Abisal hacia los Reinos Condenados invocado por el jugador (permanece abierto estilo Diablo)
     if (this.activeAbyssalPortal && this.activeAbyssalPortal.sceneId === currentScene) {
       const pCenterX = this.activeAbyssalPortal.x + 10;
       const pCenterY = this.activeAbyssalPortal.y + 10;
       if (Math.hypot(this.player.centerX - pCenterX, this.player.centerY - pCenterY) <= 26) {
         return {
           kind: 'abyssal_portal',
-          label: '[E] Cruzar la Brecha Abisal (Hacia el Dios Supremo)',
+          label: '[E] Entrar al Portal Abisal (Reinos Condenados)',
           target: { centerX: pCenterX, y: pCenterY }
         };
       }
     }
 
     for (const item of items) {
-      if (item.canInteract(this.player)) {
-        return { kind: 'item', target: item, label: `[E] Recoger ${item.name}` };
+      if (item.canInteract(this.player, isNight)) {
+        const label = item.isChest
+          ? `[E] Abrir Cofre: ${item.name}`
+          : `[E] Recoger ${item.name}`;
+        return { kind: 'item', target: item, label };
       }
     }
 
     const door = this.tilemap.findNearbyDoor(this.player);
     if (door) {
-      if (door.type === 'inert_portal_gate') {
-        return {
-          kind: 'inert_portal_gate',
-          target: { centerX: door.worldX, y: door.worldY, worldX: door.worldX, worldY: door.worldY },
-          label: `[E] ${door.label}`
-        };
-      }
       return { kind: 'door', target: door, label: `[E] ${door.label}` };
     }
 
@@ -3207,14 +3233,36 @@ export class RPGGame {
       const activeBoss = this.enemies.find(
         (e) => e.isBoss && e.sceneId === this.tilemap.currentSceneId && e.activeCombat && !e.dead
       );
-      if (this.tilemap.currentSceneId === 'condemned_realms' || activeBoss) {
-        this.inventory.statusMessage = 'La realidad es demasiado inestable para invocar el portal aquí.';
-        if (this.music) this.music.playHitHurt();
+      if (activeBoss || this.tilemap.currentSceneId === 'jail_cell') {
+        this.inventory.statusMessage = 'La realidad está bloqueada durante el combate o en el calabozo.';
+        if (this.music) this.music.playDoorLockedSound();
         return;
       }
 
-      this.inventory.consumeItem('item_abyssal_pointer', 1);
+      // El Puntero Abisal NO se consume: se puede utilizar todas las veces que se quiera
       this.inventory.close();
+
+      // Si ya estamos dentro de los Reinos Condenados, usarlo nos devuelve directamente por el portal
+      if (this.tilemap.currentSceneId === 'condemned_realms') {
+        const retScene = this.abyssalPortalOrigin?.sceneId || 'overworld';
+        const retX = typeof this.abyssalPortalOrigin?.x === 'number' ? this.abyssalPortalOrigin.x : 14 * 16;
+        const retY = typeof this.abyssalPortalOrigin?.y === 'number' ? this.abyssalPortalOrigin.y : 12 * 16;
+        if (this.music && typeof this.music.playAbyssalPortalSound === 'function') {
+          this.music.playAbyssalPortalSound();
+        }
+        this._executeStageTransition({
+          type: 'stage_transition',
+          targetScene: retScene,
+          label: 'Regresar por el Portal Abisal',
+          spawnX: retX,
+          spawnY: retY
+        });
+        return;
+      }
+
+      // Abrir o reubicar el Portal Abisal permanente justo frente al jugador (estilo Town Portal de Diablo)
+      const portalX = Math.max(24, Math.min(this.tilemap.width - 44, Math.round(this.player.centerX - 10)));
+      const portalY = Math.max(24, Math.min(this.tilemap.height - 44, Math.round(this.player.centerY - 22)));
 
       this.abyssalPortalOrigin = {
         sceneId: this.tilemap.currentSceneId,
@@ -3222,16 +3270,10 @@ export class RPGGame {
         y: Math.round(this.player.y)
       };
 
-      if (this.tilemap.scenes.condemned_realms && this.tilemap.scenes.condemned_realms.exitDoor) {
-        this.tilemap.scenes.condemned_realms.exitDoor.returnScene = this.abyssalPortalOrigin.sceneId;
-        this.tilemap.scenes.condemned_realms.exitDoor.returnX = this.abyssalPortalOrigin.x;
-        this.tilemap.scenes.condemned_realms.exitDoor.returnY = this.abyssalPortalOrigin.y;
-      }
-
       this.activeAbyssalPortal = {
         sceneId: this.tilemap.currentSceneId,
-        x: Math.round(this.player.centerX - 10),
-        y: Math.round(this.player.centerY - 10),
+        x: portalX,
+        y: portalY,
         timer: 0
       };
 
@@ -3243,9 +3285,9 @@ export class RPGGame {
         this.music.playAbyssalPortalSound();
       }
       if (this.questLog) {
-        this.questLog.advanceStep('quest_condemned_pointer', '¡Brecha dimensional abierta! Cruza el portal hacia el Santuario del Dios Supremo.');
+        this.questLog.advanceStep('quest_condemned_pointer', '¡Portal Abisal permanente abierto! Acércate y pulsa [E] para entrar y salir cuando quieras.');
       }
-      this.menuSystem.showNotice('🌀 ¡Se ha abierto una brecha hacia los Reinos Condenados! Acércate y pulsa [E]', 4.5);
+      this.menuSystem.showNotice('🌀 ¡Portal Abisal abierto! Quedará activo aquí para entrar y salir con [E]', 4.5);
     } else if (item.id === 'spring_water') {
       this.player.hp = Math.min(this.player.effectiveMaxHp, this.player.hp + 0.5);
       this.player.takeCoffee(0, 20);
@@ -3322,40 +3364,43 @@ export class RPGGame {
     }
 
     if (action.kind === 'abyssal_portal') {
-      this.dialogueBox.showMessage('Brecha Dimensional · Reinos Condenados', [
-        'El vórtice violeta pulsa con energía cósmica y ruidos de estática dimensional.',
-        'Conecta directamente con el Santuario del Dios Supremo para purificar la Maldición del Corazón Roto y el historial penal.',
-        '¿Deseas cruzar al más allá?'
-      ], [
-        {
-          label: '★ Sí, cruzar la brecha hacia el Dios Supremo',
-          onSelect: () => {
-            this.dialogueBox.close();
-            this._executeStageTransition({
-              type: 'stage_transition',
-              targetScene: 'condemned_realms',
-              label: 'Cruzar el Portal a los Reinos Condenados',
-              spawnX: 11.5 * this.tilemap.tileSize,
-              spawnY: 15 * this.tilemap.tileSize
-            });
-          }
-        },
-        {
-          label: 'No, permanecer aquí',
-          onSelect: () => {
-            this.dialogueBox.close();
-          }
-        }
-      ]);
+      if (this.music && typeof this.music.playAbyssalPortalSound === 'function') {
+        this.music.playAbyssalPortalSound();
+      }
+      // Guardar posición exacta de retorno junto al portal abierto
+      this.abyssalPortalOrigin = {
+        sceneId: this.tilemap.currentSceneId,
+        x: Math.round(this.player.x),
+        y: Math.round(this.player.y)
+      };
+      this._executeStageTransition({
+        type: 'stage_transition',
+        targetScene: 'condemned_realms',
+        label: 'Cruzar el Portal a los Reinos Condenados',
+        spawnX: 11.5 * this.tilemap.tileSize,
+        spawnY: 13.5 * this.tilemap.tileSize
+      });
       return;
     }
 
-    if (action.kind === 'inert_portal_gate') {
-      this.dialogueBox.showMessage('Arco Dimensional Inerte', [
-        'El antiguo arco de obsidiana del norte permanece frío y completamente apagado.',
-        'Las inscripciones rúnicas dictan: «Solo el sagrado Puntero al Abismo (Null Pointer) consagrado en el mundo exterior puede rasgar el tejido de la realidad e invocar la brecha hacia el Dios Supremo».',
-        'Explora los senderos, claros y orillas de Valleverde para hallar el cristal cósmico.'
-      ]);
+    if (action.kind === 'abyssal_portal_exit') {
+      if (this.music && typeof this.music.playAbyssalPortalSound === 'function') {
+        this.music.playAbyssalPortalSound();
+      }
+      const retScene = this.abyssalPortalOrigin?.sceneId || this.activeAbyssalPortal?.sceneId || 'overworld';
+      const retX = typeof this.abyssalPortalOrigin?.x === 'number'
+        ? this.abyssalPortalOrigin.x
+        : (this.activeAbyssalPortal ? this.activeAbyssalPortal.x : 14 * 16);
+      const retY = typeof this.abyssalPortalOrigin?.y === 'number'
+        ? this.abyssalPortalOrigin.y
+        : (this.activeAbyssalPortal ? this.activeAbyssalPortal.y + 18 : 12 * 16);
+      this._executeStageTransition({
+        type: 'stage_transition',
+        targetScene: retScene,
+        label: 'Regresar por el Portal Abisal',
+        spawnX: retX,
+        spawnY: retY
+      });
       return;
     }
 
@@ -3406,6 +3451,7 @@ export class RPGGame {
 
       // Puzles de los Templos Binarios: impedir extracción sin resolver
       if (item.id === 'dawn_armor' && (!this.tilemap.armorPuzzle?.solved || this.tilemap.armorPuzzle?.barrierActive)) {
+        if (this.music) this.music.playDoorLockedSound();
         const { A, B, C } = this.tilemap.armorPuzzle.switches;
         const condMet = (A === 1 && B === 1) || (C === 0);
         this.dialogueBox.showMessage('🏛️ [SANTUARIO DE LA ARMADURA BINARIA]', [
@@ -3418,6 +3464,7 @@ export class RPGGame {
       }
 
       if (item.id === 'dawn_sword' && !this.tilemap.swordPuzzle?.solved) {
+        if (this.music) this.music.playDoorLockedSound();
         this.dialogueBox.showMessage('🏛️ [PEDESTAL DE LA ESPADA DE LA RECURSIVIDAD]', [
           'La Espada de la Recursividad está envuelta en un bucle temporal infinito.',
           'El pedestal sagrado permanecerá sellado hasta alcanzar el Caso Base de la memoria.',
@@ -3441,6 +3488,13 @@ export class RPGGame {
       });
       if (added) {
         item.collected = true;
+        if (this.music) {
+          if (item.isChest) {
+            this.music.playChestOpenSound();
+          } else if (item.id !== 'dawn_armor' && item.id !== 'dawn_sword' && item.id !== 'golden_apple') {
+            this.music.playItemPickupSound();
+          }
+        }
 
         if (invId === 'silicon_flower') {
           const fCount = this.inventory.getItemCount('silicon_flower');
@@ -3527,11 +3581,11 @@ export class RPGGame {
         this._saveGameToStorage();
         if (item.id === 'item_abyssal_pointer') {
           if (this.questLog) {
-            this.questLog.advanceStep('quest_condemned_pointer', 'Abre tu mochila [I] y usa el Puntero Abisal [E] para rasgar la realidad e invocar el portal a los Reinos Condenados.');
+            this.questLog.advanceStep('quest_condemned_pointer', 'Abre tu mochila [I] y usa el Puntero Abisal [E] (no se gasta) para abrir tu Portal Abisal hacia los Reinos Condenados.');
           }
-          this.dialogueBox.showMessage('🔮 ¡Puntero al Abismo Encontrado!', [
-            'Has obtenido el sagrado [Puntero al Abismo (Null Pointer)].',
-            'Un cristal radiante con runas cósmicas. Abre tu mochila con [I], selecciónalo y úsalo con [E] para rasgar la realidad e invocar el portal hacia los Reinos Condenados del Dios Supremo.'
+          this.dialogueBox.showMessage('🔮 ¡Cofre Arcano: Puntero al Abismo!', [
+            '¡Has abierto el Cofre Arcano y obtenido el [Puntero al Abismo (Null Pointer)]!',
+            'Esta reliquia NO se gasta: abre tu mochila con [I] y úsala con [E] cuantas veces quieras para abrir un Portal Abisal permanente (estilo Diablo) y entrar o salir de los Reinos Condenados.'
           ]);
         } else if (item.id === 'golden_apple') {
           this.menuSystem.startRelicFoundCutscene(() => {
@@ -3542,12 +3596,15 @@ export class RPGGame {
             ]);
           });
         } else {
-          this.dialogueBox.showMessage('Objeto Obtenido', [
-            `Has guardado [${item.name}] en tu inventario.`,
+          this.dialogueBox.showMessage(item.isChest ? '📦 ¡Cofre Abierto!' : 'Objeto Obtenido', [
+            item.isChest
+              ? `Has abierto el cofre y encontrado [${item.name}].`
+              : `Has guardado [${item.name}] en tu inventario.`,
             item.description
           ]);
         }
       } else {
+        if (this.music) this.music.playDoorLockedSound();
         this.dialogueBox.showMessage('Mochila Llena', [
           'No tienes espacio libre en el inventario.'
         ]);
@@ -3557,6 +3614,7 @@ export class RPGGame {
     } else if (action.kind === 'door') {
       const door = action.target;
       if (door.type === 'bridge_gate') {
+        if (this.music) this.music.playDoorLockedSound();
         this.dialogueBox.showMessage('Puente del Este · Precintado', [
           'El paso hacia las Tierras Sagradas del este está bloqueado por una sólida barrera de madera.',
           'Los Guardias del Binario custodian el acceso e impiden el paso.',
@@ -3566,6 +3624,7 @@ export class RPGGame {
       }
 
       if (door.type === 'stage_locked') {
+        if (this.music) this.music.playDoorLockedSound();
         this.dialogueBox.showMessage('Portal Sagrado Sellado', [
           'El Portal hacia Valleverde permanece cerrado por un sello protector del Alba.',
           'Debes equiparte primero con la [Armadura del Alba] (Oeste) y la [Espada del Alba] (Norte) para poder hacer frente a las tinieblas de Mister AI Alex.'
@@ -3577,6 +3636,7 @@ export class RPGGame {
         // 1. GATEKEEPING GENERAL: Parar al jugador si no está preparado para zonas hostiles
         if (door.targetScene === 'first_stage') {
           if (!this.player.hasArmor || !this.player.hasSword) {
+            if (this.music) this.music.playDoorLockedSound();
             if (this.tilemap.currentSceneId === 'overworld') {
               this.player.x = 3.5 * this.tilemap.tileSize;
             }
@@ -3591,6 +3651,7 @@ export class RPGGame {
 
         if (door.targetScene === 'sewers_dungeon') {
           if (!this.player.hasArmor || !this.player.hasSword) {
+            if (this.music) this.music.playDoorLockedSound();
             this.player.y = 19 * this.tilemap.tileSize;
             this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
               '¡Un hedor a memoria corrompida y fugas de punteros brota de la trampilla!',
@@ -3603,6 +3664,7 @@ export class RPGGame {
 
         if (door.targetScene === 'sword_temple') {
           if (!this.player.hasArmor) {
+            if (this.music) this.music.playDoorLockedSound();
             if (this.tilemap.currentSceneId === 'overworld') {
               this.player.y = 18 * this.tilemap.tileSize;
             } else {
@@ -3619,6 +3681,7 @@ export class RPGGame {
 
         if (door.targetScene === 'ai_fortress_gate' || door.targetScene === 'ai_citadel') {
           if (!this.player.hasArmor || !this.player.hasSword) {
+            if (this.music) this.music.playDoorLockedSound();
             this.player.y = door.worldY + 24;
             this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
               'La Fortaleza de Mister AI Alex está protegida por barreras electromagnéticas letales.',
@@ -3798,6 +3861,15 @@ export class RPGGame {
   }
 
   _executeStageTransition(door) {
+    if (this.music) {
+      if (door.targetScene === 'condemned_realms' || this.tilemap.currentSceneId === 'condemned_realms') {
+        if (typeof this.music.playAbyssalPortalSound === 'function') {
+          this.music.playAbyssalPortalSound();
+        }
+      } else if (typeof this.music.playDoorOpenSound === 'function') {
+        this.music.playDoorOpenSound();
+      }
+    }
     if (door.type === 'exit') {
       this._restoreAllNPCsToOverworld();
     }
@@ -4497,22 +4569,10 @@ export class RPGGame {
       }
     }
 
-    // Detección de contacto con el Vórtice Dimensional Abisal
-    if (this.activeAbyssalPortal && this.activeAbyssalPortal.sceneId === this.tilemap.currentSceneId) {
+    // Animación continua del Portal Abisal (se activa pulsando [E], sin bucle de auto-absorción)
+    this.condemnedPortalTimer = (this.condemnedPortalTimer || 0) + dt;
+    if (this.activeAbyssalPortal) {
       this.activeAbyssalPortal.timer = (this.activeAbyssalPortal.timer || 0) + dt;
-      const pDist = Math.hypot(
-        this.player.centerX - (this.activeAbyssalPortal.x + 10),
-        this.player.centerY - (this.activeAbyssalPortal.y + 10)
-      );
-      if (pDist <= 12 && !this.dialogueBox.active && !this.inventory.isOpen) {
-        this._executeStageTransition({
-          type: 'stage_transition',
-          targetScene: 'condemned_realms',
-          label: 'Cruzar el Portal a los Reinos Condenados',
-          spawnX: 11.5 * this.tilemap.tileSize,
-          spawnY: 15 * this.tilemap.tileSize
-        });
-      }
     }
 
     const allEntities = [this.player, ...npcs, ...animals];
@@ -4668,9 +4728,15 @@ export class RPGGame {
 
     this.tilemap.render(ctx, this.camera);
 
-    // Renderizado del Vórtice Dimensional Abisal (si está activo en esta escena)
+    // Renderizado del Portal Abisal estilo Diablo (tanto en la escena de origen como en el retorno de Reinos Condenados)
     if (this.activeAbyssalPortal && this.activeAbyssalPortal.sceneId === this.tilemap.currentSceneId) {
-      this._renderAbyssalPortal(ctx);
+      this._renderAbyssalPortal(ctx, this.activeAbyssalPortal);
+    } else if (this.tilemap.currentSceneId === 'condemned_realms') {
+      this._renderAbyssalPortal(ctx, {
+        x: Math.round(11.5 * 16 - 10),
+        y: Math.round(15.2 * 16 - 10),
+        timer: this.condemnedPortalTimer || 0
+      });
     }
 
     const { npcs, animals, enemies, items } = this._getActiveSceneEntities();
@@ -4721,8 +4787,8 @@ export class RPGGame {
     }
   }
 
-  _renderAbyssalPortal(ctx) {
-    const portal = this.activeAbyssalPortal;
+  _renderAbyssalPortal(ctx, portalObj = null) {
+    const portal = portalObj || this.activeAbyssalPortal;
     if (!portal) return;
 
     const screenX = Math.round(portal.x - this.camera.renderX);

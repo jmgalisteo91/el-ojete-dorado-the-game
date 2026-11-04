@@ -65,9 +65,9 @@ export const INITIAL_QUESTS = [
     title: 'El Puntero al Abismo',
     category: 'SIDE',
     status: 'ACTIVE',
-    description: 'Un artefacto cósmico prohibido se encuentra oculto en algún rincón transitable del mundo exterior.',
-    currentStep: 'Explora el mundo exterior para localizar el Puntero Abisal (Null Pointer) e invocar el portal al Dios Supremo.',
-    reward: 'Purificación del Corazón Roto y Absolución Penal'
+    description: 'Un cofre arcano oculto en las Ruinas del Despertar (fuera de Valleverde) guarda el Puntero Abisal reutilizable.',
+    currentStep: 'Explora las Ruinas del Despertar al oeste de Valleverde, abre el cofre del Puntero Abisal (Null Pointer) e invoca tu Portal Abisal.',
+    reward: 'Portal Abisal Permanente y Absolución del Dios Supremo'
   },
   {
     id: 'quest_side_fishing',

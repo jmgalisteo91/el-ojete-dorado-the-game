@@ -682,6 +682,139 @@ export class AmbientMusic {
     this.playEnemyHit();
   }
 
+  /**
+   * Sonido de apertura/cierre de puerta (crujido de madera/piedra + pestillo metálico).
+   */
+  playDoorOpenSound() {
+    if (!this.ctx || this.isMuted) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+    const now = this.ctx.currentTime;
+    // Clic del pestillo inicial
+    this._playTone({
+      freq: 520,
+      type: 'square',
+      startTime: now,
+      duration: 0.04,
+      peakGain: 0.045 * this.volume,
+      attack: 0.003,
+      vibrato: false
+    });
+    // Crujido grave de bisagra/madera abriéndose
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(145, now + 0.03);
+    osc.frequency.linearRampToValueAtTime(210, now + 0.14);
+    osc.frequency.linearRampToValueAtTime(165, now + 0.24);
+    gain.gain.setValueAtTime(0.001, now + 0.03);
+    gain.gain.linearRampToValueAtTime(0.055 * this.volume, now + 0.06);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.25);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    this._autoDisconnect(osc, gain);
+    osc.start(now + 0.03);
+    osc.stop(now + 0.26);
+  }
+
+  /**
+   * Sonido de puerta cerrada con llave o barrera sellada (golpe seco doble).
+   */
+  playDoorLockedSound() {
+    if (!this.ctx || this.isMuted) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+    const now = this.ctx.currentTime;
+    this._playTone({
+      freq: 135,
+      type: 'square',
+      startTime: now,
+      duration: 0.07,
+      peakGain: 0.065 * this.volume,
+      attack: 0.003,
+      vibrato: false
+    });
+    this._playTone({
+      freq: 110,
+      type: 'square',
+      startTime: now + 0.08,
+      duration: 0.11,
+      peakGain: 0.065 * this.volume,
+      attack: 0.003,
+      vibrato: false
+    });
+  }
+
+  /**
+   * Sonido clásico RPG al abrir un cofre del tesoro (pestillo + arpegio brillante).
+   */
+  playChestOpenSound() {
+    if (!this.ctx || this.isMuted) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+    const now = this.ctx.currentTime;
+    // 1. Pestillo y tapa de madera del cofre
+    this._playTone({
+      freq: 180,
+      type: 'sawtooth',
+      startTime: now,
+      duration: 0.08,
+      peakGain: 0.055 * this.volume,
+      attack: 0.004,
+      vibrato: false
+    });
+    // 2. Arpegio cristalino ascendente de tesoro descubierto
+    const chestNotes = [
+      { f: 523.25, t: 0.07, d: 0.09 }, // C5
+      { f: 659.25, t: 0.14, d: 0.09 }, // E5
+      { f: 783.99, t: 0.21, d: 0.11 }, // G5
+      { f: 1046.50, t: 0.29, d: 0.28 } // C6
+    ];
+    for (const n of chestNotes) {
+      this._playTone({
+        freq: n.f,
+        type: 'triangle',
+        startTime: now + n.t,
+        duration: n.d,
+        peakGain: 0.075 * this.volume,
+        attack: 0.005,
+        vibrato: false
+      });
+    }
+  }
+
+  /**
+   * Sonido breve al recoger un objeto suelto del suelo.
+   */
+  playItemPickupSound() {
+    if (!this.ctx || this.isMuted) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+    const now = this.ctx.currentTime;
+    this._playTone({
+      freq: 587.33,
+      type: 'triangle',
+      startTime: now,
+      duration: 0.07,
+      peakGain: 0.06 * this.volume,
+      attack: 0.004,
+      vibrato: false
+    });
+    this._playTone({
+      freq: 880,
+      type: 'triangle',
+      startTime: now + 0.06,
+      duration: 0.14,
+      peakGain: 0.065 * this.volume,
+      attack: 0.004,
+      vibrato: false
+    });
+  }
+
   playEnemyHit() {
     if (!this.ctx || this.isMuted) return;
     const now = this.ctx.currentTime;

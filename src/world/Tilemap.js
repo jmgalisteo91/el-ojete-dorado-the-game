@@ -306,17 +306,6 @@ export class Tilemap {
           spawnY: 15 * this.tileSize
         };
       }
-      // Arco de obsidiana inerte en el norte de Valleverde (Requiere Puntero al Abismo)
-      const condemnedGateX = 11.5 * this.tileSize;
-      const condemnedGateY = 2.5 * this.tileSize;
-      if (Math.hypot(player.centerX - condemnedGateX, player.centerY - condemnedGateY) <= 24) {
-        return {
-          type: 'inert_portal_gate',
-          label: 'Examinar Arco Dimensional Inerte',
-          worldX: condemnedGateX,
-          worldY: condemnedGateY
-        };
-      }
 
       // Barrera del Puente hacia las Tierras Sagradas del este (cuando está cerrado)
       if (!this.bridgeOpen) {
@@ -795,21 +784,6 @@ export class Tilemap {
     setDeco(35, 12, TILES.FLOWERS_1, false);
     setDeco(35, 13, TILES.FLOWERS_1, false);
 
-    // === PORTAL MÍSTICO A LOS REINOS CONDENADOS ===
-    // Situado en el claro sagrado al norte, entre la casa de Aurelio y el Observatorio de Orion
-    setDeco(11, 2, TILES.PORTAL_GATE_OPEN, true);
-    setDeco(12, 2, TILES.PORTAL_GATE_OPEN, true);
-    setDeco(10, 2, TILES.LAMPPOST, true);
-    setDeco(13, 2, TILES.LAMPPOST, true);
-    setDeco(11, 3, TILES.COBBLE, false);
-    setDeco(12, 3, TILES.COBBLE, false);
-    lightSources.push({
-      x: 11.5 * this.tileSize,
-      y: 2.5 * this.tileSize,
-      radius: 54,
-      intensity: 1.0
-    });
-
     setDeco(26, 6, TILES.ANVIL, true);
     setDeco(26, 5, TILES.CRATE, true);
     setDeco(20, 6, TILES.CRATE, true);
@@ -903,16 +877,6 @@ export class Tilemap {
           '«← Cabaña de Lyra (Alquimista y Herbolaria).»',
           '«→ Cuartel de la Guardia del Binario y Calabozo Municipal.»',
           '«↓ Pastos comunales y corral de animales.»'
-        ]
-      },
-      {
-        c: 10,
-        r: 3,
-        shortName: 'Portal Reinos Condenados',
-        title: '🪞 Portal Rúnico · Umbral a los Reinos Condenados',
-        lines: [
-          '«Vórtice dimensional hacia los Reinos Condenados del Dios Supremo.»',
-          '«Aquellos afligidos con la Maldición del Corazón Roto (💔) por faltar al respeto a la guardia deben cruzar este umbral para suplicar clemencia y purificación celestial.»'
         ]
       }
     ];
@@ -1486,15 +1450,13 @@ export class Tilemap {
       { x: 13.5 * 16, y: 3.5 * 16, radius: 52, intensity: 0.95 }
     );
 
-    // Portal de retorno dimensional al sur
-    setDeco(11, 16, TILES.PORTAL_GATE_OPEN, false);
-    setDeco(12, 16, TILES.PORTAL_GATE_OPEN, false);
-    setDeco(10, 16, TILES.LAMPPOST, true);
-    setDeco(13, 16, TILES.LAMPPOST, true);
+    // Farolas del círculo de retorno dimensional al sur (sin puerta física: se entra y sale por el Portal Abisal del jugador)
+    setDeco(10, 15, TILES.LAMPPOST, true);
+    setDeco(13, 15, TILES.LAMPPOST, true);
     lightSources.push({
       x: 11.5 * 16,
-      y: 16.5 * 16,
-      radius: 56,
+      y: 15.5 * 16,
+      radius: 58,
       intensity: 0.95
     });
 
@@ -1504,13 +1466,7 @@ export class Tilemap {
       rows,
       layers: { ground, decoration, collision },
       lightSources,
-      exitDoor: {
-        worldX: 11.5 * 16,
-        worldY: 16.5 * 16,
-        returnX: 11.5 * 16,
-        returnY: 4 * 16,
-        returnScene: 'overworld'
-      }
+      exitDoor: null // Solo accesible y retornable mediante el Portal Abisal estilo Diablo
     };
   }
 
