@@ -1,0 +1,30 @@
+el-ojete-dorado-the-game.html
+  h_e1bbc662b18209 7724,7781-7788,7825-7826,7931,7935-7937,8043,8046,8048,8052,8061-8062,8072,8082,8090-8091,8281,8284-8286,8291,8300,8318-8319,8337-8338,8359-8365,8384-8386,8477-8478,8720,8725,8729,8738,8759-8760,8771-8772,8784,8803,8805-8806,9013,9018,9028,9037,9100-9101,9103,15902,15910,15928,15936,15954,15962,21159,21166,21173,21180
+src/assets/BossCutscenes.js
+  h_e1bbc662b18209 17,25,43,51,69,77
+src/entities/bosses/Boss.js
+  h_e1bbc662b18209 19,76-83,120-121,226,230-232
+src/entities/bosses/FinalBossAlex.js
+  h_e1bbc662b18209 9,14,24,33,96-97,99
+src/entities/bosses/GarbageCollectorBoss.js
+  h_e1bbc662b18209 8,11,13,17,26-27,37,47,55-56
+src/entities/bosses/PrototypeMicrowaveBoss.js
+  h_e1bbc662b18209 7,12,16,25,46-47,58-59,71,90,92-93
+src/entities/bosses/StackOverflowBoss.js
+  h_e1bbc662b18209 9,12-14,19,28,46-47,65-66,87-93,112-114,205-206
+src/main.js
+  h_e1bbc662b18209 2644,2651,2658,2665
+tests/regression.mjs
+  h_e1bbc662b18209 12,14-15,444-499
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0bd6cabda89760eeca9a96c95840a0aeac5177c3",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
