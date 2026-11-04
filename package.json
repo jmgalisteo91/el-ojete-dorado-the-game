@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "python3 server.py",
-    "build": "node build-portable.mjs"
+    "build:portable": "node build-portable.mjs"
   },
   "keywords": [
     "game",
