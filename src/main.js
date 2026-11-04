@@ -26,7 +26,21 @@ import { QuestLog } from './core/QuestLog.js?v=7';
 import { AchievementManager } from './core/AchievementManager.js?v=7';
 import { QuestLogView } from './ui/QuestLogView.js?v=7';
 import { MainMenuAndScenes } from './ui/MainMenuAndScenes.js?v=7';
-import { calculateGameScore, saveLocalScore, submitGlobalScore, uploadGameToCloud, downloadGameFromCloud } from './core/ScoreSystem.js?v=7';
+import {
+  calculateGameScore,
+  saveLocalScore,
+  submitGlobalScore,
+  uploadGameToCloud,
+  downloadGameFromCloud,
+  getLocalSaveContainer,
+  saveLocalFallback,
+  markLocalFallbackSynced,
+  getSavedCloudCode,
+  setSavedCloudCode,
+  syncPendingSaveToCloud,
+  CLOUD_SAVE_CODE_KEY,
+  SAVE_STORAGE_KEY
+} from './core/ScoreSystem.js?v=7';
 import {
   AnimeCutsceneManager,
   SCENE_JAIL_ARREST,
@@ -48,7 +62,6 @@ import { SpeechBubble, renderActionPromptBubble } from './ui/SpeechBubble.js?v=7
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
 const RENDER_SCALE = 4; // Renderizado nativo HD 1280x720 (4x sobre base lógica 320x180)
-const SAVE_STORAGE_KEY = 'el_ojete_dorado_save_v1';
 
 export const ABYSSAL_POINTER_SPAWN_CANDIDATES = [
   { x: 29 * 16, y: 19 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Claro Sureste)' },
@@ -192,7 +205,7 @@ export class RPGGame {
       {
         onNewGame: () => this._startNewGame(),
         onLoadGame: () => this._loadGameFromStorage(),
-        onSaveGame: () => this._saveGameToStorage(),
+        onSaveGame: (opts) => this._saveGameToStorage(opts || { manual: true }),
         onOpenCloudSave: () => this._openCloudSaveModal(),
         onOpenCloudLoad: () => this._openCloudLoadModal(),
         getSaveSummary: () => this._getSaveSummary(),
@@ -208,6 +221,21 @@ export class RPGGame {
     );
     this.menuSystem.setAnimeCutsceneManager(this.animeCutscenes);
     this._applyGameOptions(this.menuSystem.options);
+
+    // Sistema de Sincronización Cloud-First con Fallback Local
+    this.cloudSaveCode = getSavedCloudCode() || null;
+    this.hasPendingCloudSync = false;
+    this.cloudSyncStatus = 'idle';
+    this._isSyncingPending = false;
+    this.lastCloudSyncTime = null;
+
+    const initialContainer = getLocalSaveContainer();
+    if (initialContainer && initialContainer.pendingCloudSync) {
+      this.hasPendingCloudSync = true;
+      this.cloudSyncStatus = 'pending';
+    }
+
+    this._setupCloudSyncListeners();
 
     this._resetWorldToInitialState();
     this._syncAchievementsWithProgress(true);
@@ -467,14 +495,162 @@ export class RPGGame {
     };
   }
 
-  _saveGameToStorage() {
+  _getPlayerNickname() {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        return localStorage.getItem('el_ojete_last_nickname') || 'HERO';
+      }
+    } catch (_) {}
+    return 'HERO';
+  }
+
+  /**
+   * Persistencia primaria en la Nube con respaldo local (fallback) offline.
+   * Guarda de forma inmediata en localStorage como caché de contingencia (dirty flag),
+   * y envía asíncronamente el estado a la base de datos en la nube.
+   * Si no hay conexión o el servicio no responde, conserva el guardado local marcado como pendiente
+   * y reintenta la subida automáticamente en cuanto regrese la conectividad.
+   *
+   * @param {Object} [options]
+   * @param {boolean} [options.manual=false]
+   * @param {Function} [options.onComplete]
+   */
+  _saveGameToStorage(options = {}) {
     try {
       const savePayload = this._buildSavePayload();
-      localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(savePayload));
+      const code = this.cloudSaveCode || getSavedCloudCode() || null;
+      const nickname = this._getPlayerNickname();
+
+      // 1. Guardar de inmediato en localStorage como fallback de contingencia
+      saveLocalFallback(savePayload, code, true);
+      this.hasPendingCloudSync = true;
+      this.cloudSyncStatus = 'pending';
+
+      const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+      const isLocalFile = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
+
+      if (!isOnline || isLocalFile) {
+        this.cloudSyncStatus = 'offline_pending';
+        if (options.manual && this.menuSystem) {
+          this.menuSystem.showNotice('⚠ Guardado local offline. Se sincronizará con la nube al reconectar.', 4.0);
+        }
+        if (options.onComplete) options.onComplete({ ok: true, source: 'local_fallback', pending: true });
+        return true;
+      }
+
+      this.cloudSyncStatus = 'syncing';
+      uploadGameToCloud(savePayload, nickname, code)
+        .then((res) => {
+          if (res && res.ok && res.code) {
+            this.cloudSaveCode = res.code;
+            setSavedCloudCode(res.code);
+            markLocalFallbackSynced(res.code, res.savedAt || Date.now());
+            this.hasPendingCloudSync = false;
+            this.cloudSyncStatus = 'synced';
+            this.lastCloudSyncTime = Date.now();
+
+            if (options.manual && this.menuSystem) {
+              this.menuSystem.showNotice(`✓ Partida guardada y sincronizada en la nube [${res.code}]`, 4.0);
+            }
+            if (options.onComplete) options.onComplete({ ok: true, source: 'cloud', code: res.code });
+          } else {
+            this.cloudSyncStatus = 'pending';
+            if (options.manual && this.menuSystem) {
+              const msg = res?.message || 'Servicio de nube no disponible.';
+              this.menuSystem.showNotice(`⚠ Guardado local offline (${msg}).`, 4.0);
+            }
+            if (options.onComplete) options.onComplete({ ok: true, source: 'local_fallback', pending: true, error: res?.error });
+          }
+        })
+        .catch((err) => {
+          this.cloudSyncStatus = 'pending';
+          if (options.manual && this.menuSystem) {
+            this.menuSystem.showNotice(`⚠ Guardado local offline (Red: ${err.message}).`, 4.0);
+          }
+          if (options.onComplete) options.onComplete({ ok: true, source: 'local_fallback', pending: true, error: err.message });
+        });
+
       return true;
-    } catch {
+    } catch (err) {
+      console.warn('Error en _saveGameToStorage:', err);
       return false;
     }
+  }
+
+  /**
+   * Intenta sincronizar cualquier partida pendiente de guardado local hacia la nube.
+   * Se ejecuta automáticamente cuando se restaura la conexión ('online'), se enfoca la ventana
+   * o periódicamente si hay estado pendiente.
+   */
+  _syncPendingSaveToCloud(options = {}) {
+    if (this._isSyncingPending) return;
+    const container = getLocalSaveContainer();
+    if (!container || !container.savePayload || !container.pendingCloudSync) {
+      this.hasPendingCloudSync = false;
+      return;
+    }
+
+    const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+    const isLocalFile = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
+    if (!isOnline || isLocalFile) return;
+
+    this._isSyncingPending = true;
+    this.cloudSyncStatus = 'syncing';
+
+    const nickname = this._getPlayerNickname();
+    const code = container.cloudCode || this.cloudSaveCode || getSavedCloudCode() || null;
+
+    uploadGameToCloud(container.savePayload, nickname, code)
+      .then((res) => {
+        this._isSyncingPending = false;
+        if (res && res.ok && res.code) {
+          this.cloudSaveCode = res.code;
+          setSavedCloudCode(res.code);
+          markLocalFallbackSynced(res.code, res.savedAt || Date.now());
+          this.hasPendingCloudSync = false;
+          this.cloudSyncStatus = 'synced';
+          this.lastCloudSyncTime = Date.now();
+
+          if (this.menuSystem) {
+            this.menuSystem.showNotice(`☁ ¡Partida sincronizada automáticamente con la nube! [${res.code}]`, 4.0);
+          }
+        } else {
+          this.cloudSyncStatus = 'pending';
+        }
+      })
+      .catch(() => {
+        this._isSyncingPending = false;
+        this.cloudSyncStatus = 'pending';
+      });
+  }
+
+  _setupCloudSyncListeners() {
+    if (typeof window === 'undefined') return;
+
+    window.addEventListener('online', () => {
+      console.log('📡 Conexión a Internet detectada: sincronizando partida pendiente con la nube...');
+      this._syncPendingSaveToCloud({ showNotice: true });
+    });
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && this.hasPendingCloudSync) {
+          this._syncPendingSaveToCloud();
+        }
+      });
+    }
+
+    window.addEventListener('focus', () => {
+      if (this.hasPendingCloudSync) {
+        this._syncPendingSaveToCloud();
+      }
+    });
+
+    setInterval(() => {
+      if (this.hasPendingCloudSync) {
+        this._syncPendingSaveToCloud();
+      }
+    }, 25000);
   }
 
   _openCloudSaveModal() {
@@ -487,7 +663,8 @@ export class RPGGame {
     const copyBtn = document.getElementById('cloud-save-copy-btn');
     const closeBtn = document.getElementById('cloud-save-close-btn');
 
-    if (codeDisplay) codeDisplay.textContent = 'SUBIENDO...';
+    const activeCode = this.cloudSaveCode || getSavedCloudCode();
+    if (codeDisplay) codeDisplay.textContent = activeCode || 'SUBIENDO...';
     if (statusText) {
       statusText.textContent = 'Sincronizando estado con Vercel Serverless...';
       statusText.className = 'cloud-status-text';
@@ -497,25 +674,32 @@ export class RPGGame {
     modal.classList.remove('hidden');
 
     const payload = this._buildSavePayload();
-    let currentCode = '';
+    let currentCode = activeCode || '';
 
-    uploadGameToCloud(payload, 'HERO').then((res) => {
+    uploadGameToCloud(payload, this._getPlayerNickname(), activeCode).then((res) => {
       if (res && res.ok && res.code) {
         currentCode = res.code;
+        this.cloudSaveCode = res.code;
+        setSavedCloudCode(res.code);
+        markLocalFallbackSynced(res.code, res.savedAt || Date.now());
+        this.hasPendingCloudSync = false;
+        this.cloudSyncStatus = 'synced';
+        this.lastCloudSyncTime = Date.now();
+
         if (codeDisplay) codeDisplay.textContent = res.code;
         if (statusText) {
           statusText.textContent = `✓ ¡Partida guardada en la nube! Código activo durante 90 días.`;
           statusText.className = 'cloud-status-text success';
         }
       } else {
-        if (codeDisplay) codeDisplay.textContent = 'MODO LOCAL';
+        if (codeDisplay) codeDisplay.textContent = activeCode || 'MODO LOCAL';
         if (statusText) {
-          statusText.textContent = (res && res.message) || 'La persistencia en la nube requiere activar Vercel KV en el Dashboard de Vercel.';
+          statusText.textContent = (res && res.message) || 'La persistencia en la nube requiere conexión o activar Vercel KV.';
           statusText.className = 'cloud-status-text error';
         }
       }
     }).catch((err) => {
-      if (codeDisplay) codeDisplay.textContent = 'ERROR';
+      if (codeDisplay) codeDisplay.textContent = activeCode || 'ERROR';
       if (statusText) {
         statusText.textContent = `Error de red: ${err.message}`;
         statusText.className = 'cloud-status-text error';
@@ -588,6 +772,13 @@ export class RPGGame {
 
         downloadGameFromCloud(code).then((res) => {
           if (res && res.ok && res.saveData) {
+            this.cloudSaveCode = code;
+            setSavedCloudCode(code);
+            saveLocalFallback(res.saveData, code, false);
+            this.hasPendingCloudSync = false;
+            this.cloudSyncStatus = 'synced';
+            this.lastCloudSyncTime = Date.now();
+
             const ok = this._loadGameData(res.saveData);
             if (ok) {
               if (this.menuSystem) {
@@ -619,15 +810,21 @@ export class RPGGame {
 
   _getSaveSummary() {
     try {
-      const raw = localStorage.getItem(SAVE_STORAGE_KEY);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
+      const container = getLocalSaveContainer();
+      if (!container || !container.savePayload) return null;
+      const data = container.savePayload;
       if (!data || typeof data.timeOfDayHours !== 'number') return null;
       const stageLabel = data.sceneId === 'first_stage' ? 'Escenario 1' : 'Valleverde';
       const count = Array.isArray(data.inventoryItems)
         ? data.inventoryItems.reduce((acc, it) => acc + (it.qty || 1), 0)
         : 0;
-      return `${stageLabel} · ${count} obj.`;
+
+      const code = container.cloudCode || getSavedCloudCode();
+      const statusLabel = container.pendingCloudSync
+        ? '⚠ Offline'
+        : (code ? `☁ ${code}` : 'Local');
+
+      return `${stageLabel} · ${count} obj. · ${statusLabel}`;
     } catch {
       return null;
     }
@@ -635,17 +832,25 @@ export class RPGGame {
 
   _loadGameFromStorage() {
     try {
-      const raw = localStorage.getItem(SAVE_STORAGE_KEY);
-      if (!raw) return false;
-      const data = JSON.parse(raw);
-      return this._loadGameData(data);
+      const container = getLocalSaveContainer();
+      if (!container || !container.savePayload) return false;
+
+      this.cloudSaveCode = container.cloudCode || getSavedCloudCode() || null;
+      this.hasPendingCloudSync = Boolean(container.pendingCloudSync);
+
+      const ok = this._loadGameData(container.savePayload);
+      if (ok && this.hasPendingCloudSync) {
+        setTimeout(() => this._syncPendingSaveToCloud(), 1200);
+      }
+      return ok;
     } catch {
       return false;
     }
   }
 
-  _loadGameData(data) {
-    if (!data) return false;
+  _loadGameData(rawInput) {
+    if (!rawInput) return false;
+    const data = rawInput.savePayload || rawInput;
     try {
       this._resetWorldToInitialState();
 

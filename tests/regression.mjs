@@ -22,6 +22,14 @@ import {
   fetchGlobalLeaderboard,
   uploadGameToCloud,
   downloadGameFromCloud,
+  getLocalSaveContainer,
+  saveLocalFallback,
+  markLocalFallbackSynced,
+  getSavedCloudCode,
+  setSavedCloudCode,
+  syncPendingSaveToCloud,
+  CLOUD_SAVE_CODE_KEY,
+  SAVE_STORAGE_KEY,
   DEFAULT_LEADERBOARD,
   LOCAL_LEADERBOARD_KEY
 } from '../src/core/ScoreSystem.js';
@@ -576,14 +584,19 @@ test('formatPlayTime formatea MM:SS y HH:MM:SS adecuadamente', () => {
   assert.equal(formatPlayTime(3665), '1:01:05');
 });
 
+const sharedMockStore = {};
+globalThis.localStorage = {
+  getItem: (k) => sharedMockStore[k] ?? null,
+  setItem: (k, v) => { sharedMockStore[k] = String(v); },
+  removeItem: (k) => { delete sharedMockStore[k]; },
+  clear: () => {
+    for (const key of Object.keys(sharedMockStore)) {
+      delete sharedMockStore[key];
+    }
+  }
+};
+
 test('saveLocalScore y getLocalLeaderboard ordenan puntuaciones y recortan a Top 15', () => {
-  let mockStore = {};
-  globalThis.localStorage = {
-    getItem: (k) => mockStore[k] ?? null,
-    setItem: (k, v) => { mockStore[k] = String(v); },
-    removeItem: (k) => { delete mockStore[k]; },
-    clear: () => { mockStore = {}; }
-  };
 
   // 1. Obtener lista por defecto
   const initial = getLocalLeaderboard();
@@ -840,6 +853,85 @@ test('NPCs y Aldea: Patrulla con detección de colisión y descanso nocturno', (
   npc.isSleeping = true;
   npc.update(0.1);
   assert.equal(npc.isMoving, false, 'Un NPC durmiendo no debe desplazarse');
+});
+
+console.log('Persistencia Cloud-First con Fallback Local');
+
+test('saveLocalFallback guarda estructura de contingencia con dirty flag pendingCloudSync', () => {
+  const payload = { sceneId: 'overworld', playerHp: 3, playerX: 100, playerY: 200 };
+  const ok = saveLocalFallback(payload, 'OJT-DEMO1', true);
+  assert.equal(ok, true);
+
+  const container = getLocalSaveContainer();
+  assert.ok(container);
+  assert.equal(container.cloudCode, 'OJT-DEMO1');
+  assert.equal(container.pendingCloudSync, true);
+  assert.equal(container.syncStatus, 'pending');
+  assert.equal(container.savePayload.sceneId, 'overworld');
+  assert.equal(container.savePayload.playerHp, 3);
+});
+
+test('markLocalFallbackSynced limpia pendingCloudSync y actualiza estado a synced', () => {
+  const syncedOk = markLocalFallbackSynced('OJT-SYNCED', 1700000000);
+  assert.equal(syncedOk, true);
+
+  const container = getLocalSaveContainer();
+  assert.equal(container.cloudCode, 'OJT-SYNCED');
+  assert.equal(container.pendingCloudSync, false);
+  assert.equal(container.syncStatus, 'synced');
+  assert.equal(container.cloudSyncedAt, 1700000000);
+});
+
+test('getLocalSaveContainer es compatible hacia atrás con partidas heredadas en formato plano', () => {
+  sharedMockStore[SAVE_STORAGE_KEY] = JSON.stringify({
+    sceneId: 'first_stage',
+    playerHp: 2,
+    savedAt: 1690000000
+  });
+
+  const container = getLocalSaveContainer();
+  assert.ok(container);
+  assert.equal(container.savePayload.sceneId, 'first_stage');
+  assert.equal(container.savePayload.playerHp, 2);
+  assert.equal(container.pendingCloudSync, false);
+});
+
+test('syncPendingSaveToCloud sube la partida pendiente a la API en cuanto hay conexión', async () => {
+  // Guardar partida marcada como pendiente (offline)
+  const pendingPayload = { sceneId: 'blacksmith_house', playerHp: 3, playerX: 50, playerY: 50 };
+  saveLocalFallback(pendingPayload, null, true);
+
+  // Simular mock de fetch para la API /api/save
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (url === '/api/save' && opts && opts.method === 'POST') {
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          code: 'OJT-AUTOSYNC',
+          savedAt: Date.now(),
+          message: 'Saved to mock cloud'
+        })
+      };
+    }
+    return originalFetch(url, opts);
+  };
+
+  try {
+    const syncRes = await syncPendingSaveToCloud('TEST_HERO');
+    assert.equal(syncRes.ok, true);
+    assert.equal(syncRes.synced, true);
+    assert.equal(syncRes.code, 'OJT-AUTOSYNC');
+
+    // Comprobar que en el localStorage el fallback quedó limpio (pendingCloudSync: false)
+    const afterSyncContainer = getLocalSaveContainer();
+    assert.equal(afterSyncContainer.pendingCloudSync, false);
+    assert.equal(afterSyncContainer.syncStatus, 'synced');
+    assert.equal(afterSyncContainer.cloudCode, 'OJT-AUTOSYNC');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 await Promise.all(asyncQueue);

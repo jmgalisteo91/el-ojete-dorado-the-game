@@ -11,6 +11,8 @@
  */
 
 export const LOCAL_LEADERBOARD_KEY = 'el_ojete_dorado_leaderboard_v1';
+export const CLOUD_SAVE_CODE_KEY = 'el_ojete_cloud_code_v1';
+export const SAVE_STORAGE_KEY = 'el_ojete_dorado_save_v1';
 
 export const DEFAULT_LEADERBOARD = [
   {
@@ -362,7 +364,7 @@ export async function submitGlobalScore(data = {}) {
  * Guarda la partida en la nube mediante Vercel Serverless Function (/api/save)
  */
 export async function uploadGameToCloud(savePayload, nickname = 'HERO', code = null) {
-  if (typeof fetch === 'undefined' || typeof window === 'undefined' || (window.location && window.location.protocol === 'file:')) {
+  if (typeof fetch === 'undefined' || (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:')) {
     return { ok: false, error: 'MODO_OFFLINE', message: 'El guardado en la nube requiere conexión y jugar desde la web (no disponible en archivo local).' };
   }
 
@@ -397,7 +399,7 @@ export async function uploadGameToCloud(savePayload, nickname = 'HERO', code = n
  * Carga una partida remota desde la nube mediante su código
  */
 export async function downloadGameFromCloud(code) {
-  if (typeof fetch === 'undefined' || typeof window === 'undefined' || (window.location && window.location.protocol === 'file:')) {
+  if (typeof fetch === 'undefined' || (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:')) {
     return { ok: false, error: 'MODO_OFFLINE', message: 'La carga desde la nube requiere conexión web.' };
   }
 
@@ -423,4 +425,148 @@ export async function downloadGameFromCloud(code) {
     if (timeoutId) clearTimeout(timeoutId);
     return { ok: false, error: 'NETWORK_ERROR', message: `Error de conexión: ${err.message}` };
   }
+}
+
+/**
+ * Obtiene el código de guardado en la nube almacenado en el cliente
+ */
+export function getSavedCloudCode() {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    return localStorage.getItem(CLOUD_SAVE_CODE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Guarda o actualiza el código de guardado en la nube en el cliente
+ */
+export function setSavedCloudCode(code) {
+  if (typeof localStorage === 'undefined' || !code) return;
+  try {
+    localStorage.setItem(CLOUD_SAVE_CODE_KEY, String(code).trim().toUpperCase());
+  } catch (err) {
+    console.warn('Error al guardar código cloud en localStorage:', err);
+  }
+}
+
+/**
+ * Obtiene el contenedor de guardado local (fallback)
+ * Desempaqueta tanto el nuevo formato contenedor como partidas heredadas en formato plano.
+ */
+export function getLocalSaveContainer() {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(SAVE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed) return null;
+
+    // Si ya viene envuelto como contenedor
+    if (parsed.savePayload && typeof parsed.savePayload === 'object') {
+      return {
+        savePayload: parsed.savePayload,
+        cloudCode: parsed.cloudCode || getSavedCloudCode() || null,
+        savedAt: parsed.savedAt || parsed.savePayload.savedAt || Date.now(),
+        pendingCloudSync: Boolean(parsed.pendingCloudSync),
+        syncStatus: parsed.syncStatus || (parsed.pendingCloudSync ? 'pending' : 'synced'),
+        cloudSyncedAt: parsed.cloudSyncedAt || null
+      };
+    }
+
+    // Formato heredado plano (savePayload directamente en la raíz)
+    return {
+      savePayload: parsed,
+      cloudCode: getSavedCloudCode() || null,
+      savedAt: parsed.savedAt || Date.now(),
+      pendingCloudSync: false,
+      syncStatus: 'synced',
+      cloudSyncedAt: parsed.savedAt || null
+    };
+  } catch (err) {
+    console.warn('Error al leer contenedor local de guardado:', err);
+    return null;
+  }
+}
+
+/**
+ * Guarda en localStorage como respaldo local (fallback) y marca si requiere sincronización
+ */
+export function saveLocalFallback(savePayload, cloudCode = null, pendingCloudSync = true) {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    const effectiveCode = cloudCode || getSavedCloudCode() || null;
+    const container = {
+      savePayload,
+      cloudCode: effectiveCode,
+      savedAt: savePayload?.savedAt || Date.now(),
+      pendingCloudSync: Boolean(pendingCloudSync),
+      syncStatus: pendingCloudSync ? 'pending' : 'synced',
+      cloudSyncedAt: pendingCloudSync ? null : Date.now()
+    };
+    localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(container));
+    if (effectiveCode) {
+      localStorage.setItem(CLOUD_SAVE_CODE_KEY, effectiveCode);
+    }
+    return true;
+  } catch (err) {
+    console.warn('Error al escribir guardado local de fallback:', err);
+    return false;
+  }
+}
+
+/**
+ * Marca el guardado local como sincronizado exitosamente con la nube
+ */
+export function markLocalFallbackSynced(cloudCode, syncedAt = Date.now()) {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    const container = getLocalSaveContainer();
+    if (!container || !container.savePayload) return false;
+
+    container.cloudCode = cloudCode || container.cloudCode;
+    container.pendingCloudSync = false;
+    container.syncStatus = 'synced';
+    container.cloudSyncedAt = syncedAt;
+
+    localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(container));
+    if (cloudCode) {
+      localStorage.setItem(CLOUD_SAVE_CODE_KEY, cloudCode);
+    }
+    return true;
+  } catch (err) {
+    console.warn('Error al marcar guardado local como sincronizado:', err);
+    return false;
+  }
+}
+
+/**
+ * Sincroniza la partida pendiente con la nube si existe un estado local pendiente
+ */
+export async function syncPendingSaveToCloud(nickname = 'HERO') {
+  const container = getLocalSaveContainer();
+  if (!container || !container.savePayload || !container.pendingCloudSync) {
+    return { ok: true, synced: false, message: 'No hay partidas pendientes de sincronización.' };
+  }
+
+  const code = container.cloudCode || getSavedCloudCode() || null;
+  const res = await uploadGameToCloud(container.savePayload, nickname, code);
+
+  if (res && res.ok && res.code) {
+    markLocalFallbackSynced(res.code, res.savedAt || Date.now());
+    return {
+      ok: true,
+      synced: true,
+      code: res.code,
+      message: `✓ Partida pendiente sincronizada exitosamente con la nube [${res.code}].`
+    };
+  }
+
+  return {
+    ok: false,
+    synced: false,
+    error: res?.error || 'SYNC_FAILED',
+    message: res?.message || 'No se pudo sincronizar con la nube en este momento.'
+  };
 }

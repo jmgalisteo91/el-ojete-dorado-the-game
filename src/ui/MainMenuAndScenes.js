@@ -615,17 +615,16 @@ export class MainMenuAndScenes {
           action: () => this.closePauseMenu()
         },
         {
-          label: 'Guardar Partida [Local]',
+          label: 'Guardar Partida [Nube + Respaldo]',
           action: () => {
             this.music.playFanfare();
             if (this.callbacks.onSaveGame) {
-              this.callbacks.onSaveGame();
+              this.callbacks.onSaveGame({ manual: true });
             }
-            this.showNotice('¡Partida guardada en este navegador!');
           }
         },
         {
-          label: '☁ Sincronizar en la Nube',
+          label: '☁ Ver Código en la Nube [Slot]',
           action: () => {
             this.music.playMenuSelect();
             if (this.callbacks.onOpenCloudSave) {
@@ -634,7 +633,7 @@ export class MainMenuAndScenes {
           }
         },
         {
-          label: '☁ Cargar de la Nube',
+          label: '☁ Cargar de la Nube (con Código)',
           action: () => {
             this.music.playMenuSelect();
             if (this.callbacks.onOpenCloudLoad) {
