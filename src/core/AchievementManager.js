@@ -165,9 +165,9 @@ export class AchievementManager {
 
   /**
    * Desbloquea un logro si no ha sido obtenido aún.
-   * Lanza la animación Toast y reproduce la fanfarria chiptune.
+   * Lanza la animación Toast y reproduce la fanfarria chiptune salvo que silent = true.
    */
-  unlock(id) {
+  unlock(id, silent = false) {
     if (this.isUnlocked(id)) return false;
 
     const ach = ACHIEVEMENTS.find((a) => a.id === id);
@@ -176,11 +176,13 @@ export class AchievementManager {
     this.unlocked[id] = Date.now();
     this.saveToStorage();
 
-    // Añadir a la cola de avisos flotantes
-    this.toastQueue.push(ach);
+    if (!silent) {
+      // Añadir a la cola de avisos flotantes
+      this.toastQueue.push(ach);
 
-    // Reproducir fanfarria chiptune
-    this.playFanfare();
+      // Reproducir fanfarria chiptune
+      this.playFanfare();
+    }
 
     return true;
   }

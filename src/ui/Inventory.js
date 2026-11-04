@@ -60,6 +60,11 @@ export class Inventory {
     return this.items.some((it) => it.id === itemId && it.qty > 0);
   }
 
+  getItemCount(itemId) {
+    const it = this.items.find((item) => item.id === itemId);
+    return it ? (it.qty || 1) : 0;
+  }
+
   consumeItem(itemId, amount = 1) {
     const idx = this.items.findIndex((it) => it.id === itemId);
     if (idx === -1) return false;

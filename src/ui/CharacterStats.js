@@ -67,15 +67,21 @@ export class CharacterStats {
     if (!this.isOpen || !input) return false;
 
     // Cambiar de pestaña mediante Tab, 1, 2, A, D, Flechas
-    if (input.consumeKey('Tab')) {
+    if (
+      input.consumeKey('Tab') ||
+      input.consumeKey('KeyA') ||
+      input.consumeKey('KeyD') ||
+      input.consumeKey('ArrowLeft') ||
+      input.consumeKey('ArrowRight')
+    ) {
       this.cycleTab();
       return true;
     }
-    if (input.consumeKey('Digit1')) {
+    if (input.consumeKey('Digit1') || input.consumeKey('Numpad1')) {
       this.switchTab('stats');
       return true;
     }
-    if (input.consumeKey('Digit2')) {
+    if (input.consumeKey('Digit2') || input.consumeKey('Numpad2')) {
       this.switchTab('achievements');
       return true;
     }
@@ -88,11 +94,11 @@ export class CharacterStats {
       const px = input.pointerX;
       const py = input.pointerY;
 
-      if (py >= tabY && py <= tabY + 12) {
-        if (px >= winX + 8 && px <= winX + 90) {
+      if (py >= tabY - 2 && py <= tabY + 14) {
+        if (px >= winX + 8 && px <= winX + 95) {
           this.switchTab('stats');
           return true;
-        } else if (px >= winX + 96 && px <= winX + 190) {
+        } else if (px >= winX + 97 && px <= winX + 195) {
           this.switchTab('achievements');
           return true;
         }

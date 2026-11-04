@@ -199,11 +199,75 @@ export class RPGGame {
     this._applyGameOptions(this.menuSystem.options);
 
     this._resetWorldToInitialState();
+    this._syncAchievementsWithProgress(true);
 
     this.loop = new GameLoop(
       (dt) => this.update(dt),
       (alpha) => this.render(alpha)
     );
+  }
+
+  _syncAchievementsWithProgress(silent = true) {
+    if (!this.achievementManager) return;
+
+    // Puente desbloqueado o Pase del Puente en posesión
+    if (
+      (this.tilemap && this.tilemap.bridgeForceUnlocked) ||
+      (this.inventory && this.inventory.hasItem('bridge_pass'))
+    ) {
+      this.achievementManager.unlock('ach_bridge_pass', silent);
+    }
+
+    // Mini-jefes derrotados y habilidades desbloqueadas
+    if (this.player && this.player.hasDash) {
+      this.achievementManager.unlock('ach_boss_gc', silent);
+    }
+    if (this.player && this.player.hasChargedAttack) {
+      this.achievementManager.unlock('ach_boss_stack', silent);
+    }
+    if (this.player && this.player.hasBarrier) {
+      this.achievementManager.unlock('ach_boss_microwave', silent);
+    }
+    if ((this.player && this.player.hasGoldenAnus) || this.gameCompleted) {
+      this.achievementManager.unlock('ach_golden_anus', silent);
+    }
+
+    // Reinos Condenados visitados
+    if (this.tilemap && this.tilemap.currentSceneId === 'condemned_realms') {
+      this.achievementManager.unlock('ach_condemned', silent);
+    }
+
+    // Misiones completadas
+    if (this.questLog) {
+      const allQuests = this.questLog.getAllQuests ? this.questLog.getAllQuests() : this.questLog.quests;
+      const anyCompleted = (allQuests || []).some((q) => q.status === 'COMPLETED');
+      if (anyCompleted) {
+        this.achievementManager.unlock('ach_first_quest', silent);
+      }
+
+      const qFishing = this.questLog.getQuest('quest_side_fishing');
+      if (qFishing && qFishing.status === 'COMPLETED') {
+        this.achievementManager.unlock('ach_side_fishing', silent);
+      }
+
+      const qFractal = this.questLog.getQuest('quest_side_fractal_temper');
+      if (qFractal && qFractal.status === 'COMPLETED') {
+        this.achievementManager.unlock('ach_side_fractal', silent);
+      }
+
+      const qSilicon = this.questLog.getQuest('quest_side_silicon_flowers');
+      if (qSilicon && qSilicon.status === 'COMPLETED') {
+        this.achievementManager.unlock('ach_side_silicon', silent);
+      }
+
+      if (
+        qFishing && qFishing.status === 'COMPLETED' &&
+        qFractal && qFractal.status === 'COMPLETED' &&
+        qSilicon && qSilicon.status === 'COMPLETED'
+      ) {
+        this.achievementManager.unlock('ach_all_side_quests', silent);
+      }
+    }
   }
 
   _checkAllSideQuestsAchievement() {
@@ -566,6 +630,7 @@ export class RPGGame {
       if (data.achievementsData && this.achievementManager) {
         this.achievementManager.deserialize(data.achievementsData);
       }
+      this._syncAchievementsWithProgress(true);
 
       if (Array.isArray(data.collectedItemIds)) {
         for (const wi of this.worldItems) {
@@ -877,6 +942,9 @@ export class RPGGame {
         onSelect: () => {
           this.tilemap.unlockBridgePermanently();
           this.housePermissions.elder_house = true;
+          if (this.achievementManager) {
+            this.achievementManager.unlock('ach_bridge_pass');
+          }
           if (this.questLog) {
             this.questLog.completeQuest('quest_main_bridge', 'El puente del Río Alba está abierto. ¡Cruza al este hacia las Pruebas Sagradas!');
             this.questLog.advanceStep('quest_code_temples', 'El puente está abierto. Explora el Santuario Este y supera los Templos Binarios.');
@@ -4241,6 +4309,13 @@ export class RPGGame {
       const dir = this.input.consumeMenuDirection();
       if (dir) {
         this.dialogueBox.moveChoice(dir);
+      }
+    }
+
+    if (this.dialogueBox.active && this.input.pointerJustClicked) {
+      const handled = this.dialogueBox.handlePointerClick(this.input.pointerX, this.input.pointerY);
+      if (handled) {
+        this.input.pointerJustClicked = false;
       }
     }
 

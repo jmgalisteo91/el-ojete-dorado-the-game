@@ -23,6 +23,7 @@ export class DialogueBox {
 
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
     this.baseCharSpeed = 40;
     this.charSpeed = 40;
     this.blinkTimer = 0;
@@ -33,6 +34,7 @@ export class DialogueBox {
     this.caughtSkippingCount = 0;
     this.caughtBannerTimer = 0;
     this.timeSinceLineCompleted = 0;
+    this.lastMenuBounds = null;
   }
 
   setBaseCharSpeed(speed) {
@@ -72,6 +74,7 @@ export class DialogueBox {
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
     this.blinkTimer = 0;
   }
 
@@ -95,6 +98,7 @@ export class DialogueBox {
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
     this.blinkTimer = 0;
   }
 
@@ -124,6 +128,27 @@ export class DialogueBox {
     } else if (dir === 'down' || dir === 'right') {
       this.selectedChoiceIndex = (this.selectedChoiceIndex + 1) % count;
     }
+  }
+
+  handlePointerClick(px, py) {
+    if (!this.active) return false;
+
+    // Si se muestran opciones, comprobar clic directo sobre alguna de ellas
+    if (this.isShowingChoices() && this.lastMenuBounds) {
+      const { menuX, menuY, menuW, menuH, itemHeight, paddingV } = this.lastMenuBounds;
+      if (px >= menuX && px <= menuX + menuW && py >= menuY && py <= menuY + menuH) {
+        const choiceIdx = Math.floor((py - (menuY + paddingV)) / itemHeight);
+        if (choiceIdx >= 0 && choiceIdx < this.choices.length) {
+          this.selectedChoiceIndex = choiceIdx;
+          this.advance();
+          return true;
+        }
+      }
+    }
+
+    // Clic en la caja o en pantalla avanza el diálogo
+    this.advance();
+    return true;
   }
 
   advance() {
@@ -202,6 +227,7 @@ export class DialogueBox {
 
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
     this.timeSinceLineCompleted = 0;
   }
 
@@ -217,6 +243,7 @@ export class DialogueBox {
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
 
     const cb = this.onClose;
     this.onClose = null;
@@ -362,6 +389,7 @@ export class DialogueBox {
     const menuW = Math.min(boxW, maxLabelW);
     const menuX = boxX + boxW - menuW;
     const menuY = Math.max(16, boxY - menuH - 4);
+    this.lastMenuBounds = { menuX, menuY, menuW, menuH, itemHeight, paddingV };
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.fillRect(menuX + 2, menuY + 2, menuW, menuH);

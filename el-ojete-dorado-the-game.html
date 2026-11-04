@@ -1087,9 +1087,9 @@ class AchievementManager {
 
   /**
    * Desbloquea un logro si no ha sido obtenido aún.
-   * Lanza la animación Toast y reproduce la fanfarria chiptune.
+   * Lanza la animación Toast y reproduce la fanfarria chiptune salvo que silent = true.
    */
-  unlock(id) {
+  unlock(id, silent = false) {
     if (this.isUnlocked(id)) return false;
 
     const ach = ACHIEVEMENTS.find((a) => a.id === id);
@@ -1098,11 +1098,13 @@ class AchievementManager {
     this.unlocked[id] = Date.now();
     this.saveToStorage();
 
-    // Añadir a la cola de avisos flotantes
-    this.toastQueue.push(ach);
+    if (!silent) {
+      // Añadir a la cola de avisos flotantes
+      this.toastQueue.push(ach);
 
-    // Reproducir fanfarria chiptune
-    this.playFanfare();
+      // Reproducir fanfarria chiptune
+      this.playFanfare();
+    }
 
     return true;
   }
@@ -7342,6 +7344,7 @@ class DialogueBox {
 
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
     this.baseCharSpeed = 40;
     this.charSpeed = 40;
     this.blinkTimer = 0;
@@ -7352,6 +7355,7 @@ class DialogueBox {
     this.caughtSkippingCount = 0;
     this.caughtBannerTimer = 0;
     this.timeSinceLineCompleted = 0;
+    this.lastMenuBounds = null;
   }
 
   setBaseCharSpeed(speed) {
@@ -7391,6 +7395,7 @@ class DialogueBox {
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
     this.blinkTimer = 0;
   }
 
@@ -7414,6 +7419,7 @@ class DialogueBox {
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
     this.blinkTimer = 0;
   }
 
@@ -7443,6 +7449,27 @@ class DialogueBox {
     } else if (dir === 'down' || dir === 'right') {
       this.selectedChoiceIndex = (this.selectedChoiceIndex + 1) % count;
     }
+  }
+
+  handlePointerClick(px, py) {
+    if (!this.active) return false;
+
+    // Si se muestran opciones, comprobar clic directo sobre alguna de ellas
+    if (this.isShowingChoices() && this.lastMenuBounds) {
+      const { menuX, menuY, menuW, menuH, itemHeight, paddingV } = this.lastMenuBounds;
+      if (px >= menuX && px <= menuX + menuW && py >= menuY && py <= menuY + menuH) {
+        const choiceIdx = Math.floor((py - (menuY + paddingV)) / itemHeight);
+        if (choiceIdx >= 0 && choiceIdx < this.choices.length) {
+          this.selectedChoiceIndex = choiceIdx;
+          this.advance();
+          return true;
+        }
+      }
+    }
+
+    // Clic en la caja o en pantalla avanza el diálogo
+    this.advance();
+    return true;
   }
 
   advance() {
@@ -7521,6 +7548,7 @@ class DialogueBox {
 
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
     this.timeSinceLineCompleted = 0;
   }
 
@@ -7536,6 +7564,7 @@ class DialogueBox {
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.lastMenuBounds = null;
 
     const cb = this.onClose;
     this.onClose = null;
@@ -7681,6 +7710,7 @@ class DialogueBox {
     const menuW = Math.min(boxW, maxLabelW);
     const menuX = boxX + boxW - menuW;
     const menuY = Math.max(16, boxY - menuH - 4);
+    this.lastMenuBounds = { menuX, menuY, menuW, menuH, itemHeight, paddingV };
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.fillRect(menuX + 2, menuY + 2, menuW, menuH);
@@ -7796,6 +7826,11 @@ class Inventory {
 
   hasItem(itemId) {
     return this.items.some((it) => it.id === itemId && it.qty > 0);
+  }
+
+  getItemCount(itemId) {
+    const it = this.items.find((item) => item.id === itemId);
+    return it ? (it.qty || 1) : 0;
   }
 
   consumeItem(itemId, amount = 1) {
@@ -8121,15 +8156,21 @@ class CharacterStats {
     if (!this.isOpen || !input) return false;
 
     // Cambiar de pestaña mediante Tab, 1, 2, A, D, Flechas
-    if (input.consumeKey('Tab')) {
+    if (
+      input.consumeKey('Tab') ||
+      input.consumeKey('KeyA') ||
+      input.consumeKey('KeyD') ||
+      input.consumeKey('ArrowLeft') ||
+      input.consumeKey('ArrowRight')
+    ) {
       this.cycleTab();
       return true;
     }
-    if (input.consumeKey('Digit1')) {
+    if (input.consumeKey('Digit1') || input.consumeKey('Numpad1')) {
       this.switchTab('stats');
       return true;
     }
-    if (input.consumeKey('Digit2')) {
+    if (input.consumeKey('Digit2') || input.consumeKey('Numpad2')) {
       this.switchTab('achievements');
       return true;
     }
@@ -8142,11 +8183,11 @@ class CharacterStats {
       const px = input.pointerX;
       const py = input.pointerY;
 
-      if (py >= tabY && py <= tabY + 12) {
-        if (px >= winX + 8 && px <= winX + 90) {
+      if (py >= tabY - 2 && py <= tabY + 14) {
+        if (px >= winX + 8 && px <= winX + 95) {
           this.switchTab('stats');
           return true;
-        } else if (px >= winX + 96 && px <= winX + 190) {
+        } else if (px >= winX + 97 && px <= winX + 195) {
           this.switchTab('achievements');
           return true;
         }
@@ -16626,11 +16667,75 @@ class RPGGame {
     this._applyGameOptions(this.menuSystem.options);
 
     this._resetWorldToInitialState();
+    this._syncAchievementsWithProgress(true);
 
     this.loop = new GameLoop(
       (dt) => this.update(dt),
       (alpha) => this.render(alpha)
     );
+  }
+
+  _syncAchievementsWithProgress(silent = true) {
+    if (!this.achievementManager) return;
+
+    // Puente desbloqueado o Pase del Puente en posesión
+    if (
+      (this.tilemap && this.tilemap.bridgeForceUnlocked) ||
+      (this.inventory && this.inventory.hasItem('bridge_pass'))
+    ) {
+      this.achievementManager.unlock('ach_bridge_pass', silent);
+    }
+
+    // Mini-jefes derrotados y habilidades desbloqueadas
+    if (this.player && this.player.hasDash) {
+      this.achievementManager.unlock('ach_boss_gc', silent);
+    }
+    if (this.player && this.player.hasChargedAttack) {
+      this.achievementManager.unlock('ach_boss_stack', silent);
+    }
+    if (this.player && this.player.hasBarrier) {
+      this.achievementManager.unlock('ach_boss_microwave', silent);
+    }
+    if ((this.player && this.player.hasGoldenAnus) || this.gameCompleted) {
+      this.achievementManager.unlock('ach_golden_anus', silent);
+    }
+
+    // Reinos Condenados visitados
+    if (this.tilemap && this.tilemap.currentSceneId === 'condemned_realms') {
+      this.achievementManager.unlock('ach_condemned', silent);
+    }
+
+    // Misiones completadas
+    if (this.questLog) {
+      const allQuests = this.questLog.getAllQuests ? this.questLog.getAllQuests() : this.questLog.quests;
+      const anyCompleted = (allQuests || []).some((q) => q.status === 'COMPLETED');
+      if (anyCompleted) {
+        this.achievementManager.unlock('ach_first_quest', silent);
+      }
+
+      const qFishing = this.questLog.getQuest('quest_side_fishing');
+      if (qFishing && qFishing.status === 'COMPLETED') {
+        this.achievementManager.unlock('ach_side_fishing', silent);
+      }
+
+      const qFractal = this.questLog.getQuest('quest_side_fractal_temper');
+      if (qFractal && qFractal.status === 'COMPLETED') {
+        this.achievementManager.unlock('ach_side_fractal', silent);
+      }
+
+      const qSilicon = this.questLog.getQuest('quest_side_silicon_flowers');
+      if (qSilicon && qSilicon.status === 'COMPLETED') {
+        this.achievementManager.unlock('ach_side_silicon', silent);
+      }
+
+      if (
+        qFishing && qFishing.status === 'COMPLETED' &&
+        qFractal && qFractal.status === 'COMPLETED' &&
+        qSilicon && qSilicon.status === 'COMPLETED'
+      ) {
+        this.achievementManager.unlock('ach_all_side_quests', silent);
+      }
+    }
   }
 
   _checkAllSideQuestsAchievement() {
@@ -16993,6 +17098,7 @@ class RPGGame {
       if (data.achievementsData && this.achievementManager) {
         this.achievementManager.deserialize(data.achievementsData);
       }
+      this._syncAchievementsWithProgress(true);
 
       if (Array.isArray(data.collectedItemIds)) {
         for (const wi of this.worldItems) {
@@ -17304,6 +17410,9 @@ class RPGGame {
         onSelect: () => {
           this.tilemap.unlockBridgePermanently();
           this.housePermissions.elder_house = true;
+          if (this.achievementManager) {
+            this.achievementManager.unlock('ach_bridge_pass');
+          }
           if (this.questLog) {
             this.questLog.completeQuest('quest_main_bridge', 'El puente del Río Alba está abierto. ¡Cruza al este hacia las Pruebas Sagradas!');
             this.questLog.advanceStep('quest_code_temples', 'El puente está abierto. Explora el Santuario Este y supera los Templos Binarios.');
@@ -20668,6 +20777,13 @@ class RPGGame {
       const dir = this.input.consumeMenuDirection();
       if (dir) {
         this.dialogueBox.moveChoice(dir);
+      }
+    }
+
+    if (this.dialogueBox.active && this.input.pointerJustClicked) {
+      const handled = this.dialogueBox.handlePointerClick(this.input.pointerX, this.input.pointerY);
+      if (handled) {
+        this.input.pointerJustClicked = false;
       }
     }
 
