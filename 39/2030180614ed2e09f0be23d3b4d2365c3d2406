@@ -1,0 +1,20 @@
+build-portable.mjs
+  h_e1bbc662b18209 9
+el-ojete-dorado-the-game.html
+  h_e1bbc662b18209 396-484,20332-20337,20339-20340,20366,20371
+src/core/DoorGatekeeper.js
+  h_e1bbc662b18209 1-85
+src/main.js
+  h_e1bbc662b18209 1,3639-3644,3646-3647,3673,3678
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "392030180614ed2e09f0be23d3b4d2365c3d2406",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
