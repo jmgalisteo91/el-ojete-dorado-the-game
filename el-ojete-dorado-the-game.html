@@ -5228,8 +5228,8 @@ class Player extends Entity {
    */
   _ensureUnstuck(tilemap) {
     if (!tilemap) return;
-    const currentBox = this.getHitbox(this.x, this.y);
-    if (!CollisionSystem.isAreaBlocked(currentBox, tilemap, [], this)) {
+    if (typeof tilemap.isSolidAtTile !== 'function') return;
+    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(this.x, this.y), tilemap)) {
       return;
     }
 
@@ -5241,8 +5241,8 @@ class Player extends Entity {
       for (const [dx, dy] of dirs) {
         const candX = this.x + dx * dist;
         const candY = this.y + dy * dist;
-        const candBox = this.getHitbox(candX, candY);
-        if (!CollisionSystem.isAreaBlocked(candBox, tilemap, [], this)) {
+        const candBox = this.getBoundingBoxAt(candX, candY);
+        if (!CollisionSystem.collidesWithMap(candBox, tilemap)) {
           this.x = candX;
           this.y = candY;
           return;
