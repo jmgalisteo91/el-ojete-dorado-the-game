@@ -1,0 +1,19 @@
+{
+  "name": "el-ojete-dorado-the-game",
+  "version": "1.0.0",
+  "description": "El Ojete Dorado: The Game - Aventura RPG Pixel Art 2D",
+  "type": "module",
+  "scripts": {
+    "start": "python3 server.py",
+    "build": "node build-portable.mjs"
+  },
+  "keywords": [
+    "game",
+    "canvas",
+    "pixel-art",
+    "rpg",
+    "retro"
+  ],
+  "license": "MIT"
+}
+

@@ -1,0 +1,15 @@
+# Node & Dependencies
+node_modules/
+npm-debug.log*
+
+# OS & Environment
+.DS_Store
+Thumbs.db
+
+# Vercel & Deployments
+.vercel/
+
+# Archives & Temporary tests
+valleverde-rpg-tester.zip
+*.tmp
+
