@@ -2,7 +2,7 @@ import { CHARACTER_TYPES, ITEM_ICONS, ATLAS_SCALE } from '../graphics/SpriteShee
 import { WorldMap } from './WorldMap.js?v=7';
 import { EndingCredits } from './EndingCredits.js?v=7';
 import { SpeechBubble, GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=7';
-import { getLocalLeaderboard } from '../core/ScoreSystem.js?v=7';
+import { getLocalLeaderboard, fetchGlobalLeaderboard } from '../core/ScoreSystem.js?v=7';
 
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art
@@ -196,9 +196,40 @@ export class MainMenuAndScenes {
     this.previousState = returnState;
     this.state = 'leaderboard';
     this.leaderboardScroll = 0;
-    this.leaderboardList = getLocalLeaderboard();
+    this.leaderboardTab = 'global';
+    this.localLeaderboardList = getLocalLeaderboard();
+    this.leaderboardList = this.globalLeaderboardList || this.localLeaderboardList;
+    this.leaderboardStatus = 'Conectando con Vercel...';
     this.selectedIndex = 0;
     this.music.playMenuSelect();
+
+    this.isFetchingGlobal = true;
+    fetchGlobalLeaderboard().then((res) => {
+      this.isFetchingGlobal = false;
+      if (res && Array.isArray(res.leaderboard)) {
+        this.globalLeaderboardList = res.leaderboard;
+        this.leaderboardStatus = res.source === 'cloud' ? '🌐 Nube Conectada' : '💾 Servidor Vercel (Modo Base)';
+        if (this.leaderboardTab === 'global') {
+          this.leaderboardList = this.globalLeaderboardList;
+        }
+      }
+    }).catch(() => {
+      this.isFetchingGlobal = false;
+      this.leaderboardStatus = '💾 Modo Local';
+    });
+  }
+
+  setLeaderboardTab(tab) {
+    if (this.leaderboardTab === tab) return;
+    this.leaderboardTab = tab;
+    this.leaderboardScroll = 0;
+    if (tab === 'global') {
+      this.leaderboardList = this.globalLeaderboardList || this.localLeaderboardList;
+    } else {
+      this.localLeaderboardList = getLocalLeaderboard();
+      this.leaderboardList = this.localLeaderboardList;
+    }
+    this.music.playMenuMove();
   }
 
   closeLeaderboardScreen() {
@@ -544,6 +575,15 @@ export class MainMenuAndScenes {
           }
         },
         {
+          label: '☁ Cargar de la Nube',
+          action: () => {
+            this.music.playMenuSelect();
+            if (this.callbacks.onOpenCloudLoad) {
+              this.callbacks.onOpenCloudLoad();
+            }
+          }
+        },
+        {
           label: 'Controles',
           action: () => {
             this.music.playMenuSelect();
@@ -575,6 +615,41 @@ export class MainMenuAndScenes {
           action: () => this.closePauseMenu()
         },
         {
+          label: 'Guardar Partida [Local]',
+          action: () => {
+            this.music.playFanfare();
+            if (this.callbacks.onSaveGame) {
+              this.callbacks.onSaveGame();
+            }
+            this.showNotice('¡Partida guardada en este navegador!');
+          }
+        },
+        {
+          label: '☁ Sincronizar en la Nube',
+          action: () => {
+            this.music.playMenuSelect();
+            if (this.callbacks.onOpenCloudSave) {
+              this.callbacks.onOpenCloudSave();
+            }
+          }
+        },
+        {
+          label: '☁ Cargar de la Nube',
+          action: () => {
+            this.music.playMenuSelect();
+            if (this.callbacks.onOpenCloudLoad) {
+              this.callbacks.onOpenCloudLoad();
+            }
+          }
+        },
+        {
+          label: '🏆 Salón de la Fama [Récords]',
+          action: () => {
+            this.music.playMenuSelect();
+            this.openLeaderboardScreen('pause');
+          }
+        },
+        {
           label: 'Mapa del Gran Ojal [M]',
           action: () => {
             this.music.playMenuSelect();
@@ -599,39 +674,12 @@ export class MainMenuAndScenes {
           }
         },
         {
-          label: '🏆 Salón de la Fama [Récords]',
-          action: () => {
-            this.music.playMenuSelect();
-            this.openLeaderboardScreen('pause');
-          }
-        },
-        {
-          label: 'Guardar Partida',
-          action: () => {
-            this.music.playFanfare();
-            if (this.callbacks.onSaveGame) {
-              this.callbacks.onSaveGame();
-            }
-            this.showNotice('¡Partida guardada correctamente!');
-          }
-        },
-        {
           label: 'Opciones',
           action: () => {
             this.music.playMenuSelect();
             this.previousState = 'pause';
             this.state = 'options';
             this.selectedIndex = 0;
-          }
-        },
-        {
-          label: 'Ver Escenas (La Gran Aventura del Héroe)',
-          action: () => {
-            this.music.playMenuSelect();
-            this.startHeroAdventureCutscene(() => {
-              this.state = 'none';
-              this.music.setMode('village');
-            });
           }
         },
         {
@@ -883,11 +931,65 @@ export class MainMenuAndScenes {
         this.leaderboardScroll = Math.min(maxScroll, (this.leaderboardScroll || 0) + 1);
         this.music.playMenuMove();
       }
+
+      // Atajos de teclado para alternar pestañas: Tab, KeyT, Digit1, Digit2
+      if (input.consumeKey('Tab') || input.consumeKey('KeyT')) {
+        this.setLeaderboardTab(this.leaderboardTab === 'global' ? 'local' : 'global');
+        return;
+      }
+      if (input.consumeKey('Digit1')) {
+        this.setLeaderboardTab('global');
+        return;
+      }
+      if (input.consumeKey('Digit2')) {
+        this.setLeaderboardTab('local');
+        return;
+      }
+
+      // Clic del ratón en las pestañas o en el botón de retorno
+      if (input.pointerJustClicked) {
+        const winW = 300;
+        const winX = Math.round((this.viewportWidth - winW) / 2);
+        const winY = Math.round((this.viewportHeight - 166) / 2);
+        const tabY = winY + 15;
+        const tabW = 95;
+        const tabH = 11;
+        const tab1X = winX + 16;
+        const tab2X = winX + 116;
+
+        const px = input.pointerX;
+        const py = input.pointerY;
+
+        // Clic en Pestaña Global
+        if (px >= tab1X && px <= tab1X + tabW && py >= tabY && py <= tabY + tabH) {
+          input.consumePointerClick();
+          this.setLeaderboardTab('global');
+          return;
+        }
+
+        // Clic en Pestaña Local
+        if (px >= tab2X && px <= tab2X + tabW && py >= tabY && py <= tabY + tabH) {
+          input.consumePointerClick();
+          this.setLeaderboardTab('local');
+          return;
+        }
+
+        // Clic en botón "Volver al Menú"
+        const btnW = 140;
+        const btnH = 13;
+        const btnX = Math.round(winX + (winW - btnW) / 2);
+        const btnY = winY + 166 - 15;
+        if (px >= btnX && px <= btnX + btnW && py >= btnY && py <= btnY + btnH) {
+          input.consumePointerClick();
+          this.closeLeaderboardScreen();
+          return;
+        }
+      }
+
       if (
         input.consumeKey('Escape') ||
         input.consumeKey('KeyL') ||
-        input.consumeInteraction() ||
-        input.consumePointerClick()
+        input.consumeInteraction()
       ) {
         this.closeLeaderboardScreen();
       }
@@ -1315,21 +1417,53 @@ export class MainMenuAndScenes {
 
     // Cabecera estilizada
     ctx.fillStyle = '#1e293b';
-    ctx.fillRect(winX + 2, winY + 2, winW - 4, 22);
+    ctx.fillRect(winX + 2, winY + 2, winW - 4, 25);
     ctx.fillStyle = '#38bdf8';
-    ctx.fillRect(winX + 2, winY + 24, winW - 4, 1);
+    ctx.fillRect(winX + 2, winY + 27, winW - 4, 1);
 
-    ctx.font = 'bold 8px monospace';
+    ctx.font = 'bold 7.5px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fde047';
-    ctx.fillText('🏆 SALÓN DE LA FAMA · SPEEDRUN & CLASIFICACIÓN', W / 2, winY + 10);
-    ctx.font = '5.5px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Clasificación de programadores en Valleverde (Rango S a C)', W / 2, winY + 18);
+    ctx.fillText('🏆 SALÓN DE LA FAMA · SPEEDRUN CLASIFICATORIO', W / 2, winY + 8);
+
+    // Pestañas interactivas: [1] 🌐 Ranking Mundial (Nube) | [2] 💾 Récords Locales
+    const tabY = winY + 14;
+    const tabW = 95;
+    const tabH = 11;
+    const tab1X = winX + 14;
+    const tab2X = winX + 114;
+
+    const isGlobal = this.leaderboardTab !== 'local';
+
+    // Tab 1: Global
+    ctx.fillStyle = isGlobal ? '#0284c7' : '#0f172a';
+    ctx.fillRect(tab1X, tabY, tabW, tabH);
+    ctx.strokeStyle = isGlobal ? '#38bdf8' : '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tab1X + 0.5, tabY + 0.5, tabW - 1, tabH - 1);
+    ctx.font = 'bold 5.5px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isGlobal ? '#ffffff' : '#94a3b8';
+    ctx.fillText('🌐 [1] Global (Nube)', tab1X + tabW / 2, tabY + 5.5);
+
+    // Tab 2: Local
+    ctx.fillStyle = !isGlobal ? '#059669' : '#0f172a';
+    ctx.fillRect(tab2X, tabY, tabW, tabH);
+    ctx.strokeStyle = !isGlobal ? '#34d399' : '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tab2X + 0.5, tabY + 0.5, tabW - 1, tabH - 1);
+    ctx.fillStyle = !isGlobal ? '#ffffff' : '#94a3b8';
+    ctx.fillText('💾 [2] Local (Este PC)', tab2X + tabW / 2, tabY + 5.5);
+
+    // Estado del servidor / nube
+    ctx.textAlign = 'right';
+    ctx.font = '5px monospace';
+    ctx.fillStyle = this.leaderboardStatus?.includes('Nube') ? '#38bdf8' : '#94a3b8';
+    ctx.fillText(this.leaderboardStatus || '🌐 Vercel API', winX + winW - 8, tabY + 5.5);
 
     // Encabezados de tabla
-    const tableY = winY + 28;
+    const tableY = winY + 29;
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(winX + 6, tableY, winW - 12, 11);
 
@@ -1416,19 +1550,22 @@ export class MainMenuAndScenes {
       ctx.fillText(`${(entry.score || 0).toLocaleString('es-ES')} pts`, winX + winW - 12, ry + 8);
     });
 
-    // Indicador de scroll si hay más registros
+    // Pie de pantalla: atajos y scroll
+    ctx.font = '5px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('[Tab/1/2] Alternar Global/Local', winX + 8, winY + winH - 6);
+
     if (list.length > maxVisible) {
-      ctx.font = '5px monospace';
       ctx.textAlign = 'right';
-      ctx.fillStyle = '#64748b';
-      ctx.fillText(`Registros ${scroll + 1}-${Math.min(list.length, scroll + maxVisible)} de ${list.length}  ·  [▲/▼] Scroll`, winX + winW - 12, winY + winH - 15);
+      ctx.fillText(`Reg. ${scroll + 1}-${Math.min(list.length, scroll + maxVisible)} de ${list.length} · [▲/▼] Scroll`, winX + winW - 8, winY + winH - 6);
     }
 
-    // Pie de pantalla con botón interactivo de retorno
-    const btnW = 140;
-    const btnH = 13;
+    // Botón interactivo de retorno
+    const btnW = 120;
+    const btnH = 12;
     const btnX = Math.round(winX + (winW - btnW) / 2);
-    const btnY = winY + winH - 18;
+    const btnY = winY + winH - 17;
 
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(btnX, btnY, btnW, btnH);

@@ -26,7 +26,7 @@ import { QuestLog } from './core/QuestLog.js?v=7';
 import { AchievementManager } from './core/AchievementManager.js?v=7';
 import { QuestLogView } from './ui/QuestLogView.js?v=7';
 import { MainMenuAndScenes } from './ui/MainMenuAndScenes.js?v=7';
-import { calculateGameScore, saveLocalScore } from './core/ScoreSystem.js?v=7';
+import { calculateGameScore, saveLocalScore, submitGlobalScore, uploadGameToCloud, downloadGameFromCloud } from './core/ScoreSystem.js?v=7';
 import {
   AnimeCutsceneManager,
   SCENE_JAIL_ARREST,
@@ -190,6 +190,8 @@ export class RPGGame {
         onNewGame: () => this._startNewGame(),
         onLoadGame: () => this._loadGameFromStorage(),
         onSaveGame: () => this._saveGameToStorage(),
+        onOpenCloudSave: () => this._openCloudSaveModal(),
+        onOpenCloudLoad: () => this._openCloudLoadModal(),
         getSaveSummary: () => this._getSaveSummary(),
         onApplyOptions: (opts) => this._applyGameOptions(opts),
         onOpenQuestLog: () => {
@@ -407,63 +409,207 @@ export class RPGGame {
     this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
   }
 
+  _buildSavePayload() {
+    return {
+      version: 2,
+      savedAt: Date.now(),
+      sceneId: this.tilemap.currentSceneId,
+      playerX: Math.round(this.player.x),
+      playerY: Math.round(this.player.y),
+      playerDir: this.player.direction,
+      playerSpeed: this.player.speed,
+      playerHp: this.player.hp,
+      playerCoins: this.player.coins,
+      robotizationLevel: Math.round(this.player.robotizationLevel),
+      hasArmor: this.player.hasArmor,
+      hasSword: this.player.hasSword,
+      hasDash: !!this.player.hasDash,
+      hasChargedAttack: !!this.player.hasChargedAttack,
+      hasBarrier: !!this.player.hasBarrier,
+      skillPoints: this.player.skillPoints || 0,
+      killCount: this.player.killCount || 0,
+      skills: { ...this.player.skills },
+      hasLanternEquipped: this.player.hasLanternEquipped,
+      firstStageGateOpen: this.tilemap.firstStageGateOpen,
+      timeOfDayHours: this.dayNight.timeOfDayHours,
+      bridgeForceUnlocked: this.tilemap.bridgeForceUnlocked,
+      jailRemainingSeconds: this.jailRemainingSeconds,
+      jailerAngerCount: this.jailerAngerCount || 0,
+      isJailedForever: !!this.isJailedForever,
+      hasBrokenHeartCurse: !!this.player.hasBrokenHeartCurse,
+      armorPuzzle: this.tilemap?.armorPuzzle ? {
+        switches: { ...this.tilemap.armorPuzzle.switches },
+        solved: !!this.tilemap.armorPuzzle.solved,
+        barrierActive: !!this.tilemap.armorPuzzle.barrierActive
+      } : null,
+      swordPuzzle: this.tilemap?.swordPuzzle ? {
+        solved: !!this.tilemap.swordPuzzle.solved,
+        portalOpen: !!this.tilemap.swordPuzzle.portalOpen,
+        stack: [...this.tilemap.swordPuzzle.stack]
+      } : null,
+      totalPlayTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
+      totalDeaths: this.totalDeaths || 0,
+      totalJailVisits: this.totalJailVisits || 0,
+      housePermissions: { ...this.housePermissions },
+      inventoryItems: this.inventory.items.map((it) => ({ ...it })),
+      bossCutscenesSeen: { ...this.bossCutscenesSeen },
+      abyssalPointerSpawn: this.abyssalPointerSpawn ? { ...this.abyssalPointerSpawn } : null,
+      abyssalPortalOrigin: this.abyssalPortalOrigin ? { ...this.abyssalPortalOrigin } : null,
+      activeAbyssalPortal: this.activeAbyssalPortal ? { ...this.activeAbyssalPortal } : null,
+      questLogData: this.questLog ? this.questLog.serialize() : null,
+      achievementsData: this.achievementManager ? this.achievementManager.serialize() : null,
+      collectedItemIds: this.worldItems.filter((w) => w.collected).map((w) => w.id),
+      defeatedEnemyIds: this.enemies.filter((e) => e.dead).map((e) => e.id)
+    };
+  }
+
   _saveGameToStorage() {
     try {
-      const savePayload = {
-        version: 2,
-        savedAt: Date.now(),
-        sceneId: this.tilemap.currentSceneId,
-        playerX: Math.round(this.player.x),
-        playerY: Math.round(this.player.y),
-        playerDir: this.player.direction,
-        playerSpeed: this.player.speed,
-        playerHp: this.player.hp,
-        playerCoins: this.player.coins,
-        robotizationLevel: Math.round(this.player.robotizationLevel),
-        hasArmor: this.player.hasArmor,
-        hasSword: this.player.hasSword,
-        hasDash: !!this.player.hasDash,
-        hasChargedAttack: !!this.player.hasChargedAttack,
-        hasBarrier: !!this.player.hasBarrier,
-        skillPoints: this.player.skillPoints || 0,
-        killCount: this.player.killCount || 0,
-        skills: { ...this.player.skills },
-        hasLanternEquipped: this.player.hasLanternEquipped,
-        firstStageGateOpen: this.tilemap.firstStageGateOpen,
-        timeOfDayHours: this.dayNight.timeOfDayHours,
-        bridgeForceUnlocked: this.tilemap.bridgeForceUnlocked,
-        jailRemainingSeconds: this.jailRemainingSeconds,
-        jailerAngerCount: this.jailerAngerCount || 0,
-        isJailedForever: !!this.isJailedForever,
-        hasBrokenHeartCurse: !!this.player.hasBrokenHeartCurse,
-        armorPuzzle: this.tilemap?.armorPuzzle ? {
-          switches: { ...this.tilemap.armorPuzzle.switches },
-          solved: !!this.tilemap.armorPuzzle.solved,
-          barrierActive: !!this.tilemap.armorPuzzle.barrierActive
-        } : null,
-        swordPuzzle: this.tilemap?.swordPuzzle ? {
-          solved: !!this.tilemap.swordPuzzle.solved,
-          portalOpen: !!this.tilemap.swordPuzzle.portalOpen,
-          stack: [...this.tilemap.swordPuzzle.stack]
-        } : null,
-        totalPlayTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
-        totalDeaths: this.totalDeaths || 0,
-        totalJailVisits: this.totalJailVisits || 0,
-        housePermissions: { ...this.housePermissions },
-        inventoryItems: this.inventory.items.map((it) => ({ ...it })),
-        bossCutscenesSeen: { ...this.bossCutscenesSeen },
-        abyssalPointerSpawn: this.abyssalPointerSpawn ? { ...this.abyssalPointerSpawn } : null,
-        abyssalPortalOrigin: this.abyssalPortalOrigin ? { ...this.abyssalPortalOrigin } : null,
-        activeAbyssalPortal: this.activeAbyssalPortal ? { ...this.activeAbyssalPortal } : null,
-        questLogData: this.questLog ? this.questLog.serialize() : null,
-        achievementsData: this.achievementManager ? this.achievementManager.serialize() : null,
-        collectedItemIds: this.worldItems.filter((w) => w.collected).map((w) => w.id),
-        defeatedEnemyIds: this.enemies.filter((e) => e.dead).map((e) => e.id)
-      };
+      const savePayload = this._buildSavePayload();
       localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(savePayload));
       return true;
     } catch {
       return false;
+    }
+  }
+
+  _openCloudSaveModal() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('cloud-save-modal');
+    if (!modal) return;
+
+    const codeDisplay = document.getElementById('cloud-save-code-display');
+    const statusText = document.getElementById('cloud-save-status');
+    const copyBtn = document.getElementById('cloud-save-copy-btn');
+    const closeBtn = document.getElementById('cloud-save-close-btn');
+
+    if (codeDisplay) codeDisplay.textContent = 'SUBIENDO...';
+    if (statusText) {
+      statusText.textContent = 'Sincronizando estado con Vercel Serverless...';
+      statusText.className = 'cloud-status-text';
+    }
+    if (copyBtn) copyBtn.textContent = '📋 Copiar';
+
+    modal.classList.remove('hidden');
+
+    const payload = this._buildSavePayload();
+    let currentCode = '';
+
+    uploadGameToCloud(payload, 'HERO').then((res) => {
+      if (res && res.ok && res.code) {
+        currentCode = res.code;
+        if (codeDisplay) codeDisplay.textContent = res.code;
+        if (statusText) {
+          statusText.textContent = `✓ ¡Partida guardada en la nube! Código activo durante 90 días.`;
+          statusText.className = 'cloud-status-text success';
+        }
+      } else {
+        if (codeDisplay) codeDisplay.textContent = 'MODO LOCAL';
+        if (statusText) {
+          statusText.textContent = (res && res.message) || 'La persistencia en la nube requiere activar Vercel KV en el Dashboard de Vercel.';
+          statusText.className = 'cloud-status-text error';
+        }
+      }
+    }).catch((err) => {
+      if (codeDisplay) codeDisplay.textContent = 'ERROR';
+      if (statusText) {
+        statusText.textContent = `Error de red: ${err.message}`;
+        statusText.className = 'cloud-status-text error';
+      }
+    });
+
+    if (copyBtn) {
+      copyBtn.onclick = () => {
+        if (currentCode && typeof navigator !== 'undefined' && navigator.clipboard) {
+          navigator.clipboard.writeText(currentCode).then(() => {
+            copyBtn.textContent = '✓ ¡Copiado!';
+            setTimeout(() => { copyBtn.textContent = '📋 Copiar'; }, 2500);
+          }).catch(() => {});
+        }
+      };
+    }
+
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        modal.classList.add('hidden');
+      };
+    }
+  }
+
+  _openCloudLoadModal() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('cloud-load-modal');
+    if (!modal) return;
+
+    const input = document.getElementById('cloud-load-code-input');
+    const statusText = document.getElementById('cloud-load-status');
+    const form = document.getElementById('cloud-load-form');
+    const cancelBtn = document.getElementById('cloud-load-cancel-btn');
+
+    if (input) input.value = '';
+    if (statusText) {
+      statusText.textContent = '';
+      statusText.className = 'cloud-status-text';
+    }
+
+    modal.classList.remove('hidden');
+    if (input) {
+      setTimeout(() => {
+        try { input.focus(); } catch (_) {}
+      }, 60);
+    }
+
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      if (form) form.onsubmit = null;
+      if (cancelBtn) cancelBtn.onclick = null;
+    };
+
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        cleanup();
+      };
+    }
+
+    if (form) {
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const code = (input ? input.value : '').trim().toUpperCase();
+        if (!code) return;
+
+        if (statusText) {
+          statusText.textContent = 'Buscando partida en Vercel Cloud...';
+          statusText.className = 'cloud-status-text';
+        }
+
+        downloadGameFromCloud(code).then((res) => {
+          if (res && res.ok && res.saveData) {
+            const ok = this._loadGameData(res.saveData);
+            if (ok) {
+              if (this.menuSystem) {
+                this.menuSystem.state = 'none';
+                this.menuSystem.showNotice(`✓ Partida [${code}] cargada exitosamente de la nube.`, 4.0);
+              }
+              cleanup();
+            } else {
+              if (statusText) {
+                statusText.textContent = 'Los datos de la partida no se pudieron aplicar.';
+                statusText.className = 'cloud-status-text error';
+              }
+            }
+          } else {
+            if (statusText) {
+              statusText.textContent = (res && res.message) || 'Código no encontrado o no disponible.';
+              statusText.className = 'cloud-status-text error';
+            }
+          }
+        }).catch((err) => {
+          if (statusText) {
+            statusText.textContent = `Error de red: ${err.message}`;
+            statusText.className = 'cloud-status-text error';
+          }
+        });
+      };
     }
   }
 
@@ -488,8 +634,15 @@ export class RPGGame {
       const raw = localStorage.getItem(SAVE_STORAGE_KEY);
       if (!raw) return false;
       const data = JSON.parse(raw);
-      if (!data) return false;
+      return this._loadGameData(data);
+    } catch {
+      return false;
+    }
+  }
 
+  _loadGameData(data) {
+    if (!data) return false;
+    try {
       this._resetWorldToInitialState();
 
       this.dayNight.timeOfDayHours =
@@ -4157,16 +4310,17 @@ export class RPGGame {
           localStorage.setItem('el_ojete_last_nickname', sanitized);
         } catch (_) {}
 
-        saveLocalScore({
+        submitGlobalScore({
           name: sanitized,
           rank: rank,
           score: record && record.score != null ? record.score : 0,
+          playTimeSeconds: (record && record.playTimeSeconds) || 0,
           timeFormatted: (record && record.playTimeFormatted) || '00:00',
           deaths: (record && record.deaths) || 0
+        }).finally(() => {
+          cleanup();
+          if (typeof onDone === 'function') onDone();
         });
-
-        cleanup();
-        if (typeof onDone === 'function') onDone();
       };
     }
 

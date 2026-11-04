@@ -5,6 +5,9 @@ npm-debug.log*
 # OS & Environment
 .DS_Store
 Thumbs.db
+.env
+.env.*
+!.env.example
 
 # Vercel & Deployments
 .vercel/

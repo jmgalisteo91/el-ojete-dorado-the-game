@@ -245,3 +245,182 @@ export function saveLocalScore(data = {}) {
     leaderboard: topList
   };
 }
+
+/**
+ * Consulta la tabla del Salón de la Fama Global desde la API de Vercel
+ */
+export async function fetchGlobalLeaderboard() {
+  if (typeof fetch === 'undefined' || typeof window === 'undefined') {
+    return { ok: true, source: 'local', leaderboard: getLocalLeaderboard() };
+  }
+
+  // Si estamos en entorno file:// offline, usar directamente local
+  if (window.location && window.location.protocol === 'file:') {
+    return { ok: true, source: 'local_file', leaderboard: getLocalLeaderboard() };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
+
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller ? controller.signal : undefined
+    });
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      return { ok: false, source: 'local_fallback', leaderboard: getLocalLeaderboard() };
+    }
+
+    const data = await res.json();
+    if (data && Array.isArray(data.leaderboard)) {
+      return {
+        ok: true,
+        source: data.source || 'cloud',
+        configured: data.configured !== false,
+        leaderboard: data.leaderboard
+      };
+    }
+    return { ok: true, source: 'local', leaderboard: getLocalLeaderboard() };
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    return { ok: false, source: 'offline_local', leaderboard: getLocalLeaderboard(), error: err.message };
+  }
+}
+
+/**
+ * Publica una puntuación tanto en el Salón de la Fama Local como en el Global (Vercel API)
+ */
+export async function submitGlobalScore(data = {}) {
+  // 1. Siempre guardar localmente primero para asegurar persistencia
+  const localResult = saveLocalScore(data);
+
+  // 2. Si hay conexión y estamos en http/https, enviar a la API serverless
+  if (typeof fetch === 'undefined' || typeof window === 'undefined' || (window.location && window.location.protocol === 'file:')) {
+    return {
+      ok: true,
+      mode: 'local_only',
+      position: localResult.position,
+      entry: localResult.entry,
+      leaderboard: localResult.leaderboard
+    };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 4500) : null;
+
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        username: localResult.entry.username,
+        playTimeSeconds: localResult.entry.playTimeSeconds,
+        deaths: localResult.entry.deaths
+      }),
+      signal: controller ? controller.signal : undefined
+    });
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      return {
+        ok: true,
+        mode: 'local_saved_cloud_error',
+        position: localResult.position,
+        entry: localResult.entry,
+        leaderboard: localResult.leaderboard
+      };
+    }
+
+    const json = await res.json();
+    return {
+      ok: true,
+      mode: json.source || 'cloud',
+      position: json.position || localResult.position,
+      entry: json.entry || localResult.entry,
+      leaderboard: json.leaderboard || localResult.leaderboard
+    };
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    return {
+      ok: true,
+      mode: 'local_saved_offline',
+      position: localResult.position,
+      entry: localResult.entry,
+      leaderboard: localResult.leaderboard,
+      networkError: err.message
+    };
+  }
+}
+
+/**
+ * Guarda la partida en la nube mediante Vercel Serverless Function (/api/save)
+ */
+export async function uploadGameToCloud(savePayload, nickname = 'HERO', code = null) {
+  if (typeof fetch === 'undefined' || typeof window === 'undefined' || (window.location && window.location.protocol === 'file:')) {
+    return { ok: false, error: 'MODO_OFFLINE', message: 'El guardado en la nube requiere conexión y jugar desde la web (no disponible en archivo local).' };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 6000) : null;
+
+  try {
+    const res = await fetch('/api/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        saveData: savePayload,
+        nickname,
+        code
+      }),
+      signal: controller ? controller.signal : undefined
+    });
+    if (timeoutId) clearTimeout(timeoutId);
+
+    const json = await res.json();
+    return json;
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    return { ok: false, error: 'NETWORK_ERROR', message: `Error de conexión con la nube: ${err.message}` };
+  }
+}
+
+/**
+ * Carga una partida remota desde la nube mediante su código
+ */
+export async function downloadGameFromCloud(code) {
+  if (typeof fetch === 'undefined' || typeof window === 'undefined' || (window.location && window.location.protocol === 'file:')) {
+    return { ok: false, error: 'MODO_OFFLINE', message: 'La carga desde la nube requiere conexión web.' };
+  }
+
+  const cleanCode = (code || '').trim().toUpperCase();
+  if (!cleanCode) {
+    return { ok: false, error: 'CODE_REQUIRED', message: 'Introduce un código de partida válido.' };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 6000) : null;
+
+  try {
+    const res = await fetch(`/api/save?code=${encodeURIComponent(cleanCode)}`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller ? controller.signal : undefined
+    });
+    if (timeoutId) clearTimeout(timeoutId);
+
+    const json = await res.json();
+    return json;
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    return { ok: false, error: 'NETWORK_ERROR', message: `Error de conexión: ${err.message}` };
+  }
+}

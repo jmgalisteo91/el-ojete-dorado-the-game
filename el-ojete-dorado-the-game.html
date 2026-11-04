@@ -417,6 +417,83 @@ html, body {
   background: #ffdb80;
   transform: translateY(-1px);
 }
+
+/* Modales de Guardado y Carga en la Nube (Cloud Save / Load) */
+.cloud-code-container {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  margin: 14px 0 10px;
+}
+
+.cloud-code-badge {
+  display: inline-block;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: #38bdf8;
+  background: #0f172a;
+  border: 2px dashed #38bdf8;
+  padding: 8px 20px;
+  border-radius: 4px;
+  text-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+  user-select: all;
+}
+
+.btn-cloud-copy {
+  background: #1e293b;
+  border: 1px solid #475569;
+  color: #e2e8f0;
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: bold;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-cloud-copy:hover {
+  background: #334155;
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.cloud-status-text {
+  font-size: 11px;
+  color: #94a3b8;
+  margin: 8px 0;
+}
+
+.cloud-status-text.success {
+  color: #4ade80;
+}
+
+.cloud-status-text.error {
+  color: #f87171;
+}
+
+#cloud-load-code-input {
+  width: min(80%, 280px);
+  background: #1a233a;
+  border: 2px solid #38bdf8;
+  color: #38bdf8;
+  font-family: monospace;
+  font-size: 18px;
+  font-weight: bold;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  padding: 8px 12px;
+  outline: none;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+}
+
+#cloud-load-code-input:focus {
+  border-color: #5eead4;
+  box-shadow: 0 0 16px rgba(94, 234, 212, 0.4);
+}
   </style>
 </head>
 <body>
@@ -483,6 +560,59 @@ html, body {
           <div class="exit-modal-actions">
             <button id="score-submit-btn" type="submit" class="btn-score-submit">★ Publicar en el Salón de la Fama</button>
             <button id="score-skip-btn" type="button" class="btn-confirm-no">✕ Omitir y Volver al Menú</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal de Guardado en la Nube (Cloud Save) -->
+    <div id="cloud-save-modal" class="exit-modal-backdrop hidden">
+      <div class="score-card">
+        <div class="exit-modal-header">
+          <span>☁ SINCRONIZACIÓN EN LA NUBE · VERCEL CLOUD ☁</span>
+        </div>
+        <h2 class="score-title">Tu Partida en la Nube</h2>
+        <p class="score-hint" style="margin-bottom: 12px;">
+          Usa este código en cualquier navegador o PC para continuar tu aventura exactamente donde la dejaste:
+        </p>
+
+        <div class="cloud-code-container">
+          <span class="cloud-code-badge" id="cloud-save-code-display">GENERANDO...</span>
+          <button type="button" id="cloud-save-copy-btn" class="btn-cloud-copy">📋 Copiar</button>
+        </div>
+        <p id="cloud-save-status" class="cloud-status-text">Subiendo estado a Vercel Serverless...</p>
+
+        <div class="exit-modal-actions" style="margin-top: 14px;">
+          <button id="cloud-save-close-btn" type="button" class="btn-score-submit">✓ Entendido / Volver al Juego</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Carga desde la Nube (Cloud Load) -->
+    <div id="cloud-load-modal" class="exit-modal-backdrop hidden">
+      <div class="score-card">
+        <div class="exit-modal-header">
+          <span>☁ RECUPERAR PARTIDA · VERCEL CLOUD ☁</span>
+        </div>
+        <h2 class="score-title">Cargar Partida Remota</h2>
+        <p class="score-hint" style="margin-bottom: 12px;">
+          Introduce el código de guardado generado previamente (ej: OJT-7K9B):
+        </p>
+
+        <form id="cloud-load-form" autocomplete="off">
+          <div class="score-input-wrap">
+            <input
+              id="cloud-load-code-input"
+              type="text"
+              maxlength="10"
+              placeholder="OJT-XXXXX"
+              required
+            />
+          </div>
+          <p id="cloud-load-status" class="cloud-status-text" style="min-height: 16px;"></p>
+          <div class="exit-modal-actions">
+            <button id="cloud-load-submit-btn" type="submit" class="btn-score-submit">★ Descargar y Cargar Partida</button>
+            <button id="cloud-load-cancel-btn" type="button" class="btn-confirm-no">✕ Cancelar</button>
           </div>
         </form>
       </div>
@@ -772,6 +902,14 @@ class InputHandler {
     }
     const exitModal = typeof document !== 'undefined' ? document.getElementById('exit-confirm-modal') : null;
     if (exitModal && !exitModal.classList.contains('hidden')) {
+      return true;
+    }
+    const cloudSaveModal = typeof document !== 'undefined' ? document.getElementById('cloud-save-modal') : null;
+    if (cloudSaveModal && !cloudSaveModal.classList.contains('hidden')) {
+      return true;
+    }
+    const cloudLoadModal = typeof document !== 'undefined' ? document.getElementById('cloud-load-modal') : null;
+    if (cloudLoadModal && !cloudLoadModal.classList.contains('hidden')) {
       return true;
     }
     return false;
@@ -1841,6 +1979,185 @@ function saveLocalScore(data = {}) {
     position: rankPosition > 0 ? rankPosition : topList.length + 1,
     leaderboard: topList
   };
+}
+
+/**
+ * Consulta la tabla del Salón de la Fama Global desde la API de Vercel
+ */
+async function fetchGlobalLeaderboard() {
+  if (typeof fetch === 'undefined' || typeof window === 'undefined') {
+    return { ok: true, source: 'local', leaderboard: getLocalLeaderboard() };
+  }
+
+  // Si estamos en entorno file:// offline, usar directamente local
+  if (window.location && window.location.protocol === 'file:') {
+    return { ok: true, source: 'local_file', leaderboard: getLocalLeaderboard() };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
+
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller ? controller.signal : undefined
+    });
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      return { ok: false, source: 'local_fallback', leaderboard: getLocalLeaderboard() };
+    }
+
+    const data = await res.json();
+    if (data && Array.isArray(data.leaderboard)) {
+      return {
+        ok: true,
+        source: data.source || 'cloud',
+        configured: data.configured !== false,
+        leaderboard: data.leaderboard
+      };
+    }
+    return { ok: true, source: 'local', leaderboard: getLocalLeaderboard() };
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    return { ok: false, source: 'offline_local', leaderboard: getLocalLeaderboard(), error: err.message };
+  }
+}
+
+/**
+ * Publica una puntuación tanto en el Salón de la Fama Local como en el Global (Vercel API)
+ */
+async function submitGlobalScore(data = {}) {
+  // 1. Siempre guardar localmente primero para asegurar persistencia
+  const localResult = saveLocalScore(data);
+
+  // 2. Si hay conexión y estamos en http/https, enviar a la API serverless
+  if (typeof fetch === 'undefined' || typeof window === 'undefined' || (window.location && window.location.protocol === 'file:')) {
+    return {
+      ok: true,
+      mode: 'local_only',
+      position: localResult.position,
+      entry: localResult.entry,
+      leaderboard: localResult.leaderboard
+    };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 4500) : null;
+
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        username: localResult.entry.username,
+        playTimeSeconds: localResult.entry.playTimeSeconds,
+        deaths: localResult.entry.deaths
+      }),
+      signal: controller ? controller.signal : undefined
+    });
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      return {
+        ok: true,
+        mode: 'local_saved_cloud_error',
+        position: localResult.position,
+        entry: localResult.entry,
+        leaderboard: localResult.leaderboard
+      };
+    }
+
+    const json = await res.json();
+    return {
+      ok: true,
+      mode: json.source || 'cloud',
+      position: json.position || localResult.position,
+      entry: json.entry || localResult.entry,
+      leaderboard: json.leaderboard || localResult.leaderboard
+    };
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    return {
+      ok: true,
+      mode: 'local_saved_offline',
+      position: localResult.position,
+      entry: localResult.entry,
+      leaderboard: localResult.leaderboard,
+      networkError: err.message
+    };
+  }
+}
+
+/**
+ * Guarda la partida en la nube mediante Vercel Serverless Function (/api/save)
+ */
+async function uploadGameToCloud(savePayload, nickname = 'HERO', code = null) {
+  if (typeof fetch === 'undefined' || typeof window === 'undefined' || (window.location && window.location.protocol === 'file:')) {
+    return { ok: false, error: 'MODO_OFFLINE', message: 'El guardado en la nube requiere conexión y jugar desde la web (no disponible en archivo local).' };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 6000) : null;
+
+  try {
+    const res = await fetch('/api/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        saveData: savePayload,
+        nickname,
+        code
+      }),
+      signal: controller ? controller.signal : undefined
+    });
+    if (timeoutId) clearTimeout(timeoutId);
+
+    const json = await res.json();
+    return json;
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    return { ok: false, error: 'NETWORK_ERROR', message: `Error de conexión con la nube: ${err.message}` };
+  }
+}
+
+/**
+ * Carga una partida remota desde la nube mediante su código
+ */
+async function downloadGameFromCloud(code) {
+  if (typeof fetch === 'undefined' || typeof window === 'undefined' || (window.location && window.location.protocol === 'file:')) {
+    return { ok: false, error: 'MODO_OFFLINE', message: 'La carga desde la nube requiere conexión web.' };
+  }
+
+  const cleanCode = (code || '').trim().toUpperCase();
+  if (!cleanCode) {
+    return { ok: false, error: 'CODE_REQUIRED', message: 'Introduce un código de partida válido.' };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 6000) : null;
+
+  try {
+    const res = await fetch(`/api/save?code=${encodeURIComponent(cleanCode)}`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal: controller ? controller.signal : undefined
+    });
+    if (timeoutId) clearTimeout(timeoutId);
+
+    const json = await res.json();
+    return json;
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    return { ok: false, error: 'NETWORK_ERROR', message: `Error de conexión: ${err.message}` };
+  }
 }
 
   // ==========================================
@@ -13299,9 +13616,40 @@ class MainMenuAndScenes {
     this.previousState = returnState;
     this.state = 'leaderboard';
     this.leaderboardScroll = 0;
-    this.leaderboardList = getLocalLeaderboard();
+    this.leaderboardTab = 'global';
+    this.localLeaderboardList = getLocalLeaderboard();
+    this.leaderboardList = this.globalLeaderboardList || this.localLeaderboardList;
+    this.leaderboardStatus = 'Conectando con Vercel...';
     this.selectedIndex = 0;
     this.music.playMenuSelect();
+
+    this.isFetchingGlobal = true;
+    fetchGlobalLeaderboard().then((res) => {
+      this.isFetchingGlobal = false;
+      if (res && Array.isArray(res.leaderboard)) {
+        this.globalLeaderboardList = res.leaderboard;
+        this.leaderboardStatus = res.source === 'cloud' ? '🌐 Nube Conectada' : '💾 Servidor Vercel (Modo Base)';
+        if (this.leaderboardTab === 'global') {
+          this.leaderboardList = this.globalLeaderboardList;
+        }
+      }
+    }).catch(() => {
+      this.isFetchingGlobal = false;
+      this.leaderboardStatus = '💾 Modo Local';
+    });
+  }
+
+  setLeaderboardTab(tab) {
+    if (this.leaderboardTab === tab) return;
+    this.leaderboardTab = tab;
+    this.leaderboardScroll = 0;
+    if (tab === 'global') {
+      this.leaderboardList = this.globalLeaderboardList || this.localLeaderboardList;
+    } else {
+      this.localLeaderboardList = getLocalLeaderboard();
+      this.leaderboardList = this.localLeaderboardList;
+    }
+    this.music.playMenuMove();
   }
 
   closeLeaderboardScreen() {
@@ -13647,6 +13995,15 @@ class MainMenuAndScenes {
           }
         },
         {
+          label: '☁ Cargar de la Nube',
+          action: () => {
+            this.music.playMenuSelect();
+            if (this.callbacks.onOpenCloudLoad) {
+              this.callbacks.onOpenCloudLoad();
+            }
+          }
+        },
+        {
           label: 'Controles',
           action: () => {
             this.music.playMenuSelect();
@@ -13678,6 +14035,41 @@ class MainMenuAndScenes {
           action: () => this.closePauseMenu()
         },
         {
+          label: 'Guardar Partida [Local]',
+          action: () => {
+            this.music.playFanfare();
+            if (this.callbacks.onSaveGame) {
+              this.callbacks.onSaveGame();
+            }
+            this.showNotice('¡Partida guardada en este navegador!');
+          }
+        },
+        {
+          label: '☁ Sincronizar en la Nube',
+          action: () => {
+            this.music.playMenuSelect();
+            if (this.callbacks.onOpenCloudSave) {
+              this.callbacks.onOpenCloudSave();
+            }
+          }
+        },
+        {
+          label: '☁ Cargar de la Nube',
+          action: () => {
+            this.music.playMenuSelect();
+            if (this.callbacks.onOpenCloudLoad) {
+              this.callbacks.onOpenCloudLoad();
+            }
+          }
+        },
+        {
+          label: '🏆 Salón de la Fama [Récords]',
+          action: () => {
+            this.music.playMenuSelect();
+            this.openLeaderboardScreen('pause');
+          }
+        },
+        {
           label: 'Mapa del Gran Ojal [M]',
           action: () => {
             this.music.playMenuSelect();
@@ -13702,39 +14094,12 @@ class MainMenuAndScenes {
           }
         },
         {
-          label: '🏆 Salón de la Fama [Récords]',
-          action: () => {
-            this.music.playMenuSelect();
-            this.openLeaderboardScreen('pause');
-          }
-        },
-        {
-          label: 'Guardar Partida',
-          action: () => {
-            this.music.playFanfare();
-            if (this.callbacks.onSaveGame) {
-              this.callbacks.onSaveGame();
-            }
-            this.showNotice('¡Partida guardada correctamente!');
-          }
-        },
-        {
           label: 'Opciones',
           action: () => {
             this.music.playMenuSelect();
             this.previousState = 'pause';
             this.state = 'options';
             this.selectedIndex = 0;
-          }
-        },
-        {
-          label: 'Ver Escenas (La Gran Aventura del Héroe)',
-          action: () => {
-            this.music.playMenuSelect();
-            this.startHeroAdventureCutscene(() => {
-              this.state = 'none';
-              this.music.setMode('village');
-            });
           }
         },
         {
@@ -13986,11 +14351,65 @@ class MainMenuAndScenes {
         this.leaderboardScroll = Math.min(maxScroll, (this.leaderboardScroll || 0) + 1);
         this.music.playMenuMove();
       }
+
+      // Atajos de teclado para alternar pestañas: Tab, KeyT, Digit1, Digit2
+      if (input.consumeKey('Tab') || input.consumeKey('KeyT')) {
+        this.setLeaderboardTab(this.leaderboardTab === 'global' ? 'local' : 'global');
+        return;
+      }
+      if (input.consumeKey('Digit1')) {
+        this.setLeaderboardTab('global');
+        return;
+      }
+      if (input.consumeKey('Digit2')) {
+        this.setLeaderboardTab('local');
+        return;
+      }
+
+      // Clic del ratón en las pestañas o en el botón de retorno
+      if (input.pointerJustClicked) {
+        const winW = 300;
+        const winX = Math.round((this.viewportWidth - winW) / 2);
+        const winY = Math.round((this.viewportHeight - 166) / 2);
+        const tabY = winY + 15;
+        const tabW = 95;
+        const tabH = 11;
+        const tab1X = winX + 16;
+        const tab2X = winX + 116;
+
+        const px = input.pointerX;
+        const py = input.pointerY;
+
+        // Clic en Pestaña Global
+        if (px >= tab1X && px <= tab1X + tabW && py >= tabY && py <= tabY + tabH) {
+          input.consumePointerClick();
+          this.setLeaderboardTab('global');
+          return;
+        }
+
+        // Clic en Pestaña Local
+        if (px >= tab2X && px <= tab2X + tabW && py >= tabY && py <= tabY + tabH) {
+          input.consumePointerClick();
+          this.setLeaderboardTab('local');
+          return;
+        }
+
+        // Clic en botón "Volver al Menú"
+        const btnW = 140;
+        const btnH = 13;
+        const btnX = Math.round(winX + (winW - btnW) / 2);
+        const btnY = winY + 166 - 15;
+        if (px >= btnX && px <= btnX + btnW && py >= btnY && py <= btnY + btnH) {
+          input.consumePointerClick();
+          this.closeLeaderboardScreen();
+          return;
+        }
+      }
+
       if (
         input.consumeKey('Escape') ||
         input.consumeKey('KeyL') ||
-        input.consumeInteraction() ||
-        input.consumePointerClick()
+        input.consumeInteraction()
       ) {
         this.closeLeaderboardScreen();
       }
@@ -14418,21 +14837,53 @@ class MainMenuAndScenes {
 
     // Cabecera estilizada
     ctx.fillStyle = '#1e293b';
-    ctx.fillRect(winX + 2, winY + 2, winW - 4, 22);
+    ctx.fillRect(winX + 2, winY + 2, winW - 4, 25);
     ctx.fillStyle = '#38bdf8';
-    ctx.fillRect(winX + 2, winY + 24, winW - 4, 1);
+    ctx.fillRect(winX + 2, winY + 27, winW - 4, 1);
 
-    ctx.font = 'bold 8px monospace';
+    ctx.font = 'bold 7.5px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fde047';
-    ctx.fillText('🏆 SALÓN DE LA FAMA · SPEEDRUN & CLASIFICACIÓN', W / 2, winY + 10);
-    ctx.font = '5.5px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Clasificación de programadores en Valleverde (Rango S a C)', W / 2, winY + 18);
+    ctx.fillText('🏆 SALÓN DE LA FAMA · SPEEDRUN CLASIFICATORIO', W / 2, winY + 8);
+
+    // Pestañas interactivas: [1] 🌐 Ranking Mundial (Nube) | [2] 💾 Récords Locales
+    const tabY = winY + 14;
+    const tabW = 95;
+    const tabH = 11;
+    const tab1X = winX + 14;
+    const tab2X = winX + 114;
+
+    const isGlobal = this.leaderboardTab !== 'local';
+
+    // Tab 1: Global
+    ctx.fillStyle = isGlobal ? '#0284c7' : '#0f172a';
+    ctx.fillRect(tab1X, tabY, tabW, tabH);
+    ctx.strokeStyle = isGlobal ? '#38bdf8' : '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tab1X + 0.5, tabY + 0.5, tabW - 1, tabH - 1);
+    ctx.font = 'bold 5.5px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isGlobal ? '#ffffff' : '#94a3b8';
+    ctx.fillText('🌐 [1] Global (Nube)', tab1X + tabW / 2, tabY + 5.5);
+
+    // Tab 2: Local
+    ctx.fillStyle = !isGlobal ? '#059669' : '#0f172a';
+    ctx.fillRect(tab2X, tabY, tabW, tabH);
+    ctx.strokeStyle = !isGlobal ? '#34d399' : '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tab2X + 0.5, tabY + 0.5, tabW - 1, tabH - 1);
+    ctx.fillStyle = !isGlobal ? '#ffffff' : '#94a3b8';
+    ctx.fillText('💾 [2] Local (Este PC)', tab2X + tabW / 2, tabY + 5.5);
+
+    // Estado del servidor / nube
+    ctx.textAlign = 'right';
+    ctx.font = '5px monospace';
+    ctx.fillStyle = this.leaderboardStatus?.includes('Nube') ? '#38bdf8' : '#94a3b8';
+    ctx.fillText(this.leaderboardStatus || '🌐 Vercel API', winX + winW - 8, tabY + 5.5);
 
     // Encabezados de tabla
-    const tableY = winY + 28;
+    const tableY = winY + 29;
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(winX + 6, tableY, winW - 12, 11);
 
@@ -14519,19 +14970,22 @@ class MainMenuAndScenes {
       ctx.fillText(`${(entry.score || 0).toLocaleString('es-ES')} pts`, winX + winW - 12, ry + 8);
     });
 
-    // Indicador de scroll si hay más registros
+    // Pie de pantalla: atajos y scroll
+    ctx.font = '5px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('[Tab/1/2] Alternar Global/Local', winX + 8, winY + winH - 6);
+
     if (list.length > maxVisible) {
-      ctx.font = '5px monospace';
       ctx.textAlign = 'right';
-      ctx.fillStyle = '#64748b';
-      ctx.fillText(`Registros ${scroll + 1}-${Math.min(list.length, scroll + maxVisible)} de ${list.length}  ·  [▲/▼] Scroll`, winX + winW - 12, winY + winH - 15);
+      ctx.fillText(`Reg. ${scroll + 1}-${Math.min(list.length, scroll + maxVisible)} de ${list.length} · [▲/▼] Scroll`, winX + winW - 8, winY + winH - 6);
     }
 
-    // Pie de pantalla con botón interactivo de retorno
-    const btnW = 140;
-    const btnH = 13;
+    // Botón interactivo de retorno
+    const btnW = 120;
+    const btnH = 12;
     const btnX = Math.round(winX + (winW - btnW) / 2);
-    const btnY = winY + winH - 18;
+    const btnY = winY + winH - 17;
 
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(btnX, btnY, btnW, btnH);
@@ -19394,6 +19848,8 @@ class RPGGame {
         onNewGame: () => this._startNewGame(),
         onLoadGame: () => this._loadGameFromStorage(),
         onSaveGame: () => this._saveGameToStorage(),
+        onOpenCloudSave: () => this._openCloudSaveModal(),
+        onOpenCloudLoad: () => this._openCloudLoadModal(),
         getSaveSummary: () => this._getSaveSummary(),
         onApplyOptions: (opts) => this._applyGameOptions(opts),
         onOpenQuestLog: () => {
@@ -19611,63 +20067,207 @@ class RPGGame {
     this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
   }
 
+  _buildSavePayload() {
+    return {
+      version: 2,
+      savedAt: Date.now(),
+      sceneId: this.tilemap.currentSceneId,
+      playerX: Math.round(this.player.x),
+      playerY: Math.round(this.player.y),
+      playerDir: this.player.direction,
+      playerSpeed: this.player.speed,
+      playerHp: this.player.hp,
+      playerCoins: this.player.coins,
+      robotizationLevel: Math.round(this.player.robotizationLevel),
+      hasArmor: this.player.hasArmor,
+      hasSword: this.player.hasSword,
+      hasDash: !!this.player.hasDash,
+      hasChargedAttack: !!this.player.hasChargedAttack,
+      hasBarrier: !!this.player.hasBarrier,
+      skillPoints: this.player.skillPoints || 0,
+      killCount: this.player.killCount || 0,
+      skills: { ...this.player.skills },
+      hasLanternEquipped: this.player.hasLanternEquipped,
+      firstStageGateOpen: this.tilemap.firstStageGateOpen,
+      timeOfDayHours: this.dayNight.timeOfDayHours,
+      bridgeForceUnlocked: this.tilemap.bridgeForceUnlocked,
+      jailRemainingSeconds: this.jailRemainingSeconds,
+      jailerAngerCount: this.jailerAngerCount || 0,
+      isJailedForever: !!this.isJailedForever,
+      hasBrokenHeartCurse: !!this.player.hasBrokenHeartCurse,
+      armorPuzzle: this.tilemap?.armorPuzzle ? {
+        switches: { ...this.tilemap.armorPuzzle.switches },
+        solved: !!this.tilemap.armorPuzzle.solved,
+        barrierActive: !!this.tilemap.armorPuzzle.barrierActive
+      } : null,
+      swordPuzzle: this.tilemap?.swordPuzzle ? {
+        solved: !!this.tilemap.swordPuzzle.solved,
+        portalOpen: !!this.tilemap.swordPuzzle.portalOpen,
+        stack: [...this.tilemap.swordPuzzle.stack]
+      } : null,
+      totalPlayTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
+      totalDeaths: this.totalDeaths || 0,
+      totalJailVisits: this.totalJailVisits || 0,
+      housePermissions: { ...this.housePermissions },
+      inventoryItems: this.inventory.items.map((it) => ({ ...it })),
+      bossCutscenesSeen: { ...this.bossCutscenesSeen },
+      abyssalPointerSpawn: this.abyssalPointerSpawn ? { ...this.abyssalPointerSpawn } : null,
+      abyssalPortalOrigin: this.abyssalPortalOrigin ? { ...this.abyssalPortalOrigin } : null,
+      activeAbyssalPortal: this.activeAbyssalPortal ? { ...this.activeAbyssalPortal } : null,
+      questLogData: this.questLog ? this.questLog.serialize() : null,
+      achievementsData: this.achievementManager ? this.achievementManager.serialize() : null,
+      collectedItemIds: this.worldItems.filter((w) => w.collected).map((w) => w.id),
+      defeatedEnemyIds: this.enemies.filter((e) => e.dead).map((e) => e.id)
+    };
+  }
+
   _saveGameToStorage() {
     try {
-      const savePayload = {
-        version: 2,
-        savedAt: Date.now(),
-        sceneId: this.tilemap.currentSceneId,
-        playerX: Math.round(this.player.x),
-        playerY: Math.round(this.player.y),
-        playerDir: this.player.direction,
-        playerSpeed: this.player.speed,
-        playerHp: this.player.hp,
-        playerCoins: this.player.coins,
-        robotizationLevel: Math.round(this.player.robotizationLevel),
-        hasArmor: this.player.hasArmor,
-        hasSword: this.player.hasSword,
-        hasDash: !!this.player.hasDash,
-        hasChargedAttack: !!this.player.hasChargedAttack,
-        hasBarrier: !!this.player.hasBarrier,
-        skillPoints: this.player.skillPoints || 0,
-        killCount: this.player.killCount || 0,
-        skills: { ...this.player.skills },
-        hasLanternEquipped: this.player.hasLanternEquipped,
-        firstStageGateOpen: this.tilemap.firstStageGateOpen,
-        timeOfDayHours: this.dayNight.timeOfDayHours,
-        bridgeForceUnlocked: this.tilemap.bridgeForceUnlocked,
-        jailRemainingSeconds: this.jailRemainingSeconds,
-        jailerAngerCount: this.jailerAngerCount || 0,
-        isJailedForever: !!this.isJailedForever,
-        hasBrokenHeartCurse: !!this.player.hasBrokenHeartCurse,
-        armorPuzzle: this.tilemap?.armorPuzzle ? {
-          switches: { ...this.tilemap.armorPuzzle.switches },
-          solved: !!this.tilemap.armorPuzzle.solved,
-          barrierActive: !!this.tilemap.armorPuzzle.barrierActive
-        } : null,
-        swordPuzzle: this.tilemap?.swordPuzzle ? {
-          solved: !!this.tilemap.swordPuzzle.solved,
-          portalOpen: !!this.tilemap.swordPuzzle.portalOpen,
-          stack: [...this.tilemap.swordPuzzle.stack]
-        } : null,
-        totalPlayTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
-        totalDeaths: this.totalDeaths || 0,
-        totalJailVisits: this.totalJailVisits || 0,
-        housePermissions: { ...this.housePermissions },
-        inventoryItems: this.inventory.items.map((it) => ({ ...it })),
-        bossCutscenesSeen: { ...this.bossCutscenesSeen },
-        abyssalPointerSpawn: this.abyssalPointerSpawn ? { ...this.abyssalPointerSpawn } : null,
-        abyssalPortalOrigin: this.abyssalPortalOrigin ? { ...this.abyssalPortalOrigin } : null,
-        activeAbyssalPortal: this.activeAbyssalPortal ? { ...this.activeAbyssalPortal } : null,
-        questLogData: this.questLog ? this.questLog.serialize() : null,
-        achievementsData: this.achievementManager ? this.achievementManager.serialize() : null,
-        collectedItemIds: this.worldItems.filter((w) => w.collected).map((w) => w.id),
-        defeatedEnemyIds: this.enemies.filter((e) => e.dead).map((e) => e.id)
-      };
+      const savePayload = this._buildSavePayload();
       localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(savePayload));
       return true;
     } catch {
       return false;
+    }
+  }
+
+  _openCloudSaveModal() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('cloud-save-modal');
+    if (!modal) return;
+
+    const codeDisplay = document.getElementById('cloud-save-code-display');
+    const statusText = document.getElementById('cloud-save-status');
+    const copyBtn = document.getElementById('cloud-save-copy-btn');
+    const closeBtn = document.getElementById('cloud-save-close-btn');
+
+    if (codeDisplay) codeDisplay.textContent = 'SUBIENDO...';
+    if (statusText) {
+      statusText.textContent = 'Sincronizando estado con Vercel Serverless...';
+      statusText.className = 'cloud-status-text';
+    }
+    if (copyBtn) copyBtn.textContent = '📋 Copiar';
+
+    modal.classList.remove('hidden');
+
+    const payload = this._buildSavePayload();
+    let currentCode = '';
+
+    uploadGameToCloud(payload, 'HERO').then((res) => {
+      if (res && res.ok && res.code) {
+        currentCode = res.code;
+        if (codeDisplay) codeDisplay.textContent = res.code;
+        if (statusText) {
+          statusText.textContent = `✓ ¡Partida guardada en la nube! Código activo durante 90 días.`;
+          statusText.className = 'cloud-status-text success';
+        }
+      } else {
+        if (codeDisplay) codeDisplay.textContent = 'MODO LOCAL';
+        if (statusText) {
+          statusText.textContent = (res && res.message) || 'La persistencia en la nube requiere activar Vercel KV en el Dashboard de Vercel.';
+          statusText.className = 'cloud-status-text error';
+        }
+      }
+    }).catch((err) => {
+      if (codeDisplay) codeDisplay.textContent = 'ERROR';
+      if (statusText) {
+        statusText.textContent = `Error de red: ${err.message}`;
+        statusText.className = 'cloud-status-text error';
+      }
+    });
+
+    if (copyBtn) {
+      copyBtn.onclick = () => {
+        if (currentCode && typeof navigator !== 'undefined' && navigator.clipboard) {
+          navigator.clipboard.writeText(currentCode).then(() => {
+            copyBtn.textContent = '✓ ¡Copiado!';
+            setTimeout(() => { copyBtn.textContent = '📋 Copiar'; }, 2500);
+          }).catch(() => {});
+        }
+      };
+    }
+
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        modal.classList.add('hidden');
+      };
+    }
+  }
+
+  _openCloudLoadModal() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('cloud-load-modal');
+    if (!modal) return;
+
+    const input = document.getElementById('cloud-load-code-input');
+    const statusText = document.getElementById('cloud-load-status');
+    const form = document.getElementById('cloud-load-form');
+    const cancelBtn = document.getElementById('cloud-load-cancel-btn');
+
+    if (input) input.value = '';
+    if (statusText) {
+      statusText.textContent = '';
+      statusText.className = 'cloud-status-text';
+    }
+
+    modal.classList.remove('hidden');
+    if (input) {
+      setTimeout(() => {
+        try { input.focus(); } catch (_) {}
+      }, 60);
+    }
+
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      if (form) form.onsubmit = null;
+      if (cancelBtn) cancelBtn.onclick = null;
+    };
+
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        cleanup();
+      };
+    }
+
+    if (form) {
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const code = (input ? input.value : '').trim().toUpperCase();
+        if (!code) return;
+
+        if (statusText) {
+          statusText.textContent = 'Buscando partida en Vercel Cloud...';
+          statusText.className = 'cloud-status-text';
+        }
+
+        downloadGameFromCloud(code).then((res) => {
+          if (res && res.ok && res.saveData) {
+            const ok = this._loadGameData(res.saveData);
+            if (ok) {
+              if (this.menuSystem) {
+                this.menuSystem.state = 'none';
+                this.menuSystem.showNotice(`✓ Partida [${code}] cargada exitosamente de la nube.`, 4.0);
+              }
+              cleanup();
+            } else {
+              if (statusText) {
+                statusText.textContent = 'Los datos de la partida no se pudieron aplicar.';
+                statusText.className = 'cloud-status-text error';
+              }
+            }
+          } else {
+            if (statusText) {
+              statusText.textContent = (res && res.message) || 'Código no encontrado o no disponible.';
+              statusText.className = 'cloud-status-text error';
+            }
+          }
+        }).catch((err) => {
+          if (statusText) {
+            statusText.textContent = `Error de red: ${err.message}`;
+            statusText.className = 'cloud-status-text error';
+          }
+        });
+      };
     }
   }
 
@@ -19692,8 +20292,15 @@ class RPGGame {
       const raw = localStorage.getItem(SAVE_STORAGE_KEY);
       if (!raw) return false;
       const data = JSON.parse(raw);
-      if (!data) return false;
+      return this._loadGameData(data);
+    } catch {
+      return false;
+    }
+  }
 
+  _loadGameData(data) {
+    if (!data) return false;
+    try {
       this._resetWorldToInitialState();
 
       this.dayNight.timeOfDayHours =
@@ -23361,16 +23968,17 @@ class RPGGame {
           localStorage.setItem('el_ojete_last_nickname', sanitized);
         } catch (_) {}
 
-        saveLocalScore({
+        submitGlobalScore({
           name: sanitized,
           rank: rank,
           score: record && record.score != null ? record.score : 0,
+          playTimeSeconds: (record && record.playTimeSeconds) || 0,
           timeFormatted: (record && record.playTimeFormatted) || '00:00',
           deaths: (record && record.deaths) || 0
+        }).finally(() => {
+          cleanup();
+          if (typeof onDone === 'function') onDone();
         });
-
-        cleanup();
-        if (typeof onDone === 'function') onDone();
       };
     }
 

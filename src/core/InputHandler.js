@@ -65,6 +65,14 @@ export class InputHandler {
     if (exitModal && !exitModal.classList.contains('hidden')) {
       return true;
     }
+    const cloudSaveModal = typeof document !== 'undefined' ? document.getElementById('cloud-save-modal') : null;
+    if (cloudSaveModal && !cloudSaveModal.classList.contains('hidden')) {
+      return true;
+    }
+    const cloudLoadModal = typeof document !== 'undefined' ? document.getElementById('cloud-load-modal') : null;
+    if (cloudLoadModal && !cloudLoadModal.classList.contains('hidden')) {
+      return true;
+    }
     return false;
   }
 

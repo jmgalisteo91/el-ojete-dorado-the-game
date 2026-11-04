@@ -79,6 +79,59 @@
       </div>
     </div>
 
+    <!-- Modal de Guardado en la Nube (Cloud Save) -->
+    <div id="cloud-save-modal" class="exit-modal-backdrop hidden">
+      <div class="score-card">
+        <div class="exit-modal-header">
+          <span>☁ SINCRONIZACIÓN EN LA NUBE · VERCEL CLOUD ☁</span>
+        </div>
+        <h2 class="score-title">Tu Partida en la Nube</h2>
+        <p class="score-hint" style="margin-bottom: 12px;">
+          Usa este código en cualquier navegador o PC para continuar tu aventura exactamente donde la dejaste:
+        </p>
+
+        <div class="cloud-code-container">
+          <span class="cloud-code-badge" id="cloud-save-code-display">GENERANDO...</span>
+          <button type="button" id="cloud-save-copy-btn" class="btn-cloud-copy">📋 Copiar</button>
+        </div>
+        <p id="cloud-save-status" class="cloud-status-text">Subiendo estado a Vercel Serverless...</p>
+
+        <div class="exit-modal-actions" style="margin-top: 14px;">
+          <button id="cloud-save-close-btn" type="button" class="btn-score-submit">✓ Entendido / Volver al Juego</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Carga desde la Nube (Cloud Load) -->
+    <div id="cloud-load-modal" class="exit-modal-backdrop hidden">
+      <div class="score-card">
+        <div class="exit-modal-header">
+          <span>☁ RECUPERAR PARTIDA · VERCEL CLOUD ☁</span>
+        </div>
+        <h2 class="score-title">Cargar Partida Remota</h2>
+        <p class="score-hint" style="margin-bottom: 12px;">
+          Introduce el código de guardado generado previamente (ej: OJT-7K9B):
+        </p>
+
+        <form id="cloud-load-form" autocomplete="off">
+          <div class="score-input-wrap">
+            <input
+              id="cloud-load-code-input"
+              type="text"
+              maxlength="10"
+              placeholder="OJT-XXXXX"
+              required
+            />
+          </div>
+          <p id="cloud-load-status" class="cloud-status-text" style="min-height: 16px;"></p>
+          <div class="exit-modal-actions">
+            <button id="cloud-load-submit-btn" type="submit" class="btn-score-submit">★ Descargar y Cargar Partida</button>
+            <button id="cloud-load-cancel-btn" type="button" class="btn-confirm-no">✕ Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Modal de agradecimiento y despedida con timeout de 3 segundos -->
     <div id="exit-farewell-modal" class="exit-modal-backdrop hidden">
       <div class="exit-farewell-card">

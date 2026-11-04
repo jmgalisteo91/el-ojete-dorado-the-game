@@ -18,15 +18,36 @@ import {
   formatPlayTime,
   getLocalLeaderboard,
   saveLocalScore,
+  submitGlobalScore,
+  fetchGlobalLeaderboard,
+  uploadGameToCloud,
+  downloadGameFromCloud,
   DEFAULT_LEADERBOARD,
   LOCAL_LEADERBOARD_KEY
 } from '../src/core/ScoreSystem.js';
+import handleLeaderboard from '../api/leaderboard.js';
+import handleSave from '../api/save.js';
 
 let passed = 0;
 const failures = [];
+const asyncQueue = [];
 function test(name, fn) {
   try {
-    fn();
+    const res = fn();
+    if (res && typeof res.then === 'function') {
+      asyncQueue.push(
+        res
+          .then(() => {
+            passed++;
+            console.log(`  ✓ ${name}`);
+          })
+          .catch((err) => {
+            failures.push(name);
+            console.log(`  ✗ ${name}\n      ${err.message}`);
+          })
+      );
+      return;
+    }
     passed++;
     console.log(`  ✓ ${name}`);
   } catch (err) {
@@ -589,6 +610,95 @@ test('saveLocalScore y getLocalLeaderboard ordenan puntuaciones y recortan a Top
   });
   assert.equal(sanitizedSave.entry.username, 'SUPER_PRO');
 });
+
+test('submitGlobalScore guarda localmente de forma síncrona incluso sin conexión', async () => {
+  const result = await submitGlobalScore({
+    name: 'OFFLINE_HERO',
+    playTimeSeconds: 500,
+    deaths: 0
+  });
+
+  assert.ok(result.ok, 'submitGlobalScore debe retornar ok=true');
+  assert.equal(result.entry.username, 'OFFLINE_HERO');
+  assert.equal(result.entry.rank, 'S');
+
+  const board = getLocalLeaderboard();
+  const found = board.find((e) => e.username === 'OFFLINE_HERO');
+  assert.ok(found, 'Debe haberse guardado en el leaderboard local');
+});
+
+test('fetchGlobalLeaderboard devuelve el leaderboard por defecto sin fallar', async () => {
+  const res = await fetchGlobalLeaderboard();
+  assert.ok(res.ok);
+  assert.ok(Array.isArray(res.leaderboard));
+  assert.ok(res.leaderboard.length >= 5);
+});
+
+function createMockRes() {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: null,
+    setHeader(k, v) { this.headers[k] = v; return this; },
+    status(code) { this.statusCode = code; return this; },
+    json(obj) { this.body = obj; return this; },
+    end() { return this; }
+  };
+}
+
+test('api/leaderboard responde a GET con estado 200 y lista de récords', async () => {
+  const req = { method: 'GET', headers: { host: 'localhost' } };
+  const res = createMockRes();
+  await handleLeaderboard(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.ok(res.body.ok);
+  assert.ok(Array.isArray(res.body.leaderboard));
+  assert.ok(res.body.leaderboard.length >= 5);
+});
+
+test('api/leaderboard valida y recalcula el score en POST (anti-trampas serverless)', async () => {
+  const req = {
+    method: 'POST',
+    headers: { host: 'localhost' },
+    body: {
+      username: 'speed_hacker',
+      playTimeSeconds: 600,
+      deaths: 0,
+      fakeScoreAttempt: 9999999 // Debe ignorarse y recalcularse a 94.000
+    }
+  };
+  const res = createMockRes();
+  await handleLeaderboard(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.ok(res.body.ok);
+  assert.equal(res.body.entry.username, 'SPEED_HACKER');
+  assert.equal(res.body.entry.rank, 'S');
+  assert.equal(res.body.entry.score, 94000, 'El servidor debe recalcular: 100k - 6k = 94.000');
+});
+
+test('api/save valida código en GET y contenido mínimo en POST', async () => {
+  // 1. GET sin código o código muy corto devuelve 400
+  const reqGetInvalid = { method: 'GET', url: '/api/save?code=1', headers: { host: 'localhost' } };
+  const resGet = createMockRes();
+  await handleSave(reqGetInvalid, resGet);
+  assert.equal(resGet.statusCode, 400);
+  assert.equal(resGet.body.error, 'INVALID_CODE');
+
+  // 2. POST sin sceneId válido devuelve 400
+  const reqPostInvalid = {
+    method: 'POST',
+    headers: { host: 'localhost' },
+    body: { invalidData: true }
+  };
+  const resPost = createMockRes();
+  await handleSave(reqPostInvalid, resPost);
+  assert.equal(resPost.statusCode, 400);
+  assert.equal(resPost.body.error, 'INVALID_SAVE_DATA');
+});
+
+await Promise.all(asyncQueue);
 
 console.log(`\n${passed} pruebas OK, ${failures.length} fallos.`);
 if (failures.length) process.exit(1);
