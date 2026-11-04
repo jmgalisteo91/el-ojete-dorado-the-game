@@ -1535,15 +1535,17 @@ export class MainMenuAndScenes {
     ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx + 1, 59);
     ctx.fillStyle = '#7ae582';
     ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx, 58);
+    ctx.restore();
 
-    // Pie de página con ayuda de controles
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#cfd8e3';
-    ctx.fillText(
-      '[W/S o Flechas] Elegir · [E / Enter / Clic] Confirmar',
-      cx,
-      169
-    );
+    // Versión oficial del juego en la esquina inferior derecha (sin solapar con botones)
+    ctx.save();
+    ctx.font = `600 6.5px ${GAME_FONT_UI}`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillText('v3.5', this.viewportWidth - 5, this.viewportHeight - 3);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('v3.5', this.viewportWidth - 6, this.viewportHeight - 4);
     ctx.restore();
   }
 
@@ -1551,7 +1553,7 @@ export class MainMenuAndScenes {
     const hitboxes = this._getMenuHitboxes(items.length);
 
     ctx.save();
-    ctx.font = 'bold 7px monospace';
+    ctx.font = isTitle ? `600 6.5px ${GAME_FONT_UI}` : 'bold 7px monospace';
     ctx.textBaseline = 'top';
 
     items.forEach((item, idx) => {

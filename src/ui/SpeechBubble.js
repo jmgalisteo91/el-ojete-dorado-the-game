@@ -511,3 +511,4 @@ export function renderActivityIcon(ctx, sx, sy, icon, bob = 0) {
 export function renderCombatBanner(ctx, text, x, y, color = '#fde047') {
   return SpeechBubble.renderCombatBanner(ctx, text, x, y, color);
 }
+

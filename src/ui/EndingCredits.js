@@ -57,7 +57,7 @@ export class EndingCredits {
     return [
       { type: 'spacer', height: 20 },
       { type: 'title', text: 'EL OJETE DORADO: THE GAME' },
-      { type: 'subtitle', text: '— VERSIÓN MAESTRA v3.1 —' },
+      { type: 'subtitle', text: '— VERSIÓN MAESTRA v3.5 —' },
       { type: 'spacer', height: 16 },
 
       { type: 'emblem', text: 'GOLDEN_ANUS_EMBLEM' },
