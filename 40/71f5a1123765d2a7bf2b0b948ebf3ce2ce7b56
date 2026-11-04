@@ -1,0 +1,16 @@
+el-ojete-dorado-the-game.html
+  h_e1bbc662b18209 5231-5232,5244-5245
+src/entities/Player.js
+  h_e1bbc662b18209 386-387,399-400
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "4071f5a1123765d2a7bf2b0b948ebf3ce2ce7b56",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
