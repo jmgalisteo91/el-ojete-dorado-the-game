@@ -1,31 +1,31 @@
-import { getDoorBlock, getDoorDestinationInfo } from './core/DoorGatekeeper.js';
-import { GameLoop } from './core/GameLoop.js?v=6';
-import { InputHandler } from './core/InputHandler.js?v=6';
-import { Camera2D } from './core/Camera2D.js?v=6';
+import { getDoorBlock, getDoorDestinationInfo } from './core/DoorGatekeeper.js?v=7';
+import { GameLoop } from './core/GameLoop.js?v=7';
+import { InputHandler } from './core/InputHandler.js?v=7';
+import { Camera2D } from './core/Camera2D.js?v=7';
 import {
   loadGameAssets,
   CHARACTER_TYPES,
   ITEM_ICONS
-} from './graphics/SpriteSheetGenerator.js?v=6';
-import { SpriteAnimator } from './graphics/Animator.js?v=6';
-import { Tilemap } from './world/Tilemap.js?v=6';
-import { CollisionSystem } from './physics/CollisionSystem.js?v=6';
-import { Player } from './entities/Player.js?v=6';
-import { NPC } from './entities/NPC.js?v=6';
-import { Animal } from './entities/Animal.js?v=6';
-import { Enemy } from './entities/Enemy.js?v=6';
-import { GarbageCollectorBoss } from './entities/bosses/GarbageCollectorBoss.js?v=6';
-import { StackOverflowBoss } from './entities/bosses/StackOverflowBoss.js?v=6';
-import { PrototypeMicrowaveBoss } from './entities/bosses/PrototypeMicrowaveBoss.js?v=6';
-import { FinalBossAlex } from './entities/bosses/FinalBossAlex.js?v=6';
-import { WorldItem } from './entities/WorldItem.js?v=6';
-import { DialogueBox } from './ui/DialogueBox.js?v=6';
-import { Inventory } from './ui/Inventory.js?v=6';
-import { CharacterStats } from './ui/CharacterStats.js?v=6';
-import { QuestLog } from './core/QuestLog.js?v=6';
-import { AchievementManager } from './core/AchievementManager.js?v=6';
-import { QuestLogView } from './ui/QuestLogView.js?v=6';
-import { MainMenuAndScenes } from './ui/MainMenuAndScenes.js?v=6';
+} from './graphics/SpriteSheetGenerator.js?v=7';
+import { SpriteAnimator } from './graphics/Animator.js?v=7';
+import { Tilemap } from './world/Tilemap.js?v=7';
+import { CollisionSystem } from './physics/CollisionSystem.js?v=7';
+import { Player } from './entities/Player.js?v=7';
+import { NPC } from './entities/NPC.js?v=7';
+import { Animal } from './entities/Animal.js?v=7';
+import { Enemy } from './entities/Enemy.js?v=7';
+import { GarbageCollectorBoss } from './entities/bosses/GarbageCollectorBoss.js?v=7';
+import { StackOverflowBoss } from './entities/bosses/StackOverflowBoss.js?v=7';
+import { PrototypeMicrowaveBoss } from './entities/bosses/PrototypeMicrowaveBoss.js?v=7';
+import { FinalBossAlex } from './entities/bosses/FinalBossAlex.js?v=7';
+import { WorldItem } from './entities/WorldItem.js?v=7';
+import { DialogueBox } from './ui/DialogueBox.js?v=7';
+import { Inventory } from './ui/Inventory.js?v=7';
+import { CharacterStats } from './ui/CharacterStats.js?v=7';
+import { QuestLog } from './core/QuestLog.js?v=7';
+import { AchievementManager } from './core/AchievementManager.js?v=7';
+import { QuestLogView } from './ui/QuestLogView.js?v=7';
+import { MainMenuAndScenes } from './ui/MainMenuAndScenes.js?v=7';
 import {
   AnimeCutsceneManager,
   SCENE_JAIL_ARREST,
@@ -38,11 +38,11 @@ import {
   SCENE_INTRO_STACK_OVERFLOW,
   SCENE_INTRO_PROTOTYPE_MICROWAVE,
   getBossIntroCutscene
-} from './ui/AnimeCutsceneManager.js?v=6';
-import { DayNightCycle } from './world/DayNightCycle.js?v=6';
-import { AIBotBrain } from './ai/AIBotBrain.js?v=6';
-import { AmbientMusic } from './audio/AmbientMusic.js?v=6';
-import { SpeechBubble, renderActionPromptBubble } from './ui/SpeechBubble.js?v=6';
+} from './ui/AnimeCutsceneManager.js?v=7';
+import { DayNightCycle } from './world/DayNightCycle.js?v=7';
+import { AIBotBrain } from './ai/AIBotBrain.js?v=7';
+import { AmbientMusic } from './audio/AmbientMusic.js?v=7';
+import { SpeechBubble, renderActionPromptBubble } from './ui/SpeechBubble.js?v=7';
 
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
@@ -4829,13 +4829,17 @@ export class RPGGame {
   }
 
   _renderActionPrompt(ctx, action) {
-    SpeechBubble.renderActionPromptBubble(
-      ctx,
-      action,
-      this.camera,
-      this.promptTimer,
-      this.player
-    );
+    try {
+      SpeechBubble.renderActionPromptBubble(
+        ctx,
+        action,
+        this.camera,
+        this.promptTimer,
+        this.player
+      );
+    } catch (err) {
+      console.warn('Advertencia no crítica al renderizar bocadillo de acción:', err);
+    }
   }
 
   /**

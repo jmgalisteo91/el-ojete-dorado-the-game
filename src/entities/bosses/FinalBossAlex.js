@@ -1,6 +1,6 @@
-import { Boss } from './Boss.js?v=6';
-import { CollisionSystem } from '../../physics/CollisionSystem.js?v=6';
-import { BATTLE_BARK_PHASES, getRandomBattleBark } from '../../assets/VillainDialogues.js?v=6';
+import { Boss } from './Boss.js?v=7';
+import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
+import { BATTLE_BARK_PHASES, getRandomBattleBark } from '../../assets/VillainDialogues.js?v=7';
 
 /**
  * Boss Final: "Mister AI Alex"

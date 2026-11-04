@@ -1,5 +1,5 @@
-import { Boss } from './Boss.js?v=6';
-import { CollisionSystem } from '../../physics/CollisionSystem.js?v=6';
+import { Boss } from './Boss.js?v=7';
+import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
 
 /**
  * Boss 1: "El Garbage Collector Furioso"

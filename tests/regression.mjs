@@ -9,6 +9,7 @@ import { Player } from '../src/entities/Player.js';
 import { getDoorBlock, getDoorDestinationInfo } from '../src/core/DoorGatekeeper.js';
 import { AI_STATE, inferArchetype } from '../src/ai/EnemyBrain.js';
 import { SpeechBubble, drawSpeechBalloonPath, drawRoundedRect } from '../src/ui/SpeechBubble.js';
+import { StackOverflowBoss } from '../src/entities/bosses/StackOverflowBoss.js';
 
 let passed = 0;
 const failures = [];
@@ -394,6 +395,47 @@ test('Reliquia Divina de El Microondas Little se encuentra en cofre dentro de el
   });
   assert.ok(ctx.calls.some((c) => c.includes('fillText(Abrir')));
   assert.ok(ctx.calls.some((c) => c.includes('Microondas')));
+});
+
+test('StackOverflowBoss (Boss 2) tiene hitbox de pies optimizada y navega obstáculos con A*', () => {
+  const boss = new StackOverflowBoss({ x: 100, y: 100, sceneId: 'sword_temple' });
+  // Comprobar hitbox de pies
+  assert.equal(boss.boundingBox.width, 14);
+  assert.equal(boss.boundingBox.height, 12);
+  assert.equal(boss.boundingBox.offsetY, 14);
+  // Comprobar hurtbox completa para espada
+  assert.ok(boss.hurtbox.width >= 20);
+  assert.ok(boss.hurtbox.height >= 24);
+
+  // Mapa con una columna central entre el boss y el jugador en una sala amplia
+  // Boss en (1, 2), Pilar en (3, 2), Jugador en (5, 2)
+  const map = makeMap([
+    '#######',
+    '#.....#',
+    '#B.#.P#',
+    '#.....#',
+    '#.....#',
+    '#######'
+  ]);
+  boss.x = 1 * 16;
+  boss.y = 2 * 16;
+  boss.activeCombat = true;
+
+  const player = {
+    centerX: 5 * 16 + 8,
+    centerY: 2 * 16 + 8,
+    getSpinHitbox: () => null,
+    getSwordHitbox: () => null,
+    takeHit: () => {}
+  };
+
+  // Simular frames (el jefe debe detectar el pilar y rodearlo usando A*)
+  for (let i = 0; i < 40; i++) {
+    boss.update(0.05, map, player);
+  }
+
+  // El jefe debe avanzar en X superando el pilar central hacia el jugador
+  assert.ok(boss.x > 2.5 * 16, `Boss debería haberse desplazado en X rodeando el pilar: x=${boss.x}`);
 });
 
 console.log(`\n${passed} pruebas OK, ${failures.length} fallos.`);

@@ -1,4 +1,4 @@
-import { Boss } from './Boss.js?v=6';
+import { Boss } from './Boss.js?v=7';
 
 /**
  * Boss 3: "El Microondas Prototipo (V0.1 Alpha)"

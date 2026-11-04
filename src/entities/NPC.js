@@ -1,6 +1,6 @@
 import { Entity } from './Entity.js?v=5';
 import { CollisionSystem } from '../physics/CollisionSystem.js?v=5';
-import { SpeechBubble, renderNPCBarkBubble, renderActivityIcon } from '../ui/SpeechBubble.js?v=6';
+import { SpeechBubble, renderNPCBarkBubble, renderActivityIcon } from '../ui/SpeechBubble.js?v=7';
 
 const DIRECTIONS = ['down', 'up', 'left', 'right'];
 

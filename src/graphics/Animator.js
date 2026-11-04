@@ -2,7 +2,7 @@
  * Sistema de Animación por Frames para Spritesheets de Personajes y Animales.
  */
 
-import { ATLAS_SCALE } from './SpriteSheetGenerator.js?v=6';
+import { ATLAS_SCALE } from './SpriteSheetGenerator.js?v=7';
 
 const DIRECTION_ROW = {
   down: 0,

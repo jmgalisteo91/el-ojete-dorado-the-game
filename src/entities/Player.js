@@ -1,6 +1,6 @@
-import { Entity } from './Entity.js?v=6';
-import { CollisionSystem } from '../physics/CollisionSystem.js?v=6';
-import { SKILL_DEFS } from '../core/SkillCatalog.js?v=6';
+import { Entity } from './Entity.js?v=7';
+import { CollisionSystem } from '../physics/CollisionSystem.js?v=7';
+import { SKILL_DEFS } from '../core/SkillCatalog.js?v=7';
 
 const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
 

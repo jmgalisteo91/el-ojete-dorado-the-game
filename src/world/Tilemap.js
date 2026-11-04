@@ -1,5 +1,5 @@
-import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=6';
-import { SpeechBubble, renderFloatingBadge } from '../ui/SpeechBubble.js?v=6';
+import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=7';
+import { SpeechBubble, renderFloatingBadge } from '../ui/SpeechBubble.js?v=7';
 
 /**
  * Tilemap multicapa con soporte para:
@@ -1352,44 +1352,46 @@ export class Tilemap {
     fillRect(ground, 16, 7, 5, 6, TILES.COBBLE);
     fillRect(ground, 9, 2, 6, 4, TILES.RUG_RED);
 
-    // Muro frontal del vestíbulo
-    fillRect(decoration, 2, 13, 8, 1, TILES.WALL_INTERIOR);
-    fillRect(collision, 2, 13, 8, 1, 1);
-    fillRect(decoration, 14, 13, 8, 1, TILES.WALL_INTERIOR);
-    fillRect(collision, 14, 13, 8, 1, 1);
+    // Muro frontal del vestíbulo: paso central amplio de 12 baldosas para evitar cuellos de botella
+    fillRect(decoration, 2, 13, 4, 1, TILES.WALL_INTERIOR);
+    fillRect(collision, 2, 13, 4, 1, 1);
+    fillRect(decoration, 18, 13, 4, 1, TILES.WALL_INTERIOR);
+    fillRect(collision, 18, 13, 4, 1, 1);
 
-    // Gran columnata de honor (columnas monumentales que estructuran el combate)
+    // Columnata de honor perimetral: columnas esquineras amplias sin crear trampas de atasco
     const holyPillars = [
-      [8, 7], [8, 10], [15, 7], [15, 10],
-      [5, 9], [18, 9],
-      [8, 4], [15, 4]
+      [5, 5], [18, 5],
+      [5, 12], [18, 12]
     ];
     for (const [hc, hr] of holyPillars) {
       setDeco(hc, hr, TILES.WALL_INTERIOR, true);
     }
 
+    // Monolitos rúnicos del puzle marcados como sólidos en colisión
+    setDeco(6, 8, -1, true);
+    setDeco(11, 10, -1, true);
+    setDeco(17, 8, -1, true);
+
     // Pedestal sagrado de la Espada del Alba en la Cámara Alta
     setDeco(11, 4, TILES.ALTAR_PEDESTAL, false);
     setDeco(10, 3, TILES.LAMPPOST, true);
     setDeco(13, 3, TILES.LAMPPOST, true);
-    setDeco(9, 5, TILES.LAMPPOST, true);
-    setDeco(14, 5, TILES.LAMPPOST, true);
     lightSources.push(
       { x: 11.5 * 16, y: 4.5 * 16, radius: 72, intensity: 1.0 },
       { x: 10.5 * 16, y: 3.5 * 16, radius: 48, intensity: 0.9 },
       { x: 13.5 * 16, y: 3.5 * 16, radius: 48, intensity: 0.9 }
     );
 
-    // Farolas de iluminación en la gran sala
-    setDeco(10, 14, TILES.LAMPPOST, true);
-    setDeco(13, 14, TILES.LAMPPOST, true);
-    setDeco(4, 7, TILES.LAMPPOST, true);
-    setDeco(19, 7, TILES.LAMPPOST, true);
+    // Farolas de iluminación en los accesos de la gran sala
+    setDeco(5, 14, TILES.LAMPPOST, true);
+    setDeco(18, 14, TILES.LAMPPOST, true);
+    setDeco(3, 7, TILES.LAMPPOST, true);
+    setDeco(20, 7, TILES.LAMPPOST, true);
     lightSources.push(
-      { x: 10.5 * 16, y: 14.5 * 16, radius: 48, intensity: 0.85 },
-      { x: 13.5 * 16, y: 14.5 * 16, radius: 48, intensity: 0.85 },
-      { x: 4.5 * 16, y: 7.5 * 16, radius: 46, intensity: 0.85 },
-      { x: 19.5 * 16, y: 7.5 * 16, radius: 46, intensity: 0.85 }
+      { x: 5.5 * 16, y: 14.5 * 16, radius: 48, intensity: 0.85 },
+      { x: 18.5 * 16, y: 14.5 * 16, radius: 48, intensity: 0.85 },
+      { x: 3.5 * 16, y: 7.5 * 16, radius: 46, intensity: 0.85 },
+      { x: 20.5 * 16, y: 7.5 * 16, radius: 46, intensity: 0.85 }
     );
 
     // Felpudo de salida al sur

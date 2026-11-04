@@ -7,7 +7,7 @@
  * Se abre y cierra con la tecla 'C'.
  */
 
-import { SKILL_DEFS } from '../core/SkillCatalog.js?v=6';
+import { SKILL_DEFS } from '../core/SkillCatalog.js?v=7';
 
 export class CharacterStats {
   constructor(viewportWidth = 320, viewportHeight = 180) {

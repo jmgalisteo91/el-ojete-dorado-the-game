@@ -205,6 +205,13 @@ export class SpeechBubble {
         themeBorder = '#38bdf8';
         break;
       }
+      case 'compiler_sign': {
+        icon = '🪧';
+        title = 'Letrero';
+        subtitle = action.target?.title || 'Compilador';
+        themeBorder = '#cbd5e1';
+        break;
+      }
       case 'sword_monolith': {
         icon = '⚡';
         title = 'Monolito';

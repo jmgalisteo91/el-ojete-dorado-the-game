@@ -1,6 +1,6 @@
-import { Entity } from './Entity.js?v=6';
-import { CollisionSystem } from '../physics/CollisionSystem.js?v=6';
-import { EnemyBrain, AI_STATE, inferArchetype } from '../ai/EnemyBrain.js?v=6';
+import { Entity } from './Entity.js?v=7';
+import { CollisionSystem } from '../physics/CollisionSystem.js?v=7';
+import { EnemyBrain, AI_STATE, inferArchetype } from '../ai/EnemyBrain.js?v=7';
 
 const SHOT_SPEED = 78;
 const SHOT_LIFE = 2.4;

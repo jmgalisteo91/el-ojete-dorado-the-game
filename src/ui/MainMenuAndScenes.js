@@ -1,7 +1,7 @@
-import { CHARACTER_TYPES, ITEM_ICONS, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=6';
-import { WorldMap } from './WorldMap.js?v=6';
-import { EndingCredits } from './EndingCredits.js?v=6';
-import { SpeechBubble, GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=6';
+import { CHARACTER_TYPES, ITEM_ICONS, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=7';
+import { WorldMap } from './WorldMap.js?v=7';
+import { EndingCredits } from './EndingCredits.js?v=7';
+import { SpeechBubble, GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=7';
 
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art

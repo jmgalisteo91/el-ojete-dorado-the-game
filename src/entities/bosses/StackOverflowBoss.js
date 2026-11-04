@@ -1,5 +1,6 @@
-import { Boss } from './Boss.js?v=6';
-import { CollisionSystem } from '../../physics/CollisionSystem.js?v=6';
+import { Boss } from './Boss.js?v=7';
+import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
+import { findPath, hasLineOfSight } from '../../ai/Pathfinding.js?v=7';
 
 /**
  * Boss 2: "El Guardián del Stack Overflow"
@@ -11,6 +12,7 @@ import { CollisionSystem } from '../../physics/CollisionSystem.js?v=6';
  * 1. Llamada Recursiva: Cada 30 de daño invoca 2 sombras menores de recursividad (10 HP).
  * 2. Desbordamiento de Pila: Canaliza 2s una onda de choque radial expansiva (60px) que obliga
  *    a alejarse o cruzar con el Dash Asíncrono.
+ * 3. Navegación Inteligente A*: Supera obstáculos y pilares sin quedarse atascado.
  * Recompensa: Habilidad 'Corte en Cascada (Caso Base)' (mantener Espacio/F 1s para tajo 360°).
  */
 export class StackOverflowBoss extends Boss {
@@ -33,12 +35,23 @@ export class StackOverflowBoss extends Boss {
       requiresIntroCutscene: true
     });
 
+    // Hitbox física optimizada para base de pies (14x12) para circular libremente por pasillos y esquinas
+    this.boundingBox = { offsetX: 5, offsetY: 14, width: 14, height: 12 };
+
     this.channelTimer = 0;
     this.isChanneling = false;
     this.shockwaveCooldown = 9.0;
     this.shockwaves = [];
     this.clones = [];
     this.lastMilestoneHp = 120;
+
+    // Navegación inteligente y evasión de obstáculos A*
+    this.path = [];
+    this.pathGoal = null;
+    this.repathTimer = 0;
+    this.stuckTimer = 0;
+    this.lastX = x;
+    this.lastY = y;
   }
 
   resetCombatState() {
@@ -49,6 +62,10 @@ export class StackOverflowBoss extends Boss {
     this.shockwaves = [];
     this.clones = [];
     this.lastMilestoneHp = 120;
+    this.path = [];
+    this.pathGoal = null;
+    this.repathTimer = 0;
+    this.stuckTimer = 0;
   }
 
   triggerBossDefeat(player, soundEngine = null) {
@@ -57,28 +74,35 @@ export class StackOverflowBoss extends Boss {
     this.channelTimer = 0;
     this.shockwaves = [];
     this.clones = [];
+    this.path = [];
   }
 
-  takeSwordHit(player, soundEngine = null, customDamage = null) {
+  takeSwordHit(player, soundEngine = null, customDamage = null, tilemap = null) {
     const prevHp = this.hp;
     const hit = super.takeSwordHit(player, soundEngine, customDamage);
     if (!hit) return false;
 
     // Chequeo de hito: cada 30 de daño dispara Llamada Recursiva
     if (Math.floor(this.hp / 30) < Math.floor(prevHp / 30) && this.hp > 0) {
-      this.spawnRecursiveClones(soundEngine);
+      this.spawnRecursiveClones(soundEngine, tilemap);
     }
 
     return true;
   }
 
-  spawnRecursiveClones(soundEngine = null) {
+  spawnRecursiveClones(soundEngine = null, tilemap = null) {
     this.statusText = '⚡ ¡LLAMADA RECURSIVA: fn() x 2!';
     for (let i = 0; i < 2; i++) {
-      const offsetX = (i === 0 ? -1 : 1) * 22;
+      const offsetX = (i === 0 ? -1 : 1) * 20;
+      let spawnX = this.centerX + offsetX;
+      let spawnY = this.centerY + 8;
+      if (tilemap && tilemap.isSolidAtTile(Math.floor(spawnX / 16), Math.floor(spawnY / 16))) {
+        spawnX = this.centerX;
+        spawnY = this.centerY;
+      }
       this.clones.push({
-        x: this.centerX + offsetX,
-        y: this.centerY + 10,
+        x: spawnX,
+        y: spawnY,
         hp: 10,
         maxHp: 10,
         speed: 40,
@@ -91,11 +115,41 @@ export class StackOverflowBoss extends Boss {
     }
   }
 
+  _ensureUnstuck(tilemap) {
+    if (!tilemap) return;
+    const box = this.worldBoundingBox;
+    if (CollisionSystem.collidesWithMap(box, tilemap)) {
+      const step = 4;
+      const dirs = [
+        [0, 1], [0, -1], [1, 0], [-1, 0],
+        [1, 1], [-1, 1], [1, -1], [-1, -1]
+      ];
+      for (let r = 1; r <= 8; r++) {
+        for (const [dx, dy] of dirs) {
+          const testBox = {
+            x: box.x + dx * r * step,
+            y: box.y + dy * r * step,
+            width: box.width,
+            height: box.height
+          };
+          if (!CollisionSystem.collidesWithMap(testBox, tilemap)) {
+            this.x += dx * r * step;
+            this.y += dy * r * step;
+            this.path = [];
+            this.repathTimer = 0;
+            return;
+          }
+        }
+      }
+    }
+  }
+
   update(dt, tilemap, player, paused = false, soundEngine = null) {
     if (this.dead) {
       return super.update(dt, tilemap, player, paused, soundEngine);
     }
 
+    this._ensureUnstuck(tilemap);
     super.update(dt, tilemap, player, paused, soundEngine);
 
     // Actualización de clones recursivos
@@ -103,14 +157,29 @@ export class StackOverflowBoss extends Boss {
       const c = this.clones[i];
       if (c.hitFlash > 0) c.hitFlash -= dt;
 
-      // Movimiento hacia el jugador
+      // Movimiento hacia el jugador con deslizamiento
       if (player && this.activeCombat) {
         const dx = player.centerX - c.x;
         const dy = player.centerY - c.y;
         const dist = Math.hypot(dx, dy);
         if (dist > 6) {
-          c.x += (dx / dist) * c.speed * dt;
-          c.y += (dy / dist) * c.speed * dt;
+          const vx = (dx / dist) * c.speed * dt;
+          const vy = (dy / dist) * c.speed * dt;
+          const cloneBox = { x: c.x - 4 + vx, y: c.y - 4 + vy, width: 8, height: 8 };
+          if (tilemap && !CollisionSystem.collidesWithMap(cloneBox, tilemap)) {
+            c.x += vx;
+            c.y += vy;
+          } else {
+            const cloneBoxX = { x: c.x - 4 + vx, y: c.y - 4, width: 8, height: 8 };
+            if (tilemap && !CollisionSystem.collidesWithMap(cloneBoxX, tilemap)) {
+              c.x += vx;
+            } else {
+              const cloneBoxY = { x: c.x - 4, y: c.y - 4 + vy, width: 8, height: 8 };
+              if (tilemap && !CollisionSystem.collidesWithMap(cloneBoxY, tilemap)) {
+                c.y += vy;
+              }
+            }
+          }
         }
 
         // Ataque al jugador
@@ -146,19 +215,89 @@ export class StackOverflowBoss extends Boss {
         this.statusText = '⚡ CANALIZANDO STACK OVERFLOW...';
       }
 
-      // Persecución estándar si no canaliza
+      // Persecución inteligente con A* Pathfinding y resolución de esquinas
       if (player && this.activeCombat) {
-        const dx = player.centerX - this.centerX;
-        const dy = player.centerY - this.centerY;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 10) {
-          CollisionSystem.moveWithCollisions(
+        const dist = Math.hypot(player.centerX - this.centerX, player.centerY - this.centerY);
+        if (dist > 12) {
+          this.repathTimer = Math.max(0, this.repathTimer - dt);
+
+          const los = hasLineOfSight(tilemap, this.centerX, this.centerY, player.centerX, player.centerY);
+
+          let steerX = 0;
+          let steerY = 0;
+
+          // Si hay línea de visión directa despejada y no estamos encallados, ir directo
+          if (los && this.stuckTimer < 0.2) {
+            const dx = player.centerX - this.centerX;
+            const dy = player.centerY - this.centerY;
+            steerX = dx / dist;
+            steerY = dy / dist;
+            this.path = [];
+          } else {
+            // Línea de visión bloqueada por obstáculo o atasco: calcular ruta A*
+            const goalMoved =
+              !this.pathGoal || Math.hypot(this.pathGoal.x - player.centerX, this.pathGoal.y - player.centerY) > 20;
+            if (this.path.length === 0 || goalMoved || this.repathTimer <= 0) {
+              this.path = findPath(tilemap, this.centerX, this.centerY, player.centerX, player.centerY);
+              this.pathGoal = { x: player.centerX, y: player.centerY };
+              this.repathTimer = 0.35;
+            }
+
+            while (this.path.length > 0 && Math.hypot(this.path[0].x - this.centerX, this.path[0].y - this.centerY) < 10) {
+              this.path.shift();
+            }
+
+            if (this.path.length > 0) {
+              const wp = this.path[0];
+              const wdx = wp.x - this.centerX;
+              const wdy = wp.y - this.centerY;
+              const wdist = Math.hypot(wdx, wdy) || 1;
+              steerX = wdx / wdist;
+              steerY = wdy / wdist;
+            } else {
+              const dx = player.centerX - this.centerX;
+              const dy = player.centerY - this.centerY;
+              steerX = dx / dist;
+              steerY = dy / dist;
+            }
+          }
+
+          const moveRes = CollisionSystem.moveWithCollisions(
             this,
-            (dx / dist) * this.speed * dt,
-            (dy / dist) * this.speed * dt,
+            steerX * this.speed * dt,
+            steerY * this.speed * dt,
             tilemap,
             []
           );
+
+          // Detección proactiva de atasco con deslizamiento angular
+          const movedDist = Math.hypot(this.x - (this.lastX ?? this.x), this.y - (this.lastY ?? this.y));
+          if (movedDist < 0.6 * dt * this.speed && (moveRes.blockedX || moveRes.blockedY)) {
+            this.stuckTimer += dt;
+            if (this.stuckTimer > 0.2) {
+              this.repathTimer = 0;
+              // Deslizamiento tangencial en el eje libre para rodear el obstáculo
+              if (moveRes.blockedX) {
+                const altY = player.centerY > this.centerY ? 1 : -1;
+                CollisionSystem.moveWithCollisions(this, 0, altY * this.speed * dt, tilemap, []);
+              }
+              if (moveRes.blockedY) {
+                const altX = player.centerX > this.centerX ? 1 : -1;
+                CollisionSystem.moveWithCollisions(this, altX * this.speed * dt, 0, tilemap, []);
+              }
+            }
+          } else {
+            this.stuckTimer = Math.max(0, this.stuckTimer - dt * 2);
+          }
+
+          this.lastX = this.x;
+          this.lastY = this.y;
+        }
+
+        // Contacto cuerpo a cuerpo
+        if (dist <= 14 && this.attackCooldown <= 0) {
+          this.attackCooldown = 0.85;
+          player.takeHit(soundEngine);
         }
       }
     } else {
@@ -192,7 +331,6 @@ export class StackOverflowBoss extends Boss {
 
       if (player && !sw.hasHit) {
         const dist = Math.hypot(player.centerX - sw.x, player.centerY - sw.y);
-        // Si el jugador está en el anillo de choque (y no está con invulnerabilidad de dash ni barrera)
         if (Math.abs(dist - sw.radius) <= 8 && player.invulnTimer <= 0) {
           sw.hasHit = true;
           player.takeHit(soundEngine);

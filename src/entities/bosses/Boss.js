@@ -1,5 +1,5 @@
-import { Enemy } from '../Enemy.js?v=6';
-import { CollisionSystem } from '../../physics/CollisionSystem.js?v=6';
+import { Enemy } from '../Enemy.js?v=7';
+import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
 
 /**
  * Clase Base para Mini-Jefes del juego.
@@ -64,6 +64,15 @@ export class Boss extends Enemy {
    * Reinicia el estado de combate, proyectiles, charcos y posición del jefe
    * cuando el jugador muere o abandona la sala sin haberlo derrotado.
    */
+  get hurtbox() {
+    return {
+      x: this.x + 2,
+      y: this.y + 2,
+      width: Math.max(12, this.width - 4),
+      height: Math.max(12, this.height - 4)
+    };
+  }
+
   resetCombatState() {
     if (this.dead) {
       this.projectiles = [];
@@ -199,7 +208,8 @@ export class Boss extends Enemy {
 
     // Chequeo de espadazo estándar
     const swordBox = player ? player.getSwordHitbox() : null;
-    if (swordBox && CollisionSystem.checkAABB(swordBox, this.worldBoundingBox)) {
+    const targetHitbox = this.hurtbox || this.worldBoundingBox;
+    if (swordBox && CollisionSystem.checkAABB(swordBox, targetHitbox)) {
       this.takeSwordHit(player, soundEngine, player.getSwordDamage());
       if (this.dead) return { hitPlayer: false };
     }
