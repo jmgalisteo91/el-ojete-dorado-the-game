@@ -62,7 +62,7 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!isStorageConfigured) {
+    if (!isStorageConfigured()) {
       return res.status(503).json({
         ok: false,
         error: 'STORAGE_UNCONFIGURED',
@@ -110,7 +110,7 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!isStorageConfigured) {
+    if (!isStorageConfigured()) {
       return res.status(503).json({
         ok: false,
         error: 'STORAGE_UNCONFIGURED',

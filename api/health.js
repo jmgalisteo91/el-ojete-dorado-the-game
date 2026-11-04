@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-store, no-cache');
 
-  if (!isStorageConfigured) {
+  if (!isStorageConfigured()) {
     return res.status(200).json({
       status: 'local_mode',
       storage: 'unconfigured',
@@ -42,3 +42,4 @@ export default async function handler(req, res) {
     });
   }
 }
+

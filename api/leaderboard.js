@@ -105,7 +105,7 @@ export default async function handler(req, res) {
 
   // GET: Obtener récords globales
   if (req.method === 'GET') {
-    if (!isStorageConfigured) {
+    if (!isStorageConfigured()) {
       return res.status(200).json({
         ok: true,
         source: 'local_fallback',
@@ -182,7 +182,7 @@ export default async function handler(req, res) {
       date: new Date().toISOString().split('T')[0]
     };
 
-    if (!isStorageConfigured) {
+    if (!isStorageConfigured()) {
       return res.status(200).json({
         ok: true,
         source: 'local_only',
@@ -230,3 +230,4 @@ export default async function handler(req, res) {
 
   return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
 }
+

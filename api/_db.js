@@ -5,25 +5,31 @@
  * Lee automáticamente `KV_REST_API_URL` o `UPSTASH_REDIS_REST_URL`.
  */
 
-const KV_URL = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '');
-const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+export function getStorageConfig() {
+  const url = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '');
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+  return { url, token, isConfigured: Boolean(url && token) };
+}
 
-export const isStorageConfigured = Boolean(KV_URL && KV_TOKEN);
+export function isStorageConfigured() {
+  return getStorageConfig().isConfigured;
+}
 
 /**
  * Ejecuta un comando Redis a través de la API REST de Upstash / Vercel KV
  * @param {Array<string|number>} command ej: ['GET', 'key'] o ['SET', 'key', 'val']
  */
 export async function redisCommand(command) {
-  if (!isStorageConfigured) {
+  const { url, token, isConfigured } = getStorageConfig();
+  if (!isConfigured) {
     return { result: null, error: 'STORAGE_NOT_CONFIGURED' };
   }
 
   try {
-    const res = await fetch(KV_URL, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${KV_TOKEN}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(command)
@@ -66,3 +72,4 @@ export async function kvSet(key, value, exSeconds = null) {
   const { result, error } = await redisCommand(cmd);
   return { ok: !error, result, error };
 }
+
