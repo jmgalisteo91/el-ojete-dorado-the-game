@@ -2,6 +2,7 @@ import { CHARACTER_TYPES, ITEM_ICONS, ATLAS_SCALE } from '../graphics/SpriteShee
 import { WorldMap } from './WorldMap.js?v=7';
 import { EndingCredits } from './EndingCredits.js?v=7';
 import { SpeechBubble, GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=7';
+import { getLocalLeaderboard } from '../core/ScoreSystem.js?v=7';
 
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art
@@ -187,6 +188,21 @@ export class MainMenuAndScenes {
 
   closeControlsScreen() {
     this.state = this.previousStateBeforeControls || 'title';
+    this.music.playMenuMove();
+  }
+
+  openLeaderboardScreen(returnState = 'title') {
+    this.previousStateBeforeLeaderboard = returnState;
+    this.previousState = returnState;
+    this.state = 'leaderboard';
+    this.leaderboardScroll = 0;
+    this.leaderboardList = getLocalLeaderboard();
+    this.selectedIndex = 0;
+    this.music.playMenuSelect();
+  }
+
+  closeLeaderboardScreen() {
+    this.state = this.previousStateBeforeLeaderboard || 'title';
     this.music.playMenuMove();
   }
 
@@ -521,6 +537,13 @@ export class MainMenuAndScenes {
           }
         },
         {
+          label: '🏆 Salón de la Fama',
+          action: () => {
+            this.music.playMenuSelect();
+            this.openLeaderboardScreen('title');
+          }
+        },
+        {
           label: 'Controles',
           action: () => {
             this.music.playMenuSelect();
@@ -573,6 +596,13 @@ export class MainMenuAndScenes {
           action: () => {
             this.music.playMenuSelect();
             this.openControlsScreen('pause');
+          }
+        },
+        {
+          label: '🏆 Salón de la Fama [Récords]',
+          action: () => {
+            this.music.playMenuSelect();
+            this.openLeaderboardScreen('pause');
           }
         },
         {
@@ -842,6 +872,28 @@ export class MainMenuAndScenes {
       return;
     }
 
+    // Pantalla de Salón de la Fama / Leaderboard de Speedrun
+    if (this.state === 'leaderboard') {
+      const dir = input.consumeMenuDirection();
+      if (dir === 'up') {
+        this.leaderboardScroll = Math.max(0, (this.leaderboardScroll || 0) - 1);
+        this.music.playMenuMove();
+      } else if (dir === 'down') {
+        const maxScroll = Math.max(0, (this.leaderboardList?.length || 0) - 6);
+        this.leaderboardScroll = Math.min(maxScroll, (this.leaderboardScroll || 0) + 1);
+        this.music.playMenuMove();
+      }
+      if (
+        input.consumeKey('Escape') ||
+        input.consumeKey('KeyL') ||
+        input.consumeInteraction() ||
+        input.consumePointerClick()
+      ) {
+        this.closeLeaderboardScreen();
+      }
+      return;
+    }
+
     // Escenas Cinemáticas en Pixel Art
     if (this.state === 'cutscene') {
       const slide = this.cutsceneSlides[this.cutsceneIndex];
@@ -974,10 +1026,10 @@ export class MainMenuAndScenes {
   _getMenuHitboxes(count) {
     const isTitle = this.state === 'title';
     const isGameOver = this.state === 'game_over';
-    const boxW = isTitle ? 156 : isGameOver ? 204 : 184;
-    const itemH = isTitle ? 14 : isGameOver ? 15 : (count > 5 ? 13 : 15);
+    const boxW = isTitle ? 168 : isGameOver ? 204 : 184;
+    const itemH = isTitle ? (count > 5 ? 12 : 14) : isGameOver ? 15 : (count > 5 ? 13 : 15);
     const startX = Math.round((this.viewportWidth - boxW) / 2);
-    let startY = isTitle ? 105 : isGameOver ? (count > 2 ? 96 : 108) : 56;
+    let startY = isTitle ? (count > 5 ? 93 : 105) : isGameOver ? (count > 2 ? 96 : 108) : 56;
     if (!isTitle && !isGameOver && count > 5) {
       const totalH = count * itemH;
       const winH = Math.min(160, totalH + 46);
@@ -1038,6 +1090,17 @@ export class MainMenuAndScenes {
         ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
       }
       this._renderControlsScreen(ctx);
+      return;
+    }
+
+    if (this.state === 'leaderboard') {
+      if (this.previousStateBeforeLeaderboard === 'title') {
+        this._renderTitleBackdropPixelArt(ctx);
+      } else {
+        ctx.fillStyle = 'rgba(8, 11, 20, 0.78)';
+        ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+      }
+      this._renderLeaderboardScreen(ctx);
       return;
     }
 
@@ -1217,6 +1280,164 @@ export class MainMenuAndScenes {
 
     ctx.font = 'bold 6px monospace';
     ctx.fillStyle = '#38bdf8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('◀ VOLVER [Escape / Clic]', btnX + btnW / 2, btnY + btnH / 2);
+
+    ctx.restore();
+  }
+
+  /**
+   * Pantalla de Salón de la Fama y Clasificación Global de Speedrun (Rango S a C).
+   */
+  _renderLeaderboardScreen(ctx) {
+    const W = this.viewportWidth;
+    const H = this.viewportHeight;
+    const winW = 300;
+    const winH = 166;
+    const winX = Math.round((W - winW) / 2);
+    const winY = Math.round((H - winH) / 2);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // Fondo oscurecido con viñeta
+    ctx.fillStyle = 'rgba(5, 8, 16, 0.90)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Marco exterior con doble borde dorado
+    ctx.fillStyle = '#0a0f1d';
+    ctx.fillRect(winX, winY, winW, winH);
+    ctx.fillStyle = '#e5c07b';
+    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(winX + 2, winY + 2, winW - 4, winH - 4);
+
+    // Cabecera estilizada
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(winX + 2, winY + 2, winW - 4, 22);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(winX + 2, winY + 24, winW - 4, 1);
+
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fde047';
+    ctx.fillText('🏆 SALÓN DE LA FAMA · SPEEDRUN & CLASIFICACIÓN', W / 2, winY + 10);
+    ctx.font = '5.5px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('Clasificación de programadores en Valleverde (Rango S a C)', W / 2, winY + 18);
+
+    // Encabezados de tabla
+    const tableY = winY + 28;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(winX + 6, tableY, winW - 12, 11);
+
+    ctx.font = 'bold 5.5px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.textAlign = 'left';
+    ctx.fillText('#', winX + 10, tableY + 6);
+    ctx.fillText('JUGADOR', winX + 26, tableY + 6);
+    ctx.fillText('TIEMPO', winX + 112, tableY + 6);
+    ctx.fillText('BUGS', winX + 162, tableY + 6);
+    ctx.fillText('RANGO', winX + 204, tableY + 6);
+    ctx.textAlign = 'right';
+    ctx.fillText('SCORE', winX + winW - 12, tableY + 6);
+
+    const list = this.leaderboardList || [];
+    const scroll = this.leaderboardScroll || 0;
+    const maxVisible = 6;
+    const visibleItems = list.slice(scroll, scroll + maxVisible);
+
+    const rowH = 15;
+    const startRowY = tableY + 13;
+
+    if (visibleItems.length === 0) {
+      ctx.font = '6.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#64748b';
+      ctx.fillText('No hay récords registrados todavía.', W / 2, winY + 80);
+    }
+
+    visibleItems.forEach((entry, idx) => {
+      const realIndex = scroll + idx + 1;
+      const ry = startRowY + idx * rowH;
+
+      // Fila alterna
+      if (idx % 2 === 0) {
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.4)';
+        ctx.fillRect(winX + 6, ry, winW - 12, rowH - 1);
+      }
+
+      // Medalla o posición
+      ctx.font = 'bold 6px monospace';
+      ctx.textAlign = 'left';
+      let posText = `#${realIndex}`;
+      let posColor = '#94a3b8';
+      if (realIndex === 1) { posText = '🥇'; posColor = '#fde047'; }
+      else if (realIndex === 2) { posText = '🥈'; posColor = '#cbd5e1'; }
+      else if (realIndex === 3) { posText = '🥉'; posColor = '#f97316'; }
+      ctx.fillStyle = posColor;
+      ctx.fillText(posText, winX + 9, ry + 8);
+
+      // Nombre
+      ctx.font = 'bold 6px monospace';
+      ctx.fillStyle = realIndex <= 3 ? '#ffffff' : '#e2e8f0';
+      ctx.fillText(entry.username || 'ANÓNIMO', winX + 26, ry + 8);
+
+      // Tiempo
+      ctx.font = '5.5px monospace';
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText(entry.playTimeFormatted || '00:00', winX + 112, ry + 8);
+
+      // Muertes
+      const deaths = entry.deaths || 0;
+      ctx.fillStyle = deaths === 0 ? '#4ade80' : deaths <= 2 ? '#fde047' : '#f87171';
+      ctx.fillText(`${deaths} ${deaths === 1 ? 'muerte' : 'muertes'}`, winX + 162, ry + 8);
+
+      // Badge de Rango
+      const rank = entry.rank || 'C';
+      const rankColor = rank === 'S' ? '#fde047' : rank === 'A' ? '#38bdf8' : rank === 'B' ? '#4ade80' : '#f87171';
+      const badgeX = winX + 204;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.fillRect(badgeX, ry + 2, 26, 10);
+      ctx.strokeStyle = rankColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(badgeX + 0.5, ry + 2.5, 25, 9);
+      ctx.font = 'bold 5.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = rankColor;
+      ctx.fillText(rank, badgeX + 13, ry + 7.5);
+
+      // Score
+      ctx.font = 'bold 6px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(`${(entry.score || 0).toLocaleString('es-ES')} pts`, winX + winW - 12, ry + 8);
+    });
+
+    // Indicador de scroll si hay más registros
+    if (list.length > maxVisible) {
+      ctx.font = '5px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(`Registros ${scroll + 1}-${Math.min(list.length, scroll + maxVisible)} de ${list.length}  ·  [▲/▼] Scroll`, winX + winW - 12, winY + winH - 15);
+    }
+
+    // Pie de pantalla con botón interactivo de retorno
+    const btnW = 140;
+    const btnH = 13;
+    const btnX = Math.round(winX + (winW - btnW) / 2);
+    const btnY = winY + winH - 18;
+
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(btnX, btnY, btnW, btnH);
+    ctx.strokeStyle = '#ffd885';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(btnX + 0.5, btnY + 0.5, btnW - 1, btnH - 1);
+
+    ctx.font = 'bold 6px monospace';
+    ctx.fillStyle = '#ffd885';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('◀ VOLVER [Escape / Clic]', btnX + btnW / 2, btnY + btnH / 2);

@@ -57,6 +57,14 @@ export class InputHandler {
     if (chatModal && !chatModal.classList.contains('hidden')) {
       return true;
     }
+    const scoreModal = typeof document !== 'undefined' ? document.getElementById('score-submission-modal') : null;
+    if (scoreModal && !scoreModal.classList.contains('hidden')) {
+      return true;
+    }
+    const exitModal = typeof document !== 'undefined' ? document.getElementById('exit-confirm-modal') : null;
+    if (exitModal && !exitModal.classList.contains('hidden')) {
+      return true;
+    }
     return false;
   }
 

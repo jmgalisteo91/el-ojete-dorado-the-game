@@ -263,6 +263,160 @@ html, body {
   background: #334155;
   transform: translateY(-1px);
 }
+
+/* Modal de Registro de Puntuación Arcade / Salón de la Fama */
+.score-card {
+  width: min(92vw, 540px);
+  background: #0d121f;
+  border: 3px solid #ffd166;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95), 0 0 28px rgba(255, 209, 102, 0.4);
+  padding: 24px 20px;
+  color: #f0f4f8;
+  font-family: monospace;
+  text-align: center;
+}
+
+.score-rank-container {
+  margin: 12px 0 8px;
+  display: flex;
+  justify-content: center;
+}
+
+.score-rank-badge {
+  display: inline-block;
+  padding: 8px 24px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  border-radius: 4px;
+  text-shadow: 0 0 12px currentColor;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  animation: pulse-rank 1.8s infinite ease-in-out;
+}
+
+@keyframes pulse-rank {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.rank-s {
+  border: 2px solid #fde047;
+  color: #fde047;
+  background: rgba(253, 224, 71, 0.15);
+}
+
+.rank-a {
+  border: 2px solid #38bdf8;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+}
+
+.rank-b {
+  border: 2px solid #4ade80;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.15);
+}
+
+.rank-c {
+  border: 2px solid #f87171;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.score-title {
+  color: #ffd885;
+  font-size: 15px;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+.score-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+  background: #151d30;
+  border: 1px solid #334155;
+  padding: 12px 10px;
+}
+
+.score-stat-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.score-stat-label {
+  color: #94a3b8;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.score-stat-val {
+  color: #38bdf8;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.score-stat-val.gold {
+  color: #ffd166;
+}
+
+.score-input-label {
+  display: block;
+  font-size: 12px;
+  color: #cbd5e1;
+  margin-bottom: 8px;
+}
+
+.score-input-wrap {
+  margin-bottom: 6px;
+}
+
+#score-nickname-input {
+  width: min(80%, 280px);
+  background: #1a233a;
+  border: 2px solid #ffd166;
+  color: #ffffff;
+  font-family: monospace;
+  font-size: 16px;
+  font-weight: bold;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  padding: 8px 12px;
+  outline: none;
+  box-shadow: 0 0 10px rgba(255, 209, 102, 0.2);
+}
+
+#score-nickname-input:focus {
+  border-color: #5eead4;
+  box-shadow: 0 0 14px rgba(94, 234, 212, 0.4);
+}
+
+.score-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 18px;
+}
+
+.btn-score-submit {
+  background: #ffd166;
+  border: 2px solid #ffe699;
+  color: #0a0f1d;
+  font-family: monospace;
+  font-weight: 800;
+  font-size: 14px;
+  padding: 10px 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(255, 209, 102, 0.5);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.btn-score-submit:hover {
+  background: #ffdb80;
+  transform: translateY(-1px);
+}
   </style>
 </head>
 <body>
@@ -283,6 +437,54 @@ html, body {
           <button id="exit-confirm-yes-btn" type="button" class="btn-confirm-yes">✓ Sí, salir del juego</button>
           <button id="exit-confirm-no-btn" type="button" class="btn-confirm-no">✕ No, seguir jugando</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Modal de registro de puntuación arcade / Salón de la Fama -->
+    <div id="score-submission-modal" class="exit-modal-backdrop hidden">
+      <div class="score-card">
+        <div class="exit-modal-header">
+          <span>🏆 EXPEDIENTE DE COMPILACIÓN FINAL · SPEEDRUN 🏆</span>
+        </div>
+        <div class="score-rank-container">
+          <div class="score-rank-badge" id="score-modal-rank-badge">★ RANGO S ★</div>
+        </div>
+        <h2 class="score-title" id="score-modal-title">Arquitecto Supremo del Gran Ojal</h2>
+        
+        <div class="score-stats-grid">
+          <div class="score-stat-box">
+            <span class="score-stat-label">TIEMPO</span>
+            <span class="score-stat-val" id="score-modal-time">00:00</span>
+          </div>
+          <div class="score-stat-box">
+            <span class="score-stat-label">BUGS FATALES</span>
+            <span class="score-stat-val" id="score-modal-deaths">0</span>
+          </div>
+          <div class="score-stat-box">
+            <span class="score-stat-label">PUNTUACIÓN</span>
+            <span class="score-stat-val gold" id="score-modal-score">0 PTS</span>
+          </div>
+        </div>
+
+        <form id="score-form" autocomplete="off">
+          <label for="score-nickname-input" class="score-input-label">
+            Introduce tu apodo de programador para el Salón de la Fama:
+          </label>
+          <div class="score-input-wrap">
+            <input
+              id="score-nickname-input"
+              type="text"
+              maxlength="12"
+              placeholder="TU APODO (EJ: HERO_99)"
+              required
+            />
+          </div>
+          <p class="score-hint">3 a 12 caracteres alfanuméricos. Se registrará en tu tabla local de récords.</p>
+          <div class="exit-modal-actions">
+            <button id="score-submit-btn" type="submit" class="btn-score-submit">★ Publicar en el Salón de la Fama</button>
+            <button id="score-skip-btn" type="button" class="btn-confirm-no">✕ Omitir y Volver al Menú</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -562,6 +764,14 @@ class InputHandler {
     }
     const chatModal = typeof document !== 'undefined' ? document.getElementById('ai-chat-modal') : null;
     if (chatModal && !chatModal.classList.contains('hidden')) {
+      return true;
+    }
+    const scoreModal = typeof document !== 'undefined' ? document.getElementById('score-submission-modal') : null;
+    if (scoreModal && !scoreModal.classList.contains('hidden')) {
+      return true;
+    }
+    const exitModal = typeof document !== 'undefined' ? document.getElementById('exit-confirm-modal') : null;
+    if (exitModal && !exitModal.classList.contains('hidden')) {
       return true;
     }
     return false;
@@ -1380,6 +1590,257 @@ class AchievementManager {
 
     ctx.restore();
   }
+}
+
+  // ==========================================
+  // Módulo: src/core/ScoreSystem.js
+  // ==========================================
+/**
+ * ScoreSystem.js · Sistema de Puntuación, Rangos y Salón de la Fama (Leaderboard)
+ * 
+ * Evalúa el desempeño final del jugador en función del tiempo de compilación (playTimeSeconds)
+ * y el número de bugs fatales (muertes totales), asignando una puntuación arcade y un rango de S a C:
+ * 
+ * - Rango S: < 12 minutos (720s) y 0 muertes (Deathless Speedrun). Score >= 85.000 pts.
+ * - Rango A: < 20 minutos (1200s) y <= 2 muertes. Score >= 65.000 pts.
+ * - Rango B: < 35 minutos (2100s) y <= 6 muertes. Score >= 40.000 pts.
+ * - Rango C: Más de 35 minutos o más de 6 muertes. Score < 40.000 pts.
+ */
+
+const LOCAL_LEADERBOARD_KEY = 'el_ojete_dorado_leaderboard_v1';
+
+const DEFAULT_LEADERBOARD = [
+  {
+    username: 'AURELIO_DEV',
+    playTimeSeconds: 672,
+    playTimeFormatted: '11:12',
+    deaths: 0,
+    score: 93280,
+    rank: 'S',
+    title: 'Arquitecto Supremo del Gran Ojal',
+    date: '2026-11-01'
+  },
+  {
+    username: 'ORION_AI',
+    playTimeSeconds: 835,
+    playTimeFormatted: '13:55',
+    deaths: 1,
+    score: 86650,
+    rank: 'A',
+    title: 'Senior Lead de Valleverde',
+    date: '2026-11-02'
+  },
+  {
+    username: 'BYTE_SLAYER',
+    playTimeSeconds: 1080,
+    playTimeFormatted: '18:00',
+    deaths: 2,
+    score: 79200,
+    rank: 'A',
+    title: 'Senior Lead de Valleverde',
+    date: '2026-11-03'
+  },
+  {
+    username: 'BUG_HUNTER',
+    playTimeSeconds: 1420,
+    playTimeFormatted: '23:40',
+    deaths: 3,
+    score: 70800,
+    rank: 'A',
+    title: 'Senior Lead de Valleverde',
+    date: '2026-11-03'
+  },
+  {
+    username: 'JUNIOR_REDO',
+    playTimeSeconds: 1850,
+    playTimeFormatted: '30:50',
+    deaths: 5,
+    score: 56500,
+    rank: 'B',
+    title: 'Programador Competente',
+    date: '2026-11-04'
+  }
+];
+
+/**
+ * Formatea segundos a MM:SS o HH:MM:SS
+ */
+function formatPlayTime(seconds = 0) {
+  const totalSec = Math.max(0, Math.floor(seconds));
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Calcula la puntuación numérica y asigna el rango de S a C
+ * Acepta argumentos posicionales (playTimeSeconds, deaths) o un objeto ({ playTimeSeconds, deaths })
+ */
+function calculateGameScore(arg1 = 0, arg2 = 0) {
+  let playTimeSeconds = 0;
+  let deaths = 0;
+
+  if (typeof arg1 === 'object' && arg1 !== null) {
+    playTimeSeconds = arg1.playTimeSeconds ?? arg1.time ?? 0;
+    deaths = arg1.deaths ?? arg1.totalDeaths ?? 0;
+  } else {
+    playTimeSeconds = typeof arg1 === 'number' ? arg1 : 0;
+    deaths = typeof arg2 === 'number' ? arg2 : 0;
+  }
+
+  const t = Math.max(0, Math.round(playTimeSeconds));
+  const m = Math.max(0, Math.floor(deaths));
+
+  const baseScore = 100000;
+  const timePenalty = t * 10;
+  const deathPenalty = m * 5000;
+  const finalScore = Math.max(0, baseScore - timePenalty - deathPenalty);
+
+  let rank = 'C';
+  let title = 'Junior Superviviente del Despido';
+  let color = '#f87171'; // Coral / Rojo suave
+
+  // Rango S: <= 12 minutos (720s) y 0 muertes (Score >= 85.000)
+  if (t <= 720 && m === 0) {
+    rank = 'S';
+    title = 'Arquitecto Supremo del Gran Ojal';
+    color = '#fde047'; // Oro brillante
+  } else if (finalScore >= 65000 && m <= 2 && t <= 1200) {
+    // Rango A: >= 65k, <= 2 muertes, <= 20 min
+    rank = 'A';
+    title = 'Senior Lead de Valleverde';
+    color = '#38bdf8'; // Cyan
+  } else if (finalScore >= 40000 && m <= 6 && t <= 2100) {
+    // Rango B: >= 40k, <= 6 muertes, <= 35 min
+    rank = 'B';
+    title = 'Programador Competente';
+    color = '#4ade80'; // Verde
+  } else {
+    // Rango C
+    rank = 'C';
+    title = 'Junior Superviviente del Despido';
+    color = '#f87171';
+  }
+
+  const formatted = formatPlayTime(t);
+
+  return {
+    score: finalScore,
+    rank,
+    title,
+    color,
+    playTimeSeconds: t,
+    playTimeFormatted: formatted,
+    timeFormatted: formatted,
+    deaths: m,
+    breakdown: {
+      baseScore,
+      timePenalty,
+      deathPenalty
+    }
+  };
+}
+
+/**
+ * Obtiene la lista local de récords guardados en localStorage
+ */
+function getLocalLeaderboard() {
+  if (typeof localStorage === 'undefined') {
+    return [...DEFAULT_LEADERBOARD];
+  }
+  try {
+    const raw = localStorage.getItem(LOCAL_LEADERBOARD_KEY);
+    if (!raw) {
+      localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(DEFAULT_LEADERBOARD));
+      return [...DEFAULT_LEADERBOARD];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(DEFAULT_LEADERBOARD));
+      return [...DEFAULT_LEADERBOARD];
+    }
+    // Ordenar por score descendente, y tiempo ascendente en desempate
+    return parsed.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.playTimeSeconds - b.playTimeSeconds;
+    });
+  } catch (err) {
+    console.warn('Error al leer Leaderboard local:', err);
+    return [...DEFAULT_LEADERBOARD];
+  }
+}
+
+/**
+ * Guarda una nueva puntuación en el Leaderboard local
+ */
+function saveLocalScore(data = {}) {
+  const username = data.username || data.name || 'HERO';
+  let cleanName = (username || '').trim().toUpperCase().replace(/[^A-Z0-9_\-\.]/g, '');
+  if (cleanName.length < 3) {
+    cleanName = cleanName.length > 0 ? cleanName.padEnd(3, '_') : 'HERO';
+  }
+  if (cleanName.length > 12) {
+    cleanName = cleanName.slice(0, 12);
+  }
+
+  const playTimeSeconds = data.playTimeSeconds ?? 0;
+  const deaths = data.deaths ?? 0;
+
+  // Si ya viene precalculado con rank y score, usarlo; si no, calcularlo
+  const result = (data.score != null && data.rank != null)
+    ? {
+        playTimeSeconds,
+        playTimeFormatted: data.playTimeFormatted || data.timeFormatted || formatPlayTime(playTimeSeconds),
+        deaths,
+        score: data.score,
+        rank: data.rank,
+        title: data.title || (calculateGameScore(playTimeSeconds, deaths).title)
+      }
+    : calculateGameScore({ playTimeSeconds, deaths });
+
+  const entry = {
+    username: cleanName,
+    playTimeSeconds: result.playTimeSeconds,
+    playTimeFormatted: result.playTimeFormatted,
+    deaths: result.deaths,
+    score: result.score,
+    rank: result.rank,
+    title: result.title,
+    date: (data.date || new Date().toISOString()).split('T')[0]
+  };
+
+  const currentList = getLocalLeaderboard();
+  currentList.push(entry);
+
+  // Ordenar y recortar al Top 15
+  currentList.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.playTimeSeconds - b.playTimeSeconds;
+  });
+
+  const topList = currentList.slice(0, 15);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(topList));
+    } catch (err) {
+      console.warn('Error al guardar Leaderboard local:', err);
+    }
+  }
+
+  const rankPosition = topList.findIndex(
+    (e) => e.username === entry.username && e.score === entry.score && e.playTimeSeconds === entry.playTimeSeconds
+  ) + 1;
+
+  return {
+    entry,
+    position: rankPosition > 0 ? rankPosition : topList.length + 1,
+    leaderboard: topList
+  };
 }
 
   // ==========================================
@@ -12294,9 +12755,16 @@ class EndingCredits {
 
   _buildCreditLines() {
     const r = this.record;
-    const playTimeStr = r.playTimeFormatted || '12 min 30 s';
+    const scoreResult = r.scoreResult || calculateGameScore({
+      playTimeSeconds: r.playTimeSeconds || 0,
+      deaths: r.deaths || 0
+    });
+    const playTimeStr = scoreResult.playTimeFormatted;
     const jailCount = typeof r.jailVisits === 'number' ? r.jailVisits : 0;
-    const finalTitle = r.title || 'Senior Lead Architect del Gran Ojal';
+    const finalTitle = scoreResult.title || r.title || 'Senior Lead Architect del Gran Ojal';
+    const finalRank = scoreResult.rank || 'C';
+    const deathsCount = typeof r.deaths === 'number' ? r.deaths : (scoreResult.deaths || 0);
+    const scoreVal = typeof scoreResult.score === 'number' ? scoreResult.score : 0;
     const coins = typeof r.coins === 'number' ? r.coins : 0;
     const robot = typeof r.robotization === 'number' ? r.robotization : 0;
 
@@ -12318,6 +12786,8 @@ class EndingCredits {
 
       { type: 'header', text: '═══ [ EXPEDIENTE DEL PROGRAMADOR ] ═══' },
       { type: 'stat', label: 'Tiempo de Compilación:', value: playTimeStr, color: '#38bdf8' },
+      { type: 'stat', label: 'Bugs Fatales (Muertes):', value: `${deathsCount} ${deathsCount === 1 ? 'muerte' : 'muertes'}`, color: deathsCount === 0 ? '#4ade80' : deathsCount <= 2 ? '#fde047' : '#f87171' },
+      { type: 'stat', label: 'Puntuación Obtenida:', value: `${scoreVal.toLocaleString('es-ES')} pts`, color: scoreResult.color || '#ffd166' },
       { type: 'stat', label: 'Condenas en Calabozo:', value: `${jailCount} ${jailCount === 1 ? 'vez' : 'veces'}`, color: jailCount === 0 ? '#4ade80' : '#f87171' },
       { type: 'stat', label: 'Saldo de Bytes / Monedas:', value: `${coins} bytes`, color: '#fde047' },
       { type: 'stat', label: 'Robotización Residual:', value: `${robot}%`, color: robot === 0 ? '#4ade80' : '#fb923c' },
@@ -12329,8 +12799,8 @@ class EndingCredits {
       { type: 'ability', label: '🛡️ Barrera TypeScript:', value: hasShield ? '✓ DESBLOQUEADA' : '✗ NO OBTENIDA', ok: hasShield },
       { type: 'spacer', height: 14 },
 
-      { type: 'header', text: '─── [ RANGO Y TÍTULO FINAL ] ───' },
-      { type: 'rank', text: `★ ${finalTitle} ★` },
+      { type: 'header', text: '─── [ CALIFICACIÓN Y RANGO FINAL ] ───' },
+      { type: 'rank', text: `★ RANGO ${finalRank} · ${finalTitle.toUpperCase()} ★` },
       { type: 'spacer', height: 26 },
 
       { type: 'header', text: '═══ [ CRÉDITOS DE DESARROLLO ] ═══' },
@@ -12824,6 +13294,21 @@ class MainMenuAndScenes {
     this.music.playMenuMove();
   }
 
+  openLeaderboardScreen(returnState = 'title') {
+    this.previousStateBeforeLeaderboard = returnState;
+    this.previousState = returnState;
+    this.state = 'leaderboard';
+    this.leaderboardScroll = 0;
+    this.leaderboardList = getLocalLeaderboard();
+    this.selectedIndex = 0;
+    this.music.playMenuSelect();
+  }
+
+  closeLeaderboardScreen() {
+    this.state = this.previousStateBeforeLeaderboard || 'title';
+    this.music.playMenuMove();
+  }
+
   /**
    * Abre la ventana modal para preguntar al jugador si desea abandonar el juego.
    */
@@ -13155,6 +13640,13 @@ class MainMenuAndScenes {
           }
         },
         {
+          label: '🏆 Salón de la Fama',
+          action: () => {
+            this.music.playMenuSelect();
+            this.openLeaderboardScreen('title');
+          }
+        },
+        {
           label: 'Controles',
           action: () => {
             this.music.playMenuSelect();
@@ -13207,6 +13699,13 @@ class MainMenuAndScenes {
           action: () => {
             this.music.playMenuSelect();
             this.openControlsScreen('pause');
+          }
+        },
+        {
+          label: '🏆 Salón de la Fama [Récords]',
+          action: () => {
+            this.music.playMenuSelect();
+            this.openLeaderboardScreen('pause');
           }
         },
         {
@@ -13476,6 +13975,28 @@ class MainMenuAndScenes {
       return;
     }
 
+    // Pantalla de Salón de la Fama / Leaderboard de Speedrun
+    if (this.state === 'leaderboard') {
+      const dir = input.consumeMenuDirection();
+      if (dir === 'up') {
+        this.leaderboardScroll = Math.max(0, (this.leaderboardScroll || 0) - 1);
+        this.music.playMenuMove();
+      } else if (dir === 'down') {
+        const maxScroll = Math.max(0, (this.leaderboardList?.length || 0) - 6);
+        this.leaderboardScroll = Math.min(maxScroll, (this.leaderboardScroll || 0) + 1);
+        this.music.playMenuMove();
+      }
+      if (
+        input.consumeKey('Escape') ||
+        input.consumeKey('KeyL') ||
+        input.consumeInteraction() ||
+        input.consumePointerClick()
+      ) {
+        this.closeLeaderboardScreen();
+      }
+      return;
+    }
+
     // Escenas Cinemáticas en Pixel Art
     if (this.state === 'cutscene') {
       const slide = this.cutsceneSlides[this.cutsceneIndex];
@@ -13608,10 +14129,10 @@ class MainMenuAndScenes {
   _getMenuHitboxes(count) {
     const isTitle = this.state === 'title';
     const isGameOver = this.state === 'game_over';
-    const boxW = isTitle ? 156 : isGameOver ? 204 : 184;
-    const itemH = isTitle ? 14 : isGameOver ? 15 : (count > 5 ? 13 : 15);
+    const boxW = isTitle ? 168 : isGameOver ? 204 : 184;
+    const itemH = isTitle ? (count > 5 ? 12 : 14) : isGameOver ? 15 : (count > 5 ? 13 : 15);
     const startX = Math.round((this.viewportWidth - boxW) / 2);
-    let startY = isTitle ? 105 : isGameOver ? (count > 2 ? 96 : 108) : 56;
+    let startY = isTitle ? (count > 5 ? 93 : 105) : isGameOver ? (count > 2 ? 96 : 108) : 56;
     if (!isTitle && !isGameOver && count > 5) {
       const totalH = count * itemH;
       const winH = Math.min(160, totalH + 46);
@@ -13672,6 +14193,17 @@ class MainMenuAndScenes {
         ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
       }
       this._renderControlsScreen(ctx);
+      return;
+    }
+
+    if (this.state === 'leaderboard') {
+      if (this.previousStateBeforeLeaderboard === 'title') {
+        this._renderTitleBackdropPixelArt(ctx);
+      } else {
+        ctx.fillStyle = 'rgba(8, 11, 20, 0.78)';
+        ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+      }
+      this._renderLeaderboardScreen(ctx);
       return;
     }
 
@@ -13851,6 +14383,164 @@ class MainMenuAndScenes {
 
     ctx.font = 'bold 6px monospace';
     ctx.fillStyle = '#38bdf8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('◀ VOLVER [Escape / Clic]', btnX + btnW / 2, btnY + btnH / 2);
+
+    ctx.restore();
+  }
+
+  /**
+   * Pantalla de Salón de la Fama y Clasificación Global de Speedrun (Rango S a C).
+   */
+  _renderLeaderboardScreen(ctx) {
+    const W = this.viewportWidth;
+    const H = this.viewportHeight;
+    const winW = 300;
+    const winH = 166;
+    const winX = Math.round((W - winW) / 2);
+    const winY = Math.round((H - winH) / 2);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // Fondo oscurecido con viñeta
+    ctx.fillStyle = 'rgba(5, 8, 16, 0.90)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Marco exterior con doble borde dorado
+    ctx.fillStyle = '#0a0f1d';
+    ctx.fillRect(winX, winY, winW, winH);
+    ctx.fillStyle = '#e5c07b';
+    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(winX + 2, winY + 2, winW - 4, winH - 4);
+
+    // Cabecera estilizada
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(winX + 2, winY + 2, winW - 4, 22);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(winX + 2, winY + 24, winW - 4, 1);
+
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fde047';
+    ctx.fillText('🏆 SALÓN DE LA FAMA · SPEEDRUN & CLASIFICACIÓN', W / 2, winY + 10);
+    ctx.font = '5.5px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('Clasificación de programadores en Valleverde (Rango S a C)', W / 2, winY + 18);
+
+    // Encabezados de tabla
+    const tableY = winY + 28;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(winX + 6, tableY, winW - 12, 11);
+
+    ctx.font = 'bold 5.5px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.textAlign = 'left';
+    ctx.fillText('#', winX + 10, tableY + 6);
+    ctx.fillText('JUGADOR', winX + 26, tableY + 6);
+    ctx.fillText('TIEMPO', winX + 112, tableY + 6);
+    ctx.fillText('BUGS', winX + 162, tableY + 6);
+    ctx.fillText('RANGO', winX + 204, tableY + 6);
+    ctx.textAlign = 'right';
+    ctx.fillText('SCORE', winX + winW - 12, tableY + 6);
+
+    const list = this.leaderboardList || [];
+    const scroll = this.leaderboardScroll || 0;
+    const maxVisible = 6;
+    const visibleItems = list.slice(scroll, scroll + maxVisible);
+
+    const rowH = 15;
+    const startRowY = tableY + 13;
+
+    if (visibleItems.length === 0) {
+      ctx.font = '6.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#64748b';
+      ctx.fillText('No hay récords registrados todavía.', W / 2, winY + 80);
+    }
+
+    visibleItems.forEach((entry, idx) => {
+      const realIndex = scroll + idx + 1;
+      const ry = startRowY + idx * rowH;
+
+      // Fila alterna
+      if (idx % 2 === 0) {
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.4)';
+        ctx.fillRect(winX + 6, ry, winW - 12, rowH - 1);
+      }
+
+      // Medalla o posición
+      ctx.font = 'bold 6px monospace';
+      ctx.textAlign = 'left';
+      let posText = `#${realIndex}`;
+      let posColor = '#94a3b8';
+      if (realIndex === 1) { posText = '🥇'; posColor = '#fde047'; }
+      else if (realIndex === 2) { posText = '🥈'; posColor = '#cbd5e1'; }
+      else if (realIndex === 3) { posText = '🥉'; posColor = '#f97316'; }
+      ctx.fillStyle = posColor;
+      ctx.fillText(posText, winX + 9, ry + 8);
+
+      // Nombre
+      ctx.font = 'bold 6px monospace';
+      ctx.fillStyle = realIndex <= 3 ? '#ffffff' : '#e2e8f0';
+      ctx.fillText(entry.username || 'ANÓNIMO', winX + 26, ry + 8);
+
+      // Tiempo
+      ctx.font = '5.5px monospace';
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText(entry.playTimeFormatted || '00:00', winX + 112, ry + 8);
+
+      // Muertes
+      const deaths = entry.deaths || 0;
+      ctx.fillStyle = deaths === 0 ? '#4ade80' : deaths <= 2 ? '#fde047' : '#f87171';
+      ctx.fillText(`${deaths} ${deaths === 1 ? 'muerte' : 'muertes'}`, winX + 162, ry + 8);
+
+      // Badge de Rango
+      const rank = entry.rank || 'C';
+      const rankColor = rank === 'S' ? '#fde047' : rank === 'A' ? '#38bdf8' : rank === 'B' ? '#4ade80' : '#f87171';
+      const badgeX = winX + 204;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.fillRect(badgeX, ry + 2, 26, 10);
+      ctx.strokeStyle = rankColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(badgeX + 0.5, ry + 2.5, 25, 9);
+      ctx.font = 'bold 5.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = rankColor;
+      ctx.fillText(rank, badgeX + 13, ry + 7.5);
+
+      // Score
+      ctx.font = 'bold 6px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(`${(entry.score || 0).toLocaleString('es-ES')} pts`, winX + winW - 12, ry + 8);
+    });
+
+    // Indicador de scroll si hay más registros
+    if (list.length > maxVisible) {
+      ctx.font = '5px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(`Registros ${scroll + 1}-${Math.min(list.length, scroll + maxVisible)} de ${list.length}  ·  [▲/▼] Scroll`, winX + winW - 12, winY + winH - 15);
+    }
+
+    // Pie de pantalla con botón interactivo de retorno
+    const btnW = 140;
+    const btnH = 13;
+    const btnX = Math.round(winX + (winW - btnW) / 2);
+    const btnY = winY + winH - 18;
+
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(btnX, btnY, btnW, btnH);
+    ctx.strokeStyle = '#ffd885';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(btnX + 0.5, btnY + 0.5, btnW - 1, btnH - 1);
+
+    ctx.font = 'bold 6px monospace';
+    ctx.fillStyle = '#ffd885';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('◀ VOLVER [Escape / Clic]', btnX + btnW / 2, btnY + btnH / 2);
@@ -18668,6 +19358,7 @@ class RPGGame {
 
     // Registro de estadísticas del jugador para el Expediente de Compilación Final
     this.totalPlayTimeSeconds = 0;
+    this.totalDeaths = 0;
     this.totalJailVisits = 0;
     this.gameCompleted = false;
     this.bossCutscenesSeen = {
@@ -18891,6 +19582,8 @@ class RPGGame {
     this.inventory.items = [];
     this.inventory.selectedIndex = 0;
     this.gameCompleted = false;
+    this.totalPlayTimeSeconds = 0;
+    this.totalDeaths = 0;
     this.prebattleAlexCutscenePlayed = false;
     this.bossCutscenesSeen = {
       boss_garbage_collector: false,
@@ -18958,6 +19651,7 @@ class RPGGame {
           stack: [...this.tilemap.swordPuzzle.stack]
         } : null,
         totalPlayTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
+        totalDeaths: this.totalDeaths || 0,
         totalJailVisits: this.totalJailVisits || 0,
         housePermissions: { ...this.housePermissions },
         inventoryItems: this.inventory.items.map((it) => ({ ...it })),
@@ -19022,6 +19716,7 @@ class RPGGame {
       this.jailRemainingSeconds = data.jailRemainingSeconds || 0;
       this.jailerAngerCount = Math.min(3, data.jailerAngerCount || 0);
       this.totalPlayTimeSeconds = typeof data.totalPlayTimeSeconds === 'number' ? data.totalPlayTimeSeconds : 0;
+      this.totalDeaths = typeof data.totalDeaths === 'number' ? data.totalDeaths : Object.values(data.deathsByScene || {}).reduce((a, b) => a + b, 0);
       this.totalJailVisits = typeof data.totalJailVisits === 'number' ? data.totalJailVisits : 0;
       this.isJailedForever = false;
       this.player.hasBrokenHeartCurse = Boolean(data.hasBrokenHeartCurse);
@@ -22552,10 +23247,15 @@ class RPGGame {
       this.music.stopBossMusic(false);
     }
 
-    // 2. Resumen del Expediente del Jugador
+    // 2. Resumen del Expediente del Jugador y Cálculo de Puntuación
+    const scoreResult = calculateGameScore(this.totalPlayTimeSeconds, this.totalDeaths);
     const record = {
       playTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
-      playTimeFormatted: this._formatPlayTime(this.totalPlayTimeSeconds),
+      playTimeFormatted: scoreResult.timeFormatted,
+      deaths: this.totalDeaths || 0,
+      score: scoreResult.score,
+      rank: scoreResult.rank,
+      breakdown: scoreResult.breakdown,
       jailVisits: this.totalJailVisits || 0,
       coins: this.player.coins || 0,
       robotization: Math.round(this.player.robotizationLevel || 0),
@@ -22581,10 +23281,104 @@ class RPGGame {
 
         // Submódulo de Créditos: Scroll vertical con estrellas pixeladas
         this.menuSystem.startEndingCredits(record, () => {
-          this._resetWorldToInitialState();
-          this.menuSystem.openTitleScreen();
+          this._openScoreSubmissionModal(record, () => {
+            this._resetWorldToInitialState();
+            this.menuSystem.openLeaderboardScreen('title');
+          });
         });
       });
+    }
+  }
+
+  _openScoreSubmissionModal(record, onDone) {
+    if (typeof document === 'undefined') {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+
+    const modal = document.getElementById('score-submission-modal');
+    if (!modal) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+
+    const badgeEl = document.getElementById('score-modal-rank-badge');
+    const titleEl = document.getElementById('score-modal-title');
+    const timeEl = document.getElementById('score-modal-time');
+    const deathsEl = document.getElementById('score-modal-deaths');
+    const scoreEl = document.getElementById('score-modal-score');
+    const formEl = document.getElementById('score-form');
+    const inputEl = document.getElementById('score-nickname-input');
+    const skipBtn = document.getElementById('score-skip-btn');
+
+    const rank = record && record.rank ? record.rank : 'C';
+    if (badgeEl) {
+      badgeEl.textContent = `★ RANGO ${rank} ★`;
+      badgeEl.className = `score-rank-badge rank-${rank.toLowerCase()}`;
+    }
+    if (titleEl) {
+      titleEl.textContent = (record && record.title) || 'Campeón de Valleverde';
+    }
+    if (timeEl) {
+      timeEl.textContent = (record && record.playTimeFormatted) || '00:00';
+    }
+    if (deathsEl) {
+      deathsEl.textContent = String((record && record.deaths) || 0);
+    }
+    if (scoreEl) {
+      const scoreVal = (record && typeof record.score === 'number') ? record.score : 0;
+      scoreEl.textContent = `${scoreVal.toLocaleString('es-ES')} PTS`;
+    }
+
+    let defaultNick = 'HERO';
+    try {
+      defaultNick = localStorage.getItem('el_ojete_last_nickname') || 'HERO';
+    } catch (_) {}
+
+    if (inputEl) {
+      inputEl.value = defaultNick;
+    }
+
+    modal.classList.remove('hidden');
+    if (inputEl) {
+      setTimeout(() => {
+        try { inputEl.focus(); inputEl.select(); } catch (_) {}
+      }, 60);
+    }
+
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      if (formEl) formEl.onsubmit = null;
+      if (skipBtn) skipBtn.onclick = null;
+    };
+
+    if (formEl) {
+      formEl.onsubmit = (e) => {
+        e.preventDefault();
+        const raw = inputEl ? inputEl.value : '';
+        const sanitized = raw.trim().toUpperCase().replace(/[^A-Z0-9_\-\.]/g, '').slice(0, 12) || 'ANÓNIMO';
+        try {
+          localStorage.setItem('el_ojete_last_nickname', sanitized);
+        } catch (_) {}
+
+        saveLocalScore({
+          name: sanitized,
+          rank: rank,
+          score: record && record.score != null ? record.score : 0,
+          timeFormatted: (record && record.playTimeFormatted) || '00:00',
+          deaths: (record && record.deaths) || 0
+        });
+
+        cleanup();
+        if (typeof onDone === 'function') onDone();
+      };
+    }
+
+    if (skipBtn) {
+      skipBtn.onclick = () => {
+        cleanup();
+        if (typeof onDone === 'function') onDone();
+      };
     }
   }
 
@@ -23190,6 +23984,7 @@ class RPGGame {
     if (!this.deathsByScene) this.deathsByScene = {};
     const sceneId = this.tilemap.currentSceneId;
     this.deathsByScene[sceneId] = (this.deathsByScene[sceneId] || 0) + 1;
+    this.totalDeaths = (this.totalDeaths || 0) + 1;
     this.sceneSurvivalTimer = 0;
   }
 

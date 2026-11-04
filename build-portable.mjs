@@ -12,6 +12,7 @@ const MODULE_ORDER = [
   'src/core/Camera2D.js',
   'src/core/QuestLog.js',
   'src/core/AchievementManager.js',
+  'src/core/ScoreSystem.js',
   'src/graphics/SpriteSheetGenerator.js',
   'src/graphics/Animator.js',
   'src/ui/SpeechBubble.js',
@@ -149,6 +150,54 @@ ${css.trim()}
           <button id="exit-confirm-yes-btn" type="button" class="btn-confirm-yes">✓ Sí, salir del juego</button>
           <button id="exit-confirm-no-btn" type="button" class="btn-confirm-no">✕ No, seguir jugando</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Modal de registro de puntuación arcade / Salón de la Fama -->
+    <div id="score-submission-modal" class="exit-modal-backdrop hidden">
+      <div class="score-card">
+        <div class="exit-modal-header">
+          <span>🏆 EXPEDIENTE DE COMPILACIÓN FINAL · SPEEDRUN 🏆</span>
+        </div>
+        <div class="score-rank-container">
+          <div class="score-rank-badge" id="score-modal-rank-badge">★ RANGO S ★</div>
+        </div>
+        <h2 class="score-title" id="score-modal-title">Arquitecto Supremo del Gran Ojal</h2>
+        
+        <div class="score-stats-grid">
+          <div class="score-stat-box">
+            <span class="score-stat-label">TIEMPO</span>
+            <span class="score-stat-val" id="score-modal-time">00:00</span>
+          </div>
+          <div class="score-stat-box">
+            <span class="score-stat-label">BUGS FATALES</span>
+            <span class="score-stat-val" id="score-modal-deaths">0</span>
+          </div>
+          <div class="score-stat-box">
+            <span class="score-stat-label">PUNTUACIÓN</span>
+            <span class="score-stat-val gold" id="score-modal-score">0 PTS</span>
+          </div>
+        </div>
+
+        <form id="score-form" autocomplete="off">
+          <label for="score-nickname-input" class="score-input-label">
+            Introduce tu apodo de programador para el Salón de la Fama:
+          </label>
+          <div class="score-input-wrap">
+            <input
+              id="score-nickname-input"
+              type="text"
+              maxlength="12"
+              placeholder="TU APODO (EJ: HERO_99)"
+              required
+            />
+          </div>
+          <p class="score-hint">3 a 12 caracteres alfanuméricos. Se registrará en tu tabla local de récords.</p>
+          <div class="exit-modal-actions">
+            <button id="score-submit-btn" type="submit" class="btn-score-submit">★ Publicar en el Salón de la Fama</button>
+            <button id="score-skip-btn" type="button" class="btn-confirm-no">✕ Omitir y Volver al Menú</button>
+          </div>
+        </form>
       </div>
     </div>
 

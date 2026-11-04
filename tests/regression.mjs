@@ -13,6 +13,14 @@ import { GarbageCollectorBoss } from '../src/entities/bosses/GarbageCollectorBos
 import { StackOverflowBoss } from '../src/entities/bosses/StackOverflowBoss.js';
 import { PrototypeMicrowaveBoss } from '../src/entities/bosses/PrototypeMicrowaveBoss.js';
 import { FinalBossAlex } from '../src/entities/bosses/FinalBossAlex.js';
+import {
+  calculateGameScore,
+  formatPlayTime,
+  getLocalLeaderboard,
+  saveLocalScore,
+  DEFAULT_LEADERBOARD,
+  LOCAL_LEADERBOARD_KEY
+} from '../src/core/ScoreSystem.js';
 
 let passed = 0;
 const failures = [];
@@ -495,6 +503,91 @@ test('Rebalanceo de Bosses: HP calibrada y daño ajustado al héroe', () => {
   b4.takeSwordHit(mockPlayer, null, 28); // 55 - 28 = 27 HP (<= 28 HP -> 50%)
   assert.ok(b4.isOverclocked, 'Alex debe activar Fase 2 Overclocked al 50% de HP');
   assert.equal(b4.speed, 45, 'Velocidad en Fase 2 debe ser 45');
+});
+
+console.log('Sistema de Puntuación y Salón de la Fama');
+
+test('calculateGameScore asigna Rango S con <= 12 min y 0 muertes', () => {
+  const res = calculateGameScore(600, 0);
+  assert.equal(res.rank, 'S');
+  assert.equal(res.score, 94000); // 100.000 - 6.000
+  assert.equal(res.playTimeFormatted, '10:00');
+  assert.equal(res.deaths, 0);
+
+  // Límite exacto de 720s (12m) y 0 muertes
+  const resLimit = calculateGameScore({ playTimeSeconds: 720, deaths: 0 });
+  assert.equal(resLimit.rank, 'S');
+  assert.equal(resLimit.score, 92800);
+});
+
+test('calculateGameScore degrada a Rango A si hay muertes o excede 12 min', () => {
+  // 600s con 1 muerte -> no es S, debe ser A
+  const res1 = calculateGameScore(600, 1);
+  assert.equal(res1.rank, 'A');
+  assert.equal(res1.score, 89000); // 100.000 - 6.000 - 5.000
+
+  // 1100s con 2 muertes -> A
+  const res2 = calculateGameScore({ playTimeSeconds: 1100, deaths: 2 });
+  assert.equal(res2.rank, 'A');
+  assert.equal(res2.score, 79000); // 100.000 - 11.000 - 10.000
+});
+
+test('calculateGameScore asigna Rango B y Rango C según umbrales', () => {
+  // Rango B: 1800s (30m) y 4 muertes
+  const resB = calculateGameScore(1800, 4);
+  assert.equal(resB.rank, 'B');
+  assert.equal(resB.score, 62000); // 100.000 - 18.000 - 20.000
+
+  // Rango C: 2400s (40m) y 8 muertes
+  const resC = calculateGameScore(2400, 8);
+  assert.equal(resC.rank, 'C');
+  assert.equal(resC.score, 36000); // 100.000 - 24.000 - 40.000
+  assert.ok(resC.score < 40000);
+});
+
+test('formatPlayTime formatea MM:SS y HH:MM:SS adecuadamente', () => {
+  assert.equal(formatPlayTime(0), '00:00');
+  assert.equal(formatPlayTime(65), '01:05');
+  assert.equal(formatPlayTime(720), '12:00');
+  assert.equal(formatPlayTime(3665), '1:01:05');
+});
+
+test('saveLocalScore y getLocalLeaderboard ordenan puntuaciones y recortan a Top 15', () => {
+  let mockStore = {};
+  globalThis.localStorage = {
+    getItem: (k) => mockStore[k] ?? null,
+    setItem: (k, v) => { mockStore[k] = String(v); },
+    removeItem: (k) => { delete mockStore[k]; },
+    clear: () => { mockStore = {}; }
+  };
+
+  // 1. Obtener lista por defecto
+  const initial = getLocalLeaderboard();
+  assert.equal(initial.length, 5);
+  assert.equal(initial[0].username, 'AURELIO_DEV');
+
+  // 2. Guardar nuevo récord de Speedrun número 1
+  const saveResult = saveLocalScore({
+    name: 'SPEED_GOD',
+    playTimeSeconds: 400,
+    deaths: 0
+  });
+
+  assert.equal(saveResult.position, 1, 'Debe ocupar el 1er lugar');
+  assert.equal(saveResult.entry.rank, 'S');
+  assert.equal(saveResult.entry.score, 96000); // 100k - 4k
+
+  const updated = getLocalLeaderboard();
+  assert.equal(updated.length, 6);
+  assert.equal(updated[0].username, 'SPEED_GOD');
+
+  // 3. Sanitizado de nickname
+  const sanitizedSave = saveLocalScore({
+    name: '   super_pro!#$   ',
+    playTimeSeconds: 900,
+    deaths: 1
+  });
+  assert.equal(sanitizedSave.entry.username, 'SUPER_PRO');
 });
 
 console.log(`\n${passed} pruebas OK, ${failures.length} fallos.`);

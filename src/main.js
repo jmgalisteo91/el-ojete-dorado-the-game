@@ -26,6 +26,7 @@ import { QuestLog } from './core/QuestLog.js?v=7';
 import { AchievementManager } from './core/AchievementManager.js?v=7';
 import { QuestLogView } from './ui/QuestLogView.js?v=7';
 import { MainMenuAndScenes } from './ui/MainMenuAndScenes.js?v=7';
+import { calculateGameScore, saveLocalScore } from './core/ScoreSystem.js?v=7';
 import {
   AnimeCutsceneManager,
   SCENE_JAIL_ARREST,
@@ -153,6 +154,7 @@ export class RPGGame {
 
     // Registro de estadísticas del jugador para el Expediente de Compilación Final
     this.totalPlayTimeSeconds = 0;
+    this.totalDeaths = 0;
     this.totalJailVisits = 0;
     this.gameCompleted = false;
     this.bossCutscenesSeen = {
@@ -376,6 +378,8 @@ export class RPGGame {
     this.inventory.items = [];
     this.inventory.selectedIndex = 0;
     this.gameCompleted = false;
+    this.totalPlayTimeSeconds = 0;
+    this.totalDeaths = 0;
     this.prebattleAlexCutscenePlayed = false;
     this.bossCutscenesSeen = {
       boss_garbage_collector: false,
@@ -443,6 +447,7 @@ export class RPGGame {
           stack: [...this.tilemap.swordPuzzle.stack]
         } : null,
         totalPlayTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
+        totalDeaths: this.totalDeaths || 0,
         totalJailVisits: this.totalJailVisits || 0,
         housePermissions: { ...this.housePermissions },
         inventoryItems: this.inventory.items.map((it) => ({ ...it })),
@@ -507,6 +512,7 @@ export class RPGGame {
       this.jailRemainingSeconds = data.jailRemainingSeconds || 0;
       this.jailerAngerCount = Math.min(3, data.jailerAngerCount || 0);
       this.totalPlayTimeSeconds = typeof data.totalPlayTimeSeconds === 'number' ? data.totalPlayTimeSeconds : 0;
+      this.totalDeaths = typeof data.totalDeaths === 'number' ? data.totalDeaths : Object.values(data.deathsByScene || {}).reduce((a, b) => a + b, 0);
       this.totalJailVisits = typeof data.totalJailVisits === 'number' ? data.totalJailVisits : 0;
       this.isJailedForever = false;
       this.player.hasBrokenHeartCurse = Boolean(data.hasBrokenHeartCurse);
@@ -4037,10 +4043,15 @@ export class RPGGame {
       this.music.stopBossMusic(false);
     }
 
-    // 2. Resumen del Expediente del Jugador
+    // 2. Resumen del Expediente del Jugador y Cálculo de Puntuación
+    const scoreResult = calculateGameScore(this.totalPlayTimeSeconds, this.totalDeaths);
     const record = {
       playTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
-      playTimeFormatted: this._formatPlayTime(this.totalPlayTimeSeconds),
+      playTimeFormatted: scoreResult.timeFormatted,
+      deaths: this.totalDeaths || 0,
+      score: scoreResult.score,
+      rank: scoreResult.rank,
+      breakdown: scoreResult.breakdown,
       jailVisits: this.totalJailVisits || 0,
       coins: this.player.coins || 0,
       robotization: Math.round(this.player.robotizationLevel || 0),
@@ -4066,10 +4077,104 @@ export class RPGGame {
 
         // Submódulo de Créditos: Scroll vertical con estrellas pixeladas
         this.menuSystem.startEndingCredits(record, () => {
-          this._resetWorldToInitialState();
-          this.menuSystem.openTitleScreen();
+          this._openScoreSubmissionModal(record, () => {
+            this._resetWorldToInitialState();
+            this.menuSystem.openLeaderboardScreen('title');
+          });
         });
       });
+    }
+  }
+
+  _openScoreSubmissionModal(record, onDone) {
+    if (typeof document === 'undefined') {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+
+    const modal = document.getElementById('score-submission-modal');
+    if (!modal) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+
+    const badgeEl = document.getElementById('score-modal-rank-badge');
+    const titleEl = document.getElementById('score-modal-title');
+    const timeEl = document.getElementById('score-modal-time');
+    const deathsEl = document.getElementById('score-modal-deaths');
+    const scoreEl = document.getElementById('score-modal-score');
+    const formEl = document.getElementById('score-form');
+    const inputEl = document.getElementById('score-nickname-input');
+    const skipBtn = document.getElementById('score-skip-btn');
+
+    const rank = record && record.rank ? record.rank : 'C';
+    if (badgeEl) {
+      badgeEl.textContent = `★ RANGO ${rank} ★`;
+      badgeEl.className = `score-rank-badge rank-${rank.toLowerCase()}`;
+    }
+    if (titleEl) {
+      titleEl.textContent = (record && record.title) || 'Campeón de Valleverde';
+    }
+    if (timeEl) {
+      timeEl.textContent = (record && record.playTimeFormatted) || '00:00';
+    }
+    if (deathsEl) {
+      deathsEl.textContent = String((record && record.deaths) || 0);
+    }
+    if (scoreEl) {
+      const scoreVal = (record && typeof record.score === 'number') ? record.score : 0;
+      scoreEl.textContent = `${scoreVal.toLocaleString('es-ES')} PTS`;
+    }
+
+    let defaultNick = 'HERO';
+    try {
+      defaultNick = localStorage.getItem('el_ojete_last_nickname') || 'HERO';
+    } catch (_) {}
+
+    if (inputEl) {
+      inputEl.value = defaultNick;
+    }
+
+    modal.classList.remove('hidden');
+    if (inputEl) {
+      setTimeout(() => {
+        try { inputEl.focus(); inputEl.select(); } catch (_) {}
+      }, 60);
+    }
+
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      if (formEl) formEl.onsubmit = null;
+      if (skipBtn) skipBtn.onclick = null;
+    };
+
+    if (formEl) {
+      formEl.onsubmit = (e) => {
+        e.preventDefault();
+        const raw = inputEl ? inputEl.value : '';
+        const sanitized = raw.trim().toUpperCase().replace(/[^A-Z0-9_\-\.]/g, '').slice(0, 12) || 'ANÓNIMO';
+        try {
+          localStorage.setItem('el_ojete_last_nickname', sanitized);
+        } catch (_) {}
+
+        saveLocalScore({
+          name: sanitized,
+          rank: rank,
+          score: record && record.score != null ? record.score : 0,
+          timeFormatted: (record && record.playTimeFormatted) || '00:00',
+          deaths: (record && record.deaths) || 0
+        });
+
+        cleanup();
+        if (typeof onDone === 'function') onDone();
+      };
+    }
+
+    if (skipBtn) {
+      skipBtn.onclick = () => {
+        cleanup();
+        if (typeof onDone === 'function') onDone();
+      };
     }
   }
 
@@ -4675,6 +4780,7 @@ export class RPGGame {
     if (!this.deathsByScene) this.deathsByScene = {};
     const sceneId = this.tilemap.currentSceneId;
     this.deathsByScene[sceneId] = (this.deathsByScene[sceneId] || 0) + 1;
+    this.totalDeaths = (this.totalDeaths || 0) + 1;
     this.sceneSurvivalTimer = 0;
   }
 

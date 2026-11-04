@@ -1,3 +1,5 @@
+import { calculateGameScore } from '../core/ScoreSystem.js?v=7';
+
 /**
  * Submódulo de Créditos Finales y Expediente de Compilación (EndingCredits.js)
  * 
@@ -44,9 +46,16 @@ export class EndingCredits {
 
   _buildCreditLines() {
     const r = this.record;
-    const playTimeStr = r.playTimeFormatted || '12 min 30 s';
+    const scoreResult = r.scoreResult || calculateGameScore({
+      playTimeSeconds: r.playTimeSeconds || 0,
+      deaths: r.deaths || 0
+    });
+    const playTimeStr = scoreResult.playTimeFormatted;
     const jailCount = typeof r.jailVisits === 'number' ? r.jailVisits : 0;
-    const finalTitle = r.title || 'Senior Lead Architect del Gran Ojal';
+    const finalTitle = scoreResult.title || r.title || 'Senior Lead Architect del Gran Ojal';
+    const finalRank = scoreResult.rank || 'C';
+    const deathsCount = typeof r.deaths === 'number' ? r.deaths : (scoreResult.deaths || 0);
+    const scoreVal = typeof scoreResult.score === 'number' ? scoreResult.score : 0;
     const coins = typeof r.coins === 'number' ? r.coins : 0;
     const robot = typeof r.robotization === 'number' ? r.robotization : 0;
 
@@ -68,6 +77,8 @@ export class EndingCredits {
 
       { type: 'header', text: '═══ [ EXPEDIENTE DEL PROGRAMADOR ] ═══' },
       { type: 'stat', label: 'Tiempo de Compilación:', value: playTimeStr, color: '#38bdf8' },
+      { type: 'stat', label: 'Bugs Fatales (Muertes):', value: `${deathsCount} ${deathsCount === 1 ? 'muerte' : 'muertes'}`, color: deathsCount === 0 ? '#4ade80' : deathsCount <= 2 ? '#fde047' : '#f87171' },
+      { type: 'stat', label: 'Puntuación Obtenida:', value: `${scoreVal.toLocaleString('es-ES')} pts`, color: scoreResult.color || '#ffd166' },
       { type: 'stat', label: 'Condenas en Calabozo:', value: `${jailCount} ${jailCount === 1 ? 'vez' : 'veces'}`, color: jailCount === 0 ? '#4ade80' : '#f87171' },
       { type: 'stat', label: 'Saldo de Bytes / Monedas:', value: `${coins} bytes`, color: '#fde047' },
       { type: 'stat', label: 'Robotización Residual:', value: `${robot}%`, color: robot === 0 ? '#4ade80' : '#fb923c' },
@@ -79,8 +90,8 @@ export class EndingCredits {
       { type: 'ability', label: '🛡️ Barrera TypeScript:', value: hasShield ? '✓ DESBLOQUEADA' : '✗ NO OBTENIDA', ok: hasShield },
       { type: 'spacer', height: 14 },
 
-      { type: 'header', text: '─── [ RANGO Y TÍTULO FINAL ] ───' },
-      { type: 'rank', text: `★ ${finalTitle} ★` },
+      { type: 'header', text: '─── [ CALIFICACIÓN Y RANGO FINAL ] ───' },
+      { type: 'rank', text: `★ RANGO ${finalRank} · ${finalTitle.toUpperCase()} ★` },
       { type: 'spacer', height: 26 },
 
       { type: 'header', text: '═══ [ CRÉDITOS DE DESARROLLO ] ═══' },
