@@ -1,0 +1,98 @@
+.gitignore
+  h_5d2e00bbfe6d92 1-15
+build-portable.mjs
+  h_5d2e00bbfe6d92 1-180
+el-ojete-dorado-the-game.html
+  h_5d2e00bbfe6d92 1-20156
+favicon.svg
+  h_5d2e00bbfe6d92 1-65
+index.html
+  h_5d2e00bbfe6d92 1-81
+package.json
+  h_5d2e00bbfe6d92 1-19
+server.py
+  h_5d2e00bbfe6d92 1-14
+src/ai/AIBotBrain.js
+  h_5d2e00bbfe6d92 1-413
+src/assets/BossCutscenes.js
+  h_5d2e00bbfe6d92 1-110
+src/assets/CutsceneImages.js
+  h_5d2e00bbfe6d92 1-333
+src/assets/VillainDialogues.js
+  h_5d2e00bbfe6d92 1-246
+src/audio/AmbientMusic.js
+  h_5d2e00bbfe6d92 1-1070
+src/core/Camera2D.js
+  h_5d2e00bbfe6d92 1-69
+src/core/GameLoop.js
+  h_5d2e00bbfe6d92 1-59
+src/core/InputHandler.js
+  h_5d2e00bbfe6d92 1-219
+src/core/QuestLog.js
+  h_5d2e00bbfe6d92 1-185
+src/entities/Animal.js
+  h_5d2e00bbfe6d92 1-143
+src/entities/Enemy.js
+  h_5d2e00bbfe6d92 1-255
+src/entities/Entity.js
+  h_5d2e00bbfe6d92 1-71
+src/entities/NPC.js
+  h_5d2e00bbfe6d92 1-304
+src/entities/Player.js
+  h_5d2e00bbfe6d92 1-537
+src/entities/WorldItem.js
+  h_5d2e00bbfe6d92 1-88
+src/entities/bosses/Boss.js
+  h_5d2e00bbfe6d92 1-279
+src/entities/bosses/FinalBossAlex.js
+  h_5d2e00bbfe6d92 1-319
+src/entities/bosses/GarbageCollectorBoss.js
+  h_5d2e00bbfe6d92 1-230
+src/entities/bosses/PrototypeMicrowaveBoss.js
+  h_5d2e00bbfe6d92 1-263
+src/entities/bosses/StackOverflowBoss.js
+  h_5d2e00bbfe6d92 1-277
+src/graphics/Animator.js
+  h_5d2e00bbfe6d92 1-78
+src/graphics/SpriteSheetGenerator.js
+  h_5d2e00bbfe6d92 1-929
+src/main.js
+  h_5d2e00bbfe6d92 1-4375
+src/physics/CollisionSystem.js
+  h_5d2e00bbfe6d92 1-114
+src/ui/AnimeCutsceneManager.js
+  h_5d2e00bbfe6d92 1-664
+src/ui/CharacterStats.js
+  h_5d2e00bbfe6d92 1-416
+src/ui/DialogueBox.js
+  h_5d2e00bbfe6d92 1-415
+src/ui/EndingCredits.js
+  h_5d2e00bbfe6d92 1-386
+src/ui/Inventory.js
+  h_5d2e00bbfe6d92 1-312
+src/ui/MainMenuAndScenes.js
+  h_5d2e00bbfe6d92 1-3117
+src/ui/QuestLogView.js
+  h_5d2e00bbfe6d92 1-297
+src/ui/WorldMap.js
+  h_5d2e00bbfe6d92 1-961
+src/world/DayNightCycle.js
+  h_5d2e00bbfe6d92 1-200
+src/world/Tilemap.js
+  h_5d2e00bbfe6d92 1-2077
+style.css
+  h_5d2e00bbfe6d92 1-249
+vercel.json
+  h_5d2e00bbfe6d92 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "241d6fe32faa28f026e01ac9fcb52c591df5f521",
+  "prompts": {},
+  "humans": {
+    "h_5d2e00bbfe6d92": {
+      "author": "Jose Manuel Peralta Galisteo <josempgal@ext.inditex.com>"
+    }
+  }
+}
