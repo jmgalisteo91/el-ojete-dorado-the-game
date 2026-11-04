@@ -88,10 +88,11 @@ export const ACHIEVEMENTS = [
 const STORAGE_KEY = 'el_ojete_dorado_achievements_v1';
 
 export class AchievementManager {
-  constructor(viewportWidth = 320, viewportHeight = 180, audioContext = null) {
+  constructor(viewportWidth = 320, viewportHeight = 180, audioContext = null, musicEngine = null) {
     this.viewportWidth = viewportWidth;
     this.viewportHeight = viewportHeight;
     this.audioCtx = audioContext;
+    this.musicEngine = musicEngine;
 
     // Mapa de logros desbloqueados: { [id]: timestamp }
     this.unlocked = {};
@@ -108,6 +109,10 @@ export class AchievementManager {
 
   setAudioContext(ctx) {
     this.audioCtx = ctx;
+  }
+
+  setMusicEngine(musicEngine) {
+    this.musicEngine = musicEngine;
   }
 
   loadFromStorage() {
@@ -193,6 +198,10 @@ export class AchievementManager {
    */
   playFanfare() {
     try {
+      if (this.musicEngine && this.musicEngine.isMuted) return;
+      if (!this.audioCtx && this.musicEngine && this.musicEngine.ctx) {
+        this.audioCtx = this.musicEngine.ctx;
+      }
       const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
       if (!this.audioCtx && AudioCtxClass) {
         this.audioCtx = new AudioCtxClass();
@@ -203,6 +212,9 @@ export class AchievementManager {
       }
 
       const now = this.audioCtx.currentTime;
+      const volScale = this.musicEngine && typeof this.musicEngine.masterVolume === 'number'
+        ? this.musicEngine.masterVolume
+        : 0.75;
       // Arpegio victorioso ascendente: G4, C5, E5, G5, C6 (sostenido)
       const notes = [
         { freq: 392.00, time: 0.00, dur: 0.09, type: 'square' },
@@ -221,11 +233,15 @@ export class AchievementManager {
         osc.frequency.setValueAtTime(n.freq, now + n.time);
 
         gain.gain.setValueAtTime(0.0001, now + n.time);
-        gain.gain.linearRampToValueAtTime(0.09, now + n.time + 0.02);
+        gain.gain.linearRampToValueAtTime(Math.max(0.0002, 0.09 * volScale), now + n.time + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + n.time + n.dur);
 
         osc.connect(gain);
         gain.connect(this.audioCtx.destination);
+        osc.onended = () => {
+          try { osc.disconnect(); } catch {}
+          try { gain.disconnect(); } catch {}
+        };
 
         osc.start(now + n.time);
         osc.stop(now + n.time + n.dur + 0.05);

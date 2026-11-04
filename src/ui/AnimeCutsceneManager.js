@@ -112,10 +112,9 @@ export class AnimeCutsceneManager {
     this.currentScene = cutsceneData;
     this.currentSlideIndex = 0;
     this.onComplete = typeof onComplete === 'function' ? onComplete : null;
+    this.slideLockTimer = 0.16;
 
-    if (this.music && this.music.mode) {
-      this.previousMusicMode = this.music.mode;
-    }
+    this.previousMusicMode = this.music && this.music.mode ? this.music.mode : null;
 
     if (cutsceneData.musicMode && this.music) {
       this.music.setMode(cutsceneData.musicMode);
@@ -142,14 +141,19 @@ export class AnimeCutsceneManager {
     this.shakeTimer = 0;
     this.shakeOffset = { x: 0, y: 0 };
     this.flashAlpha = 0;
+    this.slideLockTimer = 0;
 
-    if (this.music && this.previousMusicMode) {
-      this.music.setMode(this.previousMusicMode);
-    }
+    const prevMusic = this.previousMusicMode;
+    const hadSceneMusic = Boolean(this.currentScene && this.currentScene.musicMode);
+    this.previousMusicMode = null;
 
     const cb = this.onComplete;
     this.onComplete = null;
     this.currentScene = null;
+
+    if (this.music && prevMusic && hadSceneMusic) {
+      this.music.setMode(prevMusic, 0);
+    }
 
     if (typeof cb === 'function') {
       cb(skipped);
@@ -182,6 +186,7 @@ export class AnimeCutsceneManager {
     this.textFinished = false;
     this.timeSinceTextFinished = 0;
     this.lastVoiceCharIdx = -1;
+    this.slideLockTimer = 0.14;
 
     // Efecto de sacudida opcional al entrar a la diapositiva (shake o cameraShake)
     const shakeParam = slide.cameraShake !== undefined ? slide.cameraShake : slide.shake;
@@ -230,6 +235,9 @@ export class AnimeCutsceneManager {
     if (!this.isActive || !this.currentScene) return;
 
     this.animTimer += dt;
+    if (this.slideLockTimer > 0) {
+      this.slideLockTimer = Math.max(0, this.slideLockTimer - dt);
+    }
 
     // Actualización de temblor de cámara
     if (this.shakeTimer > 0) {
@@ -276,6 +284,10 @@ export class AnimeCutsceneManager {
       this.timeSinceTextFinished += dt;
       // Auto-avance de seguridad tras 4.2 segundos con el texto completado
       if (this.timeSinceTextFinished >= 4.2) {
+        if (input) {
+          input.consumeInteraction();
+          input.consumePointerClick();
+        }
         if (this.currentSlideIndex + 1 < this.currentScene.slides.length) {
           this.currentSlideIndex += 1;
           this._setupSlide(this.currentSlideIndex);
@@ -296,12 +308,13 @@ export class AnimeCutsceneManager {
 
       // Interactuar con [E], [Espacio], [Enter] o Clic
       const interacted = input.consumeInteraction() || input.consumePointerClick();
-      if (interacted) {
+      if (interacted && this.slideLockTimer <= 0) {
         if (!this.textFinished) {
           // Si el texto aún se escribe, completarlo de inmediato
           this.visibleChars = fullText.length;
           this.textFinished = true;
           this.timeSinceTextFinished = 0;
+          this.slideLockTimer = 0.12;
           if (this.music && typeof this.music.playMenuMove === 'function') {
             this.music.playMenuMove();
           }

@@ -6,6 +6,18 @@
  * No incluye habilidades permanentes ni métricas de robotización.
  */
 
+const KEY_OR_QUEST_ITEM_IDS = new Set([
+  'dawn_armor',
+  'dawn_sword',
+  'bridge_pass',
+  'golden_apple',
+  'item_abyssal_pointer',
+  'lantern',
+  'silicon_flower',
+  'drone_scrap',
+  'river_trout'
+]);
+
 export class Inventory {
   constructor(itemsSheet, viewportWidth = 320, viewportHeight = 180) {
     this.itemsSheet = itemsSheet;
@@ -13,7 +25,8 @@ export class Inventory {
     this.viewportHeight = viewportHeight;
 
     this.isOpen = false;
-    this.maxSlots = 8;
+    this.maxSlots = 16;
+    this.visibleSlots = 8;
     this.items = [];
     this.selectedIndex = 0;
     this.statusMessage = '';
@@ -36,14 +49,17 @@ export class Inventory {
 
   /**
    * Añade un objeto al inventario (acumulando cantidad si ya existe).
+   * Los objetos clave de historia/misión nunca son bloqueados por límite de ranuras.
    */
   addItem(itemData) {
+    if (!itemData || !itemData.id) return false;
     const existing = this.items.find((it) => it.id === itemData.id);
     if (existing) {
       existing.qty += itemData.qty || 1;
       return true;
     }
-    if (this.items.length >= this.maxSlots) {
+    const isEssential = KEY_OR_QUEST_ITEM_IDS.has(itemData.id);
+    if (this.items.length >= this.maxSlots && !isEssential) {
       return false;
     }
     this.items.push({
@@ -111,11 +127,12 @@ export class Inventory {
   }
 
   /**
-   * Navegación por la cuadrícula 4x2 del inventario.
+   * Navegación por la cuadrícula de 4 columnas del inventario (con páginas de 2 filas visibles).
    */
   moveSelection(dir) {
     const cols = 4;
-    const rows = 2;
+    const totalSlots = Math.max(this.visibleSlots, Math.ceil(Math.max(this.items.length, this.selectedIndex + 1) / cols) * cols);
+    const rows = Math.max(2, Math.ceil(totalSlots / cols));
     const col = this.selectedIndex % cols;
     const row = Math.floor(this.selectedIndex / cols);
 
@@ -180,7 +197,7 @@ export class Inventory {
     ctx.fillText('[I / Esc] Cerrar  ·  [C] Ficha', winX + winW - 8, winY + 7);
 
     // =========================================================================
-    // Cuadrícula de 8 ranuras (4 columnas x 2 filas)
+    // Cuadrícula de 8 ranuras visibles (4 columnas x 2 filas, con paginación automática)
     // =========================================================================
     const cols = 4;
     const slotW = 53;
@@ -190,9 +207,14 @@ export class Inventory {
     const startX = winX + 8;
     const startY = winY + 20;
 
-    for (let i = 0; i < this.maxSlots; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
+    const selectedRow = Math.floor(this.selectedIndex / cols);
+    const startRow = selectedRow >= 2 ? selectedRow - 1 : 0;
+    const firstSlotIndex = startRow * cols;
+
+    for (let v = 0; v < this.visibleSlots; v++) {
+      const i = firstSlotIndex + v;
+      const col = v % cols;
+      const row = Math.floor(v / cols);
       const sx = startX + col * (slotW + gapX);
       const sy = startY + row * (slotH + gapY);
       const isSelected = i === this.selectedIndex;

@@ -303,6 +303,26 @@ export class AmbientMusic {
   }
 
   /**
+   * Desconecta automáticamente los nodos Web Audio tras finalizar un oscilador
+   * para evitar acumulación de referencias en el grafo de audio (Memory Leaks).
+   */
+  _autoDisconnect(osc, ...nodes) {
+    if (!osc) return;
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+      } catch {}
+      for (const n of nodes) {
+        if (n) {
+          try {
+            n.disconnect();
+          } catch {}
+        }
+      }
+    };
+  }
+
+  /**
    * Cambia de modo musical con transición suave de fade-out y fade-in (300-500ms).
    */
   setMode(mode, fadeMs = 350) {
@@ -313,17 +333,47 @@ export class AmbientMusic {
       mode === 'dungeon_hostile' ? 'stage1' :
       mode;
 
-    if (this.mode === normalizedMode) return;
+    if (this._fadeTimeout) {
+      clearTimeout(this._fadeTimeout);
+      this._fadeTimeout = null;
+    }
 
-    if (this.ctx && this.musicGain && this.isPlaying && fadeMs > 50 && this.mode !== 'silent' && this.mode !== 'none') {
+    const isImmediateSilence =
+      normalizedMode === 'game_over' ||
+      normalizedMode === 'silent' ||
+      normalizedMode === 'none';
+
+    if (this.mode === normalizedMode) {
+      if (this.ctx && this.musicGain && !isImmediateSilence) {
+        const now = this.ctx.currentTime;
+        this.musicGain.gain.cancelScheduledValues(now);
+        this.musicGain.gain.setValueAtTime(this.isMuted ? 0 : this.volume, now);
+      }
+      return;
+    }
+
+    if (isImmediateSilence) {
+      this._applyMode(normalizedMode);
+      return;
+    }
+
+    if (
+      this.ctx &&
+      this.musicGain &&
+      this.isPlaying &&
+      fadeMs > 50 &&
+      this.mode !== 'silent' &&
+      this.mode !== 'none' &&
+      this.mode !== 'game_over'
+    ) {
       const now = this.ctx.currentTime;
       const fadeSec = fadeMs / 1000;
       this.musicGain.gain.cancelScheduledValues(now);
       this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
       this.musicGain.gain.linearRampToValueAtTime(0.0001, now + fadeSec);
 
-      if (this._fadeTimeout) clearTimeout(this._fadeTimeout);
       this._fadeTimeout = setTimeout(() => {
+        this._fadeTimeout = null;
         this._applyMode(normalizedMode);
         if (this.ctx && this.musicGain && !this.isMuted && normalizedMode !== 'silent' && normalizedMode !== 'game_over') {
           const inNow = this.ctx.currentTime;
@@ -335,7 +385,9 @@ export class AmbientMusic {
     } else {
       this._applyMode(normalizedMode);
       if (this.ctx && this.musicGain) {
-        this.musicGain.gain.setValueAtTime(this.isMuted ? 0 : this.volume, this.ctx.currentTime);
+        const now = this.ctx.currentTime;
+        this.musicGain.gain.cancelScheduledValues(now);
+        this.musicGain.gain.setValueAtTime(this.isMuted ? 0 : this.volume, now);
       }
     }
   }
@@ -436,6 +488,7 @@ export class AmbientMusic {
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
+    this._autoDisconnect(osc, gain);
     osc.start(now);
     osc.stop(now + 0.16);
   }
@@ -455,6 +508,7 @@ export class AmbientMusic {
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
+    this._autoDisconnect(osc, gain);
     osc.start(now);
     osc.stop(now + 0.32);
   }
@@ -619,8 +673,13 @@ export class AmbientMusic {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
     osc.connect(gain);
     gain.connect(this.ctx.destination);
+    this._autoDisconnect(osc, gain);
     osc.start(now);
     osc.stop(now + 0.1);
+  }
+
+  playHitHurt() {
+    this.playEnemyHit();
   }
 
   playEnemyHit() {
@@ -728,6 +787,7 @@ export class AmbientMusic {
         kGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
         kOsc.connect(kGain);
         kGain.connect(outNode);
+        this._autoDisconnect(kOsc, kGain);
         kOsc.start(now);
         kOsc.stop(now + 0.095);
       }
@@ -742,6 +802,7 @@ export class AmbientMusic {
         sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
         sOsc.connect(sGain);
         sGain.connect(outNode);
+        this._autoDisconnect(sOsc, sGain);
         sOsc.start(now);
         sOsc.stop(now + 0.075);
       }
@@ -757,6 +818,7 @@ export class AmbientMusic {
         gGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
         gOsc.connect(gGain);
         gGain.connect(outNode);
+        this._autoDisconnect(gOsc, gGain);
         gOsc.start(now);
         gOsc.stop(now + 0.065);
       }
@@ -771,6 +833,7 @@ export class AmbientMusic {
         pGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
         pOsc.connect(pGain);
         pGain.connect(outNode);
+        this._autoDisconnect(pOsc, pGain);
         pOsc.start(now);
         pOsc.stop(now + 0.055);
       }
@@ -822,14 +885,16 @@ export class AmbientMusic {
 
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
+    let lfo = null;
+    let lfoGain = null;
 
     osc.type = type;
     osc.frequency.setValueAtTime(freq, startTime);
 
     // Suave vibrato para las notas largas de la melodía
     if (vibrato && duration > 0.35) {
-      const lfo = this.ctx.createOscillator();
-      const lfoGain = this.ctx.createGain();
+      lfo = this.ctx.createOscillator();
+      lfoGain = this.ctx.createGain();
       lfo.frequency.value = 5.0;
       lfoGain.gain.value = 2.2;
       lfo.connect(lfoGain);
@@ -844,6 +909,7 @@ export class AmbientMusic {
 
     osc.connect(gain);
     gain.connect(this.musicGain || this.ctx.destination);
+    this._autoDisconnect(osc, gain, lfo, lfoGain);
 
     osc.start(startTime);
     osc.stop(startTime + duration + 0.02);
@@ -910,6 +976,7 @@ export class AmbientMusic {
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
+    this._autoDisconnect(osc, gain);
 
     osc.start(now);
     osc.stop(now + duration + 0.005);
@@ -981,6 +1048,7 @@ export class AmbientMusic {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+      this._autoDisconnect(osc, gain, lfo, lfoGain);
 
       lfo.start(now);
       osc.start(now);
@@ -1007,6 +1075,7 @@ export class AmbientMusic {
 
         osc.connect(gain);
         gain.connect(this.ctx.destination);
+        this._autoDisconnect(osc, gain);
         osc.start(now + n.t);
         osc.stop(now + n.t + n.d + 0.01);
       }
@@ -1027,6 +1096,7 @@ export class AmbientMusic {
 
         osc.connect(gain);
         gain.connect(this.ctx.destination);
+        this._autoDisconnect(osc, gain);
         osc.start(now + offset);
         osc.stop(now + offset + 0.12);
       }
@@ -1038,6 +1108,8 @@ export class AmbientMusic {
    * Detiene el bucle de fondo y reproduce la fanfarria fúnebre.
    */
   playGameOver() {
+    this.currentBossTrack = null;
+    this.savedAmbientMode = null;
     this.setMode('game_over');
     if (!this.ctx || this.isMuted) return;
     if (this.ctx.state === 'suspended') {
@@ -1062,6 +1134,7 @@ export class AmbientMusic {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+      this._autoDisconnect(osc, gain);
       osc.start(now + n.t);
       osc.stop(now + n.t + n.d + 0.02);
     }

@@ -8,6 +8,7 @@ import {
 } from './graphics/SpriteSheetGenerator.js?v=6';
 import { SpriteAnimator } from './graphics/Animator.js?v=6';
 import { Tilemap } from './world/Tilemap.js?v=6';
+import { CollisionSystem } from './physics/CollisionSystem.js?v=6';
 import { Player } from './entities/Player.js?v=6';
 import { NPC } from './entities/NPC.js?v=6';
 import { Animal } from './entities/Animal.js?v=6';
@@ -82,7 +83,8 @@ export class RPGGame {
     this.achievementManager = new AchievementManager(
       VIEWPORT_WIDTH,
       VIEWPORT_HEIGHT,
-      this.music ? this.music.ctx : null
+      this.music ? this.music.ctx : null,
+      this.music
     );
     this.questLog = new QuestLog((msg) => {
       if (this.menuSystem) this.menuSystem.showNotice(msg, 3.5);
@@ -371,11 +373,17 @@ export class RPGGame {
 
     this.inventory.items = [];
     this.inventory.selectedIndex = 0;
+    this.gameCompleted = false;
+    this.prebattleAlexCutscenePlayed = false;
     this.bossCutscenesSeen = {
       boss_garbage_collector: false,
       boss_stack_overflow: false,
       boss_prototype_microwave: false
     };
+
+    if (this.music && this.music.currentBossTrack) {
+      this.music.stopBossMusic(false);
+    }
 
     // Estado del Puntero al Abismo y Portal dinámico a los Reinos Condenados
     this.abyssalPointerSpawn = null;
@@ -640,18 +648,43 @@ export class RPGGame {
         }
       }
 
-      if (Array.isArray(data.defeatedEnemyIds)) {
-        for (const en of this.enemies) {
-          if (data.defeatedEnemyIds.includes(en.id)) {
-            en.dead = true;
-            en.hp = 0;
+      const defeatedSet = new Set(Array.isArray(data.defeatedEnemyIds) ? data.defeatedEnemyIds : []);
+      if (this.player.hasDash) defeatedSet.add('boss_garbage_collector');
+      if (this.player.hasChargedAttack) defeatedSet.add('boss_stack_overflow');
+      if (this.player.hasBarrier) defeatedSet.add('boss_prototype_microwave');
+
+      for (const en of this.enemies) {
+        if (defeatedSet.has(en.id)) {
+          en.dead = true;
+          en.defeated = true;
+          en.hp = 0;
+          en.activeCombat = false;
+          en.defeatBannerTimer = 0;
+          en.questCompletedTriggered = true;
+          en.victoryCutsceneTriggered = true;
+          if (typeof en.resetCombatState === 'function') {
+            en.resetCombatState();
           }
         }
       }
 
+      if (targetScene === 'jail_cell' && !this.isJailedForever && this.jailRemainingSeconds <= 0) {
+        this.jailRemainingSeconds = 120;
+      }
+
+      const stageScenes = new Set([
+        'first_stage',
+        'sewers_dungeon',
+        'armor_temple',
+        'sword_temple',
+        'ai_fortress_gate',
+        'ai_citadel',
+        'condemned_realms'
+      ]);
+
       if (
         targetScene !== 'overworld' &&
-        targetScene !== 'first_stage' &&
+        !stageScenes.has(targetScene) &&
         targetScene !== 'jail_cell'
       ) {
         const ownerNPC = this.npcs.find((n) => n.homeSceneId === targetScene);
@@ -668,7 +701,7 @@ export class RPGGame {
       this.music.setMode(
         targetScene === 'jail_cell'
           ? 'jail'
-          : targetScene === 'first_stage'
+          : stageScenes.has(targetScene)
             ? 'stage1'
             : 'village'
       );
@@ -771,6 +804,10 @@ export class RPGGame {
     this.aiChatOpen = false;
     this.chatModal.classList.add('hidden');
     this.chatInput.blur();
+    if (this.input && this.input.keysJustPressed) {
+      this.input.keysJustPressed.delete('Escape');
+      this.input.keysJustPressed.delete('Enter');
+    }
     if (reopenChoices && !this.dialogueBox.active) {
       this.dialogueBox.showMessage(
         'Oráculo Orion · Astrólogo IA',
@@ -3764,6 +3801,12 @@ export class RPGGame {
     if (door.type === 'exit') {
       this._restoreAllNPCsToOverworld();
     }
+    // Limpiar proyectiles, clones, ondas y charcos activos de cualquier jefe al cambiar de escena
+    for (const en of this.enemies) {
+      if (en.isBoss && !en.dead && typeof en.resetCombatState === 'function') {
+        en.resetCombatState();
+      }
+    }
     // Si entramos a un templo, configurar su puerta de salida para regresar exactamente a la escena de origen
     if (door.targetScene === 'armor_temple' || door.targetScene === 'sword_temple') {
       const targetTemple = this.tilemap.scenes[door.targetScene];
@@ -3936,11 +3979,15 @@ export class RPGGame {
       this.player.direction = 'down';
     }
 
-    // Reiniciar posición de patrulla de los enemigos vivos para no bloquear al jugador
+    // Reiniciar posición de patrulla y estado de combate de los enemigos vivos para no bloquear al jugador
     for (const en of this.enemies) {
-      if (!en.dead && en.patrolPoints && en.patrolPoints.length > 0) {
-        en.x = en.patrolPoints[0].x;
-        en.y = en.patrolPoints[0].y;
+      if (!en.dead) {
+        if (en.isBoss && typeof en.resetCombatState === 'function') {
+          en.resetCombatState();
+        } else if (en.patrolPoints && en.patrolPoints.length > 0) {
+          en.x = en.patrolPoints[0].x;
+          en.y = en.patrolPoints[0].y;
+        }
       }
     }
     this.camera.snapTo(this.player);
@@ -4121,17 +4168,20 @@ export class RPGGame {
       return;
     }
 
-    // Apertura independiente de la Mochila (Tecla 'I' o Tab)
-    if (this.input.consumeInventoryToggle() && !this.dialogueBox.active && this.menuSystem.state === 'none') {
-      if (this.characterStats.isOpen) {
-        this.characterStats.close();
-      }
+    // Apertura independiente de la Mochila (Tecla 'I' o Tab, salvo cuando la Ficha 'C' usa Tab para cambiar de pestaña)
+    if (
+      !this.dialogueBox.active &&
+      this.menuSystem.state === 'none' &&
+      !this.characterStats.isOpen &&
+      this.input.consumeInventoryToggle()
+    ) {
       if (this.questLogView && this.questLogView.isOpen) {
         this.questLogView.close();
       }
       this.inventory.toggle();
-      if (this.inventory.isOpen && this.music) {
-        this.music.playMenuSelect();
+      if (this.inventory.isOpen) {
+        this.player.stopMovement();
+        if (this.music) this.music.playMenuSelect();
       }
     }
 
@@ -4144,8 +4194,9 @@ export class RPGGame {
         this.questLogView.close();
       }
       this.characterStats.toggle();
-      if (this.characterStats.isOpen && this.music) {
-        this.music.playMenuSelect();
+      if (this.characterStats.isOpen) {
+        this.player.stopMovement();
+        if (this.music) this.music.playMenuSelect();
       }
     }
 
@@ -4162,8 +4213,9 @@ export class RPGGame {
       }
       if (this.questLogView) {
         this.questLogView.toggle();
-        if (this.questLogView.isOpen && this.music) {
-          this.music.playMenuSelect();
+        if (this.questLogView.isOpen) {
+          this.player.stopMovement();
+          if (this.music) this.music.playMenuSelect();
         }
       }
     }
@@ -4178,6 +4230,7 @@ export class RPGGame {
       } else if (this.dialogueBox.active) {
         this.dialogueBox.close();
       } else {
+        this.player.stopMovement();
         this.menuSystem.openPauseMenu();
         this.input.endFrame();
         return;
@@ -4282,7 +4335,7 @@ export class RPGGame {
         this.input.endFrame();
         return;
       }
-      if (this.input.consumeInventoryToggle() || this.input.consumeKey('KeyI')) {
+      if (this.input.consumeKey('KeyI')) {
         this.characterStats.close();
         this.inventory.open();
         if (this.music) this.music.playMenuSelect();
@@ -4554,7 +4607,7 @@ export class RPGGame {
         enemy.isBoss &&
         enemy.dead &&
         !enemy.victoryCutsceneTriggered &&
-        (enemy.id === 'boss_final_ai_alex' || enemy.id === 'boss_prototype_microwave')
+        enemy.id === 'boss_final_ai_alex'
       ) {
         enemy.victoryCutsceneTriggered = true;
         this.gameCompleted = true;
@@ -4566,6 +4619,11 @@ export class RPGGame {
     }
 
     if (this.player.hp <= 0) {
+      for (const en of this.enemies) {
+        if (en.isBoss && !en.dead && typeof en.resetCombatState === 'function') {
+          en.resetCombatState();
+        }
+      }
       this.menuSystem.openGameOverScreen(!this.player.hasArmor);
       this.input.endFrame();
       return;

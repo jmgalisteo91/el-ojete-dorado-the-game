@@ -41,6 +41,24 @@ export class StackOverflowBoss extends Boss {
     this.lastMilestoneHp = 120;
   }
 
+  resetCombatState() {
+    super.resetCombatState();
+    this.channelTimer = 0;
+    this.isChanneling = false;
+    this.shockwaveCooldown = 9.0;
+    this.shockwaves = [];
+    this.clones = [];
+    this.lastMilestoneHp = 120;
+  }
+
+  triggerBossDefeat(player, soundEngine = null) {
+    super.triggerBossDefeat(player, soundEngine);
+    this.isChanneling = false;
+    this.channelTimer = 0;
+    this.shockwaves = [];
+    this.clones = [];
+  }
+
   takeSwordHit(player, soundEngine = null, customDamage = null) {
     const prevHp = this.hp;
     const hit = super.takeSwordHit(player, soundEngine, customDamage);

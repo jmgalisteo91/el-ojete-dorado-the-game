@@ -41,6 +41,16 @@ export class GarbageCollectorBoss extends Boss {
     this.chargeVy = 0;
   }
 
+  resetCombatState() {
+    super.resetCombatState();
+    this.state = 'chase';
+    this.acidTimer = 3.5;
+    this.chargeCooldown = 7.0;
+    this.stateTimer = 0;
+    this.chargeVx = 0;
+    this.chargeVy = 0;
+  }
+
   takeSwordHit(player, soundEngine = null, customDamage = null) {
     // Si está aturdido tras chocar contra el muro, recibe un 50% extra de daño o daño crítico
     const bonusDmg = this.state === 'stunned' ? 2 : 1;

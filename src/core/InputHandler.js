@@ -48,14 +48,25 @@ export class InputHandler {
     this.pointerY = ((event.clientY - rect.top) / rect.height) * 180;
   }
 
+  _isDOMModalBlocking() {
+    const activeTag = document.activeElement ? document.activeElement.tagName : '';
+    if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+      return true;
+    }
+    const chatModal = typeof document !== 'undefined' ? document.getElementById('ai-chat-modal') : null;
+    if (chatModal && !chatModal.classList.contains('hidden')) {
+      return true;
+    }
+    return false;
+  }
+
   _onPointerMove(event) {
     this._updateCanvasCoords(event);
   }
 
   _onPointerDown(event) {
     this._notifyFirstInteraction();
-    const activeTag = document.activeElement ? document.activeElement.tagName : '';
-    if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+    if (this._isDOMModalBlocking()) return;
     this._updateCanvasCoords(event);
     this.pointerJustClicked = true;
   }
@@ -63,9 +74,8 @@ export class InputHandler {
   _onKeyDown(event) {
     this._notifyFirstInteraction();
 
-    // Si el jugador está escribiendo en el cuadro de texto del NPC con IA, no interceptar teclas
-    const activeTag = document.activeElement ? document.activeElement.tagName : '';
-    if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+    // Si el jugador está interactuando con el modal de chat de IA, no interceptar teclas de juego
+    if (this._isDOMModalBlocking()) {
       return;
     }
 
@@ -77,7 +87,7 @@ export class InputHandler {
       'KeyW', 'KeyA', 'KeyS', 'KeyD',
       'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
       'KeyE', 'Space', 'Enter', 'KeyF', 'KeyJ', 'KeyK', 'KeyI', 'KeyC', 'KeyX', 'Tab', 'Escape', 'KeyM',
-      'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyL', 'Digit1', 'Digit2'
+      'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyL', 'Digit1', 'Digit2', 'Numpad1', 'Numpad2'
     ];
 
     // Prevenir el scroll por defecto de la página web (Espacio, Flechas, Tab) en el navegador / Vercel

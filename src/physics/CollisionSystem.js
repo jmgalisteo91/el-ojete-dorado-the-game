@@ -4,12 +4,17 @@
  */
 export class CollisionSystem {
   static checkAABB(a, b) {
+    if (!a || !b) return false;
     return (
       a.x < b.x + b.width &&
       a.x + a.width > b.x &&
       a.y < b.y + b.height &&
       a.y + a.height > b.y
     );
+  }
+
+  static isBoxColliding(a, b) {
+    return CollisionSystem.checkAABB(a, b);
   }
 
   static collidesWithMap(box, tilemap) {

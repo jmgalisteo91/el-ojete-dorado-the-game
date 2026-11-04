@@ -54,6 +54,23 @@ export class FinalBossAlex extends Boss {
     this.microwaveTimerSec = 3;
     this.animTimer = 0;
     this.holograms = [];
+    this.pendingBurstShots = [];
+    this.statusText = `💬 ${getRandomBattleBark('PHASE_1_START')}`;
+  }
+
+  resetCombatState() {
+    super.resetCombatState();
+    this.laserTimer = 2.2;
+    this.heatWaveTimer = 4.5;
+    this.spiralTimer = 3.0;
+    this.teleportTimer = 5.0;
+    this.hologramTimer = 8.0;
+    this.hitCountInPhase = 0;
+    this.isOverclocked = false;
+    this.roomFrozen = false;
+    this.speed = 36;
+    this.holograms = [];
+    this.pendingBurstShots = [];
     this.statusText = `💬 ${getRandomBattleBark('PHASE_1_START')}`;
   }
 
@@ -95,6 +112,7 @@ export class FinalBossAlex extends Boss {
     this.statusText = '💥 ¡KERNEL PANIC! PROCESO TERMINADO';
     this.projectiles = [];
     this.holograms = [];
+    this.pendingBurstShots = [];
   }
 
   _performQuantumTeleport() {
@@ -125,7 +143,30 @@ export class FinalBossAlex extends Boss {
     }
 
     const baseResult = super.update(dt, tilemap, player, paused, soundEngine);
-    if (!this.activeCombat || !player) return baseResult;
+    if (!this.activeCombat || !player || this.dead) return baseResult;
+
+    // Procesar ráfagas programadas en el bucle determinista (sin setTimeout huérfanos)
+    for (let i = this.pendingBurstShots.length - 1; i >= 0; i--) {
+      const shot = this.pendingBurstShots[i];
+      shot.delay -= dt;
+      if (shot.delay <= 0) {
+        this.projectiles.push({
+          x: this.centerX,
+          y: this.centerY,
+          vx: Math.cos(shot.angle) * shot.speed,
+          vy: Math.sin(shot.angle) * shot.speed,
+          radius: 4,
+          life: 3.5,
+          color: shot.index % 2 === 0 ? '#ef4444' : '#38bdf8',
+          isBit: true,
+          label: shot.index % 2 === 0 ? '1' : '0'
+        });
+        if (soundEngine && typeof soundEngine.playHitHurt === 'function') {
+          soundEngine.playHitHurt();
+        }
+        this.pendingBurstShots.splice(i, 1);
+      }
+    }
 
     // 1. Ataque: Rayo Láser Binario (Ráfaga de 0s y 1s dirigidos)
     this.laserTimer -= dt;
@@ -133,25 +174,15 @@ export class FinalBossAlex extends Boss {
       this.laserTimer = this.isOverclocked ? 1.6 : 2.5;
       const angle = Math.atan2(player.centerY - this.centerY, player.centerX - this.centerX);
       const projSpeed = this.isOverclocked ? 90 : 75;
+      const burstCount = this.isOverclocked ? 4 : 2;
 
-      for (let i = 0; i < (this.isOverclocked ? 4 : 2); i++) {
-        setTimeout(() => {
-          if (this.dead || this.roomFrozen) return;
-          this.projectiles.push({
-            x: this.centerX,
-            y: this.centerY,
-            vx: Math.cos(angle) * projSpeed,
-            vy: Math.sin(angle) * projSpeed,
-            radius: 4,
-            life: 3.5,
-            color: i % 2 === 0 ? '#ef4444' : '#38bdf8',
-            isBit: true,
-            label: i % 2 === 0 ? '1' : '0'
-          });
-          if (soundEngine && typeof soundEngine.playHitHurt === 'function') {
-            soundEngine.playHitHurt();
-          }
-        }, i * 90);
+      for (let i = 0; i < burstCount; i++) {
+        this.pendingBurstShots.push({
+          delay: i * 0.09,
+          angle,
+          speed: projSpeed,
+          index: i
+        });
       }
     }
 
@@ -206,29 +237,6 @@ export class FinalBossAlex extends Boss {
       if (this.teleportTimer <= 0) {
         this.teleportTimer = 4.8;
         this._performQuantumTeleport();
-      }
-    }
-
-    // Actualización de proyectiles activos
-    for (let i = this.projectiles.length - 1; i >= 0; i--) {
-      const p = this.projectiles[i];
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.life -= dt;
-
-      // Colisión con el jugador
-      if (
-        player &&
-        !player.invulnerable &&
-        Math.hypot(p.x - player.centerX, p.y - player.centerY) <= p.radius + 6
-      ) {
-        player.takeHit(soundEngine);
-        this.projectiles.splice(i, 1);
-        continue;
-      }
-
-      if (p.life <= 0) {
-        this.projectiles.splice(i, 1);
       }
     }
 

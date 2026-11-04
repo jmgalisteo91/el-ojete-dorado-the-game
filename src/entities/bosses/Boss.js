@@ -61,6 +61,32 @@ export class Boss extends Enemy {
   }
 
   /**
+   * Reinicia el estado de combate, proyectiles, charcos y posición del jefe
+   * cuando el jugador muere o abandona la sala sin haberlo derrotado.
+   */
+  resetCombatState() {
+    if (this.dead) {
+      this.projectiles = [];
+      this.hazardPuddles = [];
+      this.minions = [];
+      this.defeatBannerTimer = 0;
+      return;
+    }
+    this.x = this.spawnX;
+    this.y = this.spawnY;
+    this.hp = this.maxHp;
+    this.activeCombat = false;
+    this.invulnerable = false;
+    this.statusText = '';
+    this.hitFlashTimer = 0;
+    this.knockbackTimer = 0;
+    this.attackCooldown = 0;
+    this.projectiles = [];
+    this.hazardPuddles = [];
+    this.minions = [];
+  }
+
+  /**
    * Recibe un impacto de la espada del jugador o de un ataque especial.
    */
   takeSwordHit(player, soundEngine = null, customDamage = null) {
@@ -101,6 +127,9 @@ export class Boss extends Enemy {
     this.activeCombat = false;
     this.statusText = '¡DERROTADO!';
     this.defeatBannerTimer = 6.0;
+    this.projectiles = [];
+    this.hazardPuddles = [];
+    this.minions = [];
 
     // Detener música de jefe y reproducir fanfarria retro
     if (soundEngine && typeof soundEngine.stopBossMusic === 'function') {

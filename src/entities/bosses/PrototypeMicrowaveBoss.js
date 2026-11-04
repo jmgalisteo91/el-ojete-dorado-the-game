@@ -47,6 +47,30 @@ export class PrototypeMicrowaveBoss extends Boss {
     this.stunnedTimer = 0;
   }
 
+  resetCombatState() {
+    super.resetCombatState();
+    this.shootTimer = 2.4;
+    this.heatCycleActive = false;
+    this.heatCycleTimer = 0;
+    this.heatSpiralAngle = 0;
+    this.stunnedTimer = 0;
+    for (const f of this.fuses) {
+      f.active = false;
+      f.hit = false;
+    }
+  }
+
+  triggerBossDefeat(player, soundEngine = null) {
+    super.triggerBossDefeat(player, soundEngine);
+    this.heatCycleActive = false;
+    this.heatCycleTimer = 0;
+    this.stunnedTimer = 0;
+    for (const f of this.fuses) {
+      f.active = false;
+      f.hit = false;
+    }
+  }
+
   takeSwordHit(player, soundEngine = null, customDamage = null) {
     if (this.invulnerable) {
       if (soundEngine && typeof soundEngine.playMetalClink === 'function') {

@@ -52,9 +52,24 @@ export class Player extends Entity {
     this.barrierCooldown = 0;
 
     this.invulnTimer = 0;
+    this.knockbackTimer = 0;
     this.attackTimer = 0;
     this.attackDuration = 0.22;
     this.attackCooldown = 0;
+  }
+
+  get invulnerableTimer() {
+    return this.invulnTimer;
+  }
+
+  set invulnerableTimer(val) {
+    this.invulnTimer = val;
+  }
+
+  stopMovement() {
+    this.isMoving = false;
+    this.chargeTimer = 0;
+    this.dashTimer = 0;
   }
 
   get effectiveMaxHp() {
@@ -283,6 +298,8 @@ export class Player extends Entity {
 
     if (movementLocked) {
       this.isMoving = false;
+      this.chargeTimer = 0;
+      this.dashTimer = 0;
       super.update(dt);
       return;
     }

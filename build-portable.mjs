@@ -44,23 +44,52 @@ const MODULE_ORDER = [
 
 function stripImportsAndExports(code) {
   let res = code;
-  // 1. Eliminar re-exportaciones: export { ... } from '...';
-  res = res.replace(/export\s*\{[^{}]*?\}\s*from\s*['"][^'"]+['"];?/g, '');
-  // 2. Eliminar exportaciones agrupadas: export { ... };
-  res = res.replace(/export\s*\{[^{}]*?\};?/g, '');
-  // 3. Eliminar importaciones con origen: import ... from '...';
-  res = res.replace(/import\s*\{[^{}]*?\}\s*from\s*['"][^'"]+['"];?/g, '');
-  res = res.replace(/import\s*[\w*\s{},]+from\s*['"][^'"]+['"];?/g, '');
-  // 4. Eliminar importaciones desnudas: import '...';
-  res = res.replace(/import\s*['"][^'"]+['"];?/g, '');
-  // 5. Eliminar export default
-  res = res.replace(/export\s+default\s+/g, '');
-  // 6. Transformar declaraciones export a declaraciones locales
-  res = res.replace(/export\s+(async\s+function|function|class|const|let|var)\b/g, '$1');
+  // 1. Eliminar re-exportaciones ancladas a inicio de línea: export { ... } from '...';
+  res = res.replace(/^\s*export\s*\{[^{}]*?\}\s*from\s*['"][^'"]+['"];?/gm, '');
+  // 2. Eliminar exportaciones agrupadas ancladas a inicio de línea: export { ... };
+  res = res.replace(/^\s*export\s*\{[^{}]*?\};?/gm, '');
+  // 3. Eliminar importaciones con origen ancladas a inicio de línea: import ... from '...';
+  res = res.replace(/^\s*import\s*\{[^{}]*?\}\s*from\s*['"][^'"]+['"];?/gm, '');
+  res = res.replace(/^\s*import\s*[\w*\s{},]+from\s*['"][^'"]+['"];?/gm, '');
+  // 4. Eliminar importaciones desnudas ancladas a inicio de línea: import '...';
+  res = res.replace(/^\s*import\s*['"][^'"]+['"];?/gm, '');
+  // 5. Eliminar export default anclado a inicio de línea
+  res = res.replace(/^\s*export\s+default\s+/gm, '');
+  // 6. Transformar declaraciones export a declaraciones locales ancladas a inicio de línea
+  res = res.replace(/^(\s*)export\s+(async\s+function|function|class|const|let|var)\b/gm, '$1$2');
   return res;
 }
 
+function validateEsmCrossModuleReferences() {
+  const exportedClasses = new Map();
+  for (const relPath of MODULE_ORDER) {
+    const raw = fs.readFileSync(path.join(__dirname, relPath), 'utf8');
+    const classMatches = raw.matchAll(/^\s*export\s+class\s+(\w+)/gm);
+    for (const m of classMatches) {
+      exportedClasses.set(m[1], relPath);
+    }
+  }
+
+  for (const relPath of MODULE_ORDER) {
+    const raw = fs.readFileSync(path.join(__dirname, relPath), 'utf8');
+    for (const [className, ownerPath] of exportedClasses.entries()) {
+      if (ownerPath === relPath) continue;
+      const usageRegex = new RegExp(`\\b${className}\\s*\\.\\s*\\w+|\\bnew\\s+${className}\\b`);
+      if (usageRegex.test(raw)) {
+        const importRegex = new RegExp(`import\\s*\\{[^}]*\\b${className}\\b[^}]*\\}\\s*from`);
+        if (!importRegex.test(raw)) {
+          throw new Error(
+            `❌ Error de integridad ESM: '${relPath}' utiliza '${className}' (de '${ownerPath}') sin importarlo explícitamente.`
+          );
+        }
+      }
+    }
+  }
+  console.log('✓ Verificación de referencias cruzadas ESM: todos los módulos importan sus dependencias.');
+}
+
 function buildPortableHtml() {
+  validateEsmCrossModuleReferences();
   const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
   const faviconSvg = fs.readFileSync(path.join(__dirname, 'favicon.svg'), 'utf8');
   const faviconDataUri =
