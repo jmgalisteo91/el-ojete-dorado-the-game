@@ -172,20 +172,18 @@ export class Tilemap {
    */
   findNearbyDoor(player) {
     if (this.currentSceneId === 'first_stage') {
-      // 1. Portal del Este hacia el Pueblo de Valleverde
+      // 1. Portal del Este hacia el Pueblo de Valleverde (siempre accesible para retornar a zona segura)
       const gateX = 33 * this.tileSize;
       const gateY = 12.5 * this.tileSize;
       if (Math.hypot(player.centerX - gateX, player.centerY - gateY) <= 24) {
         return {
-          type: this.firstStageGateOpen ? 'stage_transition' : 'stage_locked',
+          type: 'stage_transition',
           targetScene: 'overworld',
-          label: this.firstStageGateOpen
-            ? 'Cruzar al Pueblo de Valleverde'
-            : 'Portal Sagrado Sellado (Consigue Armadura y Espada)',
+          label: 'Regresar a la Aldea de Valleverde (Zona Segura)',
           worldX: gateX,
           worldY: gateY,
-          spawnX: 5 * this.tileSize,
-          spawnY: 12 * this.tileSize
+          spawnX: 3.5 * this.tileSize,
+          spawnY: 12.5 * this.tileSize
         };
       }
 
@@ -1245,7 +1243,9 @@ export class Tilemap {
 
     // Barrera de fuego bloqueando el acceso al Altar (se disipa al resolver el puzle booleano)
     if (this.armorPuzzle.barrierActive) {
+      setDeco(9, 5, TILES.FIREPLACE, true);
       setDeco(10, 5, TILES.FIREPLACE, true);
+      setDeco(11, 5, TILES.FIREPLACE, true);
     }
     lightSources.push(
       { x: 10.5 * 16, y: 4.5 * 16, radius: 64, intensity: 1.0 },
@@ -1840,8 +1840,10 @@ export class Tilemap {
       // Retirar la barrera de fuego en la capa de colisión y decoración del templo
       const temple = this.scenes.armor_temple;
       if (temple && temple.layers) {
-        temple.layers.collision[5][10] = 0;
-        temple.layers.decoration[5][10] = -1;
+        for (let c = 9; c <= 11; c++) {
+          temple.layers.collision[5][c] = 0;
+          temple.layers.decoration[5][c] = -1;
+        }
       }
       return { solved: true, justSolved: true, conditionResult: true };
     }
@@ -1921,21 +1923,23 @@ export class Tilemap {
 
     // 3. Barrera de fuego (si no está resuelto el puzle)
     if (this.armorPuzzle.barrierActive) {
-      const barX = Math.round(this.armorPuzzle.barrierCol * this.tileSize - camX);
-      const barY = Math.round(this.armorPuzzle.barrierRow * this.tileSize - camY);
+      for (let c = 9; c <= 11; c++) {
+        const barX = Math.round(c * this.tileSize - camX);
+        const barY = Math.round(this.armorPuzzle.barrierRow * this.tileSize - camY);
 
-      // Llamas animadas tipo pixel art
-      const flameH = 10 + Math.sin(t * 8) * 3;
-      ctx.fillStyle = '#ef4444';
-      ctx.fillRect(barX + 2, barY + 16 - flameH, 12, flameH);
-      ctx.fillStyle = '#f59e0b';
-      ctx.fillRect(barX + 4, barY + 16 - flameH + 2, 8, flameH - 2);
-      ctx.fillStyle = '#fef08a';
-      ctx.fillRect(barX + 6, barY + 16 - flameH + 4, 4, flameH - 4);
+        // Llamas animadas tipo pixel art
+        const flameH = 10 + Math.sin(t * 8 + c) * 3;
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(barX + 2, barY + 16 - flameH, 12, flameH);
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(barX + 4, barY + 16 - flameH + 2, 8, flameH - 2);
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(barX + 6, barY + 16 - flameH + 4, 4, flameH - 4);
 
-      // Resplandor de calor
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.16)';
-      ctx.fillRect(barX - 4, barY - 4, 24, 24);
+        // Resplandor de calor
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.16)';
+        ctx.fillRect(barX - 4, barY - 4, 24, 24);
+      }
     }
 
     ctx.restore();

@@ -338,3 +338,4 @@ export class AchievementManager {
     ctx.restore();
   }
 }
+

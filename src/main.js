@@ -2390,56 +2390,8 @@ export class RPGGame {
       }),
 
       // ==================== NIVEL: TEMPLO DEL BASTIÓN (ARMADURA) ====================
-      new Enemy({
-        id: 'drone_temple_west',
-        name: 'Centinela Ágil del Bastión',
-        x: 4 * 16,
-        y: 11 * 16,
-        sceneId: 'armor_temple',
-        speed: 38,
-        maxHp: 2,
-        aggroRange: 56,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.11),
-        patrolPoints: [
-          { x: 4 * 16, y: 12 * 16 },
-          { x: 4 * 16, y: 7 * 16 },
-          { x: 6 * 16, y: 7 * 16 },
-          { x: 4 * 16, y: 9 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'drone_temple_east',
-        name: 'Centinela Ágil del Bastión',
-        x: 17 * 16,
-        y: 8 * 16,
-        sceneId: 'armor_temple',
-        speed: 38,
-        maxHp: 2,
-        aggroRange: 56,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.11),
-        patrolPoints: [
-          { x: 17 * 16, y: 7 * 16 },
-          { x: 17 * 16, y: 12 * 16 },
-          { x: 15 * 16, y: 12 * 16 },
-          { x: 15 * 16, y: 8 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'drone_temple_sanctum',
-        name: 'Dron Guardián del Sagrario',
-        x: 10 * 16,
-        y: 7 * 16,
-        sceneId: 'armor_temple',
-        speed: 40,
-        maxHp: 3,
-        aggroRange: 60,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.11),
-        patrolPoints: [
-          { x: 7 * 16, y: 7 * 16 },
-          { x: 13 * 16, y: 7 * 16 },
-          { x: 10 * 16, y: 6 * 16 }
-        ]
-      }),
+      // El Templo de la Armadura es un santuario sagrado de pura lógica booleana;
+      // no contiene centinelas hostiles para que el jugador indefenso resuelva las baldosas.
 
       // ==================== NIVEL: TEMPLO DEL ALTAR SAGRADO (ESPADA) ====================
       new Enemy({
@@ -2561,7 +2513,7 @@ export class RPGGame {
       // Boss 2: El Guardián del Stack Overflow (Templo de la Espada · 120 HP)
       new StackOverflowBoss({
         x: 11.5 * 16,
-        y: 6.5 * 16,
+        y: 4.5 * 16,
         sceneId: 'sword_temple'
       }),
 
@@ -2927,6 +2879,11 @@ export class RPGGame {
     const enemies = this.enemies.filter((e) => {
       if (e.sceneId !== scene) return false;
       if (e.nightOnly && !isNight) return false;
+      // En el Templo de la Espada, los guardianes y el jefe permanecen en letargo sagrado
+      // hasta que el jugador resuelva la prueba y desenvaine la Espada de la Recursividad
+      if (scene === 'sword_temple' && !this.player.hasSword) {
+        return false;
+      }
       return true;
     });
     const items = this.worldItems.filter((i) => {
@@ -2962,7 +2919,7 @@ export class RPGGame {
           return {
             kind: 'sword_monolith',
             target: mono,
-            label: `[E] Golpear ${mono.name} (${mono.symbol})`
+            label: `[E] Sintonizar ${mono.name} (${mono.symbol})`
           };
         }
       }
@@ -3344,33 +3301,22 @@ export class RPGGame {
 
       // Puzles de los Templos Binarios: impedir extracción sin resolver
       if (item.id === 'dawn_armor' && (!this.tilemap.armorPuzzle?.solved || this.tilemap.armorPuzzle?.barrierActive)) {
-        if (this.music && typeof this.music.playHitHurt === 'function') {
-          this.music.playHitHurt();
-        }
-        if (this.animeCutscenes) {
-          this.animeCutscenes.cameraShake(2.5, 0.2);
-          this.animeCutscenes.flash('#ef4444', 0.2);
-        }
-        this.dialogueBox.showMessage('🔒 [ERROR DE COMPILACIÓN: ACCESO DENEGADO]', [
-          '¡El pedestal sagrado rechaza la extracción de la Armadura!',
-          'Una barrera de fuego activo protege la reliquia.',
-          'Pisa los 3 interruptores de presión (A, B y C) hasta compilar la condición [ (A && B) || !C ] = TRUE.'
+        const { A, B, C } = this.tilemap.armorPuzzle.switches;
+        const condMet = (A === 1 && B === 1) || (C === 0);
+        this.dialogueBox.showMessage('🏛️ [SANTUARIO DE LA ARMADURA BINARIA]', [
+          'La Armadura del Código Binario reposa sobre el pedestal sagrado.',
+          'Una barrera de llamas arcanas impide extraerla mientras la condición booleana no sea válida.',
+          `Condición requerida: [ (A && B) || !C ]  ->  Estado actual: A=${A}, B=${B}, C=${C} [${condMet ? 'TRUE ✓' : 'FALSE ✕'}]`,
+          'Pisa los tres interruptores de presión (A, B y C) en el suelo de la sala para alternar sus valores hasta compilar en TRUE.'
         ]);
         return;
       }
 
       if (item.id === 'dawn_sword' && !this.tilemap.swordPuzzle?.solved) {
-        if (this.music && typeof this.music.playHitHurt === 'function') {
-          this.music.playHitHurt();
-        }
-        if (this.animeCutscenes) {
-          this.animeCutscenes.cameraShake(2.5, 0.2);
-          this.animeCutscenes.flash('#ef4444', 0.2);
-        }
-        this.dialogueBox.showMessage('🔒 [ERROR: RECURSIÓN SIN CASO BASE]', [
-          '¡La Espada de la Recursividad está atrapada en un bucle infinito!',
-          'El pedestal permanecerá bloqueado hasta alcanzar el Caso Base de la memoria.',
-          'Golpea los 3 monolitos rúnicos en el orden de resolución correcto [λ₃ -> λ₁ -> λ₂].'
+        this.dialogueBox.showMessage('🏛️ [PEDESTAL DE LA ESPADA DE LA RECURSIVIDAD]', [
+          'La Espada de la Recursividad está envuelta en un bucle temporal infinito.',
+          'El pedestal sagrado permanecerá sellado hasta alcanzar el Caso Base de la memoria.',
+          'Acércate a los 3 monolitos rúnicos y pulsa [E] para sintonizarlos en el orden recursivo correcto: [λ₃ -> λ₁ -> λ₂].'
         ]);
         return;
       }
@@ -3444,7 +3390,7 @@ export class RPGGame {
         if (item.id === 'dawn_sword') {
           this.player.hasSword = true;
           if (this.questLog) {
-            this.questLog.completeQuest('quest_code_temples', '¡Armadura y Espada consagradas! Derrota al Guardián del Stack Overflow para cruzar a la Ciudadela.');
+            this.questLog.advanceStep('quest_code_temples', '¡Armadura y Espada consagradas! Derrota al Guardián del Stack Overflow en la Cámara Norte del Templo para abrir la ruta a la Ciudadela.');
           }
           if (this.player.hasArmor && this.player.hasSword) {
             this.tilemap.unlockFirstStageGate();
@@ -3453,9 +3399,21 @@ export class RPGGame {
           this.menuSystem.startSwordObtainedCutscene(() => {
             this.menuSystem.state = 'none';
             this.music.setMode('stage1');
-            this.dialogueBox.showMessage('⚔ ¡Arma: Espada de la Recursividad!', [
+            this.dialogueBox.showMessage('⚔ ¡Arma Consagrada: Espada de la Recursividad!', [
               '¡Has empuñado la [Espada de la Recursividad]! Cada tajo llama recursivamente al siguiente hasta alcanzar el caso base.',
-              'Pulsa [ESPACIO] o [F] para atacar continuamente a los bugs y esbirros de Mister AI Alex sin desbordar el stack.'
+              'Pulsa [ESPACIO] o [F] para atacar continuamente a los bugs y esbirros de Mister AI Alex sin desbordar el stack.',
+              '¡El despertar de la espada ha liberado al Guardián del Stack Overflow en el portal septentrional!'
+            ], [
+              {
+                label: '★ ¡Enfrentar al Guardián!',
+                onSelect: () => {
+                  this.dialogueBox.close();
+                  const boss = this.enemies.find((e) => e.id === 'boss_stack_overflow');
+                  if (boss && !boss.dead) {
+                    this._triggerBossIntroCutscene(boss);
+                  }
+                }
+              }
             ]);
           });
           return;
@@ -3511,6 +3469,60 @@ export class RPGGame {
       }
 
       if (door.type === 'stage_transition') {
+        // 1. GATEKEEPING GENERAL: Parar al jugador si no está preparado para zonas hostiles
+        if (door.targetScene === 'first_stage') {
+          if (!this.player.hasArmor || !this.player.hasSword) {
+            if (this.tilemap.currentSceneId === 'overworld') {
+              this.player.x = 3.5 * this.tilemap.tileSize;
+            }
+            this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
+              '¡Detente! Las Ruinas del Despertar están infestadas de drones y anomalías corruptas de Mister AI Alex.',
+              'Sin tu [Armadura del Código Binario] cualquier impacto te aniquilará al instante, y sin tu [Espada de la Recursividad] no podrás defenderte.',
+              'Habla con el Gran Sabio Aurelio en Valleverde y cruza el Puente del Este para superar las Pruebas Sagradas y consagrar tu equipo primero.'
+            ]);
+            return;
+          }
+        }
+
+        if (door.targetScene === 'sewers_dungeon') {
+          if (!this.player.hasArmor || !this.player.hasSword) {
+            this.player.y = 19 * this.tilemap.tileSize;
+            this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
+              '¡Un hedor a memoria corrompida y fugas de punteros brota de la trampilla!',
+              'No puedes descender a la Fosa de Memoria sin tu Armadura Binaria y tu Espada de la Recursividad para enfrentar al Garbage Collector Furioso.',
+              'Habla con Aurelio y supera las Pruebas Sagradas del Este antes de descender a las cloacas.'
+            ]);
+            return;
+          }
+        }
+
+        if (door.targetScene === 'sword_temple') {
+          if (!this.player.hasArmor) {
+            if (this.tilemap.currentSceneId === 'overworld') {
+              this.player.y = 18 * this.tilemap.tileSize;
+            } else {
+              this.player.y = door.worldY + 24;
+            }
+            this.dialogueBox.showMessage('⚠️ [ORDEN DE LAS PRUEBAS SAGRADAS]', [
+              'El Gran Sabio Aurelio te encomendó consagrar primero la Armadura del Código Binario en el Templo Septentrional (Norte).',
+              'La energía de la Espada de la Recursividad ejerce una presión psíquica letal sobre quien no vista la armadura sagrada.',
+              'Dirígete al Templo Norte para forjar tu armadura primero.'
+            ]);
+            return;
+          }
+        }
+
+        if (door.targetScene === 'ai_fortress_gate' || door.targetScene === 'ai_citadel') {
+          if (!this.player.hasArmor || !this.player.hasSword) {
+            this.player.y = door.worldY + 24;
+            this.dialogueBox.showMessage('⚠️ [NO ESTÁS PREPARADO]', [
+              'La Fortaleza de Mister AI Alex está protegida por barreras electromagnéticas letales.',
+              'Necesitas tu equipo sagrado completo (Armadura Binaria y Espada de la Recursividad) antes de franquear este umbral.'
+            ]);
+            return;
+          }
+        }
+
         if (door.targetScene === 'condemned_realms') {
           this.dialogueBox.showMessage('Umbral Místico · Reinos Condenados', [
             'Estás frente al Portal Rúnico de Obsidiana hacia los Reinos Condenados.',
@@ -3543,13 +3555,18 @@ export class RPGGame {
               ? 'Templo de la Espada de la Recursividad'
               : 'las Tierras Exteriores';
 
-        this.dialogueBox.showMessage(`Zona Peligrosa: ${destTitle}`, [
-          `Estás a punto de adentrarte en [${destTitle}].`,
-          'Más allá de los límites protegidos de Valleverde acechan bugs salvajes, sombras y la corrupción de Mister AI Alex.',
-          '¿Estás seguro de que estás preparado para continuar?'
+        const isTemple = door.targetScene === 'armor_temple' || door.targetScene === 'sword_temple';
+        const inFirstStage = this.tilemap.currentSceneId === 'first_stage';
+
+        this.dialogueBox.showMessage(`Acceso: ${destTitle}`, [
+          `Estás ante el umbral de [${destTitle}].`,
+          isTemple
+            ? 'En su interior reposan reliquias sagradas y pruebas del Código Primigenio.'
+            : 'Más allá de los límites protegidos de Valleverde acechan bugs salvajes y la corrupción de Mister AI Alex.',
+          '¿Deseas franquear el acceso y continuar?'
         ], [
           {
-            label: '★ Sí, estoy preparado para continuar',
+            label: '★ Sí, franquear el umbral',
             onSelect: () => {
               this.dialogueBox.close();
               if (door.targetScene === 'first_stage') {
@@ -3561,12 +3578,32 @@ export class RPGGame {
               }
             }
           },
+          ...(inFirstStage ? [
+            {
+              label: 'Regresar a la seguridad de Valleverde',
+              onSelect: () => {
+                this.dialogueBox.close();
+                this._executeStageTransition({
+                  type: 'stage_transition',
+                  targetScene: 'overworld',
+                  spawnX: 3.5 * this.tilemap.tileSize,
+                  spawnY: 12.5 * this.tilemap.tileSize
+                });
+              }
+            }
+          ] : []),
           {
-            label: 'No, prefiero prepararme mejor en la aldea',
+            label: 'No, permanecer aquí',
             onSelect: () => {
               this.dialogueBox.close();
-              if (door.targetScene === 'first_stage' && this.tilemap.currentSceneId === 'overworld') {
+              if (inFirstStage) {
+                this.player.y = door.worldY + 24;
+              } else if (door.targetScene === 'first_stage' && this.tilemap.currentSceneId === 'overworld') {
                 this.player.x = 3.5 * this.tilemap.tileSize;
+              } else if (door.targetScene === 'armor_temple' && this.tilemap.currentSceneId === 'overworld') {
+                this.player.y = 7 * this.tilemap.tileSize;
+              } else if (door.targetScene === 'sword_temple' && this.tilemap.currentSceneId === 'overworld') {
+                this.player.y = 18 * this.tilemap.tileSize;
               }
             }
           }
@@ -3643,17 +3680,14 @@ export class RPGGame {
         2.5
       );
     } else if (!res.success && res.error === 'STACK_OVERFLOW') {
-      if (this.music && typeof this.music.playHitHurt === 'function') {
-        this.music.playHitHurt();
+      if (this.music && typeof this.music.playMenuSelect === 'function') {
+        this.music.playMenuSelect();
       }
-      if (this.animeCutscenes) {
-        this.animeCutscenes.cameraShake(6.5, 0.5);
-        this.animeCutscenes.flash('#ef4444', 0.45);
-      }
-      this.dialogueBox.showMessage('💥 [STACK OVERFLOW ERROR: DESBORDAMIENTO]', [
-        '¡Secuencia recursiva incorrecta! Se excedió la memoria máxima de pila.',
-        'El hilo de ejecución ha colapsado y los registros han vuelto al caso raíz.',
-        'Ordena tus llamadas: busca el Monolito terminal antes de invocar las ramas.'
+      this.menuSystem.showNotice('🌀 Desbordamiento de pila: registros reiniciados a la raíz.', 2.5);
+      this.dialogueBox.showMessage('🌀 [PILAS DE RECURSIÓN: REINICIO]', [
+        '¡Secuencia incorrecta! El hilo recursivo no alcanzó el Caso Base esperado.',
+        'La memoria de la pila se ha restablecido a su estado inicial.',
+        'Pista mística: Inicia la llamada por la runa terminal [λ₃], luego [λ₁] y finalmente [λ₂].'
       ]);
     }
   }
@@ -3661,6 +3695,15 @@ export class RPGGame {
   _executeStageTransition(door) {
     if (door.type === 'exit') {
       this._restoreAllNPCsToOverworld();
+    }
+    // Si entramos a un templo, configurar su puerta de salida para regresar exactamente a la escena de origen
+    if (door.targetScene === 'armor_temple' || door.targetScene === 'sword_temple') {
+      const targetTemple = this.tilemap.scenes[door.targetScene];
+      if (targetTemple && targetTemple.exitDoor) {
+        targetTemple.exitDoor.returnScene = this.tilemap.currentSceneId;
+        targetTemple.exitDoor.returnX = door.worldX;
+        targetTemple.exitDoor.returnY = door.worldY + 22;
+      }
     }
     this.tilemap.loadScene(door.targetScene);
     this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
@@ -3768,6 +3811,12 @@ export class RPGGame {
     );
     if (!boss) return;
 
+    // En el Templo de la Espada, el Guardián del Stack Overflow SOLO se manifiesta
+    // cuando el héroe ya ha desenvainado la Espada de la Recursividad
+    if (boss.id === 'boss_stack_overflow' && !this.player.hasSword) {
+      return;
+    }
+
     // Si ya vio la cinemática, asegurarse de que boss.introCutscenePlayed sea true
     if (this.bossCutscenesSeen && this.bossCutscenesSeen[boss.id]) {
       boss.introCutscenePlayed = true;
@@ -3784,32 +3833,59 @@ export class RPGGame {
   _handlePlayerDefeated() {
     const wasDefenseless = !this.player.hasArmor;
     this.player.hp = this.player.effectiveMaxHp;
-    this.player.invulnerableTimer = 1.4;
+    this.player.invulnerableTimer = 2.0;
     this.player.knockbackTimer = 0;
 
-    if (this.tilemap.currentSceneId === 'first_stage') {
-      this.player.x = 17 * 16;
-      this.player.y = 19 * 16;
+    const curScene = this.tilemap.currentSceneId;
+    if (curScene === 'first_stage') {
+      this.player.x = 31 * 16;
+      this.player.y = 12 * 16;
+      this.player.direction = 'left';
+    } else if (curScene === 'armor_temple') {
+      this.player.x = 10.5 * 16;
+      this.player.y = 15 * 16;
       this.player.direction = 'up';
-      // Reiniciar posición de patrulla de los enemigos vivos para no bloquear el santuario
-      for (const en of this.enemies) {
-        if (!en.dead && en.patrolPoints.length > 0) {
-          en.x = en.patrolPoints[0].x;
-          en.y = en.patrolPoints[0].y;
-        }
+    } else if (curScene === 'sword_temple') {
+      this.player.x = 11.5 * 16;
+      this.player.y = 15 * 16;
+      this.player.direction = 'up';
+    } else if (curScene === 'sewers_dungeon') {
+      this.player.x = 11.5 * 16;
+      this.player.y = 15 * 16;
+      this.player.direction = 'up';
+    } else if (curScene === 'ai_fortress_gate') {
+      this.player.x = 11.5 * 16;
+      this.player.y = 15 * 16;
+      this.player.direction = 'up';
+    } else if (curScene === 'ai_citadel') {
+      this.player.x = 11.5 * 16;
+      this.player.y = 15 * 16;
+      this.player.direction = 'up';
+    } else {
+      // Overworld (Valleverde) u otros exteriores
+      this.player.x = 12.5 * 16;
+      this.player.y = 14 * 16;
+      this.player.direction = 'down';
+    }
+
+    // Reiniciar posición de patrulla de los enemigos vivos para no bloquear al jugador
+    for (const en of this.enemies) {
+      if (!en.dead && en.patrolPoints && en.patrolPoints.length > 0) {
+        en.x = en.patrolPoints[0].x;
+        en.y = en.patrolPoints[0].y;
       }
     }
     this.camera.snapTo(this.player);
 
     if (wasDefenseless) {
       this.dialogueBox.showMessage('💔 ¡Has Caído Indefenso! (Vida: 0)', [
-        'Sabio Aurelio: «¡Te lo advertí, joven elegido! Sin tu Armadura estás completamente INDEFENSO y un solo impacto de las sombras de Mister AI Alex reduce tu vida a 0.»',
-        '«Te he traído de vuelta al Santuario Sur. Esquiva a los centinelas con cuidado y ve primero al Bastión del Oeste para conseguir la [Armadura del Alba].»'
+        'Sabio Aurelio: «¡Te lo advertí, joven elegido! Sin tu Armadura estás completamente INDEFENSO ante las anomalías de Mister AI Alex.»',
+        '«He curado tus heridas y te he llevado a una zona protegida. Ve al Templo del Código Binario para forjar tu [Armadura del Código Binario] antes de luchar.»'
       ]);
     } else {
       this.dialogueBox.showMessage('💔 ¡Herido en Combate! (Vida: 0)', [
-        'Sabio Aurelio: «¡Resiste, elegido! He restaurado tus corazones en el Santuario Sur.»',
-        '«Recuerda pulsar [ESPACIO] o [F] para abatir a los esbirros de Mister AI Alex con tu Espada del Alba.»'
+        'Sabio Aurelio: «¡Resiste, elegido! He restaurado tus corazones.»',
+        '«Recuerda pulsar [ESPACIO] o [F] para atacar con tu Espada de la Recursividad, o esquivar con el Dash Asíncrono.»'
       ]);
     }
   }
