@@ -4,12 +4,12 @@
  * Guion narrativo y secuencias cinemáticas estilo Novela Visual / Anime PC-98
  * para la presentación de los 3 mini-jefes de 'El Ojete Dorado: The Game'.
  * 
- * 1. SCENE_INTRO_GARBAGE_COLLECTOR (Boss 1 · Alcantarillas de Valleverde)
- * 2. SCENE_INTRO_STACK_OVERFLOW (Boss 2 · Fin del Templo de la Espada)
- * 3. SCENE_INTRO_PROTOTYPE_MICROWAVE (Boss 3 · Laboratorio Alpha / Umbral de la Fortaleza)
+ * 1. SCENE_INTRO_GARBAGE_COLLECTOR (Garbage Collector · Alcantarillas de Valleverde)
+ * 2. SCENE_INTRO_STACK_OVERFLOW (Guardián del Stack Overflow · Templo de la Espada)
+ * 3. SCENE_INTRO_PROTOTYPE_MICROWAVE (Microondas Prototipo · Laboratorio Alpha)
  */
 
-// Boss 1: Alcantarillas / Sótano de Valleverde
+// Jefe Regional 1: Alcantarillas / Sótano de Valleverde
 export const SCENE_INTRO_GARBAGE_COLLECTOR = [
   {
     imageKey: "BOSS_GARBAGE_COLLECTOR_INTRO",
@@ -35,7 +35,7 @@ SCENE_INTRO_GARBAGE_COLLECTOR.id = 'scene_intro_garbage_collector';
 SCENE_INTRO_GARBAGE_COLLECTOR.title = 'ALCANTARILLAS · EL GARBAGE COLLECTOR FURIOSO';
 SCENE_INTRO_GARBAGE_COLLECTOR.musicMode = 'dungeon_hostile';
 
-// Boss 2: Fin del Templo de la Espada
+// Guardián del Stack Overflow: Fin del Templo de la Espada
 export const SCENE_INTRO_STACK_OVERFLOW = [
   {
     imageKey: "BOSS_STACK_OVERFLOW_INTRO",
@@ -61,7 +61,7 @@ SCENE_INTRO_STACK_OVERFLOW.id = 'scene_intro_stack_overflow';
 SCENE_INTRO_STACK_OVERFLOW.title = 'TEMPLO DE LA ESPADA · EL GUARDIÁN DEL STACK OVERFLOW';
 SCENE_INTRO_STACK_OVERFLOW.musicMode = 'dungeon_hostile';
 
-// Boss 3: Laboratorio Alpha / Puerta de la Brecha
+// Microondas Prototipo: Laboratorio Alpha / Puerta de la Brecha
 export const SCENE_INTRO_PROTOTYPE_MICROWAVE = [
   {
     imageKey: "BOSS_PROTOTYPE_MICROWAVE_INTRO",

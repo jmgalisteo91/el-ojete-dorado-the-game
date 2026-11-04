@@ -194,7 +194,7 @@ export class Inventory {
     ctx.font = '6px monospace';
     ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'right';
-    ctx.fillText('[I / Esc] Cerrar  ·  [C] Ficha', winX + winW - 8, winY + 7);
+    ctx.fillText('[Esc] Cerrar', winX + winW - 8, winY + 7);
 
     // =========================================================================
     // Cuadrícula de 8 ranuras visibles (4 columnas x 2 filas, con paginación automática)
@@ -302,18 +302,6 @@ export class Inventory {
       ctx.fillText('Ranura vacía.', detailX + 6, detailY + 8);
       ctx.fillText('Explora Valleverde y los cofres para conseguir comida y pociones.', detailX + 6, detailY + 18);
     }
-
-    // =========================================================================
-    // Barra de estado y atajos inferiores
-    // =========================================================================
-    ctx.font = '5.5px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'center';
-    ctx.fillText(
-      '[E] Usar  ·  [X] Tirar  ·  [WASD/Flechas] Navegar  ·  [C] Ficha Héroe',
-      winX + winW / 2,
-      winY + winH - 6
-    );
 
     ctx.restore();
   }

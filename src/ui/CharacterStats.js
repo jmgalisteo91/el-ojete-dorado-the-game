@@ -186,6 +186,13 @@ export class CharacterStats {
     ctx.fillRect(winX + winW - 8, winY + winH - 5, 5, 2);
     ctx.fillRect(winX + winW - 5, winY + winH - 8, 2, 5);
 
+    // Atajo discreto de cierre en la esquina superior derecha
+    ctx.font = '6px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('[Esc] Cerrar', winX + winW - 8, tabY + 5.5);
+
     // =========================================================================
     // BARRA DE PESTAÑAS SUPERIOR ([1] FICHA / [2] LOGROS)
     // =========================================================================
@@ -243,21 +250,6 @@ export class CharacterStats {
     } else {
       this._renderAchievementsTab(ctx, winX, winY, winW, winH, achievementManager);
     }
-
-    // =========================================================================
-    // BARRA INFERIOR DE ATAJOS
-    // =========================================================================
-    ctx.font = '5.5px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(
-      this.activeTab === 'skills'
-        ? '[W/S] Elegir  ·  [Enter/E] Comprar  ·  [Tab] Cambiar pestaña  ·  [C / Esc] Cerrar'
-        : '[Tab / 1-3] Cambiar pestaña  ·  [I] Mochila  ·  [L] Diario  ·  [C / Esc] Cerrar',
-      winX + winW / 2,
-      winY + winH - 7
-    );
 
     ctx.restore();
   }
@@ -404,7 +396,7 @@ export class CharacterStats {
       '[Shift] + Dir',
       hasDash,
       '0.2s invulnerabilidad para esquivar.',
-      'Boss 1: Garbage Collector',
+      'Garbage Collector · Alcantarillas',
       '#10b981'
     );
 
@@ -420,7 +412,7 @@ export class CharacterStats {
       '[Espacio 1s]',
       hasCharged,
       'Tajo radial 360° con daño triple.',
-      'Boss 2: Stack Overflow',
+      'Guardián del Stack Overflow',
       '#38bdf8'
     );
 
@@ -436,7 +428,7 @@ export class CharacterStats {
       '[Q]',
       hasBarrier,
       'Campo 3s que absorbe proyectiles.',
-      'Boss 3: Microondas V0.1',
+      'Microondas Prototipo · Lab Alpha',
       '#f59e0b'
     );
   }

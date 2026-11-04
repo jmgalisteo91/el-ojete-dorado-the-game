@@ -1,7 +1,7 @@
 import { Boss } from './Boss.js?v=7';
 
 /**
- * Boss 3: "El Microondas Prototipo (V0.1 Alpha)"
+ * Jefe Regional: "El Microondas Prototipo (V0.1 Alpha)"
  * Ubicación: Umbral de la Fortaleza de AI Alex.
  * Melodía: 'track_prototype_microwave'.
  * Barra de vida: 42 HP (calibrada para un combate equilibrado: ~10 aperturas y 2 ciclos de fusibles térmicos con castigo x2).

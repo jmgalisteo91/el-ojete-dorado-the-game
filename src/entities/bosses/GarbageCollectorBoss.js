@@ -2,7 +2,7 @@ import { Boss } from './Boss.js?v=7';
 import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
 
 /**
- * Boss 1: "El Garbage Collector Furioso"
+ * Jefe Regional: "El Garbage Collector Furioso"
  * Ubicación: Alcantarillas de Valleverde (Fosa de Memoria).
  * Melodía: 'track_garbage_collector'.
  * Barra de vida: 24 HP (calibrada para un combate equilibrado: 6 combos neutros o 3 castigos al aturdirlo contra el muro).

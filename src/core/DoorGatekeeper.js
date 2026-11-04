@@ -16,7 +16,7 @@ const BLOCK_MESSAGES = {
     title: '⚠️ [NO ESTÁS PREPARADO]',
     lines: [
       '¡Un hedor a memoria corrompida y fugas de punteros brota de la trampilla de la alcantarilla!',
-      'No puedes descender a la Fosa de Memoria sin tu Armadura Binaria y tu Espada de la Recursividad para enfrentar al Boss 1: El Garbage Collector Furioso.',
+      'No puedes descender a la Fosa de Memoria sin tu Armadura Binaria y tu Espada de la Recursividad para enfrentar a El Garbage Collector Furioso.',
       'Habla con Aurelio y supera las Pruebas Sagradas del Este antes de descender a las cloacas.'
     ]
   },
@@ -40,10 +40,10 @@ const BLOCK_MESSAGES = {
 const DESTINATION_TITLES = {
   first_stage: 'Ruinas del Despertar (Escenario 1)',
   armor_temple: 'Templo de la Armadura del Código Binario',
-  sword_temple: 'Templo de la Espada de la Recursividad (Boss 2)',
-  sewers_dungeon: 'Alcantarillas · Boss 1: El Garbage Collector Furioso',
-  ai_fortress_gate: 'Umbral de la Fortaleza · Boss 3: Microondas Prototipo',
-  ai_citadel: 'Ciudadela de AI Alex · Boss Final: El Gran Ojal'
+  sword_temple: 'Templo de la Espada de la Recursividad (Guardián del Stack Overflow)',
+  sewers_dungeon: 'Alcantarillas de Valleverde (Garbage Collector Furioso)',
+  ai_fortress_gate: 'Umbral de la Fortaleza (Microondas Prototipo V0.1)',
+  ai_citadel: 'Ciudadela de AI Alex (El Gran Ojal)'
 };
 
 const BOSS_ARENAS = new Set(['sewers_dungeon', 'ai_fortress_gate', 'ai_citadel']);

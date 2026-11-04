@@ -1357,9 +1357,10 @@ export class MainMenuAndScenes {
     // 3. Combate y Habilidades de Jefes
     drawCategoryBox(col2X, winY + 18, col2W, 88, '⚔️ COMBATE Y HABILIDADES', '#f43f5e', [
       { label: 'Atacar con Espada:', keys: '[Espacio] / [F]', keyColor: '#ffd885' },
-      { label: 'Dash Asíncrono:', keys: 'Shift + Dir', keyColor: '#10b981', note: '*(0.2s invuln. · Boss 1 Garbage)*' },
-      { label: 'Corte en Cascada (x3):', keys: 'Espacio 1s', keyColor: '#38bdf8', note: '*(Tajo radial 360° · Boss 2 Stack)*' },
-      { label: 'Barrera de Tipado:', keys: '[Q]', keyColor: '#f59e0b', note: '*(Escudo anti-balas · Boss 3 Micro)*' }
+      { label: 'Dash Asíncrono:', keys: 'Shift + Dir', keyColor: '#10b981', note: '*(0.2s invuln. · Garbage Collector)*' },
+      { label: 'Corte en Cascada (x3):', keys: 'Espacio 1s', keyColor: '#38bdf8', note: '*(Tajo radial 360° · Guardián Stack)*' },
+      { label: 'Barrera de Tipado:', keys: '[Q]', keyColor: '#f59e0b', note: '*(Escudo anti-balas · Microondas)*' },
+      { label: 'Ranura Rápida:', keys: '[R] / [1]', keyColor: '#38bdf8', note: '*(Consumible directo)*' }
     ]);
 
     // 4. Gestión de Mochila

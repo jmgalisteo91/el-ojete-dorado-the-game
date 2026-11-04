@@ -44,6 +44,63 @@ export class DialogueBox {
     }
   }
 
+  _paginateLines(rawLines, maxCharsPerLine = 46, maxLinesPerPage = 2) {
+    if (!rawLines) return ['...'];
+    const input = Array.isArray(rawLines) ? rawLines : [rawLines];
+    const pages = [];
+
+    for (const rawText of input) {
+      if (!rawText || typeof rawText !== 'string') continue;
+      const wrapped = this._wrapTextSimple(rawText, maxCharsPerLine);
+      if (wrapped.length <= maxLinesPerPage) {
+        pages.push(wrapped.join('\n'));
+      } else {
+        // Paginación automática en diapositivas ([1/2], [2/2])
+        for (let i = 0; i < wrapped.length; i += maxLinesPerPage) {
+          pages.push(wrapped.slice(i, i + maxLinesPerPage).join('\n'));
+        }
+      }
+    }
+
+    return pages.length > 0 ? pages : ['...'];
+  }
+
+  _wrapTextSimple(text, maxChars) {
+    if (!text) return [];
+    const words = text.split(' ');
+    const lines = [];
+    let currentLine = '';
+
+    for (const w of words) {
+      if (w.includes('\n')) {
+        const parts = w.split('\n');
+        for (let p = 0; p < parts.length; p++) {
+          const test = currentLine ? `${currentLine} ${parts[p]}` : parts[p];
+          if (test.length <= maxChars) {
+            currentLine = test;
+          } else {
+            if (currentLine) lines.push(currentLine);
+            currentLine = parts[p];
+          }
+          if (p < parts.length - 1) {
+            if (currentLine) lines.push(currentLine);
+            currentLine = '';
+          }
+        }
+      } else {
+        const test = currentLine ? `${currentLine} ${w}` : w;
+        if (test.length <= maxChars) {
+          currentLine = test;
+        } else {
+          if (currentLine) lines.push(currentLine);
+          currentLine = w;
+        }
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    return lines;
+  }
+
   start(npc, customLines = null, customChoices = null) {
     this.active = true;
     this.currentNPC = npc;
@@ -55,21 +112,23 @@ export class DialogueBox {
     this.caughtBannerTimer = 0;
     this.timeSinceLineCompleted = 0;
 
+    let rawLines = ['...'];
     if (customLines) {
-      this.lines = Array.isArray(customLines) ? [...customLines] : [customLines];
+      rawLines = Array.isArray(customLines) ? [...customLines] : [customLines];
       this.choices = customChoices || [];
     } else if (npc) {
       const dialogData = npc.resolveDialogues ? npc.resolveDialogues() : npc.dialogues;
       if (dialogData && typeof dialogData === 'object' && !Array.isArray(dialogData)) {
-        this.lines = [...(dialogData.lines || ['...'])];
+        rawLines = [...(dialogData.lines || ['...'])];
         this.choices = dialogData.choices || [];
       } else {
-        this.lines =
+        rawLines =
           Array.isArray(dialogData) && dialogData.length > 0 ? [...dialogData] : ['...'];
         this.choices = npc.choices || [];
       }
     }
 
+    this.lines = this._paginateLines(rawLines);
     this.currentLineIndex = 0;
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
@@ -87,7 +146,8 @@ export class DialogueBox {
     this.active = true;
     this.currentNPC = null;
     this.speakerName = title || '';
-    this.lines = Array.isArray(lines) ? [...lines] : [lines];
+    const rawLines = Array.isArray(lines) ? [...lines] : [lines];
+    this.lines = this._paginateLines(rawLines);
     this.choices = choices || [];
     this.isRantMode = false;
     this.rantPenaltyPool = [];
@@ -421,22 +481,27 @@ export class DialogueBox {
   }
 
   _wrapText(ctx, text, maxWidth) {
-    const words = text.split(' ');
+    if (!text) return [];
     const lines = [];
-    let currentLine = '';
+    const rawParagraphs = text.split('\n');
 
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const width = ctx.measureText(testLine).width;
-      if (width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
+    for (const para of rawParagraphs) {
+      const words = para.split(' ');
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const width = ctx ? ctx.measureText(testLine).width : testLine.length * 5;
+        if (width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
       }
-    }
-    if (currentLine) {
-      lines.push(currentLine);
+      if (currentLine) {
+        lines.push(currentLine);
+      }
     }
     return lines;
   }

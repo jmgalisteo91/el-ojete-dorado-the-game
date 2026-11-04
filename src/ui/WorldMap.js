@@ -2,9 +2,9 @@
  * WorldMap.js - Pantalla de Cartografía y Progresión de 'El Ojete Dorado: The Game'
  * 
  * Representa la geografía sagrada del Reino del Gran Ojal con sus 4 nodos de progresión lógica:
- * 1. Villa de Valleverde (Centro / Refugio) + Sub-nodo Alcantarillas (Boss 1: Garbage Collector).
- * 2. Santuario de las Pruebas (Este, cruzando el río) + Templo de la Espada (Boss 2: Stack Overflow).
- * 3. Ruinas Exteriores / Tierras Hostiles (Oeste) + Puesto Lab Alpha (Boss 3: Microondas Prototipo).
+ * 1. Villa de Valleverde (Centro / Refugio) + Sub-nodo Alcantarillas (Garbage Collector Furioso).
+ * 2. Santuario de las Pruebas (Este, cruzando el río) + Templo de la Espada (Guardián del Stack Overflow).
+ * 3. Ruinas Exteriores / Tierras Hostiles (Oeste) + Puesto Lab Alpha (Microondas Prototipo).
  * 4. Ciudadela de AI Alex (Norte) + Núcleo del Gran Ojal (Microondas Cuántico Final).
  * 
  * Soporta estados activos/despejados de los jefes, marcador de posición '★ TÚ' y estética retro pixel art.
@@ -49,20 +49,20 @@ export class WorldMap {
     // 4. Senderos y ruta de progresión lógica entre los 4 nodos
     this._drawProgressionPathways(ctx, mapX, mapY, t);
 
-    // 5. Detectar estado de progreso y jefes derrotados
-    const boss1Defeated = Boolean(
+    // 5. Detectar estado de progreso y jefes regionales derrotados
+    const garbageCollectorDefeated = Boolean(
       player?.hasDash ||
       (enemies && enemies.some((e) => (e.id === 'boss_garbage_collector' || e.rewardSkill === 'hasDash') && e.dead)) ||
       (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_hero_dash_unlocked') === 'true')
     );
 
-    const boss2Defeated = Boolean(
+    const stackOverflowDefeated = Boolean(
       player?.hasChargedAttack ||
       (enemies && enemies.some((e) => (e.id === 'boss_stack_overflow' || e.rewardSkill === 'hasChargedAttack') && e.dead)) ||
       (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_hero_charged_attack_unlocked') === 'true')
     );
 
-    const boss3Defeated = Boolean(
+    const microwaveDefeated = Boolean(
       player?.hasBarrier ||
       (enemies && enemies.some((e) => (e.id === 'boss_prototype_microwave' || e.rewardSkill === 'hasBarrier') && e.dead)) ||
       (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_hero_barrier_unlocked') === 'true')
@@ -79,14 +79,14 @@ export class WorldMap {
     );
 
     // 6. Renderizado de los 4 Nodos Principales
-    // Nodo 1: Villa de Valleverde (Centro / Refugio) + Alcantarillas (Boss 1)
-    this._drawValleverdeNode(ctx, mapX, mapY, boss1Defeated, t);
+    // Nodo 1: Villa de Valleverde (Centro / Refugio) + Alcantarillas (Garbage Collector)
+    this._drawValleverdeNode(ctx, mapX, mapY, garbageCollectorDefeated, t);
 
-    // Nodo 2: Santuario de las Pruebas (Este, cruzando el río) + Templo de la Espada (Boss 2)
-    this._drawSantuarioNode(ctx, mapX, mapY, boss2Defeated, armorObtained, t);
+    // Nodo 2: Santuario de las Pruebas (Este, cruzando el río) + Templo de la Espada (Guardián del Stack Overflow)
+    this._drawSantuarioNode(ctx, mapX, mapY, stackOverflowDefeated, armorObtained, t);
 
-    // Nodo 3: Ruinas Exteriores / Tierras Hostiles (Oeste) + Puesto Lab Alpha (Boss 3)
-    this._drawRuinasNode(ctx, mapX, mapY, boss3Defeated, t);
+    // Nodo 3: Ruinas Exteriores / Tierras Hostiles (Oeste) + Puesto Lab Alpha (Microondas Prototipo)
+    this._drawRuinasNode(ctx, mapX, mapY, microwaveDefeated, t);
 
     // Nodo 4: Ciudadela de AI Alex (Norte) + Núcleo del Gran Ojal
     this._drawCiudadelaNode(ctx, mapX, mapY, finalDefeated, t);
@@ -241,9 +241,9 @@ export class WorldMap {
 
   /**
    * NODO 1: Villa de Valleverde (Centro / Refugio)
-   * Incluye la plaza central, casas, Río del Alba, puente y el sub-nodo de Alcantarillas (Boss 1).
+   * Incluye la plaza central, casas, Río del Alba, puente y el sub-nodo de Alcantarillas (Garbage Collector).
    */
-  _drawValleverdeNode(ctx, mapX, mapY, boss1Defeated, t) {
+  _drawValleverdeNode(ctx, mapX, mapY, garbageCollectorDefeated, t) {
     // Tierra verde viva
     ctx.fillStyle = '#4c8541';
     ctx.beginPath();
@@ -326,7 +326,7 @@ export class WorldMap {
     ctx.fillRect(mapX + 177, mapY + 107, 11, 1);
 
     // ==============================================================
-    // SUB-NODO: ALCANTARILLAS / SÓTANO (Boss 1: Garbage Collector)
+    // SUB-NODO: ALCANTARILLAS / SÓTANO (Garbage Collector Furioso)
     // ==============================================================
     const sewerX = mapX + 146;
     const sewerY = mapY + 118;
@@ -346,7 +346,7 @@ export class WorldMap {
     ctx.fillRect(sewerX + 3, sewerY - 3, 1, 6);
 
     // Efluvio de ácido / fuga de memoria si no está derrotado
-    if (!boss1Defeated) {
+    if (!garbageCollectorDefeated) {
       const bubbleY = sewerY + Math.sin(t * 7) * 2;
       ctx.fillStyle = '#84cc16';
       ctx.fillRect(sewerX - 2, bubbleY - 1, 2, 2);
@@ -356,7 +356,7 @@ export class WorldMap {
     // Indicador sutil de Jefe / Estado (Calavera o Check)
     const b1IconX = sewerX + 8;
     const b1IconY = sewerY;
-    if (boss1Defeated) {
+    if (garbageCollectorDefeated) {
       this._drawPixelCheck(ctx, b1IconX, b1IconY);
     } else {
       this._drawPixelSkull(ctx, b1IconX, b1IconY, '#ef4444', t);
@@ -368,15 +368,15 @@ export class WorldMap {
       mapX + 152,
       mapY + 132,
       '1. VALLEVERDE',
-      boss1Defeated ? 'Alcantarillas [✓]' : 'Alcantarillas [☠ Boss 1]'
+      garbageCollectorDefeated ? 'Alcantarillas [✓]' : 'Alcantarillas [☠ Garbage]'
     );
   }
 
   /**
    * NODO 2: Santuario de las Pruebas (Este, cruzando el río)
-   * Incluye el Templo de la Armadura Binaria y el Templo de la Espada (Boss 2).
+   * Incluye el Templo de la Armadura Binaria y el Templo de la Espada (Guardián del Stack Overflow).
    */
-  _drawSantuarioNode(ctx, mapX, mapY, boss2Defeated, armorObtained, t) {
+  _drawSantuarioNode(ctx, mapX, mapY, stackOverflowDefeated, armorObtained, t) {
     // Acantilados dorados de la meseta
     ctx.fillStyle = '#9e8048';
     ctx.beginPath();
@@ -409,7 +409,7 @@ export class WorldMap {
       this._drawPixelCheck(ctx, temple1X + 10, temple1Y - 2);
     }
 
-    // 2. Templo Sur: Espada de la Recursividad (Cámara del Boss 2: Stack Overflow)
+    // 2. Templo Sur: Espada de la Recursividad (Cámara del Guardián del Stack Overflow)
     const temple2X = mapX + 234;
     const temple2Y = mapY + 115;
     ctx.fillStyle = '#7a3e30';
@@ -421,10 +421,10 @@ export class WorldMap {
     ctx.fillStyle = '#ff3366';
     ctx.fillRect(temple2X, temple2Y - 8, 1, 4);
 
-    // Indicador Boss 2: Guardián del Stack Overflow
+    // Indicador: Guardián del Stack Overflow
     const b2IconX = temple2X + 11;
     const b2IconY = temple2Y - 3;
-    if (boss2Defeated) {
+    if (stackOverflowDefeated) {
       this._drawPixelCheck(ctx, b2IconX, b2IconY);
     } else {
       this._drawPixelSkull(ctx, b2IconX, b2IconY, '#a855f7', t);
@@ -453,15 +453,15 @@ export class WorldMap {
       mapX + 248,
       mapY + 130,
       '2. SANTUARIO PRUEBAS',
-      boss2Defeated ? 'Templos [✓ Despejado]' : 'Templo Espada [☠ Boss 2]'
+      stackOverflowDefeated ? 'Templos [✓ Despejado]' : 'Templo Espada [☠ Stack]'
     );
   }
 
   /**
    * NODO 3: Ruinas Exteriores / Tierras Hostiles (Oeste)
-   * Incluye las columnas derruidas y el Puesto de Control / Lab Alpha (Boss 3: Microondas Prototipo).
+   * Incluye las columnas derruidas y el Puesto de Control / Lab Alpha (Microondas Prototipo).
    */
-  _drawRuinasNode(ctx, mapX, mapY, boss3Defeated, t) {
+  _drawRuinasNode(ctx, mapX, mapY, microwaveDefeated, t) {
     // Suelo verde musgo y piedra agrietada
     ctx.fillStyle = '#3c5a3d';
     ctx.beginPath();
@@ -485,7 +485,7 @@ export class WorldMap {
     ctx.fillRect(mapX + 63, mapY + 99, 2, 2);
 
     // ==============================================================
-    // PUESTO DE CONTROL: LABORATORIO ALPHA (Boss 3: Microondas Prototipo)
+    // PUESTO DE CONTROL: LABORATORIO ALPHA (Microondas Prototipo)
     // ==============================================================
     const labX = mapX + 68;
     const labY = mapY + 70;
@@ -510,13 +510,13 @@ export class WorldMap {
     ctx.moveTo(labX, labY - 5);
     ctx.lineTo(labX, labY - 9);
     ctx.stroke();
-    ctx.fillStyle = boss3Defeated ? '#10b981' : '#f97316';
+    ctx.fillStyle = microwaveDefeated ? '#10b981' : '#f97316';
     ctx.fillRect(labX - 2, labY - 10, 5, 2);
 
-    // Indicador Boss 3: Microondas Prototipo (V0.1 Alpha)
+    // Indicador: Microondas Prototipo (V0.1 Alpha)
     const b3IconX = labX + 11;
     const b3IconY = labY - 1;
-    if (boss3Defeated) {
+    if (microwaveDefeated) {
       this._drawPixelCheck(ctx, b3IconX, b3IconY);
     } else {
       this._drawPixelSkull(ctx, b3IconX, b3IconY, '#f97316', t);
@@ -528,7 +528,7 @@ export class WorldMap {
       mapX + 68,
       mapY + 114,
       '3. TIERRAS HOSTILES',
-      boss3Defeated ? 'Lab Alpha [✓ Despejado]' : 'Lab Alpha [☠ Boss 3]'
+      microwaveDefeated ? 'Lab Alpha [✓ Despejado]' : 'Lab Alpha [☠ Microondas]'
     );
   }
 
@@ -922,6 +922,11 @@ export class WorldMap {
     ctx.textBaseline = 'top';
     ctx.fillText('🗺 REINO DEL GRAN OJAL · RUTA DE PROGRESIÓN 🗺', cx, 6);
 
+    ctx.font = '6px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'right';
+    ctx.fillText('[Esc] Cerrar', W - 10, 6);
+
     // 2. Barra inferior con leyenda limpia y controles
     const footerW = W - 24;
     const footerH = 12;
@@ -955,7 +960,7 @@ export class WorldMap {
     // Lado derecho: Atajo de salida
     ctx.fillStyle = '#e8dcc4';
     ctx.textAlign = 'right';
-    ctx.fillText('[M / Esc] Volver', footerX + footerW - 5, footerY + footerH / 2);
+    ctx.fillText('[Esc] Cerrar', footerX + footerW - 5, footerY + footerH / 2);
   }
 }
 

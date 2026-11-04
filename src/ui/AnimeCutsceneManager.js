@@ -108,20 +108,52 @@ export class AnimeCutsceneManager {
       return;
     }
 
+    // Paginación automática en diapositivas ([1/2], [2/2]) si el texto excede el alto disponible
+    const paginatedSlides = [];
+    const maxCharsPerLine = 44;
+    const maxLinesPerSlide = 3;
+
+    for (const slide of cutsceneData.slides) {
+      const fullText = slide.dialogue || slide.text || '';
+      const wrapped = this._wrapText(fullText, maxCharsPerLine);
+      if (wrapped.length <= maxLinesPerSlide) {
+        paginatedSlides.push({ ...slide, text: fullText, dialogue: fullText });
+      } else {
+        const totalSub = Math.ceil(wrapped.length / maxLinesPerSlide);
+        for (let i = 0; i < wrapped.length; i += maxLinesPerSlide) {
+          const subIdx = Math.floor(i / maxLinesPerSlide) + 1;
+          const subText = wrapped.slice(i, i + maxLinesPerSlide).join(' ');
+          paginatedSlides.push({
+            ...slide,
+            text: subText,
+            dialogue: subText,
+            speakerTitle: slide.speakerTitle
+              ? `${slide.speakerTitle} [${subIdx}/${totalSub}]`
+              : `[${subIdx}/${totalSub}]`
+          });
+        }
+      }
+    }
+
+    const processedScene = {
+      ...cutsceneData,
+      slides: paginatedSlides
+    };
+
     this.isActive = true;
-    this.currentScene = cutsceneData;
+    this.currentScene = processedScene;
     this.currentSlideIndex = 0;
     this.onComplete = typeof onComplete === 'function' ? onComplete : null;
     this.slideLockTimer = 0.16;
 
     this.previousMusicMode = this.music && this.music.mode ? this.music.mode : null;
 
-    if (cutsceneData.musicMode && this.music) {
-      this.music.setMode(cutsceneData.musicMode);
+    if (processedScene.musicMode && this.music) {
+      this.music.setMode(processedScene.musicMode);
     }
 
     // Precargar imágenes de la escena
-    for (const slide of cutsceneData.slides) {
+    for (const slide of processedScene.slides) {
       const src = this._resolveSlideImageSrc(slide);
       if (src) {
         this.getImage(src);

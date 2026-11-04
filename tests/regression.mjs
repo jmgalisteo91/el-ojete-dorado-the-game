@@ -27,6 +27,9 @@ import {
 } from '../src/core/ScoreSystem.js';
 import handleLeaderboard from '../api/leaderboard.js';
 import handleSave from '../api/save.js';
+import { Tilemap } from '../src/world/Tilemap.js';
+import { DialogueBox } from '../src/ui/DialogueBox.js';
+import { NPC } from '../src/entities/NPC.js';
 
 let passed = 0;
 const failures = [];
@@ -365,8 +368,8 @@ test('renderNPCBarkBubble ajusta texto largo en varias líneas y dibuja bocadill
 
 test('renderFloatingBadge dibuja indicador con flecha pulsante', () => {
   const ctx = makeMockCtx();
-  SpeechBubble.renderFloatingBadge(ctx, 120, 80, '💀 BOSS 1', 'Alcantarillas', '#ef4444', '#fca5a5', true);
-  assert.ok(ctx.calls.some((c) => c.includes('fillText(💀 BOSS 1')));
+  SpeechBubble.renderFloatingBadge(ctx, 120, 80, '💀 GARBAGE COLLECTOR', 'Alcantarillas', '#ef4444', '#fca5a5', true);
+  assert.ok(ctx.calls.some((c) => c.includes('fillText(💀 GARBAGE COLLECTOR')));
   assert.ok(ctx.calls.some((c) => c.includes('fillText(Alcantarillas')));
 });
 
@@ -429,7 +432,7 @@ test('Reliquia Divina de El Microondas Little se encuentra en cofre dentro de el
   assert.ok(ctx.calls.some((c) => c.includes('Microondas')));
 });
 
-test('StackOverflowBoss (Boss 2) tiene hitbox de pies optimizada y navega obstáculos con A*', () => {
+test('StackOverflowBoss (Guardián del Stack Overflow) tiene hitbox de pies optimizada y navega obstáculos con A*', () => {
   const boss = new StackOverflowBoss({ x: 100, y: 100, sceneId: 'sword_temple' });
   // Comprobar hitbox de pies
   assert.equal(boss.boundingBox.width, 14);
@@ -696,6 +699,147 @@ test('api/save valida código en GET y contenido mínimo en POST', async () => {
   await handleSave(reqPostInvalid, resPost);
   assert.equal(resPost.statusCode, 400);
   assert.equal(resPost.body.error, 'INVALID_SAVE_DATA');
+});
+
+console.log('Bloques 1 a 5: Puzles, UI, Combate, Economía y Aldea');
+
+test('Templo de la Armadura: 4 interruptores A/B/C/D con choque estático al fallar y resolución con paridad', () => {
+  const tm = new Tilemap();
+  assert.equal(tm.armorPuzzle.solved, false);
+  assert.equal(tm.armorPuzzle.barrierActive, true);
+
+  // Activación errónea: A=1, B=1 (2 compuertas activas pero no cumplen la paridad de los monolitos)
+  const stepA = tm.toggleArmorSwitch('SWITCH_A');
+  assert.equal(stepA.solved, false);
+  assert.equal(stepA.activeCount, 1);
+
+  const stepB = tm.toggleArmorSwitch('SWITCH_B');
+  assert.equal(stepB.solved, false);
+  assert.equal(stepB.shock, true, 'Debe disparar arco de estática al fallar');
+  assert.equal(stepB.damage, 1, 'Debe infligir daño por choque');
+  // Switches deben haberse reseteado a 0
+  assert.deepEqual(tm.armorPuzzle.switches, { A: 0, B: 0, C: 0, D: 0 });
+
+  // Activación correcta deducida de los 3 monolitos: B=1, D=1 (A=0, C=0)
+  tm.toggleArmorSwitch('SWITCH_B');
+  const solvedRes = tm.toggleArmorSwitch('SWITCH_D');
+  assert.equal(solvedRes.solved, true);
+  assert.equal(solvedRes.justSolved, true);
+  assert.equal(tm.armorPuzzle.solved, true);
+  assert.equal(tm.armorPuzzle.barrierActive, false);
+});
+
+test('Templo de la Espada: Monolitos de recursión λ_N -> λ_0 -> λ_ret y Stack Overflow al errar secuencia', () => {
+  const tm = new Tilemap();
+  assert.equal(tm.swordPuzzle.solved, false);
+  assert.equal(tm.swordPuzzle.portalOpen, false);
+
+  // Fallo de secuencia inicial: pulsar monolito 1 antes que 3
+  const fail = tm.hitSwordMonolith(1);
+  assert.equal(fail.success, false);
+  assert.equal(fail.stackOverflow, true, 'Debe disparar Stack Overflow');
+  assert.equal(fail.damage, 1);
+  assert.deepEqual(tm.swordPuzzle.stack, []);
+
+  // Secuencia recursiva correcta: 3 (límite N) -> 1 (caso base 0) -> 2 (llamada pendiente)
+  const s1 = tm.hitSwordMonolith(3);
+  assert.equal(s1.success, true);
+  assert.equal(s1.finished, false);
+  assert.deepEqual(s1.stack, [3]);
+
+  const s2 = tm.hitSwordMonolith(1);
+  assert.equal(s2.success, true);
+  assert.equal(s2.finished, false);
+  assert.deepEqual(s2.stack, [3, 1]);
+
+  const s3 = tm.hitSwordMonolith(2);
+  assert.equal(s3.success, true);
+  assert.equal(s3.finished, true);
+  assert.deepEqual(s3.stack, [3, 1, 2]);
+  assert.equal(tm.swordPuzzle.solved, true);
+  assert.equal(tm.swordPuzzle.portalOpen, true);
+});
+
+test('Motor de Texto y Paginación: DialogueBox divide textos largos en páginas seguras [1/2], [2/2]', () => {
+  const db = new DialogueBox();
+  const sample = 'Este texto largo representa una explicación detallada del Sabio Aurelio sobre los misterios de la recursión y el origen del Ojete Dorado que debe dividirse automáticamente.';
+  const pages = db._paginateLines(sample, 44, 2);
+  assert.ok(pages.length >= 2, 'Debe dividirse en 2 o más diapositivas');
+  for (const page of pages) {
+    const lines = page.split('\n');
+    assert.ok(lines.length <= 2, 'Cada diapositiva no debe superar 2 líneas');
+  }
+});
+
+test('Blindaje Metálico: Armadura Binaria absorbe 3 impactos antes de dañar HP y Poción de Blindaje la repone', () => {
+  const player = new Player(0, 0);
+  player.equipArmor();
+  assert.equal(player.armorPoints, 3, 'Debe iniciar con 3 puntos de blindaje');
+  assert.equal(player.hp, 3);
+
+  // Impacto 1
+  player.takeHit({ direction: 'down', attackDamage: 1 });
+  assert.equal(player.armorPoints, 2);
+  assert.equal(player.hp, 3, 'El daño a la vida se absorbe completamente');
+
+  // Impacto 2
+  player.invulnTimer = 0;
+  player.takeHit({ direction: 'down', attackDamage: 1 });
+  assert.equal(player.armorPoints, 1);
+  assert.equal(player.hp, 3);
+
+  // Impacto 3: agota la coraza
+  player.invulnTimer = 0;
+  player.takeHit({ direction: 'down', attackDamage: 1 });
+  assert.equal(player.armorPoints, 0);
+  assert.equal(player.hp, 3);
+
+  // Impacto 4: coraza agotada, daña HP
+  player.invulnTimer = 0;
+  player.takeHit({ direction: 'down', attackDamage: 1 });
+  assert.equal(player.hp, 2, 'Debe reducir 1 punto de HP tras romperse la coraza');
+
+  // Reponer coraza con Poción de Blindaje
+  const potionSuccess = player.applyArmorPotion();
+  assert.equal(potionSuccess, true);
+  assert.equal(player.armorPoints, 3, 'La poción debe reconstituir los 3 puntos de coraza');
+});
+
+test('Penalizaciones por Robotización: Daño de espada -30% si >50% y corazón bloqueado si >80%', () => {
+  const player = new Player(0, 0);
+  player.equipArmor();
+  assert.equal(player.getSwordDamage(), 1);
+  assert.equal(player.effectiveMaxHp, 3);
+
+  // Más del 50%: penalización del 30% en daño de espada
+  player.robotizationLevel = 60;
+  assert.equal(player.getSwordDamage(), 0.7);
+  assert.equal(player.effectiveMaxHp, 3);
+
+  // Más del 80%: bloquea corazón derecho en estática (maxHp limitado a 2.0)
+  player.robotizationLevel = 85;
+  assert.equal(player.getSwordDamage(), 0.7);
+  assert.equal(player.effectiveMaxHp, 2.0);
+});
+
+test('NPCs y Aldea: Patrulla con detección de colisión y descanso nocturno', () => {
+  const npc = new NPC({
+    name: 'Brom el Herrero',
+    sceneId: 'overworld',
+    homeSceneId: 'blacksmith_house',
+    patrolPoints: [
+      { x: 100, y: 100 },
+      { x: 120, y: 100 }
+    ]
+  });
+
+  assert.equal(npc.isSleeping, false);
+  assert.ok(typeof npc.jobAnimTimer === 'number');
+
+  // Si entra en modo descanso nocturno
+  npc.isSleeping = true;
+  npc.update(0.1);
+  assert.equal(npc.isMoving, false, 'Un NPC durmiendo no debe desplazarse');
 });
 
 await Promise.all(asyncQueue);

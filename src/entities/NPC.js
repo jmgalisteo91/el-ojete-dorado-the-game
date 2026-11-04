@@ -61,6 +61,8 @@ export class NPC extends Entity {
     this.lookTimer = 1.0 + Math.random() * 1.8;
     this.stuckTimer = 0;
     this.currentActivityIcon = '';
+    this.isSleeping = false;
+    this.jobAnimTimer = Math.random() * 5.0;
 
     // Bocadillos ambientales discretos
     this.ambientCooldown = 4 + Math.random() * 9;
@@ -105,9 +107,16 @@ export class NPC extends Entity {
 
   update(dt, tilemap, obstacles, isTalking = false, player = null) {
     this.promptBobTimer += dt * 4.5;
+    this.jobAnimTimer += dt;
 
     if (this.ambientBubbleTimer > 0) {
       this.ambientBubbleTimer = Math.max(0, this.ambientBubbleTimer - dt);
+    }
+
+    if (this.isSleeping) {
+      this.isMoving = false;
+      super.update(dt);
+      return;
     }
 
     if (isTalking) {
@@ -171,17 +180,8 @@ export class NPC extends Entity {
 
       if (this.waitTimer <= 0) {
         this.currentActivityIcon = '';
-        // Elegir siguiente punto de forma natural (generalmente el siguiente de la ruta, o uno aleatorio cercano)
-        if (this.patrolPoints.length > 2 && Math.random() < 0.25) {
-          let nextIdx = Math.floor(Math.random() * this.patrolPoints.length);
-          if (nextIdx === this.currentWaypointIndex) {
-            nextIdx = (this.currentWaypointIndex + 1) % this.patrolPoints.length;
-          }
-          this.currentWaypointIndex = nextIdx;
-        } else {
-          this.currentWaypointIndex =
-            (this.currentWaypointIndex + 1) % this.patrolPoints.length;
-        }
+        // Rutas de waypoints fijas y deterministas para impedir bloqueos o extravíos
+        this.currentWaypointIndex = (this.currentWaypointIndex + 1) % this.patrolPoints.length;
       }
 
       super.update(dt);
@@ -223,21 +223,44 @@ export class NPC extends Entity {
 
       const stepX = nx * this.speed * dt;
       const stepY = ny * this.speed * dt;
-      let { blockedX, blockedY } = CollisionSystem.moveWithCollisions(
-        this,
-        stepX,
-        stepY,
-        tilemap,
-        obstacles
-      );
 
-      // Si un eje está bloqueado, intentar rodear suavemente en el eje perpendicular
-      if (blockedX && Math.abs(stepY) < 0.2) {
-        const slideY = (dy >= 0 ? 1 : -1) * this.speed * 0.75 * dt;
-        CollisionSystem.moveWithCollisions(this, 0, slideY, tilemap, obstacles);
-      } else if (blockedY && Math.abs(stepX) < 0.2) {
-        const slideX = (dx >= 0 ? 1 : -1) * this.speed * 0.75 * dt;
-        CollisionSystem.moveWithCollisions(this, slideX, 0, tilemap, obstacles);
+      // Comprobación AABB previa al paso para evitar colisionar con cajas, setos o muros
+      const nextBox = {
+        x: this.x + stepX + this.boundingBox.offsetX,
+        y: this.y + stepY + this.boundingBox.offsetY,
+        width: this.boundingBox.width,
+        height: this.boundingBox.height
+      };
+
+      let willCollide = tilemap && CollisionSystem.collidesWithMap(nextBox, tilemap);
+      if (!willCollide && Array.isArray(obstacles)) {
+        for (const obs of obstacles) {
+          if (obs !== this && obs.worldBoundingBox && CollisionSystem.checkAABB(nextBox, obs.worldBoundingBox)) {
+            willCollide = true;
+            break;
+          }
+        }
+      }
+
+      let blockedX = false;
+      let blockedY = false;
+
+      if (!willCollide) {
+        const moveRes = CollisionSystem.moveWithCollisions(
+          this,
+          stepX,
+          stepY,
+          tilemap,
+          obstacles
+        );
+        blockedX = moveRes.blockedX;
+        blockedY = moveRes.blockedY;
+      } else {
+        // Intento de deslizamiento en un solo eje
+        const slideY = CollisionSystem.moveWithCollisions(this, 0, stepY, tilemap, obstacles);
+        const slideX = CollisionSystem.moveWithCollisions(this, stepX, 0, tilemap, obstacles);
+        blockedX = slideX.blockedX;
+        blockedY = slideY.blockedY;
       }
 
       if (Math.abs(nx) >= Math.abs(ny)) {
@@ -249,10 +272,11 @@ export class NPC extends Entity {
       if (blockedX && blockedY) {
         this.stuckTimer += dt;
         this.isMoving = false;
-        // Si lleva más de 0.55s bloqueado por un obstáculo, descansa y pasa al siguiente destino sin atascarse
-        if (this.stuckTimer > 0.55) {
+        // Si lleva más de 0.45s bloqueado, avanza suavemente al siguiente waypoint sin quedarse congelado
+        if (this.stuckTimer > 0.45) {
           this.stuckTimer = 0;
-          this.waitTimer = 1.2 + Math.random() * 1.4;
+          this.currentWaypointIndex = (this.currentWaypointIndex + 1) % this.patrolPoints.length;
+          this.waitTimer = 0.8;
         }
       } else {
         this.stuckTimer = Math.max(0, this.stuckTimer - dt * 0.5);
@@ -264,16 +288,91 @@ export class NPC extends Entity {
   }
 
   render(ctx, camera) {
-    super.render(ctx, camera);
-
     const sx = Math.round(this.centerX - camera.renderX);
     const sy = Math.round(this.y - camera.renderY);
 
-    // Bocadillo ambiental de vida cotidiana (bocadillo estilo cómic / juego indie moderno)
+    if (this.isSleeping) {
+      // Estado durmiendo en cama: silueta en reposo y zZz animados
+      ctx.save();
+      const zPhase = (this.jobAnimTimer * 2) % 3;
+      const zY = sy - 8 - zPhase * 4;
+      const zX = sx + 4 + Math.sin(this.jobAnimTimer * 3) * 2;
+      ctx.font = 'bold 5.5px monospace';
+      ctx.fillStyle = '#93c5fd';
+      ctx.textAlign = 'center';
+      ctx.fillText(zPhase > 1.5 ? 'Z' : 'z', zX, zY);
+
+      // Manta/cuerpo en cama
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(sx - 7, sy + 3, 14, 8);
+      ctx.fillStyle = '#3b82f6';
+      ctx.fillRect(sx - 6, sy + 4, 12, 6);
+      ctx.restore();
+      return;
+    }
+
+    super.render(ctx, camera);
+
+    // Animaciones de oficio exclusivas
+    const isDayScene = this.sceneId === 'overworld';
+    if (isDayScene && !this.isMoving) {
+      const isBrom = this.name.includes('Brom');
+      const isLyra = this.name.includes('Lyra');
+      const isGuard = this.name.includes('Bruno') || this.name.includes('Kael');
+
+      if (isBrom) {
+        // Herrero Brom: Martilleo rítmico sobre el yunque con chispas de forja
+        ctx.save();
+        const cycle = (this.jobAnimTimer * 1.5) % 1.5;
+        if (cycle < 0.3) {
+          // Golpe de martillo
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillRect(sx + 5, sy + 4, 4, 2);
+          ctx.fillStyle = '#475569';
+          ctx.fillRect(sx + 7, sy + 6, 2, 4);
+          // Chispas de forja
+          ctx.fillStyle = cycle < 0.15 ? '#fef08a' : '#f97316';
+          ctx.fillRect(sx + 8 + Math.cos(cycle * 30) * 4, sy + 3 - cycle * 12, 1.5, 1.5);
+          ctx.fillRect(sx + 6 - Math.sin(cycle * 30) * 3, sy + 4 - cycle * 10, 1.5, 1.5);
+        } else {
+          // Brazo levantado en preparación
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillRect(sx + 5, sy - 1, 3, 3);
+        }
+        ctx.restore();
+      } else if (isLyra) {
+        // Herbolaria Lyra: Riego periódico en su huerto botánico
+        ctx.save();
+        const cycle = (this.jobAnimTimer * 1.2) % 2.0;
+        if (cycle < 0.8) {
+          // Regadera y gotas de agua
+          ctx.fillStyle = '#64748b';
+          ctx.fillRect(sx + 6, sy + 2, 4, 3);
+          ctx.fillStyle = '#38bdf8';
+          const dropY = sy + 6 + (cycle * 14) % 6;
+          ctx.fillRect(sx + 9, dropY, 1, 1.5);
+          ctx.fillRect(sx + 11, dropY + 1, 1, 1.5);
+        }
+        ctx.restore();
+      } else if (isGuard) {
+        // Capitán Bruno / Guardia Kael: Postura marcial con escudo en alto custodiando el Puente
+        ctx.save();
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(sx - 7, sy + 2, 4, 8);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx - 6.5, sy + 2.5, 3, 7);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(sx - 6, sy + 5, 2, 2); // Emblema del escudo
+        ctx.restore();
+      }
+    }
+
+    // Bocadillo ambiental de vida cotidiana
     if (this.ambientBubbleTimer > 0 && this.ambientBubbleText) {
       renderNPCBarkBubble(ctx, sx, sy, this.ambientBubbleText, this.ambientBubbleTimer, 3.0);
     } else if (this.currentActivityIcon && !this.isMoving) {
-      // Pequeño bocadillo de actividad cuando está trabajando en su oficio
+      // Pequeño bocadillo de actividad cuando está descansando en su puesto
       const bob = Math.round(Math.sin(this.promptBobTimer) * 1.2);
       renderActivityIcon(ctx, sx, sy, this.currentActivityIcon, bob);
     }

@@ -79,7 +79,8 @@ export const ITEM_ICONS = {
   ABYSSAL_POINTER: 8,
   SILICON_FLOWER: 9,
   DRONE_SCRAP: 10,
-  FISH: 11
+  FISH: 11,
+  POTION_ARMOR: 12
 };
 
 function canvasToImage(canvas) {
@@ -814,7 +815,7 @@ async function generateTilesetSheet() {
  * Genera el spritesheet de objetos (Items 16x16 en alta densidad) para el suelo y el Inventario.
  */
 async function generateItemsSheet() {
-  const count = 12;
+  const count = 13;
   const canvas = document.createElement('canvas');
   canvas.width = count * TILE_SIZE * ATLAS_SCALE;
   canvas.height = TILE_SIZE * ATLAS_SCALE;
@@ -962,6 +963,21 @@ async function generateItemsSheet() {
     // Aleta dorsal
     px(ctx, ox + 7, oy(4), 2, 2, '#38bdf8');
     px(ctx, ox + 7, oy(12), 2, 1, '#38bdf8');
+  }
+  // 12: POTION_ARMOR (Poción de Blindaje Metálico)
+  {
+    const ox = ITEM_ICONS.POTION_ARMOR * 16;
+    // Frasco reforzado azul cobalto con cuello de plata
+    px(ctx, ox + 6, oy(2), 4, 2, '#94a3b8'); // Tapón de aleación
+    px(ctx, ox + 5, oy(4), 6, 2, '#cbd5e1'); // Cuello metálico
+    px(ctx, ox + 4, oy(6), 8, 8, '#1e293b'); // Cuerpo reforzado
+    px(ctx, ox + 5, oy(7), 6, 6, '#0284c7'); // Elixir de blindaje azul profundo
+    px(ctx, ox + 6, oy(8), 4, 4, '#38bdf8'); // Núcleo radiante cian
+    px(ctx, ox + 7, oy(9), 2, 2, '#e0f2fe'); // Destello estelar
+    // Reborde de coraza plateada en las esquinas del frasco
+    px(ctx, ox + 3, oy(7), 1, 6, '#94a3b8');
+    px(ctx, ox + 12, oy(7), 1, 6, '#94a3b8');
+    px(ctx, ox + 5, oy(14), 6, 1, '#64748b');
   }
 
   return canvasToImage(canvas);

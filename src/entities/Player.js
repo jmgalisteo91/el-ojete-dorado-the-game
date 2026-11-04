@@ -28,16 +28,17 @@ export class Player extends Entity {
     this.hp = 3;
     this.hasBrokenHeartCurse = false;
     this.hasArmor = false;
+    this.armorPoints = 0; // Hasta 3 impactos absorbidos por la Armadura Binaria
     this.hasSword = false;
     this.hasLanternEquipped = false;
     this.coins = 25;
     this.robotizationLevel = 0;
     this.robotizationTimer = 0;
 
-    // Habilidades especiales desbloqueadas al vencer a los mini-bosses
-    this.hasDash = false;            // Boss 1: Dash Asíncrono
-    this.hasChargedAttack = false;   // Boss 2: Corte en Cascada (Caso Base)
-    this.hasBarrier = false;         // Boss 3: Barrera de Tipado Estricto
+    // Habilidades especiales desbloqueadas al vencer a los jefes regionales
+    this.hasDash = false;            // Garbage Collector: Dash Asíncrono
+    this.hasChargedAttack = false;   // Guardián del Stack Overflow: Corte en Cascada (Caso Base)
+    this.hasBarrier = false;         // Microondas Prototipo: Barrera de Tipado Estricto
 
     // Estados y cooldowns de habilidades
     this.dashTimer = 0;
@@ -96,7 +97,12 @@ export class Player extends Entity {
   }
 
   getSwordDamage() {
-    return this.attackDamage;
+    let dmg = this.attackDamage;
+    // Si la robotización supera el 50%, la rigidez biomecánica penaliza un 30% el daño
+    if (this.robotizationLevel > 50) {
+      dmg *= 0.7;
+    }
+    return dmg;
   }
 
   /** Concede puntos de habilidad por derrotar enemigos. Devuelve los puntos ganados. */
@@ -153,19 +159,35 @@ export class Player extends Entity {
   }
 
   get effectiveMaxHp() {
-    return this.hasBrokenHeartCurse ? Math.max(0.5, this.maxHp - 0.5) : this.maxHp;
+    let max = this.maxHp;
+    if (this.hasBrokenHeartCurse) {
+      max = Math.max(0.5, max - 0.5);
+    }
+    // Superar el 80% de robotización bloquea el corazón derecho en error/estática
+    if (this.robotizationLevel > 80) {
+      max = Math.min(max, 2.0);
+    }
+    return max;
   }
 
   equipArmor() {
     this.hasArmor = true;
+    this.armorPoints = this.robotizationLevel > 80 ? 2 : 3;
     this.hp = this.effectiveMaxHp;
     if (this.armoredAnimator) {
       this.animator = this.armoredAnimator;
     }
   }
 
+  applyArmorPotion() {
+    if (!this.hasArmor) return false;
+    this.armorPoints = this.robotizationLevel > 80 ? 2 : 3;
+    return true;
+  }
+
   unequipAllForNewGame() {
     this.hasArmor = false;
+    this.armorPoints = 0;
     this.hasSword = false;
     this.hasBrokenHeartCurse = false;
     this.hasDash = false;
@@ -335,8 +357,9 @@ export class Player extends Entity {
   }
 
   /**
-   * Recibe un impacto enemigo.
+   * Recibe un impacto de combate.
    * Si el jugador está INDEFENSO (sin armadura), cualquier ataque reduce su vida a 0 inmediatamente.
+   * Si porta la Armadura Binaria, los Corazones Blindados absorben hasta 3 impactos completos antes de pasar a corazones rojos.
    */
   takeHit(soundEngine = null, attacker = null) {
     if (this.invulnTimer > 0 || this.hp <= 0) return false;
@@ -371,9 +394,37 @@ export class Player extends Entity {
       // Indefenso: cualquier golpe le quita toda la vida llegando a 0
       this.hp = 0;
       this.invulnTimer = 1.0;
+    } else if (this.armorPoints > 0) {
+      // Coraza metálica absorbe el golpe completo
+      this.armorPoints = Math.max(0, this.armorPoints - 1);
+      this.invulnTimer = 0.9;
     } else {
       this.hp = Math.max(0, this.hp - 1);
       this.invulnTimer = 1.1;
+    }
+    return true;
+  }
+
+  /**
+   * Recibe daño ambiental (ej. descarga estática del puzle booleano o desbordamiento de pila).
+   * Respeta la coraza blindada si está activa y reduce vidas de medio en medio o enteras según el monto.
+   */
+  takeDamage(amount = 1, soundEngine = null) {
+    if (this.invulnTimer > 0 || this.hp <= 0) return false;
+
+    if (soundEngine && typeof soundEngine.playPlayerHurt === 'function') {
+      soundEngine.playPlayerHurt();
+    }
+
+    if (!this.hasArmor) {
+      this.hp = 0;
+      this.invulnTimer = 1.0;
+    } else if (this.armorPoints > 0) {
+      this.armorPoints = Math.max(0, this.armorPoints - 1);
+      this.invulnTimer = 0.85;
+    } else {
+      this.hp = Math.max(0, this.hp - amount * 0.5); // amount 1 = 0.5 corazones
+      this.invulnTimer = 1.0;
     }
     return true;
   }
@@ -732,14 +783,15 @@ export class Player extends Entity {
       const sweepEnd = sweepStart + progress * 1.9;
 
       ctx.save();
-      // Arco de energía dorada y cian estilo Zelda
-      ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)';
+      // Arco de energía: si la robotización supera el 50%, adquiere un tinte metálico grisáceo
+      const isMechanized = this.robotizationLevel > 50;
+      ctx.strokeStyle = isMechanized ? 'rgba(148, 163, 184, 0.85)' : 'rgba(251, 191, 36, 0.85)';
       ctx.lineWidth = 3.2;
       ctx.beginPath();
       ctx.arc(cx, cy, 14, sweepStart, sweepEnd);
       ctx.stroke();
 
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = isMechanized ? '#94a3b8' : '#ffffff';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(cx, cy, 15.5, sweepStart + 0.15, sweepEnd);
@@ -751,14 +803,14 @@ export class Player extends Entity {
       const hiltX = cx + Math.cos(sweepEnd) * 6;
       const hiltY = cy + Math.sin(sweepEnd) * 6;
 
-      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeStyle = isMechanized ? '#64748b' : '#38bdf8';
       ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.moveTo(hiltX, hiltY);
       ctx.lineTo(tipX, tipY);
       ctx.stroke();
 
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = isMechanized ? '#cbd5e1' : '#ffffff';
       ctx.lineWidth = 1.1;
       ctx.beginPath();
       ctx.moveTo(hiltX, hiltY);

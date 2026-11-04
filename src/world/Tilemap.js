@@ -27,34 +27,80 @@ export class Tilemap {
     this.currentSceneId = 'overworld';
     this.scenes = {};
 
-    // Estado del Puzle 1: Templo de la Armadura (Compilación Booleana)
+    // Estado del Puzle 1: Templo de la Armadura (4 Interruptores y 3 Monolitos Crípticos)
     this.armorPuzzle = {
-      switches: { A: 0, B: 0, C: 1 }, // Estado inicial que evalúa a FALSE: (0 && 0) || !1 -> false
-      conditionString: '[ (A && B) || !C ]',
+      switches: { A: 0, B: 0, C: 0, D: 0 },
       solved: false,
       barrierActive: true,
       barrierCol: 10,
       barrierRow: 5,
       switchPositions: {
-        SWITCH_A: { col: 6, row: 10, label: 'SWITCH_A', name: 'Interruptor de Presión A' },
-        SWITCH_B: { col: 10, row: 11, label: 'SWITCH_B', name: 'Interruptor de Presión B' },
-        SWITCH_C: { col: 15, row: 10, label: 'SWITCH_C', name: 'Interruptor de Presión C' }
+        SWITCH_A: { col: 4, row: 10, label: 'SWITCH_A', name: 'Terminal A' },
+        SWITCH_B: { col: 6, row: 10, label: 'SWITCH_B', name: 'Terminal B' },
+        SWITCH_C: { col: 15, row: 10, label: 'SWITCH_C', name: 'Terminal C' },
+        SWITCH_D: { col: 17, row: 10, label: 'SWITCH_D', name: 'Terminal D' }
       },
-      panelPosition: { col: 10, row: 2 }
+      monoliths: {
+        MONOLITH_ALFA: {
+          id: 'alfa',
+          col: 4,
+          row: 6,
+          name: 'Monolito de Paridad (Alfa)',
+          symbol: '∑₂',
+          clue: 'La paridad del núcleo exige equilibrio absoluto: exactamente dos de las cuatro terminales deben permanecer activas en resonancia.'
+        },
+        MONOLITH_BETA: {
+          id: 'beta',
+          col: 10,
+          row: 7,
+          name: 'Monolito de Complemento (Beta)',
+          symbol: '¬A',
+          clue: 'La compuerta D actúa como la negación pura del origen A (D = ¬A); empero, la terminal A carece de potencial y yace en reposo (A = 0).'
+        },
+        MONOLITH_GAMMA: {
+          id: 'gamma',
+          col: 17,
+          row: 6,
+          name: 'Monolito de Conducción (Gamma)',
+          symbol: 'B⚡',
+          clue: 'El canal C se mantiene en tierra nula (C = 0), permitiendo que la terminal B conduzca toda la energía restante.'
+        }
+      }
     };
 
     // Estado del Puzle 2: Templo de la Espada (Recursión y Caso Base)
     this.swordPuzzle = {
       stack: [], // Pila de llamadas recursivas actual
-      correctOrder: [3, 1, 2], // Monolito 3 -> Monolito 1 -> Monolito 2
+      correctOrder: [3, 1, 2], // Monolito 3 (N) -> Monolito 1 (0) -> Monolito 2 (Retorno)
       solved: false,
       portalOpen: false,
       portalCols: [11, 12],
       portalRow: 1,
       monoliths: {
-        MONOLITH_1: { id: 1, col: 6, row: 8, name: 'Monolito Rúnico I', symbol: 'λ₁' },
-        MONOLITH_2: { id: 2, col: 11, row: 10, name: 'Monolito Rúnico II', symbol: 'λ₂' },
-        MONOLITH_3: { id: 3, col: 17, row: 8, name: 'Monolito Rúnico III', symbol: 'λ₃' }
+        MONOLITH_3: {
+          id: 3,
+          col: 17,
+          row: 8,
+          name: 'Runa del Límite Superior (λ_N)',
+          symbol: 'λ_N',
+          clue: 'Límite Superior N: El marco de llamada inicial se apila en el tope. Primero invoca al límite superior N.'
+        },
+        MONOLITH_1: {
+          id: 1,
+          col: 6,
+          row: 8,
+          name: 'Runa de la Singularidad (λ_0)',
+          symbol: 'λ_0',
+          clue: 'Singularidad Base 0: Se alcanza el fondo del abismo recursivo. El caso base 0 desciende antes de cualquier retorno.'
+        },
+        MONOLITH_2: {
+          id: 2,
+          col: 11,
+          row: 10,
+          name: 'Runa del Desenredo (λ_ret)',
+          symbol: 'λ_ret',
+          clue: 'Desenredo Pendiente: Resuelve la computación aplazada, desapila la memoria y libera el portal.'
+        }
       }
     };
 
@@ -528,7 +574,7 @@ export class Tilemap {
       { x: 19.5 * 16, y: 3.5 * 16, radius: 46, intensity: 0.9 }
     );
 
-    // 3b. Umbral de la Fortaleza de AI Alex en el Noreste (Boss 3: Microondas Prototipo + Acceso a Boss Final)
+    // 3b. Umbral de la Fortaleza de AI Alex en el Noreste (Microondas Prototipo + Acceso a Mister AI Alex)
     fillRect(ground, 26, 2, 5, 4, TILES.STONE_FLOOR);
     fillRect(ground, 28, 6, 2, 6, TILES.PATH);
     setDeco(26, 2, TILES.WALL_INTERIOR, true);
@@ -690,7 +736,7 @@ export class Tilemap {
     fillRect(ground, 19, 19, 4, 2, TILES.PATH);
     fillRect(ground, 18, 19, 2, 2, TILES.PATH);
 
-    // === PLAZA DE LA ALCANTARILLA MUNICIPAL (BOSS 1: EL GARBAGE COLLECTOR FURIOSO) ===
+    // === PLAZA DE LA ALCANTARILLA MUNICIPAL (EL GARBAGE COLLECTOR FURIOSO) ===
     fillRect(ground, 11, 20, 4, 2, TILES.STONE_FLOOR);
     fillRect(ground, 15, 20, 3, 2, TILES.PATH);
     lightSources.push({
@@ -907,17 +953,17 @@ export class Tilemap {
         lines: [
           '«← Cabaña de Lyra (Alquimista y Herbolaria).»',
           '«→ Cuartel de la Guardia del Binario y Calabozo Municipal.»',
-          '«↙ SUROESTE: Alcantarillas Municipales (💀 Boss 1: Garbage Collector Furioso).»'
+          '«↙ SUROESTE: Alcantarillas Municipales (💀 Garbage Collector Furioso).»'
         ]
       },
       {
         c: 10,
         r: 20,
-        shortName: 'Alcantarilla (Boss 1)',
-        title: '🪧 Entrada a las Alcantarillas · Boss 1: Garbage Collector',
+        shortName: 'Alcantarillas',
+        title: '🪧 Entrada a las Alcantarillas · El Garbage Collector',
         lines: [
           '«↓ TRAMPILLA DE HIERRO: Acceso a la Fosa de Memoria Subterránea.»',
-          '«💀 PELIGRO DE JEFE (BOSS 1): El Garbage Collector Furioso custodia las cloacas. Requiere Armadura Binaria y Espada de la Recursividad.»',
+          '«💀 PELIGRO DE JEFE: El Garbage Collector Furioso custodia las cloacas. Requiere Armadura Binaria y Espada de la Recursividad.»',
           '«Recompensa al derrotarlo: Habilidad [Dash Asíncrono] (Tecla SHIFT).»'
         ]
       }
@@ -944,7 +990,7 @@ export class Tilemap {
       if (c >= 26 && r >= 10 && r <= 15) return true;
       // Camino Norte
       if (c >= 16 && c <= 19 && r <= 6) return true;
-      // Camino Sur y Plaza de la Alcantarilla (Boss 1)
+      // Camino Sur y Plaza de la Alcantarilla (Garbage Collector)
       if (c >= 16 && c <= 19 && r >= 18) return true;
       if (c >= 10 && c <= 16 && r >= 19 && r <= 22) return true;
       // Plaza central y mercado
@@ -1076,51 +1122,104 @@ export class Tilemap {
     });
 
     const elderDoor = this.houseDoors.find((d) => d.sceneId === 'elder_house');
-    createInterior('elder_house', 'Casa de Aurelio (Cronista)', elderDoor, ({ decoration, collision }) => {
+    createInterior('elder_house', 'Casa de Aurelio (Cronista)', elderDoor, ({ ground, decoration, collision, lightSources }) => {
+      // Estanterías repletas de pergaminos antiguos y códices
       decoration[2][2] = TILES.BOOKSHELF; collision[2][2] = 1;
       decoration[2][3] = TILES.BOOKSHELF; collision[2][3] = 1;
       decoration[2][4] = TILES.BOOKSHELF; collision[2][4] = 1;
-      decoration[2][9] = TILES.BED;       collision[2][9] = 1;
+      decoration[2][5] = TILES.BOOKSHELF; collision[2][5] = 1;
+      // Escritorio de estudio y lectura
       decoration[4][3] = TILES.TABLE;     collision[4][3] = 1;
-      decoration[4][8] = TILES.TABLE;     collision[4][8] = 1;
+      decoration[4][4] = TILES.TABLE;     collision[4][4] = 1;
+      // Telescopio / flexo astronómico y lecho
+      decoration[2][8] = TILES.LAMPPOST;  collision[2][8] = 1;
+      decoration[2][9] = TILES.BED;       collision[2][9] = 1;
+      lightSources.push({
+        x: 8.5 * this.tileSize,
+        y: 2.5 * this.tileSize,
+        radius: 48,
+        intensity: 0.95
+      });
     });
 
     const oracleDoor = this.houseDoors.find((d) => d.sceneId === 'oracle_house');
-    createInterior('oracle_house', 'Observatorio de Orion (Oráculo IA)', oracleDoor, ({ decoration, collision }) => {
+    createInterior('oracle_house', 'Observatorio de Orion (Oráculo IA)', oracleDoor, ({ ground, decoration, collision, lightSources }) => {
       decoration[2][2] = TILES.BOOKSHELF; collision[2][2] = 1;
       decoration[2][3] = TILES.LAMPPOST;  collision[2][3] = 1;
       decoration[2][8] = TILES.LAMPPOST;  collision[2][8] = 1;
       decoration[2][9] = TILES.BED;       collision[2][9] = 1;
       decoration[4][3] = TILES.TABLE;     collision[4][3] = 1;
       decoration[4][8] = TILES.BOOKSHELF; collision[4][8] = 1;
+      lightSources.push({
+        x: 3.5 * this.tileSize,
+        y: 2.5 * this.tileSize,
+        radius: 50,
+        intensity: 1.0
+      });
     });
 
     const smithDoor = this.houseDoors.find((d) => d.sceneId === 'blacksmith_house');
-    createInterior('blacksmith_house', 'Herrería de Brom (Forjador)', smithDoor, ({ decoration, collision }) => {
+    createInterior('blacksmith_house', 'Herrería de Brom (Forjador)', smithDoor, ({ ground, decoration, collision, lightSources }) => {
+      // Suelo reforzado de piedra y adoquín en el sector de forja
+      for (let r = 2; r <= 5; r++) {
+        for (let c = 1; c <= 4; c++) {
+          ground[r][c] = TILES.COBBLE;
+        }
+      }
+      // Fragua ardiente secundaria con resplandor
+      decoration[1][3] = TILES.FIREPLACE; collision[1][3] = 1;
+      lightSources.push({
+        x: 3.5 * this.tileSize,
+        y: 1.5 * this.tileSize,
+        radius: 58,
+        intensity: 1.05
+      });
+      // Yunques, lingotes y barril de templado
       decoration[2][2] = TILES.ANVIL;     collision[2][2] = 1;
-      decoration[2][3] = TILES.CRATE;     collision[2][3] = 1;
-      decoration[3][2] = TILES.CRATE;     collision[3][2] = 1;
-      decoration[2][9] = TILES.BED;       collision[2][9] = 1;
+      decoration[3][2] = TILES.CRATE;     collision[3][2] = 1; // Lingotes apilados
+      decoration[4][2] = TILES.CRATE;     collision[4][2] = 1;
+      decoration[3][3] = TILES.WELL;      collision[3][3] = 1; // Barril de agua/templado
+      // Banco de trabajo y lecho
       decoration[4][8] = TILES.TABLE;     collision[4][8] = 1;
+      decoration[2][9] = TILES.BED;       collision[2][9] = 1;
     });
 
     const herbDoor = this.houseDoors.find((d) => d.sceneId === 'herbalist_house');
-    createInterior('herbalist_house', 'Cabaña de Lyra (Alquimista)', herbDoor, ({ decoration, collision }) => {
+    createInterior('herbalist_house', 'Cabaña de Lyra (Alquimista)', herbDoor, ({ ground, decoration, collision }) => {
+      // Estantes de frascos medicinales y elixires
       decoration[2][2] = TILES.BOOKSHELF; collision[2][2] = 1;
-      decoration[2][3] = TILES.FLOWERS_1;
+      decoration[2][3] = TILES.BOOKSHELF; collision[2][3] = 1;
+      // Maceteros botánicos y flores secas
       decoration[2][4] = TILES.FLOWERS_1;
-      decoration[2][9] = TILES.BED;       collision[2][9] = 1;
-      decoration[4][3] = TILES.TABLE;     collision[4][3] = 1;
+      decoration[2][5] = TILES.FLOWERS_2;
+      decoration[3][2] = TILES.BUSH;      collision[3][2] = 1; // Arbusto medicinal cultivado
+      decoration[4][2] = TILES.FLOWERS_2;
       decoration[5][9] = TILES.FLOWERS_1;
+      // Mesa de destilación y mezclas
+      decoration[4][7] = TILES.TABLE;     collision[4][7] = 1;
+      decoration[4][8] = TILES.TABLE;     collision[4][8] = 1;
+      decoration[2][9] = TILES.BED;       collision[2][9] = 1;
     });
 
     const guardDoor = this.houseDoors.find((d) => d.sceneId === 'guard_house');
-    createInterior('guard_house', 'Cuartel de Kael (Capitán)', guardDoor, ({ decoration, collision }) => {
+    createInterior('guard_house', 'Cuartel de Kael (Capitán)', guardDoor, ({ ground, decoration, collision }) => {
+      // Pavimento táctico de piedra
+      for (let r = 3; r <= 6; r++) {
+        for (let c = 4; c <= 7; c++) {
+          ground[r][c] = TILES.STONE_FLOOR;
+        }
+      }
+      // Mesa táctica de operaciones con mapas de campaña
+      decoration[4][5] = TILES.TABLE;     collision[4][5] = 1;
+      decoration[4][6] = TILES.TABLE;     collision[4][6] = 1;
+      // Armeros de lanzas, escudos y suministros de la guardia
       decoration[2][2] = TILES.CRATE;     collision[2][2] = 1;
-      decoration[2][3] = TILES.CRATE;     collision[2][3] = 1;
-      decoration[2][8] = TILES.TABLE;     collision[2][8] = 1;
+      decoration[2][3] = TILES.ANVIL;     collision[2][3] = 1;
+      decoration[3][2] = TILES.CRATE;     collision[3][2] = 1;
+      // Literas de descanso militar
+      decoration[2][8] = TILES.BED;       collision[2][8] = 1;
       decoration[2][9] = TILES.BED;       collision[2][9] = 1;
-      decoration[4][2] = TILES.SIGNPOST;  collision[4][2] = 1;
+      decoration[2][5] = TILES.SIGNPOST;  collision[2][5] = 1; // Tablón de órdenes del cuartel
     });
 
     // Escena especial: Calabozo Municipal del Pueblo (Cárcel por insultar a la IA)
@@ -1202,7 +1301,7 @@ export class Tilemap {
       setDeco(c, rows - 1, TILES.WALL_INTERIOR, true);
     }
 
-    // Portal místico hacia la arena del Boss 2 (Guardián del Stack Overflow)
+    // Portal místico hacia la arena del Guardián del Stack Overflow
     if (this.swordPuzzle.portalOpen) {
       setDeco(11, 1, TILES.PORTAL_GATE_OPEN, false);
       setDeco(12, 1, TILES.PORTAL_GATE_OPEN, false);
@@ -1330,7 +1429,7 @@ export class Tilemap {
       setDeco(c, rows - 1, TILES.WALL_INTERIOR, true);
     }
 
-    // Portal místico hacia la arena del Boss 2 (Guardián del Stack Overflow)
+    // Portal místico hacia la arena del Guardián del Stack Overflow
     if (this.swordPuzzle.portalOpen) {
       setDeco(11, 1, TILES.PORTAL_GATE_OPEN, false);
       setDeco(12, 1, TILES.PORTAL_GATE_OPEN, false);
@@ -1841,7 +1940,7 @@ export class Tilemap {
       // 1. DIBUJAR ALCANTARILLA / TRAMPILLA SUBTERRÁNEA EN (12..13, 20)
       const gx = Math.round(12 * this.tileSize - camX);
       const gy = Math.round(20 * this.tileSize - camY);
-      const boss1Dead = isBossDead('boss_garbage_collector');
+      const garbageCollectorDead = isBossDead('boss_garbage_collector');
 
       ctx.save();
       // Brocal de piedra oscura (24x16 px centrado en 12.5, 20.5)
@@ -1872,8 +1971,8 @@ export class Tilemap {
       ctx.fillStyle = '#94a3b8';
       ctx.fillRect(gx + 6, gy + 8, 11, 1);
 
-      // Vapores verdes de Memory Leak emanando si el Boss 1 sigue activo
-      if (!boss1Dead) {
+      // Vapores verdes de Memory Leak emanando si el Garbage Collector sigue activo
+      if (!garbageCollectorDead) {
         const fumeAlpha = 0.35 + Math.sin(t * 2.5) * 0.2;
         ctx.fillStyle = `rgba(34, 197, 94, ${fumeAlpha.toFixed(2)})`;
         const fy1 = Math.round((t * 8) % 10);
@@ -1883,53 +1982,53 @@ export class Tilemap {
       }
       ctx.restore();
 
-      // Indicador flotante sobre la Alcantarilla (Boss 1)
+      // Indicador flotante sobre la Alcantarilla (Garbage Collector)
       drawFloatingMarker(
         12.5 * this.tileSize,
         19.6 * this.tileSize,
-        boss1Dead ? '✓ ALCANTARILLA (BOSS 1 PURGADO)' : '💀 BOSS 1: ALCANTARILLAS [E]',
-        boss1Dead ? 'Habilidad: Dash Asíncrono' : 'El Garbage Collector Furioso',
-        boss1Dead ? '#22c55e' : '#ef4444',
-        boss1Dead ? '#86efac' : '#fca5a5'
+        garbageCollectorDead ? '✓ ALCANTARILLA (GARBAGE COLLECTOR PURGADO)' : '💀 ALCANTARILLAS: GARBAGE COLLECTOR [E]',
+        garbageCollectorDead ? 'Habilidad: Dash Asíncrono' : 'El Garbage Collector Furioso',
+        garbageCollectorDead ? '#22c55e' : '#ef4444',
+        garbageCollectorDead ? '#86efac' : '#fca5a5'
       );
 
-      // Indicador flotante sobre Templo 1 (Norte del Río: Armadura Binaria)
+      // Indicador flotante sobre Templo de la Armadura Binaria
       const hasArmor = Boolean(player && player.hasArmor);
       drawFloatingMarker(
         34.5 * this.tileSize,
         4.4 * this.tileSize,
-        hasArmor ? '✓ TEMPLO 1: ARMADURA BINARIA' : '🛡️ 1º TEMPLO: ARMADURA BINARIA [E]',
-        'Prueba de Compilación Booleana',
+        hasArmor ? '✓ TEMPLO DE LA ARMADURA BINARIA' : '🛡️ TEMPLO DE LA ARMADURA BINARIA [E]',
+        'Prueba de Paridad y Lógica Binaria',
         hasArmor ? '#22c55e' : '#38bdf8',
         hasArmor ? '#86efac' : '#7dd3fc'
       );
 
-      // Indicador flotante sobre Templo 2 (Sur del Río: Espada + Boss 2)
-      const boss2Dead = isBossDead('boss_stack_overflow');
+      // Indicador flotante sobre Templo de la Espada (Guardián del Stack Overflow)
+      const stackOverflowDead = isBossDead('boss_stack_overflow');
       const hasSword = Boolean(player && player.hasSword);
       drawFloatingMarker(
         34.5 * this.tileSize,
         18.4 * this.tileSize,
-        boss2Dead && hasSword ? '✓ TEMPLO 2: ESPADA Y BOSS 2' : '⚔️ 2º TEMPLO: ESPADA + 💀 BOSS 2 [E]',
-        ' Guardián del Stack Overflow',
-        boss2Dead && hasSword ? '#22c55e' : '#f59e0b',
-        boss2Dead && hasSword ? '#86efac' : '#fde047'
+        stackOverflowDead && hasSword ? '✓ TEMPLO DE LA ESPADA: DESPEJADO' : '⚔️ TEMPLO DE LA ESPADA + 💀 GUARDIÁN DEL STACK [E]',
+        'Guardián del Stack Overflow',
+        stackOverflowDead && hasSword ? '#22c55e' : '#f59e0b',
+        stackOverflowDead && hasSword ? '#86efac' : '#fde047'
       );
 
-      // Indicador en la salida Oeste hacia Ruinas del Despertar (Boss 3 y Boss Final)
+      // Indicador en la salida Oeste hacia Ruinas del Despertar
       drawFloatingMarker(
         2.4 * this.tileSize,
         11.3 * this.tileSize,
         '◀ RUINAS DEL DESPERTAR',
-        '💀 Boss 3 (Fortaleza) y 👑 Boss Final',
+        '💀 Fortaleza de AI Alex',
         '#c084fc',
         '#e9d5ff'
       );
     } else if (this.currentSceneId === 'first_stage') {
       const hasArmor = Boolean(player && player.hasArmor);
       const hasSword = Boolean(player && player.hasSword);
-      const boss2Dead = isBossDead('boss_stack_overflow');
-      const boss3Dead = isBossDead('boss_prototype_microwave');
+      const stackOverflowDead = isBossDead('boss_stack_overflow');
+      const microwaveDead = isBossDead('boss_prototype_microwave');
 
       drawFloatingMarker(
         6.5 * this.tileSize,
@@ -1943,40 +2042,40 @@ export class Tilemap {
       drawFloatingMarker(
         17.5 * this.tileSize,
         1.6 * this.tileSize,
-        boss2Dead && hasSword ? '✓ TEMPLO ESPADA + BOSS 2' : '⚔️ TEMPLO ESPADA + 💀 BOSS 2 [E]',
+        stackOverflowDead && hasSword ? '✓ TEMPLO ESPADA + GUARDIÁN' : '⚔️ TEMPLO ESPADA + 💀 GUARDIÁN DEL STACK [E]',
         'Norte · Guardián del Stack Overflow',
-        boss2Dead && hasSword ? '#22c55e' : '#f59e0b',
-        boss2Dead && hasSword ? '#86efac' : '#fde047'
+        stackOverflowDead && hasSword ? '#22c55e' : '#f59e0b',
+        stackOverflowDead && hasSword ? '#86efac' : '#fde047'
       );
 
       drawFloatingMarker(
         28.5 * this.tileSize,
         1.6 * this.tileSize,
-        boss3Dead ? '👑 ACCESO CIUDADELA (BOSS FINAL) [E]' : '💀 BOSS 3: FORTALEZA DE AI ALEX [E]',
-        boss3Dead ? 'Hacia Mister AI Alex' : 'Microondas Prototipo V0.1 + Ciudadela',
+        microwaveDead ? '👑 ACCESO CIUDADELA (MISTER AI ALEX) [E]' : '💀 LABORATORIO ALPHA: MICROONDAS PROTOTIPO [E]',
+        microwaveDead ? 'Hacia Mister AI Alex' : 'Microondas Prototipo V0.1 + Ciudadela',
         '#ef4444',
         '#fca5a5'
       );
     } else if (this.currentSceneId === 'sword_temple') {
-      const boss2Dead = isBossDead('boss_stack_overflow');
-      if (!boss2Dead) {
+      const stackOverflowDead = isBossDead('boss_stack_overflow');
+      if (!stackOverflowDead) {
         drawFloatingMarker(
           11.5 * this.tileSize,
           1.3 * this.tileSize,
-          this.swordPuzzle?.portalOpen ? '💀 BOSS 2: STACK OVERFLOW (ACTIVO)' : '🔒 PORTAL SELLADO · BOSS 2',
-          this.swordPuzzle?.portalOpen ? '¡Derrota al jefe en la arena!' : 'Golpea los Monolitos: 3 -> 1 -> 2',
+          this.swordPuzzle?.portalOpen ? '💀 GUARDIÁN DEL STACK OVERFLOW (ACTIVO)' : '🔒 PORTAL SELLADO DEL ABISMO',
+          this.swordPuzzle?.portalOpen ? '¡Derrota al jefe en la arena!' : 'Descifra el paso recursivo en las runas',
           '#a855f7',
           '#e9d5ff'
         );
       }
     } else if (this.currentSceneId === 'ai_fortress_gate') {
-      const boss3Dead = isBossDead('boss_prototype_microwave');
+      const microwaveDead = isBossDead('boss_prototype_microwave');
       const finalDead = isBossDead('boss_final_ai_alex');
       drawFloatingMarker(
         11.5 * this.tileSize,
         1.3 * this.tileSize,
-        finalDead ? '✓ CIUDADELA DE AI ALEX LIBERADA' : '👑 BOSS FINAL: CIUDADELA DE AI ALEX [E]',
-        boss3Dead ? 'Cruza el portal norte hacia El Gran Ojal' : '¡Cuidado: Boss 3 Microondas Prototipo en sala!',
+        finalDead ? '✓ CIUDADELA DE AI ALEX LIBERADA' : '👑 BATALLA FINAL: CIUDADELA DE AI ALEX [E]',
+        microwaveDead ? 'Cruza el portal norte hacia El Gran Ojal' : '¡Cuidado: Microondas Prototipo en sala!',
         '#ef4444',
         '#fde047'
       );
@@ -1984,14 +2083,17 @@ export class Tilemap {
   }
 
   // =========================================================================
-  // MÉTODOS Y MECÁNICAS: PUZLE DEL TEMPLO DE LA ARMADURA (COMPILACIÓN BOOLEANA)
+  // MÉTODOS Y MECÁNICAS: PUZLE DEL TEMPLO DE LA ARMADURA (PARIDAD Y CIRCUITOS)
   // =========================================================================
 
   /**
-   * Conmuta el estado de un interruptor de presión (0 <-> 1) y evalúa la condición booleana.
-   * @param {string} switchId 'SWITCH_A' | 'SWITCH_B' | 'SWITCH_C'
+   * Conmuta el estado de un interruptor de presión (0 <-> 1) y evalúa la condición de paridad y compuertas.
+   * @param {string} switchId 'SWITCH_A' | 'SWITCH_B' | 'SWITCH_C' | 'SWITCH_D'
    */
   toggleArmorSwitch(switchId) {
+    if (this.armorPuzzle.solved) {
+      return { solved: true, conditionResult: true };
+    }
     const key = switchId.replace('SWITCH_', '');
     if (this.armorPuzzle.switches[key] === undefined) return null;
 
@@ -2000,11 +2102,16 @@ export class Tilemap {
   }
 
   /**
-   * Evalúa la condición lógica: [ (A && B) || !C ]
+   * Evalúa la condición lógica abstracta deducida de los 3 Monolitos Crípticos:
+   * 1. Monolito Alfa: Paridad = exactamente 2 compuertas activas (A + B + C + D === 2).
+   * 2. Monolito Beta: D = ¬A, con A en reposo (A === 0, por lo que D === 1).
+   * 3. Monolito Gamma: C drena a tierra (C === 0), B conduce la energía (B === 1).
+   * Solución única: { A: 0, B: 1, C: 0, D: 1 }
    */
   evaluateArmorPuzzle() {
-    const { A, B, C } = this.armorPuzzle.switches;
-    const isConditionMet = (A === 1 && B === 1) || (C === 0);
+    const { A, B, C, D } = this.armorPuzzle.switches;
+    const activeCount = (A || 0) + (B || 0) + (C || 0) + (D || 0);
+    const isConditionMet = A === 0 && B === 1 && C === 0 && D === 1;
 
     if (isConditionMet && !this.armorPuzzle.solved) {
       this.armorPuzzle.solved = true;
@@ -2018,14 +2125,29 @@ export class Tilemap {
           temple.layers.decoration[5][c] = -1;
         }
       }
-      return { solved: true, justSolved: true, conditionResult: true };
+      return { solved: true, justSolved: true, conditionResult: true, activeCount };
     }
 
-    return { solved: this.armorPuzzle.solved, justSolved: false, conditionResult: isConditionMet };
+    // Si se activan 2 compuertas y no es la combinación correcta, o se superan las 2 compuertas:
+    // Se produce un cortocircuito violento, los interruptores se resetean y se dispara un arco de estática (-0.5 corazón)
+    if (activeCount >= 2 && !isConditionMet) {
+      this.armorPuzzle.switches = { A: 0, B: 0, C: 0, D: 0 };
+      return {
+        solved: false,
+        justSolved: false,
+        conditionResult: false,
+        shock: true,
+        damage: 1,
+        message: '⚡ ¡Cortocircuito de Paridad! Arco de estática liberado (-0.5 corazón).'
+      };
+    }
+
+    return { solved: false, justSolved: false, conditionResult: false, activeCount };
   }
 
   /**
-   * Renderiza los 3 interruptores de presión, el panel de compilación y la barrera de fuego.
+   * Renderiza los 4 interruptores de presión, los 3 monolitos crípticos y la barrera de fuego.
+   * Sin fórmulas explícitas en la pared.
    */
   renderArmorPuzzle(ctx, camera) {
     const camX = camera.renderX;
@@ -2035,10 +2157,10 @@ export class Tilemap {
     ctx.save();
     ctx.imageSmoothingEnabled = false;
 
-    // 1. Render de los 3 Interruptores de Presión tipo Tile
+    // 1. Render de los 4 Interruptores de Presión tipo Tile (SWITCH_A .. SWITCH_D)
     for (const [key, sw] of Object.entries(this.armorPuzzle.switchPositions)) {
       const swKey = key.replace('SWITCH_', '');
-      const state = this.armorPuzzle.switches[swKey];
+      const state = this.armorPuzzle.switches[swKey] || 0;
       const isPressed = state === 1;
 
       const sx = Math.round(sw.col * this.tileSize - camX);
@@ -2063,36 +2185,33 @@ export class Tilemap {
       ctx.textBaseline = 'middle';
       ctx.fillText(`${swKey}:${state}`, sx + 8, sy + 8);
 
-      // Halo sutil cuando está en 1
+      // Halo sutil cuando está activo
       if (isPressed) {
         ctx.strokeStyle = 'rgba(52, 211, 153, 0.4)';
         ctx.strokeRect(sx - 0.5, sy - 0.5, 17, 17);
       }
     }
 
-    // 2. Panel de Compilación en la pared norte (col: 10, row: 2)
-    const panX = Math.round(this.armorPuzzle.panelPosition.col * this.tileSize - camX - 32);
-    const panY = Math.round(this.armorPuzzle.panelPosition.row * this.tileSize - camY - 10);
-    const panW = 80;
-    const panH = 22;
+    // 2. Render de los 3 Monolitos Crípticos de Lógica Abstracta (Alfa, Beta, Gamma)
+    if (this.armorPuzzle.monoliths) {
+      for (const mono of Object.values(this.armorPuzzle.monoliths)) {
+        const mx = Math.round(mono.col * this.tileSize - camX);
+        const my = Math.round(mono.row * this.tileSize - camY);
 
-    const { A, B, C } = this.armorPuzzle.switches;
-    const condMet = (A === 1 && B === 1) || (C === 0);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(mx + 2, my - 2, 12, 18);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
 
-    ctx.fillStyle = 'rgba(3, 7, 18, 0.94)';
-    ctx.fillRect(panX, panY, panW, panH);
-    ctx.strokeStyle = condMet ? '#10b981' : '#f59e0b';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(panX + 0.5, panY + 0.5, panW - 1, panH - 1);
-
-    ctx.font = 'bold 5.5px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('COMPILADOR BOOLEANO', panX + panW / 2, panY + 5);
-
-    ctx.fillStyle = condMet ? '#34d399' : '#f87171';
-    ctx.fillText(`[ (A && B) || !C ] -> ${condMet ? 'TRUE ✓' : 'FALSE ✕'}`, panX + panW / 2, panY + 14);
+        // Símbolo rúnico grabado
+        ctx.font = 'bold 6.5px monospace';
+        ctx.fillStyle = '#7dd3fc';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(mono.symbol, mx + 8, my + 6);
+      }
+    }
 
     // 3. Barrera de fuego (si no está resuelto el puzle)
     if (this.armorPuzzle.barrierActive) {
@@ -2124,7 +2243,7 @@ export class Tilemap {
 
   /**
    * Registra el golpe o interacción con un monolito rúnico.
-   * Orden esperado: Monolito 3 -> Monolito 1 -> Monolito 2
+   * Deducción de paso recursivo: Monolito 3 (Límite N) -> Monolito 1 (Caso Base 0) -> Monolito 2 (Desenredo)
    * @param {number} monolithId 1, 2 o 3
    */
   hitSwordMonolith(monolithId) {
@@ -2157,9 +2276,9 @@ export class Tilemap {
       return { success: true, finished: false, step: this.swordPuzzle.stack.length, stack: [...this.swordPuzzle.stack] };
     }
 
-    // Orden incorrecto: Desbordamiento de pila (Stack Overflow)
+    // Orden incorrecto: Desbordamiento violento de pila (Stack Overflow)
     this.swordPuzzle.stack = [];
-    return { success: false, error: 'STACK_OVERFLOW', expected };
+    return { success: false, error: 'STACK_OVERFLOW', stackOverflow: true, damage: 1, expected };
   }
 
   /**
@@ -2209,14 +2328,14 @@ export class Tilemap {
     ctx.strokeStyle = this.swordPuzzle.portalOpen ? '#22c55e' : '#a855f7';
     ctx.strokeRect(stackX - 44.5, stackY - 5.5, 89, 15);
 
-    const stackStr = this.swordPuzzle.stack.length > 0 ? this.swordPuzzle.stack.join(' -> ') : 'RAÍZ (VACÍA)';
+    const stackStr = this.swordPuzzle.stack.length > 0 ? this.swordPuzzle.stack.map(id => id === 3 ? 'λ_N' : id === 1 ? 'λ_0' : 'λ_ret').join(' -> ') : 'RAÍZ (VACÍA)';
     ctx.font = 'bold 5.5px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = this.swordPuzzle.portalOpen ? '#4ade80' : '#c084fc';
     ctx.fillText(`PILA: [${stackStr}]`, stackX, stackY + 2);
 
-    // 3. Efecto de vórtice dorado si el portal hacia el Boss 2 está abierto
+    // 3. Efecto de vórtice dorado si el portal hacia el Guardián está abierto
     if (this.swordPuzzle.portalOpen) {
       const portX = Math.round(11.5 * this.tileSize - camX);
       const portY = Math.round(1.5 * this.tileSize - camY);

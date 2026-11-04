@@ -103,7 +103,7 @@ export class QuestLogView {
     ctx.font = '6px monospace';
     ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'right';
-    ctx.fillText('[ESC / D] Cerrar', winX + winW - 8, winY + 7);
+    ctx.fillText('[Esc] Cerrar', winX + winW - 8, winY + 7);
 
     // Separador horizontal bajo la cabecera
     ctx.fillStyle = '#23304a';
@@ -253,16 +253,6 @@ export class QuestLogView {
       ctx.fillStyle = '#a7f3d0';
       this._renderWrappedText(ctx, selectedQuest.reward, rightX, ry, rightW - 4, 7);
     }
-
-    // Pie de la ventana (Controles de navegación)
-    const footerY = winY + winH - 11;
-    ctx.fillStyle = '#23304a';
-    ctx.fillRect(winX + 6, footerY - 3, winW - 12, 1);
-
-    ctx.font = '5px monospace';
-    ctx.fillStyle = '#64748b';
-    ctx.textAlign = 'center';
-    ctx.fillText('▲/▼ [W / S] Seleccionar Misión  ·  [L / ESC] Volver a la Aventura', winX + winW / 2, footerY);
 
     ctx.restore();
   }

@@ -3,7 +3,7 @@ import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
 import { findPath, hasLineOfSight } from '../../ai/Pathfinding.js?v=7';
 
 /**
- * Boss 2: "El Guardián del Stack Overflow"
+ * Jefe Regional: "El Guardián del Stack Overflow"
  * Ubicación: Fin del Templo de la Espada (Ruinas del Despertar).
  * Melodía: 'track_stack_overflow'.
  * Barra de vida: 32 HP (calibrada para un combate equilibrado: ~8 aperturas de combo y 2 oleadas recursivas).
