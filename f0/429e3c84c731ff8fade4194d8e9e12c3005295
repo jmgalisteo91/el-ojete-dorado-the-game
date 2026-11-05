@@ -1,0 +1,14 @@
+ESTADO_DEL_JUEGO.md
+  h_e1bbc662b18209 1-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f0429e3c84c731ff8fade4194d8e9e12c3005295",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
