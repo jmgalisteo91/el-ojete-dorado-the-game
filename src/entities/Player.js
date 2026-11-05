@@ -35,6 +35,16 @@ export class Player extends Entity {
     this.robotizationLevel = 0;
     this.robotizationTimer = 0;
 
+    // Sistema de Forja y Progresión de Equipo (v3.6+)
+    // Espada: 1=Base madera/hierro, 2=Silicio (+50% daño y quiebra barreras de cristal), 3=Overclockeada (+100% daño y tajos de energía a salud máx)
+    this.swordLevel = 1;
+    // Armadura: 1=Binaria base (3 corazones blindados), 2=Blindaje Térmico (inmunidad al calor ambiental de la Forja)
+    this.armorLevel = 1;
+    // Núcleos de Mazmorra para la Puerta Cuántica de AI Alex
+    this.dungeonCores = { gc: false, stack: false, microwave: false };
+    this.gatesUnlocked = 0;
+    this.energySlashes = [];
+
     // Habilidades especiales desbloqueadas al vencer a los jefes regionales
     this.hasDash = false;            // Garbage Collector: Dash Asíncrono
     this.hasChargedAttack = false;   // Guardián del Stack Overflow: Corte en Cascada (Caso Base)
@@ -98,11 +108,19 @@ export class Player extends Entity {
 
   getSwordDamage() {
     let dmg = this.attackDamage;
+
+    // Progresión por Forja: Nivel 2 (+50%), Nivel 3 (+100%)
+    if (this.swordLevel === 2) {
+      dmg *= 1.5;
+    } else if (this.swordLevel >= 3) {
+      dmg *= 2.0;
+    }
+
     // Si la robotización supera el 50%, la rigidez biomecánica penaliza un 30% el daño
     if (this.robotizationLevel > 50) {
       dmg *= 0.7;
     }
-    return dmg;
+    return Math.round(dmg * 10) / 10;
   }
 
   /** Concede puntos de habilidad por derrotar enemigos. Devuelve los puntos ganados. */
@@ -179,6 +197,13 @@ export class Player extends Entity {
     }
   }
 
+  equipSword() {
+    this.hasSword = true;
+    if (!this.swordLevel || this.swordLevel < 1) {
+      this.swordLevel = 1;
+    }
+  }
+
   applyArmorPotion() {
     if (!this.hasArmor) return false;
     this.armorPoints = this.robotizationLevel > 80 ? 2 : 3;
@@ -189,6 +214,11 @@ export class Player extends Entity {
     this.hasArmor = false;
     this.armorPoints = 0;
     this.hasSword = false;
+    this.swordLevel = 1;
+    this.armorLevel = 1;
+    this.dungeonCores = { gc: false, stack: false, microwave: false };
+    this.gatesUnlocked = 0;
+    this.energySlashes = [];
     this.hasBrokenHeartCurse = false;
     this.hasDash = false;
     this.hasChargedAttack = false;
@@ -269,6 +299,22 @@ export class Player extends Entity {
       if (step === 3) this.comboStep = 0;
     }
     this.attackTimer = this.attackDuration;
+
+    // Espada Overclockeada (Nivel 3): Si la salud está al máximo, emite un tajo de energía a distancia
+    if (this.swordLevel >= 3 && this.hp >= this.effectiveMaxHp) {
+      const vec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.direction] || [1, 0];
+      this.energySlashes.push({
+        x: this.centerX,
+        y: this.centerY,
+        vx: vec[0] * 230,
+        vy: vec[1] * 230,
+        direction: this.direction,
+        damage: this.getSwordDamage(),
+        life: 0.55,
+        active: true
+      });
+    }
+
     if (soundEngine && typeof soundEngine.playSwordSlash === 'function') {
       soundEngine.playSwordSlash();
     }
@@ -465,6 +511,7 @@ export class Player extends Entity {
     if (this.parryFlashTimer > 0) this.parryFlashTimer = Math.max(0, this.parryFlashTimer - dt);
     if (this.logCooldown > 0) this.logCooldown = Math.max(0, this.logCooldown - dt);
     this._updateThrownLogs(dt, tilemap);
+    this._updateEnergySlashes(dt, tilemap);
 
     // Actualización de la Barrera de Tipado Estricto
     if (this.barrierTimer > 0) {
@@ -593,6 +640,19 @@ export class Player extends Entity {
     }
   }
 
+  _updateEnergySlashes(dt, tilemap) {
+    for (let i = this.energySlashes.length - 1; i >= 0; i--) {
+      const s = this.energySlashes[i];
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.life -= dt;
+      const box = { x: s.x - 3, y: s.y - 3, width: 6, height: 6 };
+      if (s.life <= 0 || (tilemap && CollisionSystem.collidesWithMap(box, tilemap))) {
+        this.energySlashes.splice(i, 1);
+      }
+    }
+  }
+
   /**
    * Comprueba si el hitbox actual del jugador colisiona con el tilemap sólido y,
    * en caso afirmativo, lo reposiciona suavemente en la coordenada libre más cercana.
@@ -639,6 +699,42 @@ export class Player extends Entity {
         ctx.fillStyle = '#4ade80';
         ctx.fillText('log', lx, ly + 0.5);
       }
+      ctx.restore();
+    }
+
+    // Tajos de energía proyectados por la Espada Overclockeada (Nivel 3)
+    if (this.energySlashes && this.energySlashes.length > 0) {
+      ctx.save();
+      for (const s of this.energySlashes) {
+        const sx = Math.round(s.x - camera.renderX);
+        const sy = Math.round(s.y - camera.renderY);
+        ctx.fillStyle = '#fef08a';
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (s.direction === 'up' || s.direction === 'down') {
+          ctx.ellipse(sx, sy, 7, 3, 0, 0, Math.PI * 2);
+        } else {
+          ctx.ellipse(sx, sy, 3, 7, 0, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        // Destello de corona de energía
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(sx - 1, sy - 1, 2, 2);
+      }
+      ctx.restore();
+    }
+
+    // Aura de Blindaje Térmico (Armadura Nivel 2)
+    if (this.hasArmor && this.armorLevel >= 2) {
+      ctx.save();
+      const px = Math.round(this.x - camera.renderX);
+      const py = Math.round(this.y - camera.renderY);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + 1.5, py + 1.5, 13, 14);
       ctx.restore();
     }
 
@@ -783,15 +879,35 @@ export class Player extends Entity {
       const sweepEnd = sweepStart + progress * 1.9;
 
       ctx.save();
-      // Arco de energía: si la robotización supera el 50%, adquiere un tinte metálico grisáceo
+      // Arco de energía según nivel de espada y robotización
       const isMechanized = this.robotizationLevel > 50;
-      ctx.strokeStyle = isMechanized ? 'rgba(148, 163, 184, 0.85)' : 'rgba(251, 191, 36, 0.85)';
+      let arcColor = 'rgba(251, 191, 36, 0.85)';
+      let bladeColor = '#38bdf8';
+      let edgeColor = '#ffffff';
+
+      if (isMechanized) {
+        arcColor = 'rgba(148, 163, 184, 0.85)';
+        bladeColor = '#64748b';
+        edgeColor = '#cbd5e1';
+      } else if (this.swordLevel === 2) {
+        // Espada de Silicio: filo de prisma cristalino cian/violeta
+        arcColor = 'rgba(129, 140, 248, 0.9)';
+        bladeColor = '#6366f1';
+        edgeColor = '#c7d2fe';
+      } else if (this.swordLevel >= 3) {
+        // Espada Overclockeada: corona de plasma oro incandescente y cian
+        arcColor = 'rgba(253, 224, 71, 0.95)';
+        bladeColor = '#06b6d4';
+        edgeColor = '#fef08a';
+      }
+
+      ctx.strokeStyle = arcColor;
       ctx.lineWidth = 3.2;
       ctx.beginPath();
       ctx.arc(cx, cy, 14, sweepStart, sweepEnd);
       ctx.stroke();
 
-      ctx.strokeStyle = isMechanized ? '#94a3b8' : '#ffffff';
+      ctx.strokeStyle = edgeColor;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(cx, cy, 15.5, sweepStart + 0.15, sweepEnd);
@@ -803,14 +919,14 @@ export class Player extends Entity {
       const hiltX = cx + Math.cos(sweepEnd) * 6;
       const hiltY = cy + Math.sin(sweepEnd) * 6;
 
-      ctx.strokeStyle = isMechanized ? '#64748b' : '#38bdf8';
+      ctx.strokeStyle = bladeColor;
       ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.moveTo(hiltX, hiltY);
       ctx.lineTo(tipX, tipY);
       ctx.stroke();
 
-      ctx.strokeStyle = isMechanized ? '#cbd5e1' : '#ffffff';
+      ctx.strokeStyle = edgeColor;
       ctx.lineWidth = 1.1;
       ctx.beginPath();
       ctx.moveTo(hiltX, hiltY);

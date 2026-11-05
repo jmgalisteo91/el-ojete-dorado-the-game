@@ -37,7 +37,8 @@ import handleLeaderboard from '../api/leaderboard.js';
 import handleSave from '../api/save.js';
 import { Tilemap } from '../src/world/Tilemap.js';
 import { DialogueBox } from '../src/ui/DialogueBox.js';
-import { NPC } from '../src/entities/NPC.js';
+import { NPC, getBromForgeChoices } from '../src/entities/NPC.js';
+import { TILES } from '../src/graphics/SpriteSheetGenerator.js';
 import { DayNightCycle } from '../src/world/DayNightCycle.js';
 import { RenderPipeline } from '../src/graphics/RenderPipeline.js';
 import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT } from '../src/ui/UILayout.js';
@@ -1079,6 +1080,175 @@ test('CloudStorage.sanitizeSaveData protege contra undefined en shieldHP y hasPe
     guard: false,
     oracle: false
   });
+});
+
+console.log('Progresión de Mazmorras, Forja de Brom y Ciudadela Cuántica (v3.6+)');
+
+test('Player: Escalamiento de daño por nivel de espada (Nivel 1: 1.0x, Nivel 2: 1.5x, Nivel 3: 2.0x)', () => {
+  const player = new Player({ x: 0, y: 0 });
+  player.equipSword();
+
+  player.swordLevel = 1;
+  const dmgLvl1 = player.getSwordDamage(1);
+  assert.equal(dmgLvl1, 1, 'Nivel 1 debe infligir daño base 1');
+
+  player.swordLevel = 2;
+  const dmgLvl2 = player.getSwordDamage(1);
+  assert.equal(dmgLvl2, 1.5, 'Nivel 2 (Silicio) debe incrementar el daño un +50% (1.5)');
+
+  player.swordLevel = 3;
+  const dmgLvl3 = player.getSwordDamage(1);
+  assert.equal(dmgLvl3, 2, 'Nivel 3 (Overclockeada) debe incrementar el daño un +100% (2.0)');
+});
+
+test('Player: Espada Overclockeada (Nivel 3) dispara tajos de energía solo a salud máxima', () => {
+  const player = new Player({ x: 100, y: 100 });
+  player.equipSword();
+  player.swordLevel = 3;
+  player.stamina = player.effectiveMaxStamina;
+
+  // 1. A salud máxima: tryAttack debe disparar un tajo de energía
+  player.hp = player.effectiveMaxHp;
+  const attackSuccess = player.tryAttack();
+  assert.equal(attackSuccess, true);
+  assert.equal(player.energySlashes.length, 1, 'Debe disparar 1 proyectil de energía');
+  const slash = player.energySlashes[0];
+  assert.equal(slash.active, true);
+  assert.equal(slash.damage, player.getSwordDamage(1));
+
+  // 2. Si la salud está por debajo del máximo: no genera proyectil
+  player.attackCooldown = 0;
+  player.attackTimer = 0;
+  player.stamina = player.effectiveMaxStamina;
+  player.hp = player.effectiveMaxHp - 0.5; // herido
+  player.tryAttack();
+  assert.equal(player.energySlashes.length, 1, 'No debe disparar proyectil si la vida no está al 100%');
+});
+
+test('DoorGatekeeper: Acceso a la Ciudadela Cuántica bloqueado hasta colocar los 3 núcleos (gatesUnlocked === 3)', () => {
+  const player = new Player({ x: 0, y: 0 });
+  player.equipArmor();
+  player.equipSword();
+
+  // 1. Sin núcleos (gatesUnlocked = 0)
+  player.gatesUnlocked = 0;
+  let block = getDoorBlock('ai_citadel', player);
+  assert.ok(block, 'Debe bloquear la entrada a ai_citadel');
+  assert.match(block.title, /PUERTA DEL NÚCLEO SELLADA/);
+
+  // 2. Con 2 núcleos colocados
+  player.gatesUnlocked = 2;
+  block = getDoorBlock('ai_citadel', player);
+  assert.ok(block, 'Debe seguir bloqueada con 2 núcleos');
+
+  // 3. Con los 3 núcleos colocados (Garbage Collector, Stack Overflow, Microondas)
+  player.gatesUnlocked = 3;
+  block = getDoorBlock('ai_citadel', player);
+  assert.equal(block, null, 'Paso permitido al tener gatesUnlocked === 3 y equipo completo');
+});
+
+test('Tilemap: Reestructuración de Mazmorras en 3 niveles y Ciudadela con tileset Mainframe exclusivo', () => {
+  const tm = new Tilemap();
+
+  // Mazmorra 1: Cloacas del Legacy (3 salas)
+  assert.ok(tm.scenes.sewers_entry, 'Debe existir sewers_entry');
+  assert.ok(tm.scenes.sewers_puzzle, 'Debe existir sewers_puzzle');
+  assert.ok(tm.scenes.sewers_dungeon, 'Debe existir sewers_dungeon');
+  assert.equal(tm.scenes.sewers_entry.layers.ground[2][2], TILES.SEWER_SLIME_FLOOR);
+
+  // Mazmorra 2: Minas de la Recursión (3 salas)
+  assert.ok(tm.scenes.mines_entry, 'Debe existir mines_entry');
+  assert.ok(tm.scenes.mines_puzzle, 'Debe existir mines_puzzle');
+  assert.ok(tm.scenes.sword_temple, 'Debe existir sword_temple');
+  assert.equal(tm.scenes.mines_entry.layers.ground[2][2], TILES.MINE_CRYSTAL_FLOOR);
+  // Presencia de abismo que exige dash
+  assert.equal(tm.scenes.mines_entry.layers.ground[8][4], TILES.MINE_CHASM);
+
+  // Mazmorra 3: La Forja del Prototipo (3 salas)
+  assert.ok(tm.scenes.forge_entry, 'Debe existir forge_entry');
+  assert.ok(tm.scenes.forge_puzzle, 'Debe existir forge_puzzle');
+  assert.ok(tm.scenes.ai_fortress_gate, 'Debe existir ai_fortress_gate');
+  assert.equal(tm.scenes.forge_entry.layers.ground[2][2], TILES.FORGE_LAVA_FLOOR);
+
+  // Zona Final: Puerta del Núcleo y Ciudadela Cuántica
+  assert.ok(tm.scenes.quantum_gate, 'Debe existir quantum_gate');
+  assert.ok(tm.scenes.ai_citadel, 'Debe existir ai_citadel');
+  // La Ciudadela Cuántica usa tileset exclusivo de Mainframe y NO los santuarios reciclados
+  assert.equal(tm.scenes.ai_citadel.layers.ground[2][2], TILES.MAINFRAME_FLOOR);
+  assert.equal(tm.scenes.ai_citadel.layers.decoration[0][2], TILES.MAINFRAME_WALL);
+});
+
+test('Herrero Brom: Opciones de diálogo y forja de Espada de Silicio, Overclockeada y Blindaje Térmico', () => {
+  const mockPlayer = new Player({ x: 0, y: 0 });
+  mockPlayer.equipArmor();
+  mockPlayer.equipSword();
+  mockPlayer.swordLevel = 1;
+  mockPlayer.armorLevel = 1;
+  mockPlayer.coins = 200;
+
+  const mockInventory = new Inventory(null, 320, 180);
+  mockInventory.addItem({ id: 'silicon_ore', name: 'Mineral de Silicio', description: '', iconIndex: 13, qty: 1 });
+  mockInventory.addItem({ id: 'drone_scrap', name: 'Chatarra', description: '', iconIndex: 10, qty: 2 });
+
+  const mockGame = {
+    player: mockPlayer,
+    inventory: mockInventory,
+    dialogueBox: { showMessage: () => {}, close: () => {} },
+    questLog: new QuestLog(),
+    housePermissions: {}
+  };
+
+  const choices = getBromForgeChoices(mockGame);
+  assert.ok(Array.isArray(choices));
+
+  // Opción de Espada de Silicio (Nivel 2)
+  const siliconSwordChoice = choices.find((c) => c.label.includes('Espada de Silicio'));
+  assert.ok(siliconSwordChoice, 'Debe ofrecer la mejora de Espada de Silicio');
+
+  // Ejecutar compra
+  siliconSwordChoice.onSelect();
+  assert.equal(mockPlayer.swordLevel, 2, 'El jugador debe tener ahora la espada a Nivel 2');
+  assert.equal(mockPlayer.coins, 100, 'Debe descontar 100 Bytes');
+  assert.equal(mockInventory.getItemCount('silicon_ore'), 0, 'Debe consumir 1 silicio');
+
+  // Opción de Blindaje Térmico (Nivel 2)
+  const thermalArmorChoice = choices.find((c) => c.label.includes('Blindaje Térmico'));
+  assert.ok(thermalArmorChoice, 'Debe ofrecer la mejora de Blindaje Térmico');
+
+  thermalArmorChoice.onSelect();
+  assert.equal(mockPlayer.armorLevel, 2, 'El jugador debe tener ahora la armadura a Nivel 2');
+  assert.equal(mockPlayer.coins, 25, 'Debe descontar 75 Bytes (100 - 75 = 25)');
+  assert.equal(mockInventory.getItemCount('drone_scrap'), 0, 'Debe consumir 2 chatarras');
+});
+
+test('CloudStorage: Saneamiento y persistencia de swordLevel, armorLevel, dungeonCores y gatesUnlocked', () => {
+  const rawSave = {
+    sceneId: 'quantum_gate',
+    playerHasArmor: true,
+    playerHasSword: true,
+    swordLevel: 3,
+    armorLevel: 2,
+    dungeonCores: { gc: true, stack: true, microwave: false },
+    gatesUnlocked: 2
+  };
+
+  const sanitized = CloudStorage.sanitizeSaveData(rawSave);
+  assert.equal(sanitized.swordLevel, 3);
+  assert.equal(sanitized.armorLevel, 2);
+  assert.deepEqual(sanitized.dungeonCores, { gc: true, stack: true, microwave: false });
+  assert.equal(sanitized.gatesUnlocked, 2);
+
+  // Valores por defecto y clamp de seguridad
+  const invalidRaw = {
+    swordLevel: 99,
+    armorLevel: -5,
+    gatesUnlocked: 'invalido'
+  };
+  const cleanInvalid = CloudStorage.sanitizeSaveData(invalidRaw);
+  assert.equal(cleanInvalid.swordLevel, 3, 'Debe clampear swordLevel al máximo 3');
+  assert.equal(cleanInvalid.armorLevel, 1, 'Debe clampear armorLevel al mínimo 1');
+  assert.equal(cleanInvalid.gatesUnlocked, 0, 'Debe resetear gatesUnlocked a 0');
+  assert.deepEqual(cleanInvalid.dungeonCores, { gc: false, stack: false, microwave: false });
 });
 
 await Promise.all(asyncQueue);

@@ -66,7 +66,20 @@ export const TILES = {
   PORTAL_GATE_CLOSED: 38,
   PORTAL_GATE_OPEN: 39,
 
-  // Alias semánticos usados por los constructores de escenas (reutilizan sprites existentes)
+  // Tiles exclusivos para Mazmorras y Mainframe Cuántico (v3.6+)
+  SEWER_SLIME_FLOOR: 40,
+  SEWER_PIPE_WALL: 41,
+  MINE_CRYSTAL_FLOOR: 42,
+  MINE_CHASM: 43,
+  MINE_CRYSTAL_WALL: 44,
+  FORGE_LAVA_FLOOR: 45,
+  FORGE_BOILER_WALL: 46,
+  MAINFRAME_FLOOR: 47,
+  MAINFRAME_WALL: 48,
+  CRYSTAL_BARRIER: 49,
+  CORE_PEDESTAL: 50,
+
+  // Alias semánticos usados por los constructores de escenas
   DOOR: 15,          // WALL_DOOR
   ALTAR: 37,         // ALTAR_PEDESTAL
   STONE_PATH: 36,    // STONE_FLOOR
@@ -87,7 +100,12 @@ export const ITEM_ICONS = {
   SILICON_FLOWER: 9,
   DRONE_SCRAP: 10,
   FISH: 11,
-  POTION_ARMOR: 12
+  POTION_ARMOR: 12,
+  SILICON_ORE: 13,
+  MICROWAVE_MAGNETRON: 14,
+  DUNGEON_CORE_GC: 15,
+  DUNGEON_CORE_STACK: 16,
+  DUNGEON_CORE_MICROWAVE: 17
 };
 
 function canvasToImage(canvas) {
@@ -476,7 +494,7 @@ async function generateCharacterSheet() {
 
 async function generateTilesetSheet() {
   const cols = 8;
-  const rows = 5;
+  const rows = 7;
   const canvas = document.createElement('canvas');
   canvas.width = cols * TILE_SIZE * ATLAS_SCALE;
   canvas.height = rows * TILE_SIZE * ATLAS_SCALE;
@@ -815,6 +833,121 @@ async function generateTilesetSheet() {
     px(ctx, ox + 5, oy + 6, 6, 4, 'rgba(52, 211, 153, 0.45)');
   }
 
+  // 40: SEWER_SLIME_FLOOR (Fango y rejilla de las Cloacas del Legacy)
+  {
+    const { ox, oy } = cellOrigin(TILES.SEWER_SLIME_FLOOR);
+    px(ctx, ox, oy, 16, 16, '#0f2416');
+    px(ctx, ox + 1, oy + 2, 6, 5, '#163d23');
+    px(ctx, ox + 8, oy + 7, 7, 6, '#13331d');
+    px(ctx, ox + 3, oy + 10, 4, 3, '#10b981');
+    px(ctx, ox + 11, oy + 3, 3, 2, '#34d399');
+    // Rejilla de hierro corrosiva
+    px(ctx, ox, oy + 7, 16, 1, '#1e293b');
+    px(ctx, ox + 7, oy, 1, 16, '#1e293b');
+  }
+  // 41: SEWER_PIPE_WALL (Pared de tuberías de fango)
+  {
+    const { ox, oy } = cellOrigin(TILES.SEWER_PIPE_WALL);
+    px(ctx, ox, oy, 16, 16, '#1a1f1a');
+    px(ctx, ox, oy + 3, 16, 6, '#475569'); // Tubería metálica
+    px(ctx, ox, oy + 4, 16, 4, '#64748b');
+    px(ctx, ox + 4, oy + 2, 3, 8, '#334155'); // Abrazadera
+    px(ctx, ox + 11, oy + 2, 3, 8, '#334155');
+    px(ctx, ox + 5, oy + 9, 2, 4, '#10b981'); // Gota de ácido verde
+    px(ctx, ox + 12, oy + 9, 1, 3, '#059669');
+  }
+  // 42: MINE_CRYSTAL_FLOOR (Suelo de silicio de las Minas de la Recursión)
+  {
+    const { ox, oy } = cellOrigin(TILES.MINE_CRYSTAL_FLOOR);
+    px(ctx, ox, oy, 16, 16, '#181528');
+    px(ctx, ox + 2, oy + 3, 5, 4, '#241e3d');
+    px(ctx, ox + 9, oy + 8, 6, 5, '#2e274e');
+    px(ctx, ox + 5, oy + 4, 3, 2, '#818cf8'); // Veta luminiscente de silicio
+    px(ctx, ox + 12, oy + 11, 2, 3, '#38bdf8');
+  }
+  // 43: MINE_CHASM (Gran Abismo que exige Dash Asíncrono)
+  {
+    const { ox, oy } = cellOrigin(TILES.MINE_CHASM);
+    px(ctx, ox, oy, 16, 16, '#03050a'); // Vacío abisal
+    px(ctx, ox + 2, oy, 12, 2, '#0f172a');
+    px(ctx, ox + 1, oy + 1, 14, 1, '#1e1b4b');
+    px(ctx, ox + 5, oy + 12, 1, 1, '#818cf8'); // Partícula de estática
+  }
+  // 44: MINE_CRYSTAL_WALL (Pared cavernosa de prisma de cristal)
+  {
+    const { ox, oy } = cellOrigin(TILES.MINE_CRYSTAL_WALL);
+    px(ctx, ox, oy, 16, 16, '#130d24');
+    px(ctx, ox + 2, oy + 2, 12, 12, '#21173d');
+    px(ctx, ox + 4, oy + 3, 4, 8, '#6366f1'); // Racimo de cristal
+    px(ctx, ox + 8, oy + 5, 4, 6, '#a855f7');
+    px(ctx, ox + 5, oy + 4, 2, 3, '#c084fc');
+    px(ctx, ox + 6, oy + 5, 1, 1, '#ffffff'); // Reflejo
+  }
+  // 45: FORGE_LAVA_FLOOR (Rejilla sobre magma ardiente)
+  {
+    const { ox, oy } = cellOrigin(TILES.FORGE_LAVA_FLOOR);
+    px(ctx, ox, oy, 16, 16, '#450a0a'); // Magma profundo
+    px(ctx, ox + 1, oy + 1, 14, 14, '#b91c1c');
+    px(ctx, ox + 4, oy + 4, 8, 8, '#f97316');
+    px(ctx, ox + 6, oy + 6, 4, 4, '#fde047'); // Núcleo ígneo
+    // Rejilla de hierro fundido
+    px(ctx, ox, oy + 7, 16, 2, '#1c1917');
+    px(ctx, ox + 7, oy, 2, 16, '#1c1917');
+  }
+  // 46: FORGE_BOILER_WALL (Caldera de bronce y vapor a presión)
+  {
+    const { ox, oy } = cellOrigin(TILES.FORGE_BOILER_WALL);
+    px(ctx, ox, oy, 16, 16, '#1c1917');
+    px(ctx, ox + 1, oy + 1, 14, 14, '#78350f'); // Cobre/bronce
+    px(ctx, ox + 3, oy + 3, 10, 8, '#92400e');
+    px(ctx, ox + 5, oy + 5, 6, 4, '#b45309');
+    px(ctx, ox + 7, oy + 6, 2, 2, '#fde047'); // Indicador de presión
+    px(ctx, ox + 2, oy + 12, 12, 2, '#451a03');
+  }
+  // 47: MAINFRAME_FLOOR (Suelo del Servidor Cuántico: rejilla metálica oscura y fibra óptica)
+  {
+    const { ox, oy } = cellOrigin(TILES.MAINFRAME_FLOOR);
+    px(ctx, ox, oy, 16, 16, '#0b0f19'); // Metal oscuro mate
+    px(ctx, ox + 1, oy + 1, 14, 14, '#111827');
+    // Cables de fibra óptica neón
+    px(ctx, ox, oy + 7, 16, 1, '#06b6d4'); // Bus cian
+    px(ctx, ox + 7, oy, 1, 16, '#3b82f6'); // Bus azul
+    px(ctx, ox + 7, oy + 7, 2, 2, '#ec4899'); // Nodo cuántico magenta
+  }
+  // 48: MAINFRAME_WALL (Racks de Servidores Cuánticos de Mister AI Alex)
+  {
+    const { ox, oy } = cellOrigin(TILES.MAINFRAME_WALL);
+    px(ctx, ox, oy, 16, 16, '#030712'); // Bastidor de titanio
+    px(ctx, ox + 1, oy + 1, 14, 4, '#1f2937'); // Blade server 1
+    px(ctx, ox + 1, oy + 6, 14, 4, '#1f2937'); // Blade server 2
+    px(ctx, ox + 1, oy + 11, 14, 4, '#1f2937'); // Blade server 3
+    // Matriz de LEDs titilantes de procesamiento
+    px(ctx, ox + 3, oy + 2, 2, 1, '#10b981');
+    px(ctx, ox + 6, oy + 2, 2, 1, '#06b6d4');
+    px(ctx, ox + 10, oy + 2, 3, 1, '#3b82f6');
+    px(ctx, ox + 3, oy + 7, 2, 1, '#f43f5e');
+    px(ctx, ox + 6, oy + 7, 2, 1, '#10b981');
+    px(ctx, ox + 10, oy + 7, 3, 1, '#06b6d4');
+    px(ctx, ox + 3, oy + 12, 2, 1, '#3b82f6');
+    px(ctx, ox + 6, oy + 12, 2, 1, '#ec4899');
+  }
+  // 49: CRYSTAL_BARRIER (Barrera de cristal de silicio quebrable con Espada Nivel 2)
+  {
+    const { ox, oy } = cellOrigin(TILES.CRYSTAL_BARRIER);
+    px(ctx, ox + 2, oy + 1, 12, 14, '#1e1b4b');
+    px(ctx, ox + 3, oy + 2, 10, 12, 'rgba(99, 102, 241, 0.85)');
+    px(ctx, ox + 5, oy + 4, 6, 8, '#a5b4fc');
+    px(ctx, ox + 7, oy + 5, 2, 4, '#ffffff'); // Reflejo
+  }
+  // 50: CORE_PEDESTAL (Pedestal de Núcleo Cuántico para abrir la Ciudadela)
+  {
+    const { ox, oy } = cellOrigin(TILES.CORE_PEDESTAL);
+    px(ctx, ox + 1, oy + 2, 14, 13, '#1f2937');
+    px(ctx, ox + 2, oy + 3, 12, 10, '#374151');
+    px(ctx, ox + 4, oy + 5, 8, 6, '#111827');
+    px(ctx, ox + 6, oy + 7, 4, 3, '#6366f1'); // Resplandor de sincronización
+  }
+
   return canvasToImage(canvas);
 }
 
@@ -822,7 +955,7 @@ async function generateTilesetSheet() {
  * Genera el spritesheet de objetos (Items 16x16 en alta densidad) para el suelo y el Inventario.
  */
 async function generateItemsSheet() {
-  const count = 13;
+  const count = 18;
   const canvas = document.createElement('canvas');
   canvas.width = count * TILE_SIZE * ATLAS_SCALE;
   canvas.height = TILE_SIZE * ATLAS_SCALE;
@@ -985,6 +1118,51 @@ async function generateItemsSheet() {
     px(ctx, ox + 3, oy(7), 1, 6, '#94a3b8');
     px(ctx, ox + 12, oy(7), 1, 6, '#94a3b8');
     px(ctx, ox + 5, oy(14), 6, 1, '#64748b');
+  }
+  // 13: SILICON_ORE (Mineral de Silicio Puro de las Minas de la Recursión)
+  {
+    const ox = ITEM_ICONS.SILICON_ORE * 16;
+    px(ctx, ox + 5, oy(3), 6, 10, '#312e81');
+    px(ctx, ox + 4, oy(5), 8, 7, '#4338ca');
+    px(ctx, ox + 6, oy(4), 4, 8, '#6366f1');
+    px(ctx, ox + 7, oy(5), 2, 6, '#a5b4fc'); // Reflejo cristalino
+    px(ctx, ox + 9, oy(7), 2, 2, '#ffffff');
+  }
+  // 14: MICROWAVE_MAGNETRON (Magnetrón de Alta Frecuencia del Microondas)
+  {
+    const ox = ITEM_ICONS.MICROWAVE_MAGNETRON * 16;
+    px(ctx, ox + 4, oy(3), 8, 10, '#78350f'); // Bloque de cobre
+    px(ctx, ox + 5, oy(4), 6, 8, '#b45309');
+    px(ctx, ox + 6, oy(2), 4, 2, '#d97706'); // Filamento cátodo
+    px(ctx, ox + 7, oy(6), 2, 4, '#fbbf24'); // Radiación de microondas
+    px(ctx, ox + 4, oy(13), 8, 2, '#451a03'); // Placa de montaje
+  }
+  // 15: DUNGEON_CORE_GC (Núcleo del Garbage Collector - Esmeralda)
+  {
+    const ox = ITEM_ICONS.DUNGEON_CORE_GC * 16;
+    px(ctx, ox + 3, oy(3), 10, 10, '#064e3b');
+    px(ctx, ox + 4, oy(4), 8, 8, '#059669');
+    px(ctx, ox + 5, oy(5), 6, 6, '#10b981');
+    px(ctx, ox + 6, oy(6), 4, 4, '#34d399');
+    px(ctx, ox + 7, oy(7), 2, 2, '#a7f3d0'); // Destello verde
+  }
+  // 16: DUNGEON_CORE_STACK (Núcleo de la Recursión - Zafiro Cian)
+  {
+    const ox = ITEM_ICONS.DUNGEON_CORE_STACK * 16;
+    px(ctx, ox + 3, oy(3), 10, 10, '#1e1b4b');
+    px(ctx, ox + 4, oy(4), 8, 8, '#2563eb');
+    px(ctx, ox + 5, oy(5), 6, 6, '#06b6d4');
+    px(ctx, ox + 6, oy(6), 4, 4, '#38bdf8');
+    px(ctx, ox + 7, oy(7), 2, 2, '#cffafe'); // Destello cian
+  }
+  // 17: DUNGEON_CORE_MICROWAVE (Núcleo Térmico de la Forja - Rubí Ígneo)
+  {
+    const ox = ITEM_ICONS.DUNGEON_CORE_MICROWAVE * 16;
+    px(ctx, ox + 3, oy(3), 10, 10, '#450a0a');
+    px(ctx, ox + 4, oy(4), 8, 8, '#dc2626');
+    px(ctx, ox + 5, oy(5), 6, 6, '#ea580c');
+    px(ctx, ox + 6, oy(6), 4, 4, '#fde047');
+    px(ctx, ox + 7, oy(7), 2, 2, '#fffbeb'); // Destello incandescente
   }
 
   return canvasToImage(canvas);

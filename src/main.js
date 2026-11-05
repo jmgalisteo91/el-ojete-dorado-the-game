@@ -5,13 +5,14 @@ import { Camera2D } from './core/Camera2D.js?v=7';
 import {
   loadGameAssets,
   CHARACTER_TYPES,
-  ITEM_ICONS
+  ITEM_ICONS,
+  TILES
 } from './graphics/SpriteSheetGenerator.js?v=7';
 import { SpriteAnimator } from './graphics/Animator.js?v=7';
 import { Tilemap } from './world/Tilemap.js?v=7';
 import { CollisionSystem } from './physics/CollisionSystem.js?v=7';
 import { Player } from './entities/Player.js?v=7';
-import { NPC } from './entities/NPC.js?v=7';
+import { NPC, getBromForgeChoices } from './entities/NPC.js?v=7';
 import { Animal } from './entities/Animal.js?v=7';
 import { Enemy } from './entities/Enemy.js?v=7';
 import { GarbageCollectorBoss } from './entities/bosses/GarbageCollectorBoss.js?v=7';
@@ -399,6 +400,11 @@ export class RPGGame {
         templeSword.layers.decoration[1][12] = 15;
       }
     }
+
+    // Reiniciar Puzle 3: La Gran Puerta del Núcleo Cuántico
+    if (this.tilemap.quantumGate) {
+      this.tilemap.quantumGate.coresPlaced = { gc: false, stack: false, microwave: false };
+    }
     this.tilemap.loadScene('overworld');
     this.tilemap.update(0, this.dayNight.timeOfDayHours);
     this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
@@ -463,6 +469,17 @@ export class RPGGame {
       playerHasArmor: this.player.hasArmor,
       hasSword: this.player.hasSword,
       playerHasSword: this.player.hasSword,
+      swordLevel: this.player.swordLevel || 1,
+      armorLevel: this.player.armorLevel || 1,
+      dungeonCores: {
+        gc: !!(this.player.dungeonCores && this.player.dungeonCores.gc),
+        stack: !!(this.player.dungeonCores && this.player.dungeonCores.stack),
+        microwave: !!(this.player.dungeonCores && this.player.dungeonCores.microwave)
+      },
+      gatesUnlocked: this.player.gatesUnlocked || 0,
+      quantumGate: this.tilemap?.quantumGate ? {
+        coresPlaced: { ...this.tilemap.quantumGate.coresPlaced }
+      } : null,
       shieldHP: this.player.armorPoints ?? 0,
       armorPoints: this.player.armorPoints ?? 0,
       maxArmorPoints: this.player.maxArmorPoints || 3,
@@ -976,6 +993,22 @@ export class RPGGame {
       this.player.hasSword = Boolean(
         data.hasSword || data.playerHasSword || (isLegacyOverworld && targetScene !== 'first_stage')
       );
+      this.player.swordLevel = Math.max(1, Math.min(3, Number(data.swordLevel) || 1));
+      this.player.armorLevel = Math.max(1, Math.min(2, Number(data.armorLevel) || 1));
+      if (data.dungeonCores && typeof data.dungeonCores === 'object') {
+        this.player.dungeonCores = {
+          gc: Boolean(data.dungeonCores.gc),
+          stack: Boolean(data.dungeonCores.stack),
+          microwave: Boolean(data.dungeonCores.microwave)
+        };
+      }
+      this.player.gatesUnlocked = Math.max(0, Math.min(3, Number(data.gatesUnlocked) || 0));
+      if (data.quantumGate && this.tilemap.quantumGate && data.quantumGate.coresPlaced) {
+        this.tilemap.quantumGate.coresPlaced = {
+          ...this.tilemap.quantumGate.coresPlaced,
+          ...data.quantumGate.coresPlaced
+        };
+      }
       this.player.hasDash = Boolean(data.hasDash);
       this.player.hasChargedAttack = Boolean(data.hasChargedAttack);
       this.player.hasBarrier = Boolean(data.hasBarrier);
@@ -1584,160 +1617,7 @@ export class RPGGame {
   }
 
   _getSmithChoices() {
-    const qFractal = this.questLog ? this.questLog.getQuest('quest_side_fractal_temper') : null;
-    const isFractalDone = qFractal && qFractal.status === 'COMPLETED';
-    const scrapCount = this.inventory ? this.inventory.getItemCount('drone_scrap') : 0;
-
-    const smithChoices = [
-      {
-        label: isFractalDone
-          ? '⚒️ [Encargo] "El Templado Fractal" (Completado)'
-          : `⚒️ [Encargo] "El Templado Fractal" (Entregar Chatarra: ${scrapCount}/2)`,
-        onSelect: () => {
-          if (isFractalDone) {
-            this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-              '¡Clang, clang! Tu espada mantiene ese zumbido fractal de alta frecuencia.',
-              'Corta los bugs como si fueran mantequilla recién horneada.'
-            ], this._getSmithChoices());
-            return;
-          }
-
-          if (scrapCount >= 2) {
-            this.inventory.consumeItem('drone_scrap', 2);
-            this.player.coins += 20;
-            if (this.music) this.music.playFanfare();
-            if (this.questLog) {
-              this.questLog.completeQuest(
-                'quest_side_fractal_temper',
-                '¡El Herrero Brom templó tu espada con aleación fractal de drones!'
-              );
-            }
-            if (this.achievementManager) {
-              this.achievementManager.unlock('ach_side_fractal');
-              this._checkAllSideQuestsAchievement();
-            }
-            this._saveGameToStorage();
-            this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-              '¡Por el fuego sagrado de la fragua! ¡Esta aleación de titanio fractal es soberbia!',
-              '¡CLANG! ¡CLANG! ¡CLANG! (El yunque despide destellos dorados y chispas binarias).',
-              'Tu filo ha sido templado a nivel molecular. ¡Toma [🪙 20 Bytes] por tu valentía abatiendo drones!'
-            ], this._getSmithChoices());
-          } else {
-            if (this.questLog) {
-              this.questLog.advanceStep(
-                'quest_side_fractal_temper',
-                `Derrota drones sombríos en Tierras Hostiles (al oeste). Llevas [${scrapCount}/2] restos de chatarra.`
-              );
-            }
-            this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-              'Para forjar un templado fractal necesito aleaciones de titanio que solo tienen los drones de AI Alex en las Tierras Hostiles (al oeste de Valleverde).',
-              'Abate a un par de esos molestos centinelas voladores con tu espada y tráeme 2 restos de chatarra.',
-              `Actualmente llevas: [${scrapCount}/2]. ¡Tráemelos para que encienda la fragua!`
-            ], this._getSmithChoices());
-          }
-        }
-      },
-      {
-        label: 'Cuéntame tu vida y oficio (Chapa)',
-        onSelect: () => this._startNPCLifeRant('blacksmith', this._getSmithChoices())
-      },
-      {
-        label: '¿Puedo pasar a tu casa?',
-        onSelect: () => {
-          if (this.housePermissions.blacksmith_house) {
-            this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-              '¡Ya tienes la llave de mi forja! Pasa cuando quieras, pero no toques el yunque con las manos sucias.'
-            ], this._getSmithChoices());
-            return;
-          }
-
-          if (isFractalDone) {
-            this.housePermissions.blacksmith_house = true;
-            if (this.music) this.music.playFanfare();
-            this._saveGameToStorage();
-            this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-              '¡Faltaría más, camarada! Templaste mi filo con aleación fractal y eres como de la familia.',
-              '¡Toma la llave de mi herrería! (Tintineo de llaves de hierro).'
-            ], this._getSmithChoices());
-            return;
-          }
-
-          this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-            'Mmm... Aún no has demostrado ser de fiar forjando chatarra conmigo. No suelo abrir mi casa a cualquiera...',
-            'Pero si dejas una fianza de 25 Bytes en garantía por si rompes alguna herramienta, te daré la llave.'
-          ], [
-            {
-              label: `🪙 Pagar fianza de 25 Bytes [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 25) {
-                  this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-                    'No tienes suficientes Bytes para la fianza. ¡Vuelve con fondos o completa mi encargo de chatarra!'
-                  ], this._getSmithChoices());
-                  return;
-                }
-                this.player.coins -= 25;
-                this.housePermissions.blacksmith_house = true;
-                if (this.music) this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-                  '¡Trato hecho! Fianza recibida. Aquí tienes la llave de mi herrería. Cuida las herramientas.'
-                ], this._getSmithChoices());
-              }
-            },
-            {
-              label: 'Completaré tu encargo de chatarra primero',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-                  '¡Esa es la actitud de un buen aprendiz! Tráeme esa chatarra de drones.'
-                ], this._getSmithChoices());
-              }
-            }
-          ]);
-        }
-      },
-      {
-        label: '💰 Vender materiales / chatarra',
-        onSelect: () => {
-          this.dialogueBox.showMessage('Herrero Brom · Forjador', [
-            'Compro restos de chatarra, minerales y consumibles sobrantes de tus expediciones.'
-          ], this._getSellChoices('Herrero Brom · Forjador', this._getSmithChoices()));
-        }
-      },
-      {
-        label: '¿Tienes algo de Pan Campesino?',
-        onSelect: () => {
-          if (!this.inventory.hasItem('bread')) {
-            this.inventory.addItem({
-              id: 'bread',
-              name: 'Pan Campesino',
-              description: 'Pan recién horneado. Ideal para comer, dar a Toby o sobornar guardias.',
-              iconIndex: ITEM_ICONS.BREAD,
-              qty: 1
-            });
-            this._saveGameToStorage();
-            this.dialogueBox.showMessage(
-              'Herrero Brom · Forjador',
-              [
-                '¡Claro que sí! Toma una hogaza recién salida del horno de leña de mi forja.',
-                'Se ha añadido [Pan Campesino x1] a tu mochila.'
-              ],
-              this._getSmithChoices()
-            );
-          } else {
-            this.dialogueBox.showMessage(
-              'Herrero Brom · Forjador',
-              ['Veo que ya llevas Pan Campesino en tu mochila. ¡Dáselo al perro Toby!'],
-              this._getSmithChoices()
-            );
-          }
-        }
-      },
-      {
-        label: 'Despedirse',
-        onSelect: () => this.dialogueBox.close()
-      }
-    ];
-    return smithChoices;
+    return getBromForgeChoices(this);
   }
 
   _getHerbChoices() {
@@ -3765,6 +3645,29 @@ export class RPGGame {
       }
     }
 
+    // Puzle 3: Zócalos de Núcleos Cuánticos en La Gran Puerta del Núcleo
+    if (currentScene === 'quantum_gate') {
+      const pedestals = [
+        { id: 'gc', col: 8, row: 7, name: 'Zócalo Verde (Garbage Collector)', coreItem: 'dungeon_core_gc' },
+        { id: 'stack', col: 11, row: 6, name: 'Zócalo Cian (Stack Overflow)', coreItem: 'dungeon_core_stack' },
+        { id: 'microwave', col: 14, row: 7, name: 'Zócalo Carmesí (Microondas)', coreItem: 'dungeon_core_microwave' }
+      ];
+      for (const ped of pedestals) {
+        const px = ped.col * 16 + 8;
+        const py = ped.row * 16 + 8;
+        if (Math.hypot(this.player.centerX - px, this.player.centerY - py) <= 26) {
+          const isPlaced = Boolean(this.tilemap.quantumGate?.coresPlaced?.[ped.id]);
+          return {
+            kind: 'quantum_pedestal',
+            target: { ...ped, isPlaced, centerX: px, y: py },
+            label: isPlaced
+              ? `[E] ${ped.name} [Engarzado]`
+              : `[E] Colocar Núcleo en ${ped.name}`
+          };
+        }
+      }
+    }
+
     // Portal Abisal de retorno dentro de los Reinos Condenados (estilo Diablo)
     if (currentScene === 'condemned_realms') {
       const exitCenterX = 11.5 * 16;
@@ -4187,6 +4090,70 @@ export class RPGGame {
         mono.clue,
         'Las cuatro baldosas de presión (A, B, C, D) deben equilibrar la paridad del sistema. Un error liberará una violenta descarga de estática (-0.5 corazón).'
       ]);
+      return;
+    }
+
+    if (action.kind === 'quantum_pedestal') {
+      const ped = action.target;
+      if (ped.isPlaced || (this.tilemap.quantumGate && this.tilemap.quantumGate.coresPlaced[ped.id])) {
+        if (this.music && typeof this.music.playMenuSelect === 'function') {
+          this.music.playMenuSelect();
+        }
+        this.dialogueBox.showMessage(`🏛️ [${ped.name.toUpperCase()}]`, [
+          'El Núcleo Cuántico ya se encuentra perfectamente engarzado en el zócalo ceremonial.',
+          'Emite pulsaciones armónicas de frecuencia superconductora alimentando el portal a la Ciudadela.'
+        ]);
+        return;
+      }
+
+      const hasCoreFlag = Boolean(this.player.dungeonCores && this.player.dungeonCores[ped.id]);
+      const hasCoreInInventory = Boolean(this.inventory && this.inventory.hasItem(ped.coreItem));
+
+      if (hasCoreFlag || hasCoreInInventory) {
+        if (this.inventory && this.inventory.hasItem(ped.coreItem)) {
+          this.inventory.consumeItem(ped.coreItem, 1);
+        }
+        if (this.player.dungeonCores) {
+          this.player.dungeonCores[ped.id] = true;
+        }
+        if (this.tilemap.quantumGate) {
+          this.tilemap.quantumGate.coresPlaced[ped.id] = true;
+        }
+        this.player.gatesUnlocked = (this.player.gatesUnlocked || 0) + 1;
+
+        if (this.music && typeof this.music.playFanfare === 'function') {
+          this.music.playFanfare();
+        }
+        if (this.animeCutscenes) {
+          this.animeCutscenes.flash(ped.id === 'gc' ? '#10b981' : (ped.id === 'stack' ? '#38bdf8' : '#ef4444'), 0.35);
+          this.animeCutscenes.cameraShake(4.0, 0.3);
+        }
+        this._saveGameToStorage();
+
+        const placedCount = this.player.gatesUnlocked;
+        if (placedCount >= 3) {
+          this.dialogueBox.showMessage('⚡ ¡PUERTA DEL NÚCLEO DESBLOQUEADA!', [
+            `¡Has engarzado el último núcleo en el [${ped.name}]!`,
+            'Los 3 zócalos resuenan en sincronía perfecta (Verde · Cian · Carmesí).',
+            '¡El cortafuegos hiperdimensional ha colapsado por completo!',
+            'El portal norte conduce ahora directamente a la Ciudadela Cuántica de Mister AI Alex.'
+          ]);
+        } else {
+          this.dialogueBox.showMessage('🏛️ [ZÓCALO ACTIVADO]', [
+            `¡Has engarzado con éxito el Núcleo en el [${ped.name}]!`,
+            `Progreso de la Puerta del Núcleo: [${placedCount}/3] sellos abiertos.`,
+            'Consigue los núcleos restantes en las demás mazmorras para desbloquear el acceso a la Ciudadela.'
+          ]);
+        }
+      } else {
+        if (this.music && typeof this.music.playMenuSelect === 'function') {
+          this.music.playMenuSelect();
+        }
+        this.dialogueBox.showMessage(`🏛️ [${ped.name.toUpperCase()}]`, [
+          'El zócalo superconductor está apagado y frío.',
+          `Necesitas recuperar el Núcleo de Mazmorra correspondiente derrotando al custodio de su recinto.`
+        ]);
+      }
       return;
     }
 
@@ -4656,6 +4623,115 @@ export class RPGGame {
         'El choque desestabilizó tu energía vital (-0.5 corazón) y la memoria se ha restablecido a la raíz.',
         'Consulta las inscripciones en las runas para deducir el orden del flujo recursivo.'
       ]);
+    }
+  }
+
+  _checkCrystalBarrierCollisions() {
+    const scene = this.tilemap?.scenes?.[this.tilemap.currentSceneId];
+    if (!scene || !scene.layers || !scene.layers.decoration) return;
+    const deco = scene.layers.decoration;
+    const colGrid = scene.layers.collision;
+    const tileSize = this.tilemap.tileSize;
+
+    const attackBoxes = [];
+    if (this.player.isAttacking) {
+      const swordBox = this.player.getSwordHitbox();
+      if (swordBox) attackBoxes.push({ box: swordBox, fromSlash: false });
+    }
+    if (this.player.energySlashes && this.player.energySlashes.length > 0) {
+      for (const slash of this.player.energySlashes) {
+        if (!slash.active) continue;
+        attackBoxes.push({
+          box: {
+            x: slash.x - slash.width / 2,
+            y: slash.y - slash.height / 2,
+            width: slash.width,
+            height: slash.height
+          },
+          slashRef: slash,
+          fromSlash: true
+        });
+      }
+    }
+
+    if (attackBoxes.length === 0) return;
+
+    for (const atk of attackBoxes) {
+      const minCol = Math.max(0, Math.floor(atk.box.x / tileSize));
+      const maxCol = Math.min(scene.cols - 1, Math.floor((atk.box.x + atk.box.width) / tileSize));
+      const minRow = Math.max(0, Math.floor(atk.box.y / tileSize));
+      const maxRow = Math.min(scene.rows - 1, Math.floor((atk.box.y + atk.box.height) / tileSize));
+
+      for (let r = minRow; r <= maxRow; r++) {
+        for (let c = minCol; c <= maxCol; c++) {
+          if (deco[r] && deco[r][c] === TILES.CRYSTAL_BARRIER) {
+            if (this.player.swordLevel >= 2) {
+              deco[r][c] = -1;
+              if (colGrid && colGrid[r]) colGrid[r][c] = 0;
+              if (atk.slashRef) atk.slashRef.active = false;
+
+              if (this.music && typeof this.music.playHitSound === 'function') {
+                this.music.playHitSound();
+              }
+              if (this.animeCutscenes) {
+                this.animeCutscenes.flash('#a855f7', 0.2);
+                this.animeCutscenes.cameraShake(3.0, 0.2);
+              }
+              this.worldItems.push(
+                new WorldItem({
+                  id: `silicon_ore_crystal_${c}_${r}_${Date.now()}`,
+                  name: 'Mineral de Silicio',
+                  description: 'Veta pura de silicio extraída al quebrar el cristal de la mina.',
+                  iconIndex: ITEM_ICONS.SILICON_ORE,
+                  x: c * tileSize + 2,
+                  y: r * tileSize + 2,
+                  sceneId: this.tilemap.currentSceneId,
+                  itemsSheet: this.assets.itemsSheet
+                })
+              );
+              if (this.menuSystem) {
+                this.menuSystem.showNotice('💎 ¡Barrera de cristal quebrada! +1 Mineral de Silicio', 2.5);
+              }
+            } else {
+              if (atk.slashRef) atk.slashRef.active = false;
+              if (this.menuSystem && (!this._lastBarrierNotice || Date.now() - this._lastBarrierNotice > 2500)) {
+                this._lastBarrierNotice = Date.now();
+                this.menuSystem.showNotice('🛡️ El cristal resiste tu golpe. Se requiere la [Espada de Silicio (Nivel 2)] de Brom.', 2.5);
+                if (this.music && typeof this.music.playMenuSelect === 'function') {
+                  this.music.playMenuSelect();
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  _checkEnvironmentalHazards(dt) {
+    const sceneId = this.tilemap?.currentSceneId;
+    if (sceneId === 'forge_entry' || sceneId === 'forge_puzzle') {
+      if (this.player.armorLevel < 2) {
+        this.forgeHeatTimer = (this.forgeHeatTimer || 0) + dt;
+        if (this.forgeHeatTimer >= 3.0) {
+          this.forgeHeatTimer = 0;
+          if (this.player.invulnTimer <= 0 && this.player.hp > 0) {
+            this.player.takeDamage(1, this.music);
+            if (this.animeCutscenes) {
+              this.animeCutscenes.flash('#f97316', 0.25);
+              this.animeCutscenes.cameraShake(2.5, 0.2);
+            }
+            if (this.menuSystem && (!this._lastHeatNotice || Date.now() - this._lastHeatNotice > 3500)) {
+              this._lastHeatNotice = Date.now();
+              this.menuSystem.showNotice('🔥 ¡CALOR EXTREMO! Radiación térmica (-0.5❤). ¡Necesitas Blindaje Térmico (Nivel 2)!', 3.0);
+            }
+          }
+        }
+      } else {
+        this.forgeHeatTimer = 0;
+      }
+    } else {
+      this.forgeHeatTimer = 0;
     }
   }
 
@@ -5426,6 +5502,12 @@ export class RPGGame {
       }
     }
 
+    // Detección de impacto de ataques y tajos de energía contra Barreras de Cristal
+    this._checkCrystalBarrierCollisions();
+
+    // Daño ambiental por calor extremo en la Forja si falta el Blindaje Térmico
+    this._checkEnvironmentalHazards(dt);
+
     // Detección automática al caminar hacia la salida oeste de Valleverde a otras zonas
     if (
       (!this.animeCutscenes || !this.animeCutscenes.isActive) &&
@@ -5506,6 +5588,24 @@ export class RPGGame {
           if (this.achievementManager) {
             this.achievementManager.unlock('ach_boss_gc');
           }
+          if (this.player.dungeonCores) {
+            this.player.dungeonCores.gc = true;
+          }
+          this.worldItems.push(
+            new WorldItem({
+              id: `dungeon_core_gc_${Date.now()}`,
+              name: 'Núcleo del Colector',
+              description: 'Núcleo cuántico purgado de las Cloacas del Legacy. Clave para la Puerta del Núcleo.',
+              iconIndex: ITEM_ICONS.DUNGEON_CORE_GC,
+              x: enemy.x,
+              y: enemy.y,
+              sceneId: enemy.sceneId,
+              itemsSheet: this.assets.itemsSheet
+            })
+          );
+          if (this.menuSystem) {
+            this.menuSystem.showNotice('⚡ ¡El Garbage Collector soltó el [Núcleo del Colector]!', 3.5);
+          }
         } else if (enemy.id === 'boss_stack_overflow') {
           if (this.questLog) {
             this.questLog.completeQuest('quest_boss_stack', '¡Guardián del Stack Overflow abatido! Corte en Cascada desbloqueado.');
@@ -5513,12 +5613,74 @@ export class RPGGame {
           if (this.achievementManager) {
             this.achievementManager.unlock('ach_boss_stack');
           }
+          if (this.player.dungeonCores) {
+            this.player.dungeonCores.stack = true;
+          }
+          this.worldItems.push(
+            new WorldItem({
+              id: `dungeon_core_stack_${Date.now()}`,
+              name: 'Núcleo del Stack',
+              description: 'Núcleo cuántico de las Minas de la Recursión. Clave para la Puerta del Núcleo.',
+              iconIndex: ITEM_ICONS.DUNGEON_CORE_STACK,
+              x: enemy.x,
+              y: enemy.y,
+              sceneId: enemy.sceneId,
+              itemsSheet: this.assets.itemsSheet
+            })
+          );
+          for (let i = 0; i < 3; i++) {
+            this.worldItems.push(
+              new WorldItem({
+                id: `silicon_ore_${Date.now()}_${i}`,
+                name: 'Mineral de Silicio',
+                description: 'Veta pura de silicio cristalino. Llévasela a Brom para forjar la Espada de Silicio (Nivel 2).',
+                iconIndex: ITEM_ICONS.SILICON_ORE,
+                x: enemy.x + (i - 1) * 16,
+                y: enemy.y + 12,
+                sceneId: enemy.sceneId,
+                itemsSheet: this.assets.itemsSheet
+              })
+            );
+          }
+          if (this.menuSystem) {
+            this.menuSystem.showNotice('💎 ¡Has obtenido el [Núcleo del Stack] y 3x [Mineral de Silicio]!', 3.5);
+          }
         } else if (enemy.id === 'boss_prototype_microwave') {
           if (this.questLog) {
             this.questLog.completeQuest('quest_boss_microwave', '¡Prototipo del Microondas destruido! Barrera TypeScript desbloqueada.');
           }
           if (this.achievementManager) {
             this.achievementManager.unlock('ach_boss_microwave');
+          }
+          if (this.player.dungeonCores) {
+            this.player.dungeonCores.microwave = true;
+          }
+          this.worldItems.push(
+            new WorldItem({
+              id: `dungeon_core_microwave_${Date.now()}`,
+              name: 'Núcleo del Microondas',
+              description: 'Núcleo cuántico de la Forja del Prototipo. Clave para la Puerta del Núcleo.',
+              iconIndex: ITEM_ICONS.DUNGEON_CORE_MICROWAVE,
+              x: enemy.x,
+              y: enemy.y,
+              sceneId: enemy.sceneId,
+              itemsSheet: this.assets.itemsSheet
+            })
+          );
+          this.worldItems.push(
+            new WorldItem({
+              id: `microwave_magnetron_${Date.now()}`,
+              name: 'Magnetrón Cuántico',
+              description: 'Emisor de microondas de alta frecuencia. Llévaselo a Brom para overclockear la Espada (Nivel 3).',
+              iconIndex: ITEM_ICONS.MICROWAVE_MAGNETRON,
+              x: enemy.x + 16,
+              y: enemy.y,
+              sceneId: enemy.sceneId,
+              itemsSheet: this.assets.itemsSheet
+            })
+          );
+          if (this.menuSystem) {
+            this.menuSystem.showNotice('🔥 ¡Has obtenido el [Núcleo del Microondas] y el [Magnetrón Cuántico]!', 3.5);
           }
         } else if (enemy.id === 'boss_final_ai_alex') {
           if (this.questLog) {

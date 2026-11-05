@@ -98,9 +98,27 @@ export class CloudStorage {
       ? Math.max(0, Math.floor(Number(src.totalDeaths)))
       : 0;
 
+    const swordLevel = Number.isFinite(Number(src.swordLevel))
+      ? Math.max(1, Math.min(3, Math.floor(Number(src.swordLevel))))
+      : (playerHasSword ? 1 : 1);
+    const armorLevel = Number.isFinite(Number(src.armorLevel))
+      ? Math.max(1, Math.min(2, Math.floor(Number(src.armorLevel))))
+      : (playerHasArmor ? 1 : 1);
+
+    const rawCores = (src.dungeonCores && typeof src.dungeonCores === 'object') ? src.dungeonCores : {};
+    const dungeonCores = {
+      gc: Boolean(src.dungeonCore_gc ?? rawCores.gc ?? false),
+      stack: Boolean(src.dungeonCore_stack ?? rawCores.stack ?? false),
+      microwave: Boolean(src.dungeonCore_microwave ?? rawCores.microwave ?? false)
+    };
+    const defaultGates = Number(dungeonCores.gc) + Number(dungeonCores.stack) + Number(dungeonCores.microwave);
+    const gatesUnlocked = Number.isFinite(Number(src.gatesUnlocked))
+      ? Math.max(0, Math.min(3, Math.floor(Number(src.gatesUnlocked))))
+      : defaultGates;
+
     return {
       ...src,
-      version: src.version || '3.5',
+      version: src.version || '3.6',
       sceneId: typeof src.sceneId === 'string' && src.sceneId ? src.sceneId : 'village',
       playerX: Number.isFinite(Number(src.playerX)) ? Number(src.playerX) : 144,
       playerY: Number.isFinite(Number(src.playerY)) ? Number(src.playerY) : 108,
@@ -111,6 +129,13 @@ export class CloudStorage {
       robotizationLevel,
       playerHasSword,
       playerHasArmor,
+      swordLevel,
+      armorLevel,
+      dungeonCores,
+      gatesUnlocked,
+      dungeonCore_gc: dungeonCores.gc,
+      dungeonCore_stack: dungeonCores.stack,
+      dungeonCore_microwave: dungeonCores.microwave,
       shieldHP: armorPoints,
       armorPoints,
       maxArmorPoints: Number.isFinite(Number(src.maxArmorPoints)) ? Number(src.maxArmorPoints) : 3,

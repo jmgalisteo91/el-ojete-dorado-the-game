@@ -130,6 +130,11 @@ export class QuestLog {
     return this.quests.find((q) => q.id === id);
   }
 
+  isQuestCompleted(id) {
+    const q = this.getQuest(id);
+    return Boolean(q && q.status === 'COMPLETED');
+  }
+
   /**
    * Actualiza el paso actual de una misión y emite aviso flotante.
    */

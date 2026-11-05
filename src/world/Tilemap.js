@@ -113,12 +113,25 @@ export class Tilemap {
       }
     };
 
+    // Estado de Puzles y Progresión de Mazmorras (v3.6+)
+    this.sewerPuzzle = { valveOpen: false };
+    this.minesPuzzle = { siliconMined: false, barrierBroken: false };
+    this.forgePuzzle = { valveLeft: false, valveRight: false, gateOpen: false };
+    this.quantumGate = { coresPlaced: { gc: false, stack: false, microwave: false } };
+
     this._buildFirstStageScene();
     this._buildArmorTempleScene();
     this._buildSwordTempleScene();
     this._buildCondemnedRealmsScene();
+    this._buildSewersEntryScene();
+    this._buildSewersPuzzleScene();
     this._buildSewersDungeonScene();
+    this._buildMinesEntryScene();
+    this._buildMinesPuzzleScene();
+    this._buildForgeEntryScene();
+    this._buildForgePuzzleScene();
     this._buildFortressGateScene();
+    this._buildQuantumGateScene();
     this._buildCitadelScene();
     this._buildOverworldScene();
     this._buildHouseInteriors();
@@ -286,14 +299,14 @@ export class Tilemap {
         };
       }
 
-      // 3. Puerta del Templo del Altar Sagrado (Mazmorra de la Espada del Alba)
+      // 3. Puerta de las Minas de la Recursión (Mazmorra 2: Entrada al Gran Abismo)
       const swordDoorX = 17.5 * this.tileSize;
       const swordDoorY = 2.5 * this.tileSize;
       if (Math.hypot(player.centerX - swordDoorX, player.centerY - swordDoorY) <= 22) {
         return {
           type: 'stage_transition',
-          targetScene: 'sword_temple',
-          label: 'Entrar al Templo de la Espada (Nivel)',
+          targetScene: 'mines_entry',
+          label: 'Entrar a las Minas de la Recursión (Nivel 1: El Gran Abismo)',
           worldX: swordDoorX,
           worldY: swordDoorY,
           spawnX: 11.5 * this.tileSize,
@@ -301,14 +314,14 @@ export class Tilemap {
         };
       }
 
-      // 4. Puerta al Umbral de la Fortaleza (Jefe Microondas Prototipo)
+      // 4. Puerta a La Forja del Prototipo (Mazmorra 3: Entrada)
       const fortressDoorX = 28.5 * this.tileSize;
       const fortressDoorY = 3.5 * this.tileSize;
       if (Math.hypot(player.centerX - fortressDoorX, player.centerY - fortressDoorY) <= 24) {
         return {
           type: 'stage_transition',
-          targetScene: 'ai_fortress_gate',
-          label: 'Entrar al Umbral de la Fortaleza (Microondas Prototipo)',
+          targetScene: 'forge_entry',
+          label: 'Entrar a La Forja del Prototipo (Nivel 1: Galería de Calderas)',
           worldX: fortressDoorX,
           worldY: fortressDoorY,
           spawnX: 11.5 * this.tileSize,
@@ -319,31 +332,132 @@ export class Tilemap {
       return null;
     }
 
+    // ==================== INTERIOR DE MAZMORRAS Y TRANSICIONES ====================
+    // 1. Cloacas del Legacy (Mazmorra 1)
+    if (this.currentSceneId === 'sewers_entry') {
+      const northDoorY = 1.5 * this.tileSize;
+      const northDoorX = 11.5 * this.tileSize;
+      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'sewers_puzzle',
+          label: 'Avanzar a la Sala de Válvulas y Drenaje',
+          worldX: northDoorX,
+          worldY: northDoorY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+    } else if (this.currentSceneId === 'sewers_puzzle') {
+      const northDoorY = 1.5 * this.tileSize;
+      const northDoorX = 11.5 * this.tileSize;
+      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'sewers_dungeon',
+          label: 'Descender a la Fosa de la Memoria (Garbage Collector Furioso)',
+          worldX: northDoorX,
+          worldY: northDoorY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+    }
+
+    // 2. Minas de la Recursión (Mazmorra 2)
+    if (this.currentSceneId === 'mines_entry') {
+      const northDoorY = 1.5 * this.tileSize;
+      const northDoorX = 11.5 * this.tileSize;
+      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'mines_puzzle',
+          label: 'Avanzar a la Sala de Runas Recursivas',
+          worldX: northDoorX,
+          worldY: northDoorY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+    } else if (this.currentSceneId === 'mines_puzzle') {
+      const northDoorY = 1.5 * this.tileSize;
+      const northDoorX = 11.5 * this.tileSize;
+      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'sword_temple',
+          label: 'Cruzar el Portal a la Cámara del Guardián del Stack Overflow',
+          worldX: northDoorX,
+          worldY: northDoorY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+    }
+
+    // 3. La Forja del Prototipo (Mazmorra 3)
+    if (this.currentSceneId === 'forge_entry') {
+      const northDoorY = 1.5 * this.tileSize;
+      const northDoorX = 11.5 * this.tileSize;
+      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'forge_puzzle',
+          label: 'Avanzar a la Sala de Válvulas Térmicas',
+          worldX: northDoorX,
+          worldY: northDoorY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+    } else if (this.currentSceneId === 'forge_puzzle') {
+      const northDoorY = 1.5 * this.tileSize;
+      const northDoorX = 11.5 * this.tileSize;
+      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'ai_fortress_gate',
+          label: 'Franquear la Cámara del Microondas Prototipo V0.1 Alpha',
+          worldX: northDoorX,
+          worldY: northDoorY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+    }
+
+    // 4. La Gran Puerta del Núcleo Cuántico (Antesala a la Ciudadela)
+    if (this.currentSceneId === 'quantum_gate') {
+      const portalX = 11.5 * this.tileSize;
+      const portalY = 1.5 * this.tileSize;
+      if (Math.hypot(player.centerX - portalX, player.centerY - portalY) <= 24) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'ai_citadel',
+          label: 'Trascender hacia la Ciudadela Cuántica (Mainframe de AI Alex)',
+          worldX: portalX,
+          worldY: portalY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+    }
+
     if (
       this.currentSceneId === 'armor_temple' ||
       this.currentSceneId === 'sword_temple' ||
       this.currentSceneId === 'condemned_realms' ||
+      this.currentSceneId === 'sewers_entry' ||
+      this.currentSceneId === 'sewers_puzzle' ||
       this.currentSceneId === 'sewers_dungeon' ||
+      this.currentSceneId === 'mines_entry' ||
+      this.currentSceneId === 'mines_puzzle' ||
+      this.currentSceneId === 'forge_entry' ||
+      this.currentSceneId === 'forge_puzzle' ||
       this.currentSceneId === 'ai_fortress_gate' ||
+      this.currentSceneId === 'quantum_gate' ||
       this.currentSceneId === 'ai_citadel'
     ) {
-      // Puerta norte en el Umbral de la Fortaleza hacia la Ciudadela
-      if (this.currentSceneId === 'ai_fortress_gate') {
-        const portalX = 11.5 * this.tileSize;
-        const portalY = 1.5 * this.tileSize;
-        if (Math.hypot(player.centerX - portalX, player.centerY - portalY) <= 24) {
-          return {
-            type: 'stage_transition',
-            targetScene: 'ai_citadel',
-            label: 'Cruzar el Umbral hacia la Ciudadela de AI Alex (El Gran Ojal)',
-            worldX: portalX,
-            worldY: portalY,
-            spawnX: 11.5 * this.tileSize,
-            spawnY: 15 * this.tileSize
-          };
-        }
-      }
-
       const scene = this.scenes[this.currentSceneId];
       if (scene && scene.exitDoor) {
         const dist = Math.hypot(
@@ -354,13 +468,17 @@ export class Tilemap {
           const exitLabel =
             this.currentSceneId === 'condemned_realms'
               ? 'Regresar a través de la Brecha Abisal'
-              : this.currentSceneId === 'sewers_dungeon'
+              : this.currentSceneId === 'sewers_entry'
                 ? 'Subir a Valleverde (Superficie)'
-                : this.currentSceneId === 'ai_citadel'
-                  ? 'Salir de la Ciudadela (Hacia el Umbral)'
-                  : this.currentSceneId === 'ai_fortress_gate'
-                    ? 'Salir a las Ruinas del Despertar'
-                    : 'Salir a Valleverde (Pruebas Sagradas)';
+                : this.currentSceneId === 'mines_entry'
+                  ? 'Salir a Valleverde (Ruta Montañosa)'
+                  : this.currentSceneId === 'forge_entry'
+                    ? 'Salir a Valleverde (Tierras del Este)'
+                    : this.currentSceneId === 'quantum_gate'
+                      ? 'Salir a Valleverde (Tierras del Este)'
+                      : this.currentSceneId === 'ai_citadel'
+                        ? 'Regresar a la Puerta del Núcleo'
+                        : 'Retroceder a la cámara anterior';
           return {
             type: 'exit',
             targetScene: scene.exitDoor.returnScene || 'overworld',
@@ -376,14 +494,14 @@ export class Tilemap {
     }
 
     if (this.currentSceneId === 'overworld') {
-      // Trampilla / Rejilla a las Alcantarillas de Valleverde (Jefe Garbage Collector)
+      // 1. Trampilla / Rejilla a las Cloacas del Legacy (Mazmorra 1: Entrada)
       const sewerGrateX = 12.5 * this.tileSize;
       const sewerGrateY = 20.5 * this.tileSize;
       if (Math.hypot(player.centerX - sewerGrateX, player.centerY - sewerGrateY) <= 22) {
         return {
           type: 'stage_transition',
-          targetScene: 'sewers_dungeon',
-          label: 'Bajar a las Alcantarillas de Valleverde (Fosa de Memoria)',
+          targetScene: 'sewers_entry',
+          label: 'Bajar a las Cloacas del Legacy (Nivel 1)',
           worldX: sewerGrateX,
           worldY: sewerGrateY,
           spawnX: 11.5 * this.tileSize,
@@ -391,37 +509,54 @@ export class Tilemap {
         };
       }
 
-      // Barrera del Puente hacia las Tierras Sagradas del este (cuando está cerrado)
-      if (!this.bridgeOpen) {
-        const bridgeX = 26.5 * this.tileSize;
-        const bridgeY = 12.5 * this.tileSize;
-        if (Math.hypot(player.centerX - bridgeX, player.centerY - bridgeY) <= 24) {
-          return {
-            type: 'bridge_gate',
-            label: 'Barrera del Puente (Precintado por el Sabio)',
-            worldX: bridgeX,
-            worldY: bridgeY
-          };
-        }
-      }
-
-      const westRoadX = 1.5 * this.tileSize;
-      const westRoadY = 12.5 * this.tileSize;
-      if (Math.hypot(player.centerX - westRoadX, player.centerY - westRoadY) <= 30) {
+      // 2. Cueva del Paso Montañoso Noroeste -> Minas de la Recursión (Mazmorra 2: Entrada)
+      const mineGateX = 2.5 * this.tileSize;
+      const mineGateY = 4.5 * this.tileSize;
+      if (Math.hypot(player.centerX - mineGateX, player.centerY - mineGateY) <= 24) {
         return {
           type: 'stage_transition',
-          targetScene: 'first_stage',
-          label: 'Viajar a Ruinas del Despertar (Escenario 1)',
-          worldX: westRoadX,
-          worldY: westRoadY,
-          spawnX: 31 * this.tileSize,
-          spawnY: 12 * this.tileSize
+          targetScene: 'mines_entry',
+          label: 'Entrar a las Minas de la Recursión (Nivel 1: El Gran Abismo)',
+          worldX: mineGateX,
+          worldY: mineGateY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
         };
       }
 
-      // Portal norte cruzando el río hacia el Templo de la Armadura Binaria
+      // 3. Gran Puerta del Núcleo Cuántico (Antesala a la Ciudadela de AI Alex)
+      const quantumDoorX = 34.5 * this.tileSize;
+      const quantumDoorY = 12.5 * this.tileSize;
+      if (Math.hypot(player.centerX - quantumDoorX, player.centerY - quantumDoorY) <= 24) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'quantum_gate',
+          label: 'Aproximarse a la Gran Puerta del Núcleo Cuántico',
+          worldX: quantumDoorX,
+          worldY: quantumDoorY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+
+      // 4. Portal Norte al cruzar el río -> La Forja del Prototipo (Mazmorra 3: Entrada)
+      const forgeGateX = 34.5 * this.tileSize;
+      const forgeGateY = 5.5 * this.tileSize;
+      if (Math.hypot(player.centerX - forgeGateX, player.centerY - forgeGateY) <= 24) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'forge_entry',
+          label: 'Entrar a La Forja del Prototipo (Nivel 1: Galería de Calderas)',
+          worldX: forgeGateX,
+          worldY: forgeGateY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+
+      // 5. Portal Sur al cruzar el río -> Templo de la Armadura Binaria
       const armorGateX = 34.5 * this.tileSize;
-      const armorGateY = 5.5 * this.tileSize;
+      const armorGateY = 19.5 * this.tileSize;
       if (Math.hypot(player.centerX - armorGateX, player.centerY - armorGateY) <= 24) {
         return {
           type: 'stage_transition',
@@ -430,21 +565,6 @@ export class Tilemap {
           worldX: armorGateX,
           worldY: armorGateY,
           spawnX: 10.5 * this.tileSize,
-          spawnY: 15 * this.tileSize
-        };
-      }
-
-      // Portal sur cruzando el río hacia el Templo de la Espada de la Recursividad
-      const swordGateX = 34.5 * this.tileSize;
-      const swordGateY = 19.5 * this.tileSize;
-      if (Math.hypot(player.centerX - swordGateX, player.centerY - swordGateY) <= 24) {
-        return {
-          type: 'stage_transition',
-          targetScene: 'sword_temple',
-          label: 'Prueba Sagrada: Templo de la Espada de la Recursividad',
-          worldX: swordGateX,
-          worldY: swordGateY,
-          spawnX: 11.5 * this.tileSize,
           spawnY: 15 * this.tileSize
         };
       }
@@ -1646,13 +1766,13 @@ export class Tilemap {
   }
 
   /**
-   * Construye las Alcantarillas de Valleverde (Fosa de Memoria):
-   * Escenario de batalla subterráneo donde mora "El Garbage Collector Furioso".
+   * MAZMORRA 1 · SALA 1: 'Cloacas del Legacy · Entrada de Desagüe'
+   * Tuberías de drenaje, rejillas metálicas y agua estancada.
    */
-  _buildSewersDungeonScene() {
+  _buildSewersEntryScene() {
     const cols = 24;
     const rows = 18;
-    const ground = this._createGrid(cols, rows, TILES.STONE_FLOOR);
+    const ground = this._createGrid(cols, rows, TILES.SEWER_SLIME_FLOOR);
     const decoration = this._createGrid(cols, rows, -1);
     const collision = this._createGrid(cols, rows, 0);
     const lightSources = [];
@@ -1660,57 +1780,63 @@ export class Tilemap {
     const fillRect = (layer, c0, r0, w, h, val) => {
       for (let r = r0; r < r0 + h; r++) {
         for (let c = c0; c < c0 + w; c++) {
-          if (r >= 0 && r < rows && c >= 0 && c < cols) {
-            layer[r][c] = val;
-          }
+          if (r >= 0 && r < rows && c >= 0 && c < cols) layer[r][c] = val;
         }
       }
     };
-
-    const setDeco = (c, r, tileId, blocks = true) => {
+    const setDeco = (c, r, tileId, solid = true) => {
       if (r >= 0 && r < rows && c >= 0 && c < cols) {
         decoration[r][c] = tileId;
-        if (blocks) collision[r][c] = 1;
+        if (solid) collision[r][c] = 1;
       }
     };
 
-    // Muros perimetrales
+    // Muros perimetrales de tuberías
     for (let c = 0; c < cols; c++) {
-      setDeco(c, 0, TILES.TEMPLE_WALL, true);
-      setDeco(c, 1, TILES.TEMPLE_WALL, true);
-      setDeco(c, rows - 1, TILES.TEMPLE_WALL, true);
+      setDeco(c, 0, TILES.SEWER_PIPE_WALL, true);
+      setDeco(c, 1, TILES.SEWER_PIPE_WALL, true);
+      setDeco(c, rows - 1, TILES.SEWER_PIPE_WALL, true);
     }
     for (let r = 0; r < rows; r++) {
-      setDeco(0, r, TILES.TEMPLE_WALL, true);
-      setDeco(1, r, TILES.TEMPLE_WALL, true);
-      setDeco(cols - 1, r, TILES.TEMPLE_WALL, true);
-      setDeco(cols - 2, r, TILES.TEMPLE_WALL, true);
+      setDeco(0, r, TILES.SEWER_PIPE_WALL, true);
+      setDeco(1, r, TILES.SEWER_PIPE_WALL, true);
+      setDeco(cols - 2, r, TILES.SEWER_PIPE_WALL, true);
+      setDeco(cols - 1, r, TILES.SEWER_PIPE_WALL, true);
     }
 
-    // Canales de aguas residuales / ácido
-    fillRect(ground, 4, 4, 16, 10, TILES.STONE_PATH);
-    fillRect(ground, 2, 7, 2, 4, TILES.WATER_1);
-    fillRect(ground, 20, 7, 2, 4, TILES.WATER_1);
+    // Canales laterales de agua residual ácida
+    fillRect(ground, 2, 4, 3, 10, TILES.WATER_1);
+    fillRect(ground, cols - 5, 4, 3, 10, TILES.WATER_1);
+    // Pasarela central segura
+    fillRect(ground, 8, 2, 8, 14, TILES.STONE_FLOOR);
 
-    // Columnas industriales de la fosa
-    setDeco(5, 5, TILES.TEMPLE_PILLAR, true);
-    setDeco(18, 5, TILES.TEMPLE_PILLAR, true);
-    setDeco(5, 12, TILES.TEMPLE_PILLAR, true);
-    setDeco(18, 12, TILES.TEMPLE_PILLAR, true);
+    // Tuberías industriales intermedias
+    setDeco(7, 6, TILES.SEWER_PIPE_WALL, true);
+    setDeco(16, 6, TILES.SEWER_PIPE_WALL, true);
+    setDeco(7, 11, TILES.SEWER_PIPE_WALL, true);
+    setDeco(16, 11, TILES.SEWER_PIPE_WALL, true);
 
-    // Antorchas con bioluminiscencia verdosa de fosa de memoria
-    lightSources.push({ x: 5.5 * 16, y: 5.5 * 16, radius: 48, intensity: 0.85, color: '#10b981' });
-    lightSources.push({ x: 18.5 * 16, y: 5.5 * 16, radius: 48, intensity: 0.85, color: '#10b981' });
-    lightSources.push({ x: 11.5 * 16, y: 9.5 * 16, radius: 64, intensity: 0.95, color: '#34d399' });
+    // Luminiscencia verde de filtración ácida
+    lightSources.push(
+      { x: 3.5 * 16, y: 8.5 * 16, radius: 48, intensity: 0.85, color: '#10b981' },
+      { x: 20.5 * 16, y: 8.5 * 16, radius: 48, intensity: 0.85, color: '#10b981' },
+      { x: 11.5 * 16, y: 3.5 * 16, radius: 52, intensity: 0.9, color: '#34d399' }
+    );
 
-    // Puerta de salida (escalera de subida) en el muro sur
-    setDeco(11, rows - 1, -1, false);
-    setDeco(12, rows - 1, -1, false);
+    // Salida sur: escalera de subida a la superficie
+    setDeco(11, rows - 1, TILES.EXIT_MAT, false);
+    setDeco(12, rows - 1, TILES.EXIT_MAT, false);
     collision[rows - 1][11] = 0;
     collision[rows - 1][12] = 0;
 
-    this.scenes.sewers_dungeon = {
-      title: 'Alcantarillas de Valleverde · Fosa de la Memoria',
+    // Paso norte hacia la sala de puzle de válvulas
+    setDeco(11, 1, -1, false);
+    setDeco(12, 1, -1, false);
+    collision[1][11] = 0;
+    collision[1][12] = 0;
+
+    this.scenes.sewers_entry = {
+      title: 'Cloacas del Legacy · Entrada de Desagüe',
       cols,
       rows,
       layers: { ground, decoration, collision },
@@ -1726,13 +1852,13 @@ export class Tilemap {
   }
 
   /**
-   * Construye el Umbral de la Fortaleza de AI Alex:
-   * Arena cibernética donde custodia "El Microondas Prototipo (V0.1 Alpha)".
+   * MAZMORRA 1 · SALA 2: 'Cloacas del Legacy · Sala de Válvulas y Drenaje'
+   * Puzle de válvula de presión para drenar el canal de memoria fétida.
    */
-  _buildFortressGateScene() {
+  _buildSewersPuzzleScene() {
     const cols = 24;
     const rows = 18;
-    const ground = this._createGrid(cols, rows, TILES.STONE_FLOOR);
+    const ground = this._createGrid(cols, rows, TILES.SEWER_SLIME_FLOOR);
     const decoration = this._createGrid(cols, rows, -1);
     const collision = this._createGrid(cols, rows, 0);
     const lightSources = [];
@@ -1740,61 +1866,58 @@ export class Tilemap {
     const fillRect = (layer, c0, r0, w, h, val) => {
       for (let r = r0; r < r0 + h; r++) {
         for (let c = c0; c < c0 + w; c++) {
-          if (r >= 0 && r < rows && c >= 0 && c < cols) {
-            layer[r][c] = val;
-          }
+          if (r >= 0 && r < rows && c >= 0 && c < cols) layer[r][c] = val;
         }
       }
     };
-
-    const setDeco = (c, r, tileId, blocks = true) => {
+    const setDeco = (c, r, tileId, solid = true) => {
       if (r >= 0 && r < rows && c >= 0 && c < cols) {
         decoration[r][c] = tileId;
-        if (blocks) collision[r][c] = 1;
+        if (solid) collision[r][c] = 1;
       }
     };
 
-    // Muros perimetrales reforzados
     for (let c = 0; c < cols; c++) {
-      setDeco(c, 0, TILES.TEMPLE_WALL, true);
-      setDeco(c, 1, TILES.TEMPLE_WALL, true);
-      setDeco(c, rows - 1, TILES.TEMPLE_WALL, true);
+      setDeco(c, 0, TILES.SEWER_PIPE_WALL, true);
+      setDeco(c, 1, TILES.SEWER_PIPE_WALL, true);
+      setDeco(c, rows - 1, TILES.SEWER_PIPE_WALL, true);
     }
     for (let r = 0; r < rows; r++) {
-      setDeco(0, r, TILES.TEMPLE_WALL, true);
-      setDeco(1, r, TILES.TEMPLE_WALL, true);
-      setDeco(cols - 1, r, TILES.TEMPLE_WALL, true);
-      setDeco(cols - 2, r, TILES.TEMPLE_WALL, true);
+      setDeco(0, r, TILES.SEWER_PIPE_WALL, true);
+      setDeco(1, r, TILES.SEWER_PIPE_WALL, true);
+      setDeco(cols - 2, r, TILES.SEWER_PIPE_WALL, true);
+      setDeco(cols - 1, r, TILES.SEWER_PIPE_WALL, true);
     }
 
-    // Pistas de circuitos de energía térmica
-    fillRect(ground, 3, 3, 18, 12, TILES.STONE_PATH);
+    // Estanque de fango central
+    fillRect(ground, 4, 4, 16, 9, TILES.WATER_1);
+    // Pasarela de adoquines que lleva a la válvula central
+    fillRect(ground, 10, 5, 4, 8, TILES.STONE_FLOOR);
 
-    // Columnas metálicas del umbral
-    setDeco(5, 5, TILES.TEMPLE_PILLAR, true);
-    setDeco(18, 5, TILES.TEMPLE_PILLAR, true);
-    setDeco(5, 11, TILES.TEMPLE_PILLAR, true);
-    setDeco(18, 11, TILES.TEMPLE_PILLAR, true);
+    // Válvula central de bombeo
+    setDeco(11, 8, TILES.WELL, true);
+    setDeco(12, 8, TILES.WELL, true);
 
-    // Fuentes de luz roja/ámbar
-    lightSources.push({ x: 5.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#f97316' });
-    lightSources.push({ x: 18.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#f97316' });
-    lightSources.push({ x: 11.5 * 16, y: 8.5 * 16, radius: 64, intensity: 1.0, color: '#ef4444' });
+    lightSources.push(
+      { x: 11.5 * 16, y: 8.5 * 16, radius: 60, intensity: 0.95, color: '#34d399' },
+      { x: 5.5 * 16, y: 5.5 * 16, radius: 44, intensity: 0.8, color: '#10b981' },
+      { x: 18.5 * 16, y: 5.5 * 16, radius: 44, intensity: 0.8, color: '#10b981' }
+    );
 
-    // Puerta de salida en el sur
+    // Retorno al sur (entrada)
     setDeco(11, rows - 1, -1, false);
     setDeco(12, rows - 1, -1, false);
     collision[rows - 1][11] = 0;
     collision[rows - 1][12] = 0;
 
-    // Portal al norte hacia la Ciudadela de AI Alex
-    setDeco(11, 1, TILES.PORTAL_GATE_OPEN, false);
-    setDeco(12, 1, TILES.PORTAL_GATE_OPEN, false);
+    // Puerta norte a la fosa del Garbage Collector
+    setDeco(11, 1, -1, false);
+    setDeco(12, 1, -1, false);
     collision[1][11] = 0;
     collision[1][12] = 0;
 
-    this.scenes.ai_fortress_gate = {
-      title: 'Umbral de la Fortaleza · Microondas Prototipo',
+    this.scenes.sewers_puzzle = {
+      title: 'Cloacas del Legacy · Sala de Válvulas y Drenaje',
       cols,
       rows,
       layers: { ground, decoration, collision },
@@ -1802,21 +1925,21 @@ export class Tilemap {
       exitDoor: {
         worldX: 11.5 * 16,
         worldY: 16.5 * 16,
-        returnX: 28.5 * 16,
-        returnY: 5 * 16,
-        returnScene: 'first_stage'
+        returnX: 11.5 * 16,
+        returnY: 3 * 16,
+        returnScene: 'sewers_entry'
       }
     };
   }
 
   /**
-   * Construye la Ciudadela de AI Alex (El Gran Ojal):
-   * Arena cuántica monumental donde se libra la confrontación final contra Mister AI Alex.
+   * MAZMORRA 1 · SALA 3: 'Cloacas del Legacy · Fosa de la Memoria' (Garbage Collector)
+   * Escenario de batalla subterráneo con tileset de alcantarillas industriales.
    */
-  _buildCitadelScene() {
+  _buildSewersDungeonScene() {
     const cols = 24;
     const rows = 18;
-    const ground = this._createGrid(cols, rows, TILES.STONE_FLOOR);
+    const ground = this._createGrid(cols, rows, TILES.SEWER_SLIME_FLOOR);
     const decoration = this._createGrid(cols, rows, -1);
     const collision = this._createGrid(cols, rows, 0);
     const lightSources = [];
@@ -1824,9 +1947,7 @@ export class Tilemap {
     const fillRect = (layer, c0, r0, w, h, val) => {
       for (let r = r0; r < r0 + h; r++) {
         for (let c = c0; c < c0 + w; c++) {
-          if (r >= 0 && r < rows && c >= 0 && c < cols) {
-            layer[r][c] = val;
-          }
+          if (r >= 0 && r < rows && c >= 0 && c < cols) layer[r][c] = val;
         }
       }
     };
@@ -1840,47 +1961,41 @@ export class Tilemap {
 
     // Muros perimetrales
     for (let c = 0; c < cols; c++) {
-      setDeco(c, 0, TILES.TEMPLE_WALL, true);
-      setDeco(c, 1, TILES.TEMPLE_WALL, true);
-      setDeco(c, rows - 1, TILES.TEMPLE_WALL, true);
+      setDeco(c, 0, TILES.SEWER_PIPE_WALL, true);
+      setDeco(c, 1, TILES.SEWER_PIPE_WALL, true);
+      setDeco(c, rows - 1, TILES.SEWER_PIPE_WALL, true);
     }
     for (let r = 0; r < rows; r++) {
-      setDeco(0, r, TILES.TEMPLE_WALL, true);
-      setDeco(1, r, TILES.TEMPLE_WALL, true);
-      setDeco(cols - 1, r, TILES.TEMPLE_WALL, true);
-      setDeco(cols - 2, r, TILES.TEMPLE_WALL, true);
+      setDeco(0, r, TILES.SEWER_PIPE_WALL, true);
+      setDeco(1, r, TILES.SEWER_PIPE_WALL, true);
+      setDeco(cols - 1, r, TILES.SEWER_PIPE_WALL, true);
+      setDeco(cols - 2, r, TILES.SEWER_PIPE_WALL, true);
     }
 
-    // Pavimento central con alfombra carmesí y circuitos cuánticos
-    fillRect(ground, 3, 3, 18, 12, TILES.STONE_PATH);
-    fillRect(ground, 8, 4, 8, 10, TILES.RUG_RED);
+    // Canales de aguas residuales / ácido
+    fillRect(ground, 4, 4, 16, 10, TILES.STONE_PATH);
+    fillRect(ground, 2, 7, 2, 4, TILES.WATER_1);
+    fillRect(ground, 20, 7, 2, 4, TILES.WATER_1);
 
-    // Pilares cuánticos del Gran Ojal
-    setDeco(6, 6, TILES.TEMPLE_PILLAR, true);
-    setDeco(17, 6, TILES.TEMPLE_PILLAR, true);
-    setDeco(6, 12, TILES.TEMPLE_PILLAR, true);
-    setDeco(17, 12, TILES.TEMPLE_PILLAR, true);
+    // Columnas industriales de la fosa
+    setDeco(5, 5, TILES.SEWER_PIPE_WALL, true);
+    setDeco(18, 5, TILES.SEWER_PIPE_WALL, true);
+    setDeco(5, 12, TILES.SEWER_PIPE_WALL, true);
+    setDeco(18, 12, TILES.SEWER_PIPE_WALL, true);
 
-    // Altar del Gran Ojal en el norte
-    setDeco(11, 2, TILES.ALTAR_PEDESTAL, false);
-    setDeco(12, 2, TILES.ALTAR_PEDESTAL, false);
+    // Antorchas con bioluminiscencia verdosa de fosa de memoria
+    lightSources.push({ x: 5.5 * 16, y: 5.5 * 16, radius: 48, intensity: 0.85, color: '#10b981' });
+    lightSources.push({ x: 18.5 * 16, y: 5.5 * 16, radius: 48, intensity: 0.85, color: '#10b981' });
+    lightSources.push({ x: 11.5 * 16, y: 9.5 * 16, radius: 64, intensity: 0.95, color: '#34d399' });
 
-    // Fuentes de luz carmesí y dorada
-    lightSources.push(
-      { x: 11.5 * 16, y: 2.5 * 16, radius: 84, intensity: 1.0, color: '#ef4444' },
-      { x: 6.5 * 16, y: 6.5 * 16, radius: 50, intensity: 0.85, color: '#fde047' },
-      { x: 17.5 * 16, y: 6.5 * 16, radius: 50, intensity: 0.85, color: '#fde047' },
-      { x: 11.5 * 16, y: 15.5 * 16, radius: 50, intensity: 0.8, color: '#38bdf8' }
-    );
-
-    // Felpudo y salida en el sur
-    setDeco(11, rows - 1, TILES.EXIT_MAT, false);
-    setDeco(12, rows - 1, TILES.EXIT_MAT, false);
+    // Puerta de salida (retorno a la sala de puzle) en el muro sur
+    setDeco(11, rows - 1, -1, false);
+    setDeco(12, rows - 1, -1, false);
     collision[rows - 1][11] = 0;
     collision[rows - 1][12] = 0;
 
-    this.scenes.ai_citadel = {
-      title: 'Ciudadela de AI Alex · El Gran Ojal',
+    this.scenes.sewers_dungeon = {
+      title: 'Cloacas del Legacy · Fosa de la Memoria (Garbage Collector)',
       cols,
       rows,
       layers: { ground, decoration, collision },
@@ -1890,7 +2005,556 @@ export class Tilemap {
         worldY: 16.5 * 16,
         returnX: 11.5 * 16,
         returnY: 3 * 16,
-        returnScene: 'ai_fortress_gate'
+        returnScene: 'sewers_puzzle'
+      }
+    };
+  }
+
+  /**
+   * MAZMORRA 2 · SALA 1: 'Minas de la Recursión · El Gran Abismo'
+   * Paredes de cristal violeta, vetas de silicio y un abismo central infranqueable sin Dash.
+   */
+  _buildMinesEntryScene() {
+    const cols = 24;
+    const rows = 18;
+    const ground = this._createGrid(cols, rows, TILES.MINE_CRYSTAL_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const fillRect = (layer, c0, r0, w, h, val) => {
+      for (let r = r0; r < r0 + h; r++) {
+        for (let c = c0; c < c0 + w; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) layer[r][c] = val;
+        }
+      }
+    };
+    const setDeco = (c, r, tileId, solid = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (solid) collision[r][c] = 1;
+      }
+    };
+
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(c, 1, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(c, rows - 1, TILES.MINE_CRYSTAL_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(1, r, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(cols - 2, r, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(cols - 1, r, TILES.MINE_CRYSTAL_WALL, true);
+    }
+
+    // EL GRAN ABISMO (filas 8 y 9): intransitable a pie, exige Dash Asíncrono para cruzar
+    fillRect(ground, 2, 8, cols - 4, 2, TILES.MINE_CHASM);
+    for (let c = 2; c < cols - 2; c++) {
+      collision[8][c] = 1;
+      collision[9][c] = 1;
+    }
+
+    // Veta de Silicio Puro en el rincón noreste
+    setDeco(19, 4, TILES.CRYSTAL_BARRIER, true);
+    setDeco(20, 4, TILES.CRYSTAL_BARRIER, true);
+
+    lightSources.push(
+      { x: 11.5 * 16, y: 8.5 * 16, radius: 56, intensity: 0.9, color: '#818cf8' },
+      { x: 5.5 * 16, y: 4.5 * 16, radius: 48, intensity: 0.85, color: '#38bdf8' },
+      { x: 19.5 * 16, y: 4.5 * 16, radius: 52, intensity: 0.95, color: '#a855f7' }
+    );
+
+    // Salida sur al exterior (Valleverde Noroeste)
+    setDeco(11, rows - 1, TILES.EXIT_MAT, false);
+    setDeco(12, rows - 1, TILES.EXIT_MAT, false);
+    collision[rows - 1][11] = 0;
+    collision[rows - 1][12] = 0;
+
+    // Paso norte a la sala de runas
+    setDeco(11, 1, -1, false);
+    setDeco(12, 1, -1, false);
+    collision[1][11] = 0;
+    collision[1][12] = 0;
+
+    this.scenes.mines_entry = {
+      title: 'Minas de la Recursión · El Gran Abismo',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 11.5 * 16,
+        worldY: 16.5 * 16,
+        returnX: 2.5 * 16,
+        returnY: 5 * 16,
+        returnScene: 'overworld'
+      }
+    };
+  }
+
+  /**
+   * MAZMORRA 2 · SALA 2: 'Minas de la Recursión · Sala de Runas Recursivas'
+   * Monolitos de recursión matemática que abren el paso a la cámara del jefe.
+   */
+  _buildMinesPuzzleScene() {
+    const cols = 24;
+    const rows = 18;
+    const ground = this._createGrid(cols, rows, TILES.MINE_CRYSTAL_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const setDeco = (c, r, tileId, solid = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (solid) collision[r][c] = 1;
+      }
+    };
+
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(c, 1, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(c, rows - 1, TILES.MINE_CRYSTAL_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(1, r, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(cols - 2, r, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(cols - 1, r, TILES.MINE_CRYSTAL_WALL, true);
+    }
+
+    // Monolitos de recursión
+    setDeco(6, 8, TILES.ALTAR_PEDESTAL, true);
+    setDeco(11, 10, TILES.ALTAR_PEDESTAL, true);
+    setDeco(17, 8, TILES.ALTAR_PEDESTAL, true);
+
+    lightSources.push(
+      { x: 6.5 * 16, y: 8.5 * 16, radius: 48, intensity: 0.9, color: '#38bdf8' },
+      { x: 11.5 * 16, y: 10.5 * 16, radius: 48, intensity: 0.9, color: '#818cf8' },
+      { x: 17.5 * 16, y: 8.5 * 16, radius: 48, intensity: 0.9, color: '#a855f7' }
+    );
+
+    // Salida sur: vuelta a la entrada de las minas
+    setDeco(11, rows - 1, -1, false);
+    setDeco(12, rows - 1, -1, false);
+    collision[rows - 1][11] = 0;
+    collision[rows - 1][12] = 0;
+
+    // Portal norte hacia la cámara de contención del Stack Overflow
+    setDeco(11, 1, TILES.PORTAL_GATE_OPEN, false);
+    setDeco(12, 1, TILES.PORTAL_GATE_OPEN, false);
+    collision[1][11] = 0;
+    collision[1][12] = 0;
+
+    this.scenes.mines_puzzle = {
+      title: 'Minas de la Recursión · Sala de Runas Recursivas',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 11.5 * 16,
+        worldY: 16.5 * 16,
+        returnX: 11.5 * 16,
+        returnY: 3 * 16,
+        returnScene: 'mines_entry'
+      }
+    };
+  }
+
+  /**
+   * MAZMORRA 3 · SALA 1: 'La Forja del Prototipo · Galería de Calderas'
+   * Rejillas sobre lava, calderas de bronce y calor sofocante (requiere Blindaje Térmico).
+   */
+  _buildForgeEntryScene() {
+    const cols = 24;
+    const rows = 18;
+    const ground = this._createGrid(cols, rows, TILES.FORGE_LAVA_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const fillRect = (layer, c0, r0, w, h, val) => {
+      for (let r = r0; r < r0 + h; r++) {
+        for (let c = c0; c < c0 + w; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) layer[r][c] = val;
+        }
+      }
+    };
+    const setDeco = (c, r, tileId, solid = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (solid) collision[r][c] = 1;
+      }
+    };
+
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.FORGE_BOILER_WALL, true);
+      setDeco(c, 1, TILES.FORGE_BOILER_WALL, true);
+      setDeco(c, rows - 1, TILES.FORGE_BOILER_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.FORGE_BOILER_WALL, true);
+      setDeco(1, r, TILES.FORGE_BOILER_WALL, true);
+      setDeco(cols - 2, r, TILES.FORGE_BOILER_WALL, true);
+      setDeco(cols - 1, r, TILES.FORGE_BOILER_WALL, true);
+    }
+
+    // Pasarela de hierro central
+    fillRect(ground, 8, 2, 8, 14, TILES.STONE_FLOOR);
+
+    // Calderas ardientes en los flancos
+    setDeco(4, 5, TILES.FIREPLACE, true);
+    setDeco(19, 5, TILES.FIREPLACE, true);
+    setDeco(4, 11, TILES.FIREPLACE, true);
+    setDeco(19, 11, TILES.FIREPLACE, true);
+
+    lightSources.push(
+      { x: 4.5 * 16, y: 5.5 * 16, radius: 64, intensity: 1.0, color: '#f97316' },
+      { x: 19.5 * 16, y: 5.5 * 16, radius: 64, intensity: 1.0, color: '#f97316' },
+      { x: 11.5 * 16, y: 8.5 * 16, radius: 72, intensity: 0.95, color: '#ef4444' }
+    );
+
+    // Salida sur al exterior (Tierras del Este)
+    setDeco(11, rows - 1, TILES.EXIT_MAT, false);
+    setDeco(12, rows - 1, TILES.EXIT_MAT, false);
+    collision[rows - 1][11] = 0;
+    collision[rows - 1][12] = 0;
+
+    // Paso norte a la sala de válvulas térmicas
+    setDeco(11, 1, -1, false);
+    setDeco(12, 1, -1, false);
+    collision[1][11] = 0;
+    collision[1][12] = 0;
+
+    this.scenes.forge_entry = {
+      title: 'La Forja del Prototipo · Galería de Calderas',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 11.5 * 16,
+        worldY: 16.5 * 16,
+        returnX: 34.5 * 16,
+        returnY: 5.5 * 16,
+        returnScene: 'overworld'
+      }
+    };
+  }
+
+  /**
+   * MAZMORRA 3 · SALA 2: 'La Forja del Prototipo · Sala de Válvulas Térmicas'
+   * Reguladores de sobrepresión para purgar el vapor y abrir la cámara del Microondas.
+   */
+  _buildForgePuzzleScene() {
+    const cols = 24;
+    const rows = 18;
+    const ground = this._createGrid(cols, rows, TILES.FORGE_LAVA_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const fillRect = (layer, c0, r0, w, h, val) => {
+      for (let r = r0; r < r0 + h; r++) {
+        for (let c = c0; c < c0 + w; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) layer[r][c] = val;
+        }
+      }
+    };
+    const setDeco = (c, r, tileId, solid = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (solid) collision[r][c] = 1;
+      }
+    };
+
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.FORGE_BOILER_WALL, true);
+      setDeco(c, 1, TILES.FORGE_BOILER_WALL, true);
+      setDeco(c, rows - 1, TILES.FORGE_BOILER_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.FORGE_BOILER_WALL, true);
+      setDeco(1, r, TILES.FORGE_BOILER_WALL, true);
+      setDeco(cols - 2, r, TILES.FORGE_BOILER_WALL, true);
+      setDeco(cols - 1, r, TILES.FORGE_BOILER_WALL, true);
+    }
+
+    fillRect(ground, 5, 5, 14, 8, TILES.STONE_FLOOR);
+
+    // Válvulas de vapor izquierda y derecha
+    setDeco(6, 8, TILES.WELL, true);
+    setDeco(17, 8, TILES.WELL, true);
+
+    lightSources.push(
+      { x: 6.5 * 16, y: 8.5 * 16, radius: 56, intensity: 0.95, color: '#f97316' },
+      { x: 17.5 * 16, y: 8.5 * 16, radius: 56, intensity: 0.95, color: '#f97316' },
+      { x: 11.5 * 16, y: 4.5 * 16, radius: 64, intensity: 1.0, color: '#ef4444' }
+    );
+
+    // Retorno al sur
+    setDeco(11, rows - 1, -1, false);
+    setDeco(12, rows - 1, -1, false);
+    collision[rows - 1][11] = 0;
+    collision[rows - 1][12] = 0;
+
+    // Paso norte a la cámara de contención del Microondas Prototipo
+    setDeco(11, 1, -1, false);
+    setDeco(12, 1, -1, false);
+    collision[1][11] = 0;
+    collision[1][12] = 0;
+
+    this.scenes.forge_puzzle = {
+      title: 'La Forja del Prototipo · Sala de Válvulas Térmicas',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 11.5 * 16,
+        worldY: 16.5 * 16,
+        returnX: 11.5 * 16,
+        returnY: 3 * 16,
+        returnScene: 'forge_entry'
+      }
+    };
+  }
+
+  /**
+   * MAZMORRA 3 · SALA 3: 'La Forja del Prototipo · Cámara de Contención' (Microondas Prototipo)
+   * Arena de calderas incandescentes y vapor presurizado.
+   */
+  _buildFortressGateScene() {
+    const cols = 24;
+    const rows = 18;
+    const ground = this._createGrid(cols, rows, TILES.FORGE_LAVA_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const fillRect = (layer, c0, r0, w, h, val) => {
+      for (let r = r0; r < r0 + h; r++) {
+        for (let c = c0; c < c0 + w; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) layer[r][c] = val;
+        }
+      }
+    };
+
+    const setDeco = (c, r, tileId, blocks = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (blocks) collision[r][c] = 1;
+      }
+    };
+
+    // Muros perimetrales reforzados
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.FORGE_BOILER_WALL, true);
+      setDeco(c, 1, TILES.FORGE_BOILER_WALL, true);
+      setDeco(c, rows - 1, TILES.FORGE_BOILER_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.FORGE_BOILER_WALL, true);
+      setDeco(1, r, TILES.FORGE_BOILER_WALL, true);
+      setDeco(cols - 1, r, TILES.FORGE_BOILER_WALL, true);
+      setDeco(cols - 2, r, TILES.FORGE_BOILER_WALL, true);
+    }
+
+    // Pistas de circuitos de energía térmica
+    fillRect(ground, 3, 3, 18, 12, TILES.STONE_PATH);
+
+    // Columnas metálicas del umbral
+    setDeco(5, 5, TILES.FORGE_BOILER_WALL, true);
+    setDeco(18, 5, TILES.FORGE_BOILER_WALL, true);
+    setDeco(5, 11, TILES.FORGE_BOILER_WALL, true);
+    setDeco(18, 11, TILES.FORGE_BOILER_WALL, true);
+
+    // Fuentes de luz roja/ámbar
+    lightSources.push({ x: 5.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#f97316' });
+    lightSources.push({ x: 18.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#f97316' });
+    lightSources.push({ x: 11.5 * 16, y: 8.5 * 16, radius: 64, intensity: 1.0, color: '#ef4444' });
+
+    // Puerta de salida en el sur (retorno a la sala de puzle)
+    setDeco(11, rows - 1, -1, false);
+    setDeco(12, rows - 1, -1, false);
+    collision[rows - 1][11] = 0;
+    collision[rows - 1][12] = 0;
+
+    this.scenes.ai_fortress_gate = {
+      title: 'La Forja del Prototipo · Horno del Microondas Prototipo',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 11.5 * 16,
+        worldY: 16.5 * 16,
+        returnX: 11.5 * 16,
+        returnY: 3 * 16,
+        returnScene: 'forge_puzzle'
+      }
+    };
+  }
+
+  /**
+   * ZONA FINAL · ANTESALA: 'La Gran Puerta del Núcleo Cuántico'
+   * Monumental puerta con 3 zócalos de núcleo para desbloquear la Ciudadela Cuántica.
+   */
+  _buildQuantumGateScene() {
+    const cols = 24;
+    const rows = 18;
+    const ground = this._createGrid(cols, rows, TILES.STONE_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const fillRect = (layer, c0, r0, w, h, val) => {
+      for (let r = r0; r < r0 + h; r++) {
+        for (let c = c0; c < c0 + w; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) layer[r][c] = val;
+        }
+      }
+    };
+    const setDeco = (c, r, tileId, solid = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (solid) collision[r][c] = 1;
+      }
+    };
+
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.TEMPLE_WALL, true);
+      setDeco(c, 1, TILES.TEMPLE_WALL, true);
+      setDeco(c, rows - 1, TILES.TEMPLE_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.TEMPLE_WALL, true);
+      setDeco(1, r, TILES.TEMPLE_WALL, true);
+      setDeco(cols - 2, r, TILES.TEMPLE_WALL, true);
+      setDeco(cols - 1, r, TILES.TEMPLE_WALL, true);
+    }
+
+    // Pavimento ceremonial de adoquines
+    fillRect(ground, 4, 3, 16, 12, TILES.COBBLE);
+
+    // Los 3 pedestales de núcleo
+    setDeco(8, 7, TILES.CORE_PEDESTAL, true);  // Núcleo GC (Verde)
+    setDeco(11, 6, TILES.CORE_PEDESTAL, true); // Núcleo Stack (Cian)
+    setDeco(14, 7, TILES.CORE_PEDESTAL, true); // Núcleo Microondas (Rojo)
+
+    // Fuentes de luz de los 3 zócalos
+    lightSources.push(
+      { x: 8.5 * 16, y: 7.5 * 16, radius: 46, intensity: 0.9, color: '#10b981' },
+      { x: 11.5 * 16, y: 6.5 * 16, radius: 52, intensity: 0.95, color: '#38bdf8' },
+      { x: 14.5 * 16, y: 7.5 * 16, radius: 46, intensity: 0.9, color: '#ef4444' },
+      { x: 11.5 * 16, y: 2.5 * 16, radius: 72, intensity: 1.0, color: '#ec4899' }
+    );
+
+    // Salida sur a Valleverde Este
+    setDeco(11, rows - 1, TILES.EXIT_MAT, false);
+    setDeco(12, rows - 1, TILES.EXIT_MAT, false);
+    collision[rows - 1][11] = 0;
+    collision[rows - 1][12] = 0;
+
+    // Portal norte hacia la Ciudadela Cuántica de Alex
+    setDeco(11, 1, TILES.PORTAL_GATE_OPEN, false);
+    setDeco(12, 1, TILES.PORTAL_GATE_OPEN, false);
+    collision[1][11] = 0;
+    collision[1][12] = 0;
+
+    this.scenes.quantum_gate = {
+      title: 'La Gran Puerta del Núcleo Cuántico',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 11.5 * 16,
+        worldY: 16.5 * 16,
+        returnX: 34.5 * 16,
+        returnY: 12.5 * 16,
+        returnScene: 'overworld'
+      }
+    };
+  }
+
+  /**
+   * ZONA FINAL · EL CLÍMAX: 'Ciudadela Cuántica de AI Alex · El Gran Ojal'
+   * 100% exclusivo: Servidor Cuántico / Mainframe (rejillas metálicas oscuras, cables de fibra neón y racks de servidores).
+   */
+  _buildCitadelScene() {
+    const cols = 24;
+    const rows = 18;
+    const ground = this._createGrid(cols, rows, TILES.MAINFRAME_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const fillRect = (layer, c0, r0, w, h, val) => {
+      for (let r = r0; r < r0 + h; r++) {
+        for (let c = c0; c < c0 + w; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) layer[r][c] = val;
+        }
+      }
+    };
+    const setDeco = (c, r, tileId, blocks = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (blocks) collision[r][c] = 1;
+      }
+    };
+
+    // Muros perimetrales: Racks de servidores cuánticos con LEDs titilantes
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.MAINFRAME_WALL, true);
+      setDeco(c, 1, TILES.MAINFRAME_WALL, true);
+      setDeco(c, rows - 1, TILES.MAINFRAME_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.MAINFRAME_WALL, true);
+      setDeco(1, r, TILES.MAINFRAME_WALL, true);
+      setDeco(cols - 1, r, TILES.MAINFRAME_WALL, true);
+      setDeco(cols - 2, r, TILES.MAINFRAME_WALL, true);
+    }
+
+    // Servidores en batería interior
+    setDeco(5, 5, TILES.MAINFRAME_WALL, true);
+    setDeco(18, 5, TILES.MAINFRAME_WALL, true);
+    setDeco(5, 12, TILES.MAINFRAME_WALL, true);
+    setDeco(18, 12, TILES.MAINFRAME_WALL, true);
+
+    // Altar Cuántico del Gran Ojal (Pedestal cuántico de bus de memoria)
+    setDeco(11, 3, TILES.CORE_PEDESTAL, false);
+    setDeco(12, 3, TILES.CORE_PEDESTAL, false);
+
+    // Iluminación cuántica hiperdimensional
+    lightSources.push(
+      { x: 11.5 * 16, y: 3.5 * 16, radius: 88, intensity: 1.0, color: '#ec4899' },
+      { x: 5.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#06b6d4' },
+      { x: 18.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#06b6d4' },
+      { x: 11.5 * 16, y: 14.5 * 16, radius: 56, intensity: 0.85, color: '#3b82f6' }
+    );
+
+    // Salida sur hacia La Gran Puerta del Núcleo
+    setDeco(11, rows - 1, -1, false);
+    setDeco(12, rows - 1, -1, false);
+    collision[rows - 1][11] = 0;
+    collision[rows - 1][12] = 0;
+
+    this.scenes.ai_citadel = {
+      title: 'Ciudadela Cuántica · El Mainframe de AI Alex',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 11.5 * 16,
+        worldY: 16.5 * 16,
+        returnX: 11.5 * 16,
+        returnY: 3 * 16,
+        returnScene: 'quantum_gate'
       }
     };
   }

@@ -40,10 +40,17 @@ const BLOCK_MESSAGES = {
 const DESTINATION_TITLES = {
   first_stage: 'Ruinas del Despertar (Escenario 1)',
   armor_temple: 'Templo de la Armadura del Código Binario',
-  sword_temple: 'Templo de la Espada de la Recursividad (Guardián del Stack Overflow)',
-  sewers_dungeon: 'Alcantarillas de Valleverde (Garbage Collector Furioso)',
-  ai_fortress_gate: 'Umbral de la Fortaleza (Microondas Prototipo V0.1)',
-  ai_citadel: 'Ciudadela de AI Alex (El Gran Ojal)'
+  sword_temple: 'Minas de la Recursión · Cámara de Contención (Stack Overflow)',
+  sewers_dungeon: 'Cloacas del Legacy · Fosa de la Memoria (Garbage Collector)',
+  sewers_entry: 'Cloacas del Legacy · Entrada de Desagüe',
+  sewers_puzzle: 'Cloacas del Legacy · Sala de Válvulas y Drenaje',
+  mines_entry: 'Minas de la Recursión · Caverna del Gran Abismo',
+  mines_puzzle: 'Minas de la Recursión · Sala de Runas Recursivas',
+  forge_entry: 'La Forja del Prototipo · Galería de Calderas',
+  forge_puzzle: 'La Forja del Prototipo · Sala de Válvulas Térmicas',
+  ai_fortress_gate: 'La Forja del Prototipo · Cámara de Contención (Microondas Prototipo)',
+  quantum_gate: 'La Gran Puerta del Núcleo Cuántico',
+  ai_citadel: 'Ciudadela Cuántica de AI Alex (Mainframe · El Gran Ojal)'
 };
 
 const BOSS_ARENAS = new Set(['sewers_dungeon', 'ai_fortress_gate', 'ai_citadel']);
@@ -57,13 +64,31 @@ export function getDoorBlock(targetScene, player) {
   switch (targetScene) {
     case 'first_stage':
       return fullyEquipped ? null : BLOCK_MESSAGES.first_stage;
+    case 'sewers_entry':
+    case 'sewers_puzzle':
     case 'sewers_dungeon':
       return fullyEquipped ? null : BLOCK_MESSAGES.sewers_dungeon;
+    case 'mines_entry':
+    case 'mines_puzzle':
     case 'sword_temple':
       return player.hasArmor ? null : BLOCK_MESSAGES.sword_temple;
+    case 'forge_entry':
+    case 'forge_puzzle':
     case 'ai_fortress_gate':
-    case 'ai_citadel':
       return fullyEquipped ? null : BLOCK_MESSAGES.fortress;
+    case 'ai_citadel': {
+      if (!fullyEquipped) return BLOCK_MESSAGES.fortress;
+      if (player.gatesUnlocked !== undefined && player.gatesUnlocked < 3) {
+        return {
+          title: '🔒 [PUERTA DEL NÚCLEO SELLADA]',
+          lines: [
+            'El cortafuegos hiperdimensional de la Ciudadela Cuántica está activo.',
+            'Debes colocar los 3 Núcleos de Mazmorra (Garbage Collector, Stack Overflow y Microondas) en la Puerta del Núcleo para desbloquear el acceso.'
+          ]
+        };
+      }
+      return null;
+    }
     default:
       return null;
   }
