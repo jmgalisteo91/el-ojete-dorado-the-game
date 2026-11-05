@@ -4493,7 +4493,8 @@ export class RPGGame {
             label: '★ Sí, franquear el umbral',
             onSelect: () => {
               this.dialogueBox.close();
-              if (door.targetScene === 'first_stage') {
+              if (door.targetScene === 'first_stage' && !this.seenAIWarning) {
+                this.seenAIWarning = true;
                 this.animeCutscenes.playCutscene(SCENE_AI_ALEX_WARNING, () => {
                   this._executeStageTransition(door);
                 });

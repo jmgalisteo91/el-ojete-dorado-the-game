@@ -273,19 +273,19 @@ export class Tilemap {
           label: 'Regresar a la Aldea de Valleverde (Zona Segura)',
           worldX: gateX,
           worldY: gateY,
-          spawnX: 3.5 * this.tileSize,
+          spawnX: 32 * this.tileSize,
           spawnY: 12.5 * this.tileSize
         };
       }
 
-      // 2. Puerta del Templo del Bastión (Mazmorra de la Armadura del Alba)
+      // 2. Puerta del Templo del Bastión (Mazmorra de la Armadura Binaria)
       const armorDoorX = 6.5 * this.tileSize;
       const armorDoorY = 8.5 * this.tileSize;
       if (Math.hypot(player.centerX - armorDoorX, player.centerY - armorDoorY) <= 22) {
         return {
           type: 'stage_transition',
           targetScene: 'armor_temple',
-          label: 'Entrar al Templo de la Armadura (Nivel)',
+          label: 'Entrar al Templo de la Armadura Binaria',
           worldX: armorDoorX,
           worldY: armorDoorY,
           spawnX: 10.5 * this.tileSize,
@@ -293,31 +293,16 @@ export class Tilemap {
         };
       }
 
-      // 3. Puerta de las Minas de la Recursión (Mazmorra 2: Entrada al Gran Abismo)
+      // 3. Puerta del Templo de la Espada de la Recursividad (Norte)
       const swordDoorX = 17.5 * this.tileSize;
       const swordDoorY = 2.5 * this.tileSize;
       if (Math.hypot(player.centerX - swordDoorX, player.centerY - swordDoorY) <= 22) {
         return {
           type: 'stage_transition',
-          targetScene: 'mines_entry',
-          label: 'Entrar a las Minas de la Recursión (Nivel 1: El Gran Abismo)',
+          targetScene: 'sword_temple',
+          label: 'Entrar al Templo de la Espada de la Recursividad',
           worldX: swordDoorX,
           worldY: swordDoorY,
-          spawnX: 11.5 * this.tileSize,
-          spawnY: 15 * this.tileSize
-        };
-      }
-
-      // 4. Puerta a La Forja del Prototipo (Mazmorra 3: Entrada)
-      const fortressDoorX = 28.5 * this.tileSize;
-      const fortressDoorY = 3.5 * this.tileSize;
-      if (Math.hypot(player.centerX - fortressDoorX, player.centerY - fortressDoorY) <= 24) {
-        return {
-          type: 'stage_transition',
-          targetScene: 'forge_entry',
-          label: 'Entrar a La Forja del Prototipo (Nivel 1: Galería de Calderas)',
-          worldX: fortressDoorX,
-          worldY: fortressDoorY,
           spawnX: 11.5 * this.tileSize,
           spawnY: 15 * this.tileSize
         };
@@ -518,18 +503,18 @@ export class Tilemap {
         };
       }
 
-      // 3. Gran Puerta del Núcleo Cuántico (Antesala a la Ciudadela de AI Alex)
-      const quantumDoorX = 34.5 * this.tileSize;
-      const quantumDoorY = 12.5 * this.tileSize;
-      if (Math.hypot(player.centerX - quantumDoorX, player.centerY - quantumDoorY) <= 24) {
+      // 3. Portal del Este al cruzar el Río Alba -> Tierras Corruptas (Templos de Armadura y Espada)
+      const corruptedPortalX = 34.5 * this.tileSize;
+      const corruptedPortalY = 12.5 * this.tileSize;
+      if (Math.hypot(player.centerX - corruptedPortalX, player.centerY - corruptedPortalY) <= 24) {
         return {
           type: 'stage_transition',
-          targetScene: 'quantum_gate',
-          label: 'Aproximarse a la Gran Puerta del Núcleo Cuántico',
-          worldX: quantumDoorX,
-          worldY: quantumDoorY,
-          spawnX: 11.5 * this.tileSize,
-          spawnY: 15 * this.tileSize
+          targetScene: 'first_stage',
+          label: 'Cruzar el Portal a las Tierras Corruptas (Templos de Armadura y Espada)',
+          worldX: corruptedPortalX,
+          worldY: corruptedPortalY,
+          spawnX: 31 * this.tileSize,
+          spawnY: 12.5 * this.tileSize
         };
       }
 
@@ -548,17 +533,17 @@ export class Tilemap {
         };
       }
 
-      // 5. Portal Sur al cruzar el río -> Templo de la Armadura Binaria
-      const armorGateX = 34.5 * this.tileSize;
-      const armorGateY = 19.5 * this.tileSize;
-      if (Math.hypot(player.centerX - armorGateX, player.centerY - armorGateY) <= 24) {
+      // 5. Gran Puerta del Núcleo Cuántico (Sureste, requiere los 3 Núcleos)
+      const quantumDoorX = 34.5 * this.tileSize;
+      const quantumDoorY = 19.5 * this.tileSize;
+      if (Math.hypot(player.centerX - quantumDoorX, player.centerY - quantumDoorY) <= 24) {
         return {
           type: 'stage_transition',
-          targetScene: 'armor_temple',
-          label: 'Prueba Sagrada: Templo de la Armadura del Código Binario',
-          worldX: armorGateX,
-          worldY: armorGateY,
-          spawnX: 10.5 * this.tileSize,
+          targetScene: 'quantum_gate',
+          label: 'Aproximarse a la Gran Puerta del Núcleo Cuántico (Ciudadela Final)',
+          worldX: quantumDoorX,
+          worldY: quantumDoorY,
+          spawnX: 11.5 * this.tileSize,
           spawnY: 15 * this.tileSize
         };
       }
@@ -646,25 +631,24 @@ export class Tilemap {
   }
 
   /**
-   * Construye el Primer Escenario ("Las Ruinas del Despertar"):
-   * - Santuario inicial en el sur junto al Sabio Aurelio
-   * - Bastión Oeste donde se encuentra la Armadura del Alba
-   * - Altar Sagrado del Norte donde descansa la primera arma: La Espada del Alba
-   * - Caminos patrullados por los esbirros del malvado Mister AI Alex
-   * - Portal del Este hacia el Pueblo de Valleverde
+   * Construye el Santuario de las Tierras Corruptas (Zona Malvada de las Pruebas Sagradas):
+   * - Escenario sombrío con adoquines oscuros, antorchas de fuego espectral y reliquias del código antiguo.
+   * - Bastión Oeste: Templo de la Armadura del Código Binario (Prueba de Lógica).
+   * - Altar Sagrado del Norte: Templo de la Espada de la Recursividad (desbloqueado con Armadura).
+   * - Portal del Este: Vórtice dimensional de retorno a la seguridad de la Aldea de Valleverde.
    */
   _buildFirstStageScene() {
     const cols = 36;
     const rows = 24;
-    const ground = this._createGrid(cols, rows, TILES.GRASS_1);
+    const ground = this._createGrid(cols, rows, TILES.STONE_FLOOR);
     const decoration = this._createGrid(cols, rows, -1);
     const collision = this._createGrid(cols, rows, 0);
     const lightSources = [];
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        if ((r * 11 + c * 7) % 4 === 0) {
-          ground[r][c] = TILES.GRASS_2;
+        if ((r * 11 + c * 7) % 3 === 0) {
+          ground[r][c] = TILES.COBBLE;
         }
       }
     }
@@ -686,13 +670,13 @@ export class Tilemap {
       }
     };
 
-    // 1. Santuario Seguro del Sur (donde despierta el héroe junto al Sabio)
+    // 1. Santuario Seguro del Sur (con obeliscos y runas antiguas)
     fillRect(ground, 14, 17, 7, 5, TILES.COBBLE);
     // Caminos principales hacia el Oeste (Armadura), Norte (Espada) y Este (Portal a Valleverde)
     fillRect(ground, 16, 6, 3, 12, TILES.PATH);
     fillRect(ground, 6, 11, 28, 3, TILES.PATH);
 
-    // 2. Bastión Oeste: Fachada de entrada al Templo de la Armadura
+    // 2. Bastión Oeste: Fachada de entrada al Templo de la Armadura Binaria
     fillRect(ground, 4, 8, 6, 7, TILES.STONE_FLOOR);
     setDeco(4, 8, TILES.WALL_INTERIOR, true);
     setDeco(5, 8, TILES.WALL_INTERIOR, true);
@@ -703,12 +687,12 @@ export class Tilemap {
     setDeco(8, 9, TILES.LAMPPOST, true);
     setDeco(5, 11, TILES.SIGNPOST, true);
     lightSources.push(
-      { x: 6.5 * 16, y: 8.5 * 16, radius: 52, intensity: 1.0 },
-      { x: 4.5 * 16, y: 9.5 * 16, radius: 42, intensity: 0.85 },
-      { x: 8.5 * 16, y: 9.5 * 16, radius: 42, intensity: 0.85 }
+      { x: 6.5 * 16, y: 8.5 * 16, radius: 56, intensity: 1.0, color: '#38bdf8' },
+      { x: 4.5 * 16, y: 9.5 * 16, radius: 44, intensity: 0.85, color: '#38bdf8' },
+      { x: 8.5 * 16, y: 9.5 * 16, radius: 44, intensity: 0.85, color: '#38bdf8' }
     );
 
-    // 3. Altar Sagrado del Norte: Fachada de entrada al Templo de la Espada
+    // 3. Altar Sagrado del Norte: Fachada de entrada al Templo de la Espada de la Recursividad
     fillRect(ground, 14, 2, 7, 6, TILES.STONE_FLOOR);
     setDeco(14, 2, TILES.WALL_INTERIOR, true);
     setDeco(15, 2, TILES.WALL_INTERIOR, true);
@@ -720,34 +704,18 @@ export class Tilemap {
     setDeco(15, 3, TILES.LAMPPOST, true);
     setDeco(19, 3, TILES.LAMPPOST, true);
     lightSources.push(
-      { x: 17.5 * 16, y: 2.5 * 16, radius: 64, intensity: 1.0 },
-      { x: 15.5 * 16, y: 3.5 * 16, radius: 46, intensity: 0.9 },
-      { x: 19.5 * 16, y: 3.5 * 16, radius: 46, intensity: 0.9 }
+      { x: 17.5 * 16, y: 2.5 * 16, radius: 64, intensity: 1.0, color: '#f59e0b' },
+      { x: 15.5 * 16, y: 3.5 * 16, radius: 46, intensity: 0.9, color: '#f59e0b' },
+      { x: 19.5 * 16, y: 3.5 * 16, radius: 46, intensity: 0.9, color: '#f59e0b' }
     );
 
-    // 3b. Umbral de la Fortaleza de AI Alex en el Noreste (Microondas Prototipo + Acceso a Mister AI Alex)
-    fillRect(ground, 26, 2, 5, 4, TILES.STONE_FLOOR);
-    fillRect(ground, 28, 6, 2, 6, TILES.PATH);
-    setDeco(26, 2, TILES.WALL_INTERIOR, true);
-    setDeco(27, 2, TILES.WALL_INTERIOR, true);
-    setDeco(28, 2, TILES.PORTAL_GATE_OPEN, true);
-    setDeco(29, 2, TILES.PORTAL_GATE_OPEN, true);
-    setDeco(30, 2, TILES.WALL_INTERIOR, true);
-    setDeco(26, 3, TILES.LAMPPOST, true);
-    setDeco(30, 3, TILES.LAMPPOST, true);
-    lightSources.push(
-      { x: 28.5 * 16, y: 2.5 * 16, radius: 64, intensity: 1.0, color: '#ef4444' },
-      { x: 26.5 * 16, y: 3.5 * 16, radius: 44, intensity: 0.85 },
-      { x: 30.5 * 16, y: 3.5 * 16, radius: 44, intensity: 0.85 }
-    );
-
-    // 4. Farolas del Santuario del Sabio en el Sur
+    // 4. Farolas y braseros de energía espectral en el Santuario
     setDeco(14, 17, TILES.LAMPPOST, true);
     setDeco(20, 17, TILES.LAMPPOST, true);
     setDeco(15, 16, TILES.SIGNPOST, true);
     lightSources.push(
-      { x: 14.5 * 16, y: 17.5 * 16, radius: 48, intensity: 0.95 },
-      { x: 20.5 * 16, y: 17.5 * 16, radius: 48, intensity: 0.95 }
+      { x: 14.5 * 16, y: 17.5 * 16, radius: 48, intensity: 0.95, color: '#a855f7' },
+      { x: 20.5 * 16, y: 17.5 * 16, radius: 48, intensity: 0.95, color: '#a855f7' }
     );
 
     // 5. Portal del Este hacia el Pueblo de Valleverde
@@ -799,7 +767,7 @@ export class Tilemap {
     }
 
     this.scenes.first_stage = {
-      title: 'Escenario 1 · Ruinas del Despertar',
+      title: 'Tierras Corruptas · Santuario de las Pruebas',
       cols,
       rows,
       layers: { ground, decoration, collision },
@@ -1522,7 +1490,7 @@ export class Tilemap {
     setDeco(11, 16, TILES.EXIT_MAT, false);
 
     this.scenes.armor_temple = {
-      title: 'Templo del Bastión · Nivel de la Armadura',
+      title: 'Templo de la Armadura Binaria · Santuario del Bastión',
       cols,
       rows,
       layers: { ground, decoration, collision },
@@ -1530,9 +1498,9 @@ export class Tilemap {
       exitDoor: {
         worldX: 10.5 * 16,
         worldY: 16.5 * 16,
-        returnX: 34.5 * 16,
-        returnY: 7 * 16,
-        returnScene: 'overworld'
+        returnX: 6.5 * 16,
+        returnY: 10 * 16,
+        returnScene: 'first_stage'
       }
     };
   }
@@ -1643,7 +1611,7 @@ export class Tilemap {
     setDeco(12, 16, TILES.EXIT_MAT, false);
 
     this.scenes.sword_temple = {
-      title: 'Templo del Altar Sagrado · Nivel de la Espada',
+      title: 'Templo de la Espada de la Recursividad · Altar del Abismo',
       cols,
       rows,
       layers: { ground, decoration, collision },
@@ -1651,9 +1619,9 @@ export class Tilemap {
       exitDoor: {
         worldX: 11.5 * 16,
         worldY: 16.5 * 16,
-        returnX: 34.5 * 16,
-        returnY: 18 * 16,
-        returnScene: 'overworld'
+        returnX: 17.5 * 16,
+        returnY: 4.5 * 16,
+        returnScene: 'first_stage'
       }
     };
   }
@@ -2834,69 +2802,73 @@ export class Tilemap {
         garbageCollectorDead ? '#86efac' : '#fca5a5'
       );
 
-      // Indicador flotante sobre Templo de la Armadura Binaria
-      const hasArmor = Boolean(player && player.hasArmor);
+      // Indicador sobre La Forja del Prototipo (Calderas Noreste)
+      const microwaveDead = isBossDead('boss_prototype_microwave');
       drawFloatingMarker(
         34.5 * this.tileSize,
         4.4 * this.tileSize,
-        hasArmor ? '✓ TEMPLO DE LA ARMADURA BINARIA' : '🛡️ TEMPLO DE LA ARMADURA BINARIA [E]',
-        'Prueba de Paridad y Lógica Binaria',
-        hasArmor ? '#22c55e' : '#38bdf8',
-        hasArmor ? '#86efac' : '#7dd3fc'
+        microwaveDead ? '✓ LA FORJA DEL PROTOTIPO (PURGADA)' : '🔥 LA FORJA DEL PROTOTIPO (NIVEL 1) [E]',
+        'Galería de Calderas Térmicas',
+        microwaveDead ? '#22c55e' : '#f97316',
+        microwaveDead ? '#86efac' : '#fdba74'
       );
 
-      // Indicador flotante sobre Templo de la Espada (Guardián del Stack Overflow)
-      const stackOverflowDead = isBossDead('boss_stack_overflow');
+      // Portal del Este hacia el Santuario de las Tierras Corruptas (Templos)
+      const hasArmor = Boolean(player && player.hasArmor);
       const hasSword = Boolean(player && player.hasSword);
+      const bothEquipped = hasArmor && hasSword;
+      drawFloatingMarker(
+        34.5 * this.tileSize,
+        11.5 * this.tileSize,
+        bothEquipped ? '✓ PORTAL A TIERRAS CORRUPTAS' : '⚡ PORTAL AL SANTUARIO CORRUPTO [E]',
+        'Pruebas Sagradas: Armadura y Espada',
+        bothEquipped ? '#22c55e' : '#a855f7',
+        bothEquipped ? '#86efac' : '#d8b4fe'
+      );
+
+      // Gran Puerta del Núcleo Cuántico (Sureste)
+      const gatesOpen = player?.gatesUnlocked === 3;
       drawFloatingMarker(
         34.5 * this.tileSize,
         18.4 * this.tileSize,
-        stackOverflowDead && hasSword ? '✓ TEMPLO DE LA ESPADA: DESPEJADO' : '⚔️ TEMPLO DE LA ESPADA + 💀 GUARDIÁN DEL STACK [E]',
-        'Guardián del Stack Overflow',
-        stackOverflowDead && hasSword ? '#22c55e' : '#f59e0b',
-        stackOverflowDead && hasSword ? '#86efac' : '#fde047'
-      );
-
-      // Indicador en la salida Oeste hacia Ruinas del Despertar
-      drawFloatingMarker(
-        2.4 * this.tileSize,
-        11.3 * this.tileSize,
-        '◀ RUINAS DEL DESPERTAR',
-        '💀 Fortaleza de AI Alex',
-        '#c084fc',
-        '#e9d5ff'
+        gatesOpen ? '👑 PUERTA DEL NÚCLEO (3/3 NÚCLEOS) [E]' : '🔒 GRAN PUERTA DEL NÚCLEO CUÁNTICO [E]',
+        gatesOpen ? 'Acceso libre a la Ciudadela de AI Alex' : 'Requiere los 3 Núcleos de Mazmorra',
+        gatesOpen ? '#22c55e' : '#ef4444',
+        gatesOpen ? '#86efac' : '#fca5a5'
       );
     } else if (this.currentSceneId === 'first_stage') {
       const hasArmor = Boolean(player && player.hasArmor);
       const hasSword = Boolean(player && player.hasSword);
       const stackOverflowDead = isBossDead('boss_stack_overflow');
-      const microwaveDead = isBossDead('boss_prototype_microwave');
 
+      // 1. Templo de la Armadura Binaria (Oeste)
       drawFloatingMarker(
         6.5 * this.tileSize,
         6.3 * this.tileSize,
-        hasArmor ? '✓ TEMPLO ARMADURA BINARIA' : '🛡️ TEMPLO ARMADURA BINARIA [E]',
-        'Oeste · Equípate primero aquí',
+        hasArmor ? '✓ TEMPLO ARMADURA BINARIA (SUPERADO)' : '🛡️ TEMPLO DE LA ARMADURA BINARIA [E]',
+        hasArmor ? 'Armadura Binaria equipada' : 'Prueba de Paridad (Entrada Libre)',
         hasArmor ? '#22c55e' : '#38bdf8',
         hasArmor ? '#86efac' : '#7dd3fc'
       );
 
+      // 2. Templo de la Espada de la Recursividad (Norte)
       drawFloatingMarker(
         17.5 * this.tileSize,
         1.6 * this.tileSize,
-        stackOverflowDead && hasSword ? '✓ TEMPLO ESPADA + GUARDIÁN' : '⚔️ TEMPLO ESPADA + 💀 GUARDIÁN DEL STACK [E]',
-        'Norte · Guardián del Stack Overflow',
-        stackOverflowDead && hasSword ? '#22c55e' : '#f59e0b',
-        stackOverflowDead && hasSword ? '#86efac' : '#fde047'
+        stackOverflowDead && hasSword ? '✓ TEMPLO ESPADA (DESPEJADO)' : '⚔️ TEMPLO DE LA ESPADA DE LA RECURSIVIDAD [E]',
+        hasSword ? 'Espada de la Recursividad empuñada' : (hasArmor ? '¡Acceso Desbloqueado! Resuelve la Recursión' : '🔒 Requiere Armadura Binaria previa'),
+        hasSword ? '#22c55e' : (hasArmor ? '#f59e0b' : '#ef4444'),
+        hasSword ? '#86efac' : (hasArmor ? '#fde047' : '#fca5a5')
       );
 
+      // 3. Portal Este de retorno a Valleverde
       drawFloatingMarker(
-        28.5 * this.tileSize,
-        1.6 * this.tileSize,
-        microwaveDead ? '👑 ACCESO CIUDADELA (MISTER AI ALEX) [E]' : '💀 LABORATORIO ALPHA: MICROONDAS PROTOTIPO [E]',
-        microwaveDead ? 'Hacia Mister AI Alex' : 'Microondas Prototipo V0.1 + Ciudadela',
-        '#ef4444',
-        '#fca5a5'
+        33 * this.tileSize,
+        11.5 * this.tileSize,
+        '◀ REGRESAR A VALLEVERDE [E]',
+        'Villaverde (Zona Segura)',
+        '#38bdf8',
+        '#bae6fd'
       );
     } else if (this.currentSceneId === 'sword_temple') {
       const stackOverflowDead = isBossDead('boss_stack_overflow');

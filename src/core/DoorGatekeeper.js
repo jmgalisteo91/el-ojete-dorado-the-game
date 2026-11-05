@@ -38,9 +38,9 @@ const BLOCK_MESSAGES = {
 };
 
 const DESTINATION_TITLES = {
-  first_stage: 'Ruinas del Despertar (Escenario 1)',
+  first_stage: 'Tierras Corruptas · Santuario de las Pruebas Oscuras',
   armor_temple: 'Templo de la Armadura del Código Binario',
-  sword_temple: 'Minas de la Recursión · Cámara de Contención (Stack Overflow)',
+  sword_temple: 'Templo de la Espada de la Recursividad',
   sewers_dungeon: 'Cloacas del Legacy · Fosa de la Memoria (Garbage Collector)',
   sewers_entry: 'Cloacas del Legacy · Entrada de Desagüe',
   sewers_puzzle: 'Cloacas del Legacy · Sala de Válvulas y Drenaje',
@@ -63,15 +63,21 @@ export function getDoorBlock(targetScene, player) {
   const fullyEquipped = player.hasArmor && player.hasSword;
   switch (targetScene) {
     case 'first_stage':
-      return fullyEquipped ? null : BLOCK_MESSAGES.first_stage;
+      // El Santuario de las Tierras Corruptas está abierto para forjar y superar las pruebas
+      return null;
+    case 'armor_temple':
+      // La prueba de la armadura es el primer paso libre
+      return null;
+    case 'sword_temple':
+      // Se requiere portar la armadura para resistir la presión psíquica de la recursión
+      return player.hasArmor ? null : BLOCK_MESSAGES.sword_temple;
     case 'sewers_entry':
     case 'sewers_puzzle':
     case 'sewers_dungeon':
       return fullyEquipped ? null : BLOCK_MESSAGES.sewers_dungeon;
     case 'mines_entry':
     case 'mines_puzzle':
-    case 'sword_temple':
-      return player.hasArmor ? null : BLOCK_MESSAGES.sword_temple;
+      return fullyEquipped ? null : BLOCK_MESSAGES.sewers_dungeon;
     case 'forge_entry':
     case 'forge_puzzle':
     case 'ai_fortress_gate':

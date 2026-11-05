@@ -38,6 +38,8 @@ import { RenderPipeline } from '../src/graphics/RenderPipeline.js';
 import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT } from '../src/ui/UILayout.js';
 import { CloudStorage } from '../src/services/CloudStorage.js';
 import { LeaderboardView } from '../src/ui/LeaderboardView.js';
+import { MainMenuAndScenes } from '../src/ui/MainMenuAndScenes.js';
+import { SCENE_AI_ALEX_WARNING, SCENE_ENDING_VICTORY } from '../src/assets/VillainDialogues.js';
 import { Inventory } from '../src/ui/Inventory.js';
 import { QuestLog } from '../src/core/QuestLog.js';
 import { QuestLogView } from '../src/ui/QuestLogView.js';
@@ -1243,6 +1245,107 @@ test('CloudStorage: Saneamiento y persistencia de swordLevel, armorLevel, dungeo
   assert.equal(cleanInvalid.armorLevel, 1, 'Debe clampear armorLevel al mínimo 1');
   assert.equal(cleanInvalid.gatesUnlocked, 0, 'Debe resetear gatesUnlocked a 0');
   assert.deepEqual(cleanInvalid.dungeonCores, { gc: false, stack: false, microwave: false });
+});
+
+test('Menú de Pausa Depurado y Cinemática de Mister AI Alex sin Truncamiento', () => {
+  const fakeMusic = {
+    playMenuSelect: () => {},
+    playMenuMove: () => {},
+    playFanfare: () => {},
+    setMode: () => {}
+  };
+  const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {});
+  menu.openPauseMenu();
+
+  const pauseItems = menu._getCurrentMenuItems();
+  assert.equal(pauseItems.length, 5, 'El menú de pausa debe contener exactamente 5 opciones depuradas');
+  assert.deepEqual(
+    pauseItems.map(it => it.label),
+    [
+      'Continuar Aventura',
+      'Guardar Partida',
+      'Controles',
+      'Opciones',
+      'Guardar y Salir al Título'
+    ],
+    'Las opciones de pausa deben ser las esenciales sin saturación ni redundancia'
+  );
+
+  // Verificación de hitboxes: no debe desbordar la ventana modal (128px de alto) ni el pie
+  const hitboxes = menu._getMenuHitboxes(pauseItems.length);
+  assert.equal(hitboxes.length, 5);
+  const lastBox = hitboxes[hitboxes.length - 1];
+  assert.ok(lastBox.y + lastBox.h <= 135, 'El último botón no debe colisionar con el pie de página a 144px');
+
+  // Verificación de cinemática de entrada: 8 diapositivas bien distribuidas
+  menu.startAnimeIntroCutscene();
+  assert.equal(menu.cutsceneSlides.length, 8, 'El prólogo debe dividirse en 8 diapositivas dinámicas');
+  for (const slide of menu.cutsceneSlides) {
+    assert.ok(slide.text.length < 165, `El texto "${slide.text.slice(0, 30)}..." no debe superar el límite de visualización`);
+    assert.ok(slide.chapter.length > 0);
+  }
+
+  // Verificación de diálogos de Mister AI Alex
+  for (const s of SCENE_AI_ALEX_WARNING) {
+    assert.ok(s.dialogue.length < 150, 'Cada frase de advertencia de Mister AI Alex debe caber limpia en la caja');
+  }
+  for (const s of SCENE_ENDING_VICTORY) {
+    assert.ok(s.dialogue.length < 155, 'Cada frase del final debe caber limpia en la caja sin cortes');
+  }
+});
+
+test('Robotización Gradual Lenta y Zona de Templos Sagrados Desacoplada de Valleverde', () => {
+  // 1. Robotización lenta
+  const player = new Player(100, 100);
+  player.equipArmor();
+  assert.equal(player.robotizationLevel, 0);
+
+  // Actualizar 10 segundos
+  const fakeInput = {
+    getMovementVector: () => ({ x: 0, y: 0 }),
+    isAttacking: () => false,
+    isDashing: () => false,
+    consumeInteraction: () => false,
+    isParrying: () => false,
+    consumeSpecialAction: () => false
+  };
+  player.update(10, fakeInput, { isSolidAtTile: () => false });
+  assert.ok(player.robotizationLevel <= 1.5, `Robotización en 10s debe ser <= 1.5% (actual: ${player.robotizationLevel.toFixed(2)}%)`);
+  assert.ok(player.robotizationLevel > 0, 'La armadura debe incrementar ligeramente la robotización');
+
+  // 2. Transición entre Valleverde y Tierras Corruptas
+  const tm = new Tilemap(null, 16);
+  tm.loadScene('overworld');
+  // Puente este (col 34.5, row 12.5) -> first_stage
+  const fakePlayerAtBridge = { centerX: 34.5 * 16, centerY: 12.5 * 16 };
+  const bridgeDoor = tm.findNearbyDoor(fakePlayerAtBridge);
+  assert.ok(bridgeDoor, 'Debe haber puerta/portal en el puente este de Valleverde');
+  assert.equal(bridgeDoor.targetScene, 'first_stage', 'El portal este debe conducir a first_stage (Tierras Corruptas)');
+
+  // No debe haber puertas directas a armor_temple o sword_temple en overworld
+  for (let r = 0; r < tm.rows; r++) {
+    for (let c = 0; c < tm.cols; c++) {
+      const d = tm.findNearbyDoor({ centerX: (c + 0.5) * 16, centerY: (r + 0.5) * 16 });
+      if (d) {
+        assert.notEqual(d.targetScene, 'armor_temple', 'No debe haber puerta a armor_temple en overworld');
+        assert.notEqual(d.targetScene, 'sword_temple', 'No debe haber puerta a sword_temple en overworld');
+      }
+    }
+  }
+
+  // 3. En first_stage (Tierras Corruptas), ambos templos están presentes y sword_temple se desbloquea con armadura
+  tm.loadScene('first_stage');
+  const doorArmor = tm.findNearbyDoor({ centerX: 6.5 * 16, centerY: 8.5 * 16 });
+  assert.ok(doorArmor);
+  assert.equal(doorArmor.targetScene, 'armor_temple');
+
+  const doorSword = tm.findNearbyDoor({ centerX: 17.5 * 16, centerY: 2.5 * 16 });
+  assert.ok(doorSword);
+  assert.equal(doorSword.targetScene, 'sword_temple');
+
+  // Acceso a sword_temple según armadura
+  assert.ok(getDoorBlock('sword_temple', { hasArmor: false, hasSword: false }), 'Sin armadura debe bloquear');
+  assert.equal(getDoorBlock('sword_temple', { hasArmor: true, hasSword: false }), null, 'Con armadura debe permitir acceso directo');
 });
 
 await Promise.all(asyncQueue);

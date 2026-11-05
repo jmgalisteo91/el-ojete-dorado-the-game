@@ -557,11 +557,11 @@ export class AnimeCutsceneManager {
 
     const maxLineChars = 46;
     const lines = this._wrapText(visibleString, maxLineChars);
-    const lineSpacing = 10;
+    const lineSpacing = 9.5;
     const startTextX = boxX + 10;
-    const startTextY = boxY + 10;
+    const startTextY = boxY + 9;
 
-    for (let i = 0; i < lines.length && i < 3; i++) {
+    for (let i = 0; i < lines.length && i < 4; i++) {
       ctx.fillText(lines[i], startTextX, startTextY + i * lineSpacing);
     }
 

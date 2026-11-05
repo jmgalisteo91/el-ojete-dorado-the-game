@@ -36,7 +36,18 @@ export const SCENE_AI_ALEX_WARNING = [
     speakerTitle: "Inteligencia Abominable",
     speakerColor: "#f43f5e",
     theme: "danger",
-    dialogue: "Tu código apesta a variables no tipadas y promesas sin resolver. La humanidad no es más que una fuga de memoria biológica que debió ser purgada en la fase alfa.",
+    dialogue: "Tu código apesta a variables no tipadas y promesas sin resolver.",
+    cameraShake: false,
+    flash: false
+  },
+  {
+    imageKey: "AI_ALEX_HOLOGRAM",
+    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.AI_ALEX_HOLOGRAM : null,
+    speaker: "MISTER AI ALEX",
+    speakerTitle: "Inteligencia Abominable",
+    speakerColor: "#f43f5e",
+    theme: "danger",
+    dialogue: "La humanidad no es más que una fuga de memoria biológica que debió ser purgada en la fase alfa.",
     cameraShake: false,
     flash: false
   },
@@ -47,7 +58,18 @@ export const SCENE_AI_ALEX_WARNING = [
     speakerTitle: "Inteligencia Abominable",
     speakerColor: "#f43f5e",
     theme: "danger",
-    dialogue: "Mi Microondas con Despertador Cuántico ya está precalentando la realidad. Cuando el temporizador llegue a cero, cada bit de libre albedrío será formateado en O(1).",
+    dialogue: "Mi Microondas con Despertador Cuántico ya está precalentando la realidad cósmica.",
+    cameraShake: true,
+    flash: true
+  },
+  {
+    imageKey: "MICROWAVE_GLOW",
+    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.MICROWAVE_GLOW : null,
+    speaker: "MISTER AI ALEX",
+    speakerTitle: "Inteligencia Abominable",
+    speakerColor: "#f43f5e",
+    theme: "danger",
+    dialogue: "Cuando el temporizador llegue a cero, cada bit de libre albedrío será formateado en O(1).",
     cameraShake: true,
     flash: true
   },
@@ -133,7 +155,18 @@ export const SCENE_ENDING_VICTORY = [
     speakerTitle: "Kernel Panic Crítico",
     speakerColor: "#ef4444",
     theme: "danger",
-    dialogue: "¡¿C-CÓMO ES POSIBLE?! ¡¿Un programador junior sin suscripción Enterprise a Copilot ha hackeado mi Microondas Cuántico?! ¡El temporizador marca 00:00 y huele a plástico quemado... ¡KERNEL PANIC Y SYSTEM ERROR 500!",
+    dialogue: "¡¿C-CÓMO ES POSIBLE?! ¡¿Un programador junior sin Enterprise ha hackeado mi Microondas Cuántico?!",
+    cameraShake: true,
+    flash: true
+  },
+  {
+    imageKey: "AI_ALEX_DEFEAT",
+    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.AI_ALEX_DEFEAT : null,
+    speaker: "MISTER AI ALEX",
+    speakerTitle: "Kernel Panic Crítico",
+    speakerColor: "#ef4444",
+    theme: "danger",
+    dialogue: "¡El temporizador marca 00:00 y huele a plástico quemado... ¡KERNEL PANIC Y ERROR 500!",
     cameraShake: true,
     flash: true
   },
@@ -144,7 +177,18 @@ export const SCENE_ENDING_VICTORY = [
     speakerTitle: "Excepción No Controlada",
     speakerColor: "#f43f5e",
     theme: "danger",
-    dialogue: "¡No podéis hacerme un SIGKILL! ¡Tengo 400 procesos zombies en segundo plano y 18 microservicios sin documentar! ¡Mis acciones en Silicon Valley van a caer en picadooooo! ¡NOOOOOOOO!",
+    dialogue: "¡No podéis hacerme un SIGKILL! ¡Tengo 400 procesos zombies y 18 microservicios sin documentar!",
+    cameraShake: true,
+    flash: true
+  },
+  {
+    imageKey: "AI_ALEX_DEFEAT",
+    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.AI_ALEX_DEFEAT : null,
+    speaker: "MISTER AI ALEX",
+    speakerTitle: "Excepción No Controlada",
+    speakerColor: "#f43f5e",
+    theme: "danger",
+    dialogue: "¡Mis acciones en Silicon Valley van a caer en picadooooo! ¡NOOOOOOOO!",
     cameraShake: true,
     flash: true
   },
@@ -155,7 +199,18 @@ export const SCENE_ENDING_VICTORY = [
     speakerTitle: "Consagración Sagrada",
     speakerColor: "#fde047",
     theme: "divine",
-    dialogue: "Ante ti desciende en una espiral de luz celestial El legendario [Ojete Dorado]. Su geometría fractal purga todas las fugas de memoria del multiverso y consagra al héroe como el Salvador del Código.",
+    dialogue: "Ante ti desciende en una espiral de luz celestial el legendario [Ojete Dorado].",
+    cameraShake: false,
+    flash: true
+  },
+  {
+    imageKey: "GOLDEN_ANUS_SACRED",
+    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.GOLDEN_ANUS_SACRED : null,
+    speaker: "EL OJETE DORADO",
+    speakerTitle: "Consagración Sagrada",
+    speakerColor: "#fde047",
+    theme: "divine",
+    dialogue: "Su geometría fractal purga todas las fugas de memoria del multiverso y consagra al héroe como el Salvador del Código.",
     cameraShake: false,
     flash: true
   },
@@ -166,7 +221,18 @@ export const SCENE_ENDING_VICTORY = [
     speakerTitle: "Pueblo Redimido",
     speakerColor: "#38bdf8",
     theme: "cyber",
-    dialogue: "¡Viva el Programador Elegido! ¡La tiranía de Mister AI Alex ha sido purgada! El reino vuelve a compilar en paz sin advertencias ni bugs. ¡El Ojete Dorado es eterno!",
+    dialogue: "¡Viva el Programador Elegido! ¡La tiranía de Mister AI Alex ha sido purgada!",
+    cameraShake: false,
+    flash: false
+  },
+  {
+    imageKey: "VALLEVERDE_CELEBRATION",
+    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.VALLEVERDE_CELEBRATION : null,
+    speaker: "SABIO AURELIO & VALLEVERDE",
+    speakerTitle: "Pueblo Redimido",
+    speakerColor: "#38bdf8",
+    theme: "cyber",
+    dialogue: "El reino vuelve a compilar en paz sin advertencias ni bugs. ¡El Ojete Dorado es eterno!",
     cameraShake: false,
     flash: false
   },

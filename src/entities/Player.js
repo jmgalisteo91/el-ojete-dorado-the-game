@@ -523,7 +523,7 @@ export class Player extends Entity {
     // Efecto de la Armadura del Código Binario: con el tiempo te robotiza
     // Si la barrera está activa, el blindaje frena el incremento de robotización
     if (this.hasArmor) {
-      const robotRate = this.barrierActive ? 0.05 : 0.7;
+      const robotRate = this.barrierActive ? 0.02 : 0.12;
       this.robotizationLevel = Math.min(100, this.robotizationLevel + dt * robotRate);
     } else if (this.robotizationLevel > 0) {
       this.robotizationLevel = Math.max(0, this.robotizationLevel - dt * 1.5);

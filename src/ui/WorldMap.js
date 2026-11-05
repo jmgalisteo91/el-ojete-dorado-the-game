@@ -850,7 +850,7 @@ export class WorldMap {
     if (currentSceneId === 'first_stage') {
       playerMapX = mapX + 68;
       playerMapY = mapY + 98;
-      locationName = 'Ruinas Exteriores (Tierras Hostiles)';
+      locationName = 'Tierras Corruptas · Santuario de las Pruebas';
     } else if (currentSceneId === 'armor_temple') {
       playerMapX = mapX + 234;
       playerMapY = mapY + 80;

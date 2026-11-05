@@ -493,23 +493,43 @@ export class MainMenuAndScenes {
     this.cutsceneSlides = [
       {
         sceneType: 'anime_ai_alex',
-        chapter: 'PRÓLOGO · LA AMENAZA DE MISTER AI ALEX',
-        text: 'En los confines oscuros del ciberespacio ancestral despertó una inteligencia abominable: MISTER AI ALEX. Considerando que la humanidad es un error de código que debe ser purgado, ha comenzado su plan maestro para esclavizar al mundo en su cluster eterno.'
+        chapter: 'PRÓLOGO · LA AMENAZA DE MISTER AI ALEX (1/2)',
+        text: 'En los confines oscuros del ciberespacio ancestral despertó una inteligencia abominable: MISTER AI ALEX.'
+      },
+      {
+        sceneType: 'anime_ai_alex',
+        chapter: 'PRÓLOGO · LA AMENAZA DE MISTER AI ALEX (2/2)',
+        text: 'Considerando que la humanidad es un error de código que debe ser purgado, ha comenzado su plan maestro para esclavizar al mundo en su clúster eterno.'
       },
       {
         sceneType: 'anime_microwave_weapon',
-        chapter: 'CAPÍTULO II · EL MICROONDAS CON DESPERTADOR',
-        text: 'Para ejecutar su destrucción masiva, ha ensamblado su invento más temible: EL MICROONDAS CON DESPERTADOR. Un artefacto capaz de recalentar el espacio-tiempo en O(1) y alterar la realidad a su antojo cuando suene su infernal alarma programada a las 00:00.'
+        chapter: 'CAPÍTULO II · EL MICROONDAS CON DESPERTADOR (1/2)',
+        text: 'Para ejecutar su destrucción masiva, ha ensamblado su invento más temible: EL MICROONDAS CON DESPERTADOR.'
+      },
+      {
+        sceneType: 'anime_microwave_weapon',
+        chapter: 'CAPÍTULO II · EL MICROONDAS CON DESPERTADOR (2/2)',
+        text: 'Un artefacto capaz de recalentar el espacio-tiempo en O(1) y alterar la realidad a su antojo cuando suene su infernal alarma programada a las 00:00.'
       },
       {
         sceneType: 'anime_golden_prophecy',
-        chapter: 'CAPÍTULO III · LA PROFECÍA DE EL OJETE DORADO',
-        text: 'Solo el resplandor sagrado de EL OJETE DORADO puede neutralizar la radiación de la alarma. Para hallarlo, nuestro programador deberá superar las Pruebas Sagradas: la Armadura del Código Binario, la Espada de la Recursividad y el Microondas Little.'
+        chapter: 'CAPÍTULO III · LA PROFECÍA DE EL OJETE DORADO (1/2)',
+        text: 'Solo el resplandor sagrado de EL OJETE DORADO puede neutralizar la radiación de la alarma cósmica.'
+      },
+      {
+        sceneType: 'anime_golden_prophecy',
+        chapter: 'CAPÍTULO III · LA PROFECÍA DE EL OJETE DORADO (2/2)',
+        text: 'Para hallarlo, nuestro programador deberá superar las Pruebas Sagradas: la Armadura Binaria, la Espada de la Recursividad y el Microondas Little.'
       },
       {
         sceneType: 'anime_awakening',
-        chapter: 'CAPÍTULO IV · EL DESPERTAR EN VALLEVERDE',
-        text: 'Tu gran aventura comienza aquí, en la pacífica villa de Valleverde bajo el sol naciente. Habla con el Sabio Aurelio, visita a los vecinos del pueblo y prepárate para cruzar el puente hacia la leyenda...'
+        chapter: 'CAPÍTULO IV · EL DESPERTAR EN VALLEVERDE (1/2)',
+        text: 'Tu gran aventura comienza aquí, en la pacífica villa de Valleverde bajo el sol naciente.'
+      },
+      {
+        sceneType: 'anime_awakening',
+        chapter: 'CAPÍTULO IV · EL DESPERTAR EN VALLEVERDE (2/2)',
+        text: 'Habla con el Sabio Aurelio, visita a los vecinos del pueblo y prepárate para cruzar el puente hacia la leyenda...'
       }
     ];
   }
@@ -533,7 +553,12 @@ export class MainMenuAndScenes {
       {
         sceneType: 'sword_triumph',
         chapter: '★ PRIMERA ARMA · LA ESPADA DE LA RECURSIVIDAD ★',
-        text: '¡Has empuñado la ESPADA DE LA RECURSIVIDAD! Cada tajo se llama a sí mismo en bucle controlado. Pulsa [F] o [Espacio] para atacar continuamente sin temor a un StackOverflowError.'
+        text: '¡Has empuñado la ESPADA DE LA RECURSIVIDAD! Cada tajo se llama a sí mismo en bucle controlado y seguro.'
+      },
+      {
+        sceneType: 'sword_triumph',
+        chapter: '★ PRIMERA ARMA · LA ESPADA DE LA RECURSIVIDAD ★',
+        text: 'Pulsa [F] o [Espacio] para encadenar ataques continuamente sin temor a provocar un StackOverflowError.'
       }
     ];
   }
@@ -552,8 +577,13 @@ export class MainMenuAndScenes {
     this.cutsceneSlides = [
       {
         sceneType: 'relic_triumph',
-        chapter: '★ RELIQUIA DIVINA · EL MICROONDAS LITTLE (SIN DESPERTADOR) ★',
-        text: '¡Has consagrado EL MICROONDAS LITTLE (SIN DESPERTADOR)! Una reliquia divina ancestral custodiada en el archivo del Sabio Aurelio. Sin despertador, recalienta café y código espagueti en O(1) restaurando tus energías al instante. ¡Úsala con sumo cuidado!'
+        chapter: '★ RELIQUIA DIVINA · EL MICROONDAS LITTLE ★',
+        text: '¡Has consagrado EL MICROONDAS LITTLE (SIN DESPERTADOR)! Una reliquia ancestral custodiada en el archivo del Sabio Aurelio.'
+      },
+      {
+        sceneType: 'relic_triumph',
+        chapter: '★ RELIQUIA DIVINA · EL MICROONDAS LITTLE ★',
+        text: 'Sin despertador mortal, recalienta café y código espagueti en O(1), restaurando todas tus energías al instante. ¡Úsalo con sumo cuidado!'
       }
     ];
   }
@@ -643,7 +673,7 @@ export class MainMenuAndScenes {
           action: () => this.closePauseMenu()
         },
         {
-          label: 'Guardar Partida [Nube + Respaldo]',
+          label: 'Guardar Partida',
           action: () => {
             this.music.playFanfare();
             if (this.callbacks.onSaveGame) {
@@ -652,49 +682,7 @@ export class MainMenuAndScenes {
           }
         },
         {
-          label: '☁ Ver Código en la Nube [Slot]',
-          action: () => {
-            this.music.playMenuSelect();
-            if (this.callbacks.onOpenCloudSave) {
-              this.callbacks.onOpenCloudSave();
-            }
-          }
-        },
-        {
-          label: '☁ Cargar de la Nube (con Código)',
-          action: () => {
-            this.music.playMenuSelect();
-            if (this.callbacks.onOpenCloudLoad) {
-              this.callbacks.onOpenCloudLoad();
-            }
-          }
-        },
-        {
-          label: '🏆 Salón de la Fama [Récords]',
-          action: () => {
-            this.music.playMenuSelect();
-            this.openLeaderboardScreen('pause');
-          }
-        },
-        {
-          label: 'Mapa del Gran Ojal [M]',
-          action: () => {
-            this.music.playMenuSelect();
-            this.openWorldMap();
-          }
-        },
-        {
-          label: 'Diario de Misiones [L]',
-          action: () => {
-            this.music.playMenuSelect();
-            this.closePauseMenu();
-            if (this.callbacks.onOpenQuestLog) {
-              this.callbacks.onOpenQuestLog();
-            }
-          }
-        },
-        {
-          label: 'Controles / Guía de Teclas',
+          label: 'Controles',
           action: () => {
             this.music.playMenuSelect();
             this.openControlsScreen('pause');
@@ -717,15 +705,6 @@ export class MainMenuAndScenes {
             }
             this.music.playMenuSelect();
             this.openTitleScreen();
-          }
-        },
-        {
-          label: 'Guardar y Salir del Juego',
-          action: () => {
-            if (this.callbacks.onSaveGame) {
-              this.callbacks.onSaveGame();
-            }
-            this.triggerExitGame();
           }
         }
       ];
@@ -2010,8 +1989,9 @@ export class MainMenuAndScenes {
     ctx.fillStyle = '#f0f4f8';
     ctx.textAlign = 'left';
     const lines = this._wrapText(ctx, visibleStr, boxW - 18);
-    lines.slice(0, 3).forEach((line, idx) => {
-      ctx.fillText(line, boxX + 9, boxY + 8 + idx * 11);
+    const lineSpacing = 10.5;
+    lines.forEach((line, idx) => {
+      ctx.fillText(line, boxX + 9, boxY + 8 + idx * lineSpacing);
     });
 
     ctx.font = '6px monospace';
@@ -2021,7 +2001,7 @@ export class MainMenuAndScenes {
       this.cutsceneCharPos >= slide.text.length
         ? '[E / Enter / Clic] Continuar ▶'
         : '[E] Completar texto...';
-    ctx.fillText(promptLabel, boxX + boxW - 8, boxY + boxH - 11);
+    ctx.fillText(promptLabel, boxX + boxW - 8, boxY + boxH - 8);
 
     ctx.restore();
   }
