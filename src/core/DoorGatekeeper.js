@@ -60,7 +60,7 @@ const BOSS_ARENAS = new Set(['sewers_dungeon', 'ai_fortress_gate', 'ai_citadel']
 const TEMPLES = new Set(['armor_temple', 'sword_temple']);
 
 export const ZONE_LEVEL_REQUIREMENTS = {
-  first_stage: 2,
+  first_stage: 1,
   north_peaks: 4,
   south_swamp: 6,
   west_wastes: 8,
@@ -75,17 +75,7 @@ export function getDoorBlock(targetScene, player) {
   const fullyEquipped = Boolean(player?.hasArmor && player?.hasSword);
 
   // 1. Gating por Nivel de Programador y Centinelas Guardianes
-  if (targetScene === 'first_stage' && pLevel < 2) {
-    return {
-      title: '🛡️ [GUARDIA KAEL: NIVEL 2 REQUERIDO]',
-      lines: [
-        '¡Alto ahí, novato! Más allá del puente oriental yacen las Tierras Corruptas y los Templos Sagrados.',
-        'El éter salvaje y los drones de Alex desgarrarán tu código si no alcanzas al menos el NIVEL 2.',
-        'Entrena derrotando anomalías menores en Valleverde antes de cruzar el puente.'
-      ]
-    };
-  }
-
+  // El Valle de la Consagración (first_stage) está abierto desde Nivel 1 para superar las Pruebas Sagradas
   if (targetScene === 'north_peaks' && pLevel < 4) {
     return {
       title: '❄️ [GUARDIA BOREAS: NIVEL 4 REQUERIDO]',

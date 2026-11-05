@@ -1968,26 +1968,24 @@ export class RPGGame {
         name: 'Herrero Brom · Forjador',
         jobTitle: 'Maestro Forjador y Hornero',
         homeSceneId: 'blacksmith_house',
-        x: 24 * 16,
-        y: 7 * 16,
-        speed: 30,
+        x: 25 * 16,
+        y: 6 * 16,
+        speed: 0,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.BLACKSMITH),
-        behavior: 'patrol',
+        behavior: 'static',
+        initialDirection: 'right',
         patrolPoints: [
-          { x: 25 * 16, y: 6 * 16, dir: 'right', waitMin: 3.2, waitMax: 6.0, activityIcon: '⚒' },
-          { x: 23 * 16, y: 7 * 16, dir: 'down', waitMin: 2.2, waitMax: 4.2 },
-          { x: 20 * 16, y: 7 * 16, dir: 'up', waitMin: 2.4, waitMax: 4.5, activityIcon: '⚒' },
-          { x: 23 * 16, y: 10 * 16, dir: 'left', waitMin: 2.0, waitMax: 3.8 }
+          { x: 25 * 16, y: 6 * 16, dir: 'right', waitMin: 4.0, waitMax: 8.0, activityIcon: '⚒' }
         ],
         ambientPhrases: [
-          '¡Clang, clang! Buen acero el de hoy.',
-          'El horno de leña huele a pan tierno.',
-          'Un buen aventurero necesita buen equipo.',
-          '¡Fuego vivo en la fragua!'
+          '¡Clang, clang! Buen acero en el yunque hoy.',
+          'El horno de forja arde a pleno rendimiento.',
+          'Un buen aventurero necesita buen equipo forjado.',
+          '¡Golpea el silicio mientras esté candente!'
         ],
         getDialogues: () => ({
           lines: [
-            '¡Clang, clang! Soy Brom, el Maestro Forjador y Panadero de horno de leña.'
+            '¡Clang, clang! Soy Brom, el Maestro Forjador de Valleverde. Aquí en mi yunque exterior mejoro tu equipo y armas.'
           ],
           choices: this._getSmithChoices()
         })
@@ -1996,26 +1994,24 @@ export class RPGGame {
         name: 'Herbolaria Lyra · Alquimista',
         jobTitle: 'Botánica y Alquimista',
         homeSceneId: 'herbalist_house',
-        x: 9 * 16,
-        y: 19 * 16,
-        speed: 31,
+        x: 8 * 16,
+        y: 17 * 16,
+        speed: 0,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERBALIST),
-        behavior: 'patrol',
+        behavior: 'static',
+        initialDirection: 'down',
         patrolPoints: [
-          { x: 9 * 16, y: 19 * 16, dir: 'down', waitMin: 2.2, waitMax: 4.4 },
-          { x: 7 * 16, y: 19 * 16, dir: 'up', waitMin: 2.5, waitMax: 4.8, activityIcon: '✿' },
-          { x: 9 * 16, y: 15 * 16, dir: 'right', waitMin: 2.8, waitMax: 5.2, activityIcon: '✿' },
-          { x: 12 * 16, y: 15 * 16, dir: 'down', waitMin: 2.4, waitMax: 4.6, activityIcon: '✿' }
+          { x: 8 * 16, y: 17 * 16, dir: 'down', waitMin: 4.0, waitMax: 8.0, activityIcon: '✿' }
         ],
         ambientPhrases: [
-          '♪ Creced fuertes, florecitas ♪',
-          'Qué aroma a lavanda y rocío...',
-          'Las ovejas tienen hambre hoy.',
-          'Esta infusión quedará deliciosa.'
+          '♪ Creced fuertes, flores del alba ♪',
+          'El huerto alquímico destila rocío purificador.',
+          'Las Flores de Silicio nocturnas son la clave contra la corrupción.',
+          'Esta infusión de hierbas silvestres quedará perfecta.'
         ],
         getDialogues: () => ({
           lines: [
-            '¡Hola! Soy Lyra, la Botánica y Alquimista de Valleverde. Cuido las plantas y pociones.'
+            '¡Hola! Soy Lyra, la Botánica y Alquimista de Valleverde. Cuido este jardín botánico y preparo remedios.'
           ],
           choices: this._getHerbChoices()
         })
@@ -2217,9 +2213,7 @@ export class RPGGame {
           });
 
           const statusLine = this.tilemap.bridgeForceUnlocked
-            ? ((this.player.level || 1) < 2
-                ? '⚠️ ¡Alto ahí, recluta! Aunque el puente tenga permiso, necesitas alcanzar al menos el NIVEL 2 para resistir el éter salvaje del este. Entrena derrotando anomalías en Valleverde antes de cruzar.'
-                : '¡Saludos, héroe! Tienes autorización oficial y Nivel 2+. El puente del este está abierto para acceder a las Pruebas Sagradas.')
+            ? '¡Saludos, héroe! Con el Pase del Puente autorizado, el puente del este está abierto. ¡Cruza al Valle de la Consagración y supera las Pruebas Sagradas!'
             : '¡Alto, programador! El puente del este está CLAUSURADO por orden del Gran Sabio Aurelio debido a las amenazas de AI Alex. Consulta a Aurelio en su casa.';
 
           return {
@@ -3186,6 +3180,41 @@ export class RPGGame {
     const sheet = this.assets.charactersSheet;
 
     return [
+      // ==================== CAMPO DE ENTRENAMIENTO DE VALLEVERDE (SPARRING Y XP) ====================
+      new Enemy({
+        id: 'drone_training_1',
+        name: 'Dron de Entrenamiento del Binario',
+        x: 23 * 16,
+        y: 20 * 16,
+        sceneId: 'overworld',
+        speed: 22,
+        maxHp: 2,
+        aggroRange: 38,
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
+        patrolPoints: [
+          { x: 23 * 16, y: 20 * 16 },
+          { x: 25 * 16, y: 20 * 16 },
+          { x: 25 * 16, y: 21 * 16 },
+          { x: 23 * 16, y: 21 * 16 }
+        ]
+      }),
+      new Enemy({
+        id: 'drone_training_2',
+        name: 'Bug de Práctica de Valleverde',
+        x: 24 * 16,
+        y: 21 * 16,
+        sceneId: 'overworld',
+        speed: 20,
+        maxHp: 2,
+        aggroRange: 36,
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
+        patrolPoints: [
+          { x: 24 * 16, y: 21 * 16 },
+          { x: 23 * 16, y: 21 * 16 },
+          { x: 23 * 16, y: 20 * 16 }
+        ]
+      }),
+
       // ==================== ENEMIGOS EN RUINAS DEL DESPERTAR (EXTERIOR) ====================
       new Enemy({
         id: 'drone_west_1',
@@ -5892,6 +5921,21 @@ export class RPGGame {
           if (this.menuSystem) {
             this.menuSystem.showNotice('⚙️ ¡El dron soltó Restos de Chatarra!', 2.5);
           }
+        }
+      }
+
+      // Reaparición automática periódica de los muñecos de práctica en el Campo de Entrenamiento de Valleverde
+      if (enemy.dead && enemy.id && enemy.id.startsWith('drone_training')) {
+        enemy.trainingRespawnTimer = (enemy.trainingRespawnTimer || 0) + dt;
+        if (enemy.trainingRespawnTimer >= 8.0) {
+          enemy.dead = false;
+          enemy.hp = enemy.maxHp;
+          enemy.xpGranted = false;
+          enemy.lootDropped = false;
+          enemy.trainingRespawnTimer = 0;
+          const orig = enemy.patrolPoints?.[0];
+          enemy.x = orig ? orig.x : 23 * 16;
+          enemy.y = orig ? orig.y : 20 * 16;
         }
       }
 

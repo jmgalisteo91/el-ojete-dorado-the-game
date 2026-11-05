@@ -1751,11 +1751,11 @@ test('Sistema de Niveles (1-10), Experiencia, Centinelas Guardianes y Desbloqueo
   assert.equal(p.xp, 0);
 
   // 3. Control de Centinelas y Gating por Nivel en Puertas
-  // Nivel 1: Todas las regiones exteriores bloqueadas por sus respectivos centinelas
+  // Nivel 1: Valle de la Consagración (first_stage) está abierto para realizar las Pruebas Sagradas,
+  // mientras que las regiones avanzadas están custodiadas por sus respectivos centinelas
   const pLvl1 = { level: 1, hasArmor: false, hasSword: false };
   const blockEast = getDoorBlock('first_stage', pLvl1);
-  assert.ok(blockEast);
-  assert.match(blockEast.title, /GUARDIA KAEL: NIVEL 2 REQUERIDO/);
+  assert.equal(blockEast, null, 'first_stage permitido en Nivel 1 para Pruebas Sagradas');
 
   const blockNorth = getDoorBlock('north_peaks', pLvl1);
   assert.ok(blockNorth);
@@ -1798,6 +1798,70 @@ test('Sistema de Niveles (1-10), Experiencia, Centinelas Guardianes y Desbloqueo
   const clampedSave = CloudStorage.sanitizeSaveData({ level: 50, xp: -100 });
   assert.equal(clampedSave.level, 10);
   assert.equal(clampedSave.xp, 0);
+});
+
+test('Entrenamiento en Valleverde, Combate Desarmado, Huellas Protegidas de Casas y Estaciones Diurnas (v3.8.2)', () => {
+  // 1. Combate Desarmado (Player.js)
+  const unarmedPlayer = new Player({ x: 100, y: 100 });
+  assert.equal(unarmedPlayer.hasSword, false);
+  const attacked = unarmedPlayer.tryAttack();
+  assert.equal(attacked, true, 'El jugador debe poder atacar desarmado para entrenar');
+  assert.equal(unarmedPlayer.isAttacking, true);
+  assert.equal(unarmedPlayer.getSwordDamage(), 1, 'Daño de puñetazo desarmado = 1');
+  const fistHitbox = unarmedPlayer.getSwordHitbox();
+  assert.ok(fistHitbox, 'Debe generar hitbox para el golpe');
+  assert.equal(fistHitbox.width, 14);
+
+  // 2. Progreso de Entrenamiento y Experiencia
+  unarmedPlayer.reset();
+  assert.equal(unarmedPlayer.level, 1);
+  assert.equal(unarmedPlayer.xp, 0);
+  // Derrotar dos drones de entrenamiento (+25 XP cada uno = 50 XP)
+  unarmedPlayer.awardKill(false);
+  assert.equal(unarmedPlayer.xp, 25);
+  assert.equal(unarmedPlayer.level, 1);
+  unarmedPlayer.awardKill(false);
+  assert.equal(unarmedPlayer.xp, 50);
+  assert.equal(unarmedPlayer.level, 2, 'Alcanza Nivel 2 tras derrotar 2 anomalías de práctica');
+
+  // 3. Huellas Espaciales Protegidas de Casas y Visibilidad de Comerciantes (Tilemap.js)
+  const tm = new Tilemap(null, 16);
+  tm.loadScene('overworld');
+  const overworld = tm.scenes.overworld;
+  assert.ok(overworld, 'Escena overworld cargada');
+  const deco = overworld.layers.decoration;
+
+  // Verificar que NINGÚN árbol recorte la Casa del Programador (cols 1..6, rows 7..10)
+  for (let r = 7; r <= 10; r++) {
+    for (let c = 1; c <= 6; c++) {
+      const tile = deco[r][c];
+      assert.notEqual(tile, TILES.TREE_TOP, `No debe haber TREE_TOP sobre la casa en (${c}, ${r})`);
+      assert.notEqual(tile, TILES.TREE_TRUNK, `No debe haber TREE_TRUNK sobre la casa en (${c}, ${r})`);
+    }
+  }
+
+  // Verificar que los puestos de mercado en fila 9 NO tengan tejados que tapen a los comerciantes (Clara col 14..15, Byte col 19..20)
+  assert.notEqual(deco[9][14], TILES.ROOF_RED, 'Clara no debe quedar tapada por tejado overhead');
+  assert.notEqual(deco[9][15], TILES.ROOF_RED);
+  assert.notEqual(deco[9][19], TILES.ROOF_BLUE, 'Byte no debe quedar tapado por tejado overhead');
+  assert.notEqual(deco[9][20], TILES.ROOF_BLUE);
+
+  // Verificar presencia del Yunque en la herrería (col 26, row 6)
+  assert.equal(deco[6][26], TILES.ANVIL, 'El yunque debe estar en col 26, row 6');
+
+  // Verificar que existen letreros comerciales para las tiendas
+  const signposts = overworld.signposts;
+  assert.ok(signposts.length >= 10, 'Deben existir letreros de señalización y tiendas');
+  const claraSign = signposts.find((s) => s.shortName.includes('Clara'));
+  assert.ok(claraSign, 'Letrero de Panadería de Clara presente');
+  const byteSign = signposts.find((s) => s.shortName.includes('Byte'));
+  assert.ok(byteSign, 'Letrero de Almacén de Byte presente');
+  const smithSign = signposts.find((s) => s.shortName.includes('Brom'));
+  assert.ok(smithSign, 'Letrero de Forja de Brom presente');
+  const herbSign = signposts.find((s) => s.shortName.includes('Lyra'));
+  assert.ok(herbSign, 'Letrero de Invernadero de Lyra presente');
+  const trainingSign = signposts.find((s) => s.shortName.includes('Entrenamiento'));
+  assert.ok(trainingSign, 'Letrero del Campo de Entrenamiento presente');
 });
 
 await Promise.all(asyncQueue);

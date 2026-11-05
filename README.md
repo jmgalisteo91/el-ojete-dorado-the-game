@@ -3,17 +3,17 @@
 > **Retro-Action RPG Metroidvania en JavaScript Vanilla (ES Modules) & Canvas 2D.**  
 > Un homenaje técnico y cómico a los clásicos de 16-bits (*The Legend of Zelda*, *Secret of Mana*) aderezado con humor de desarrollo de software, depuración existencial, sintetizador chiptune nativo y una arquitectura de empaquetado monoarchivo ultraligera.
 
-[![Versión](https://img.shields.io/badge/versión-v3.8.1-gold.svg)](#)
+[![Versión](https://img.shields.io/badge/versión-v3.8.2-gold.svg)](#)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencias-0%20runtime-success.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-73%20passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-74%20passing-brightgreen.svg)](#)
 [![Resolución](https://img.shields.io/badge/viewport-320%C3%97180%20px%20(16%3A9)-orange.svg)](#)
 
 ---
 
 ## 🕹️ Demo en Vivo & Despliegue
 
-- **Versión Actual:** `v3.8.1` (Física Suave de NPCs anti-bloqueos, Deslizamiento en Esquinas y Bocadillos Anclados al Mundo).
+- **Versión Actual:** `v3.8.2` (Huellas Protegidas de Casas, Versiones Arquitectónicas Únicas, Campo de Entrenamiento de Valleverde, Combate Desarmado, Estaciones Diurnas de Brom y Lyra, y Visibilidad de Comerciantes).
 - **Despliegue Web:** Preparado para despliegue directo en [Vercel](https://vercel.com) con funciones Serverless para Cloud Save y Leaderboard.
 - **Build Portable Autónomo:** Ejecutable monoarchivo en [`el-ojete-dorado-the-game.html`](./el-ojete-dorado-the-game.html) (~1.2 MB, 100% offline, reproducible en cualquier navegador moderno sin servidor ni descargas adicionales).
 

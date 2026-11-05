@@ -1,6 +1,6 @@
 # 📜 ESTADO DEL JUEGO · EL OJETE DORADO: THE GAME
 > **Documento Vivo de Estado, Arquitectura, Progresión y Hoja de Ruta Futura**  
-> **Versión Actual:** v3.8.1 (Física de Desbloqueo de NPCs, Empuje Suave, Anclaje Universal de Bocadillos en Mundo)  
+> **Versión Actual:** v3.8.2 (Huellas Protegidas de Casas, Versiones Arquitectónicas Únicas, Campo de Entrenamiento de Valleverde, Combate Desarmado, Estaciones Diurnas de Brom y Lyra, y Visibilidad de Comerciantes)  
 > **Última Actualización:** 5 de Noviembre de 2026  
 
 ---
@@ -13,9 +13,10 @@
 * **Audio Polifónico:** Motor sintetizador chiptune nativo de 4 canales y 3 buses de ganancia (`masterGainNode`, `musicGainNode`, `sfxGainNode`) con crossfade de 1.5s y calibrador de efectos ([`AudioManager.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/audio/AudioManager.js)), extendido con compatibilidad por [`AmbientMusic.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/audio/AmbientMusic.js).
 * **Física y Colisiones Suaves:** [`CollisionSystem.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/physics/CollisionSystem.js) con resolución de penetración multi-eje, separación inteligente contra muros, empuje elástico (nudge) de NPCs para no quedar atascado en puertas ni pasillos y deslizamiento natural en esquinas (corner sliding).
 * **Bocadillos Anclados al Mundo:** [`SpeechBubble.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/ui/SpeechBubble.js) y [`NPC.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/entities/NPC.js) fijan los barks ambientales a las coordenadas de invocación en el supramundo; las frases permanecen en su lugar sin perseguir al jugador en la pantalla.
+* **Huellas Espaciales Protegidas y Arquitectura Única:** [`Tilemap.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/world/Tilemap.js) protege el perímetro de cada vivienda con zonas de exclusión (`isHouseProtected`) para que ningún árbol o elemento recorte los tejados. Cada una de las 6 viviendas cuenta con una versión arquitectónica artesanal y única (materiales, porches, cercados, chimeneas y letreros).
 * **Persistencia:** Arquitectura híbrida síncrona en `localStorage` (0 ms de latencia) + sincronización en segundo plano con **Vercel KV Serverless** ([`CloudStorage.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/services/CloudStorage.js)).
 * **Empaquetado y Distribución:** [`build-portable.mjs`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/build-portable.mjs) genera un único archivo HTML autocontenido [`el-ojete-dorado-the-game.html`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/el-ojete-dorado-the-game.html) (1.2 MB, 100% offline y ejecutable en cualquier navegador).
-* **Batería de Pruebas:** 73 pruebas automatizadas sin entorno DOM vía `node tests/regression.mjs`.
+* **Batería de Pruebas:** 74 pruebas automatizadas sin entorno DOM vía `node tests/regression.mjs`.
 
 ---
 
@@ -29,7 +30,7 @@ El mundo ha sido reorganizado geométricamente tomando como epicentro la aldea p
                                             │
                                             │
  [ OESTE: Páramo de Mister Alex ] ──── [ VALLEVERDE ] ──── [ ESTE: Valle Consagración ]
-   (Nivel 8 · Comandante Vael)        (Epicentro / Hub)       (Nivel 2 · Guardia Kael)
+   (Nivel 8 · Comandante Vael)        (Epicentro / Hub)       (Nivel 1 · Guardia Kael)
                 │                           │
                 ▼                           │
      [ CIUDADELA CUÁNTICA ]                 │
@@ -43,8 +44,8 @@ El mundo ha sido reorganizado geométricamente tomando como epicentro la aldea p
 
 | Región Cardinal | Escena (`sceneId`) | Nivel Requerido | Centinela Custodio | Contenido y Mazmorras |
 |---|---|---|---|---|
-| **Centro** | `overworld` | Nivel 1 | Guardia Bit / Vecinos | Pueblo pacífico de Valleverde, Tiendas (Brom, Byte, Clara), Casa del Programador (cama para descansar), Cuartel y Observatorio de Orion. |
-| **Este** | `first_stage` | **Nivel 2** | Guardia Kael y Bit | **Valle de la Consagración**: Pruebas de equipo sagrado.<br>• `armor_temple`: Templo de la Armadura Binaria.<br>• `sword_temple`: Templo de la Espada de la Recursividad. |
+| **Centro** | `overworld` | Nivel 1 | Guardia Bit / Vecinos | **Valleverde**: Aldea pacífica, Mercado (Clara, Byte, Pip, Finn), Forja de Brom, Cabaña de Lyra, Mansión de Aurelio, Observatorio de Orion, Casa del Programador y **Campo de Entrenamiento del Binario** (sparring con drones para subir a Nivel 2). |
+| **Este** | `first_stage` | **Nivel 1** | Guardia Kael y Bit | **Valle de la Consagración**: Pruebas de equipo sagrado accesibles desde el inicio tras tramitar el Pase del Puente.<br>• `armor_temple`: Templo de la Armadura Binaria.<br>• `sword_temple`: Templo de la Espada de la Recursividad (requiere portar la Armadura). |
 | **Norte** | `north_peaks` | **Nivel 4** | Guardia Boreas | **Cumbres de la Recursión**: Picos helados de silicio.<br>• `mines_entry` / `mines_puzzle`: Minas de la Recursión.<br>• **Jefe:** *Guardián del Stack Overflow* (otorga Núcleo Stack + Corte en Cascada). |
 | **Sur** | `south_swamp` | **Nivel 6** | Guardia Vulcano | **Marismas del Hardware Legacy**: Ciénaga tóxica y calderas.<br>• `sewers_entry` / `sewers_dungeon`: Cloacas (**Jefe:** *Garbage Collector Furioso* · otorga Dash Asíncrono).<br>• `forge_entry` / `ai_fortress_gate`: La Forja (**Jefe:** *Microondas Prototipo* · otorga Escudo TS). |
 | **Oeste** | `west_wastes` | **Nivel 8** | Comandante Vael | **Páramo Corrupto de Alex**: Terreno yermo de alta tensión.<br>• `quantum_gate`: Gran Puerta del Núcleo Cuántico (altar para incrustar los 3 cristales de mazmorra). |
@@ -52,17 +53,16 @@ El mundo ha sido reorganizado geométricamente tomando como epicentro la aldea p
 
 ---
 
-## 3. Sistema de Progresión y Niveles (1 al 10)
+## 3. Sistema de Progresión, Combate y Entrenamiento
 
-El personaje sube de nivel acumulando Experiencia (XP) al vencer amenazas en el mundo:
-
-* **Enemigos Comunes (Drones, Centinelas, Caballeros):** Otorgan **+25 XP**.
-* **Jefes Regionales (Garbage Collector, Stack Overflow, Microondas):** Otorgan **+200 XP** y 2 puntos de habilidad.
-* **Bonificación de Nivel:** Al subir de nivel, el jugador **recupera el 100% de su Salud y Stamina**, suena una fanfarria y se proyecta un banner festivo en pantalla.
-* **Gating Orgánico por Centinelas:** Si el jugador intenta cruzar hacia una zona superior a su nivel:
-  1. El centinela fronterizo lo detiene con un sonido de bloqueo y diálogo de advertencia contextual.
-  2. El héroe es repelido 1 casilla hacia atrás para no quedar atrapado en el trigger de colisión.
-  3. Al alcanzar el nivel adecuado, el paso es **completamente fluido e instantáneo** (estilo Zelda clásico, sin ventanas de confirmación redundantes).
+### Combate Inicial y Entrenamiento en Valleverde
+* **Combate Desarmado ([`Player.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/entities/Player.js)):** Si el jugador aún no ha consagrado la Espada de la Recursividad, puede lanzar puñetazos básicos (daño 1.0, alcance 12 px, consumo 10 de stamina) para entrenar desde el primer minuto.
+* **Campo de Entrenamiento de la Guardia:** Área cercada en el sureste de Valleverde equipada con Drones de Entrenamiento y Bugs de Práctica que otorgan **+25 XP** y reaparecen periódicamente para subir a Nivel 2 y practicar mecánicas.
+* **Progresión de Niveles (1 al 10):**
+  * **Enemigos Comunes (Drones, Centinelas, Caballeros):** Otorgan **+25 XP**.
+  * **Jefes Regionales (Garbage Collector, Stack Overflow, Microondas):** Otorgan **+200 XP** y 2 puntos de habilidad.
+  * **Bonificación de Nivel:** Al subir de nivel, el jugador **recupera el 100% de su Salud y Stamina**, suena una fanfarria y se proyecta un banner festivo en pantalla.
+  * **Gating Orgánico por Centinelas:** Los centinelas fronterizos custodian las fronteras que requieren mayor nivel. Al alcanzar el nivel requerido, el cruce es completamente fluido sin ventanas emergentes redundantes.
 
 ---
 

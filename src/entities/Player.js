@@ -165,13 +165,15 @@ export class Player extends Entity {
   }
 
   getSwordDamage() {
-    let dmg = this.attackDamage;
+    let dmg = !this.hasSword ? 1 : this.attackDamage;
 
     // Progresión por Forja: Nivel 2 (+50%), Nivel 3 (+100%)
-    if (this.swordLevel === 2) {
-      dmg *= 1.5;
-    } else if (this.swordLevel >= 3) {
-      dmg *= 2.0;
+    if (this.hasSword) {
+      if (this.swordLevel === 2) {
+        dmg *= 1.5;
+      } else if (this.swordLevel >= 3) {
+        dmg *= 2.0;
+      }
     }
 
     // Si la robotización supera el 50%, la rigidez biomecánica penaliza un 30% el daño
@@ -340,8 +342,26 @@ export class Player extends Entity {
   }
 
   tryAttack(soundEngine = null) {
-    if (!this.hasSword || this.attackCooldown > 0) return false;
+    if (this.attackCooldown > 0) return false;
     if (!this.spendStamina(STAMINA_COSTS.attack)) return false;
+
+    if (!this.hasSword) {
+      // Golpe o puñetazo desarmado básico para entrenamiento inicial
+      this.attackIsDashStrike = false;
+      this.attackIsFinisher = false;
+      this.attackDamage = 1;
+      this.comboStep = 1;
+      this.comboTimer = 0;
+      this.attackDuration = 0.18;
+      this.attackCooldown = 0.28;
+      this.attackTimer = this.attackDuration;
+      if (soundEngine && typeof soundEngine.playAttackSound === 'function') {
+        soundEngine.playAttackSound();
+      } else if (soundEngine && typeof soundEngine.playSwordSlash === 'function') {
+        soundEngine.playSwordSlash();
+      }
+      return true;
+    }
 
     if (this.dashStrikeTimer > 0) {
       // Tajo tras dash: golpe de embestida de daño 2
@@ -450,8 +470,8 @@ export class Player extends Entity {
   getSwordHitbox() {
     if (!this.isAttacking) return null;
     const bigSwing = this.attackIsFinisher || this.attackIsDashStrike;
-    const reach = bigSwing ? 18 : 15;
-    const size = bigSwing ? 24 : 18;
+    const reach = !this.hasSword ? 12 : (bigSwing ? 18 : 15);
+    const size = !this.hasSword ? 14 : (bigSwing ? 24 : 18);
     let hx = this.centerX - size / 2;
     let hy = this.centerY - size / 2;
 
@@ -937,25 +957,47 @@ export class Player extends Entity {
       ctx.restore();
     }
 
-    // 6. Renderizar el tajo luminoso estándar de la Espada de la Recursividad
+    // 6. Renderizar ataque: golpe desarmado o tajo luminoso de la Espada de la Recursividad
     if (this.attackTimer > 0) {
-      const progress = 1 - this.attackTimer / this.attackDuration;
+      if (!this.hasSword) {
+        // Golpe o puñetazo desarmado de entrenamiento
+        const progress = 1 - this.attackTimer / this.attackDuration;
+        const dirOffsets = {
+          right: [12, 0],
+          left: [-12, 0],
+          down: [0, 12],
+          up: [0, -12]
+        };
+        const [ox, oy] = dirOffsets[this.direction] || [12, 0];
+        const px = cx + ox * progress;
+        const py = cy + oy * progress;
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(px, py, 2.5 + progress * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        const progress = 1 - this.attackTimer / this.attackDuration;
 
-      let baseAngle = 0;
-      if (this.direction === 'right') baseAngle = 0;
-      else if (this.direction === 'down') baseAngle = Math.PI / 2;
-      else if (this.direction === 'left') baseAngle = Math.PI;
-      else if (this.direction === 'up') baseAngle = -Math.PI / 2;
+        let baseAngle = 0;
+        if (this.direction === 'right') baseAngle = 0;
+        else if (this.direction === 'down') baseAngle = Math.PI / 2;
+        else if (this.direction === 'left') baseAngle = Math.PI;
+        else if (this.direction === 'up') baseAngle = -Math.PI / 2;
 
-      const sweepStart = baseAngle - 0.95;
-      const sweepEnd = sweepStart + progress * 1.9;
+        const sweepStart = baseAngle - 0.95;
+        const sweepEnd = sweepStart + progress * 1.9;
 
-      ctx.save();
-      // Arco de energía según nivel de espada y robotización
-      const isMechanized = this.robotizationLevel > 50;
-      let arcColor = 'rgba(251, 191, 36, 0.85)';
-      let bladeColor = '#38bdf8';
-      let edgeColor = '#ffffff';
+        ctx.save();
+        // Arco de energía según nivel de espada y robotización
+        const isMechanized = this.robotizationLevel > 50;
+        let arcColor = 'rgba(251, 191, 36, 0.85)';
+        let bladeColor = '#38bdf8';
+        let edgeColor = '#ffffff';
 
       if (isMechanized) {
         arcColor = 'rgba(148, 163, 184, 0.85)';
@@ -1007,5 +1049,6 @@ export class Player extends Entity {
       ctx.restore();
     }
   }
+}
 }
 

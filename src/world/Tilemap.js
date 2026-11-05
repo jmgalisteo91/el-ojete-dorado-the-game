@@ -1409,33 +1409,34 @@ export class Tilemap {
     setDeco(13, 20, TILES.FLOWERS_1, false);
 
     // === MERCADO CENTRAL DE LA PLAZA DE VALLEVERDE ===
+    // Puestos despejados: toldo en fila 8/13 (Capa 3 overhead), vendedor visible en fila 9/14, mostrador en fila 10/15
     // 1. Puesto Noroeste: Panadería y Frutas de Clara
-    setDeco(14, 9, TILES.ROOF_RED, true);
-    setDeco(15, 9, TILES.ROOF_RED, true);
+    setDeco(14, 8, TILES.ROOF_RED, true);
+    setDeco(15, 8, TILES.ROOF_RED, true);
     setDeco(14, 10, TILES.TABLE, true);
     setDeco(15, 10, TILES.TABLE, true);
     setDeco(13, 10, TILES.CRATE, true);
     setDeco(13, 9, TILES.LAMPPOST, true);
 
     // 2. Puesto Noreste: Tienda de Software de Byte
-    setDeco(19, 9, TILES.ROOF_BLUE, true);
-    setDeco(20, 9, TILES.ROOF_BLUE, true);
+    setDeco(19, 8, TILES.ROOF_BLUE, true);
+    setDeco(20, 8, TILES.ROOF_BLUE, true);
     setDeco(19, 10, TILES.TABLE, true);
     setDeco(20, 10, TILES.TABLE, true);
     setDeco(21, 10, TILES.CRATE, true);
     setDeco(21, 9, TILES.LAMPPOST, true);
 
     // 3. Puesto Suroeste: Alquimia y Pociones de Pip
-    setDeco(14, 14, TILES.ROOF_BLUE, true);
-    setDeco(15, 14, TILES.ROOF_BLUE, true);
+    setDeco(14, 13, TILES.ROOF_BLUE, true);
+    setDeco(15, 13, TILES.ROOF_BLUE, true);
     setDeco(14, 15, TILES.TABLE, true);
     setDeco(15, 15, TILES.TABLE, true);
     setDeco(13, 15, TILES.CRATE, true);
     setDeco(13, 14, TILES.LAMPPOST, true);
 
     // 4. Puesto Sureste: Pescadería de Finn
-    setDeco(19, 14, TILES.ROOF_RED, true);
-    setDeco(20, 14, TILES.ROOF_RED, true);
+    setDeco(19, 13, TILES.ROOF_RED, true);
+    setDeco(20, 13, TILES.ROOF_RED, true);
     setDeco(19, 15, TILES.TABLE, true);
     setDeco(20, 15, TILES.TABLE, true);
     setDeco(21, 15, TILES.CRATE, true);
@@ -1456,45 +1457,202 @@ export class Tilemap {
 
     this.houseDoors = [];
 
-    const buildHouse = (c0, r0, width, roofTile, doorOffset, sceneId, label, ownerName) => {
-      for (let r = r0; r < r0 + 2; r++) {
-        for (let c = c0; c < c0 + width; c++) {
-          setDeco(c, r, roofTile, true);
-        }
+    // === HOGARES Y EDIFICIOS DE VALLEVERDE (CADA UNO CON SU PROPIA VERSIÓN ARQUITECTÓNICA ÚNICA) ===
+    // 1. Casa del Programador (Tu Hogar): cabaña acogedora de madera con tejado a dos aguas rojo, macetero y leñera
+    for (let r = 8; r <= 9; r++) {
+      for (let c = 2; c <= 6; c++) {
+        setDeco(c, r, TILES.ROOF_RED, true);
       }
-      const wallRow = r0 + 2;
-      for (let c = c0; c < c0 + width; c++) {
-        const localC = c - c0;
-        if (localC === doorOffset) {
-          setDeco(c, wallRow, TILES.WALL_DOOR, true);
-          this.houseDoors.push({
-            sceneId,
-            label,
-            ownerName,
-            doorCol: c,
-            doorRow: wallRow,
-            worldX: c * this.tileSize + 8,
-            worldY: (wallRow + 1) * this.tileSize + 2,
-            returnX: c * this.tileSize,
-            returnY: (wallRow + 1) * this.tileSize + 2,
-            interiorSpawnX: 5.5 * this.tileSize,
-            interiorSpawnY: 6 * this.tileSize
-          });
-        } else if (localC === 1 || localC === width - 2) {
-          setDeco(c, wallRow, TILES.WALL_WINDOW, true);
-        } else {
-          setDeco(c, wallRow, TILES.WALL_WOOD, true);
-        }
-      }
-    };
+    }
+    setDeco(2, 10, TILES.WALL_WOOD, true);
+    setDeco(3, 10, TILES.WALL_WINDOW, true);
+    setDeco(4, 10, TILES.WALL_DOOR, true);
+    setDeco(5, 10, TILES.WALL_WINDOW, true);
+    setDeco(6, 10, TILES.WALL_WOOD, true);
+    setDeco(2, 11, TILES.CRATE, true);
+    setDeco(3, 11, TILES.FLOWERS_1, false);
+    ground[11][4] = TILES.PATH;
+    setDeco(6, 11, TILES.FLOWERS_2, false);
+    this.houseDoors.push({
+      sceneId: 'player_house',
+      label: 'Casa del Programador (Tu Hogar)',
+      ownerName: 'Tú (Programador)',
+      doorCol: 4,
+      doorRow: 10,
+      worldX: 4 * this.tileSize + 8,
+      worldY: 11 * this.tileSize + 2,
+      returnX: 4 * this.tileSize,
+      returnY: 11 * this.tileSize + 2,
+      interiorSpawnX: 5.5 * this.tileSize,
+      interiorSpawnY: 6 * this.tileSize
+    });
 
-    // Viviendas del pueblo: las 5 de los vecinos + La Casa del Programador (Tu Hogar)
-    buildHouse(1,  8, 4, TILES.ROOF_RED,  2, 'player_house',     'Casa del Programador (Tu Hogar)', 'Tú (Programador)');
-    buildHouse(6,  4, 5, TILES.ROOF_BLUE, 2, 'elder_house',      'Casa de Aurelio (Cronista)',   'Anciano Aurelio');
-    buildHouse(13, 4, 4, TILES.ROOF_BLUE, 2, 'oracle_house',     'Observatorio de Orion (IA)',   'Oráculo Orion [IA]');
-    buildHouse(21, 4, 5, TILES.ROOF_RED,  2, 'blacksmith_house', 'Herrería de Brom (Forjador)',  'Herrero Brom');
-    buildHouse(5, 16, 5, TILES.ROOF_RED,  2, 'herbalist_house',  'Cabaña de Lyra (Alquimista)',  'Herbolaria Lyra');
-    buildHouse(20, 16, 5, TILES.ROOF_BLUE, 2, 'guard_house',     'Cuartel de Kael (Capitán)',    'Guardia Kael');
+    // 2. Mansión del Sabio Aurelio: residencia señorial con columnas de piedra, doble ventana y tejado de pizarra azul
+    for (let r = 3; r <= 4; r++) {
+      for (let c = 6; c <= 11; c++) {
+        setDeco(c, r, TILES.ROOF_BLUE, true);
+      }
+    }
+    setDeco(6, 5, TILES.WALL_WOOD, true);
+    setDeco(7, 5, TILES.WALL_WINDOW, true);
+    setDeco(8, 5, TILES.WALL_DOOR, true);
+    setDeco(9, 5, TILES.WALL_WINDOW, true);
+    setDeco(10, 5, TILES.WALL_WINDOW, true);
+    setDeco(11, 5, TILES.WALL_WOOD, true);
+    setDeco(6, 6, TILES.TEMPLE_PILLAR, true);
+    setDeco(7, 6, TILES.FLOWERS_1, false);
+    ground[6][8] = TILES.COBBLE;
+    ground[7][8] = TILES.PATH;
+    setDeco(10, 6, TILES.FLOWERS_2, false);
+    setDeco(11, 6, TILES.TEMPLE_PILLAR, true);
+    this.houseDoors.push({
+      sceneId: 'elder_house',
+      label: 'Casa de Aurelio (Cronista)',
+      ownerName: 'Anciano Aurelio',
+      doorCol: 8,
+      doorRow: 5,
+      worldX: 8 * this.tileSize + 8,
+      worldY: 6 * this.tileSize + 2,
+      returnX: 8 * this.tileSize,
+      returnY: 6 * this.tileSize + 2,
+      interiorSpawnX: 5.5 * this.tileSize,
+      interiorSpawnY: 6 * this.tileSize
+    });
+
+    // 3. Observatorio de Orion: torre technomántica de piedra pulida con portal lumínico y cúpula azul
+    for (let r = 3; r <= 4; r++) {
+      for (let c = 13; c <= 16; c++) {
+        setDeco(c, r, TILES.ROOF_BLUE, true);
+      }
+    }
+    setDeco(13, 5, TILES.WALL_INTERIOR, true);
+    setDeco(14, 5, TILES.WALL_DOOR, true);
+    setDeco(15, 5, TILES.WALL_WINDOW, true);
+    setDeco(16, 5, TILES.WALL_INTERIOR, true);
+    setDeco(13, 6, TILES.CRATE, true);
+    ground[6][14] = TILES.PATH;
+    setDeco(16, 6, TILES.LAMPPOST, true);
+    this.houseDoors.push({
+      sceneId: 'oracle_house',
+      label: 'Observatorio de Orion (IA)',
+      ownerName: 'Oráculo Orion [IA]',
+      doorCol: 14,
+      doorRow: 5,
+      worldX: 14 * this.tileSize + 8,
+      worldY: 6 * this.tileSize + 2,
+      returnX: 14 * this.tileSize,
+      returnY: 6 * this.tileSize + 2,
+      interiorSpawnX: 5.5 * this.tileSize,
+      interiorSpawnY: 6 * this.tileSize
+    });
+
+    // 4. Herrería y Forja de Brom: taller industrial con chimenea exterior, patio de adoquín y YUNQUE permanente
+    for (let r = 4; r <= 5; r++) {
+      for (let c = 21; c <= 25; c++) {
+        setDeco(c, r, TILES.ROOF_RED, true);
+      }
+    }
+    setDeco(21, 6, TILES.WALL_WOOD, true);
+    setDeco(22, 6, TILES.WALL_DOOR, true);
+    setDeco(23, 6, TILES.WALL_WINDOW, true);
+    setDeco(24, 6, TILES.WALL_WOOD, true);
+    setDeco(25, 6, TILES.FIREPLACE, true); // Horno de forja en fachada
+    // Patio empedrado del herrero
+    fillRect(ground, 24, 5, 3, 3, TILES.COBBLE);
+    setDeco(24, 5, TILES.CRATE, true);
+    setDeco(26, 5, TILES.CRATE, true);
+    setDeco(26, 6, TILES.ANVIL, true); // El Yunque de trabajo
+    ground[7][22] = TILES.PATH;
+    this.houseDoors.push({
+      sceneId: 'blacksmith_house',
+      label: 'Herrería de Brom (Forjador)',
+      ownerName: 'Herrero Brom',
+      doorCol: 22,
+      doorRow: 6,
+      worldX: 22 * this.tileSize + 8,
+      worldY: 7 * this.tileSize + 2,
+      returnX: 22 * this.tileSize,
+      returnY: 7 * this.tileSize + 2,
+      interiorSpawnX: 5.5 * this.tileSize,
+      interiorSpawnY: 6 * this.tileSize
+    });
+
+    // 5. Cabaña Botánica de Lyra: casa rústica con huerto alquímico vallado, bancales de flores y alambique
+    for (let r = 16; r <= 17; r++) {
+      for (let c = 4; c <= 8; c++) {
+        setDeco(c, r, TILES.ROOF_RED, true);
+      }
+    }
+    setDeco(4, 18, TILES.WALL_WINDOW, true);
+    setDeco(5, 18, TILES.WALL_WOOD, true);
+    setDeco(6, 18, TILES.WALL_DOOR, true);
+    setDeco(7, 18, TILES.WALL_WINDOW, true);
+    setDeco(8, 18, TILES.WALL_WOOD, true);
+    // Jardín botánico vallado
+    setDeco(4, 19, TILES.FENCE_POST, true);
+    setDeco(5, 19, TILES.FLOWERS_1, false);
+    ground[19][6] = TILES.PATH;
+    setDeco(7, 19, TILES.FLOWERS_2, false);
+    setDeco(8, 19, TILES.FENCE_POST, true);
+    setDeco(4, 20, TILES.FENCE_H, true);
+    setDeco(5, 20, TILES.FLOWERS_2, false);
+    ground[20][6] = TILES.PATH;
+    setDeco(7, 20, TILES.FLOWERS_1, false);
+    setDeco(8, 20, TILES.FENCE_H, true);
+    this.houseDoors.push({
+      sceneId: 'herbalist_house',
+      label: 'Cabaña de Lyra (Alquimista)',
+      ownerName: 'Herbolaria Lyra',
+      doorCol: 6,
+      doorRow: 18,
+      worldX: 6 * this.tileSize + 8,
+      worldY: 19 * this.tileSize + 2,
+      returnX: 6 * this.tileSize,
+      returnY: 19 * this.tileSize + 2,
+      interiorSpawnX: 5.5 * this.tileSize,
+      interiorSpawnY: 6 * this.tileSize
+    });
+
+    // 6. Cuartel de Kael y Campo de Entrenamiento del Binario:
+    // Barracón militar fortificado con rejas de hierro y campo de sparring vallado
+    for (let r = 16; r <= 17; r++) {
+      for (let c = 20; c <= 24; c++) {
+        setDeco(c, r, TILES.ROOF_BLUE, true);
+      }
+    }
+    setDeco(20, 18, TILES.WALL_WOOD, true);
+    setDeco(21, 18, TILES.JAIL_BARS, true);
+    setDeco(22, 18, TILES.WALL_DOOR, true);
+    setDeco(23, 18, TILES.WALL_WINDOW, true);
+    setDeco(24, 18, TILES.WALL_WOOD, true);
+    setDeco(21, 19, TILES.CRATE, true);
+    ground[19][22] = TILES.PATH;
+    // Ring de arena del Campo de Entrenamiento del Binario
+    fillRect(ground, 22, 19, 5, 4, TILES.PATH);
+    setDeco(23, 19, TILES.FENCE_H, true);
+    setDeco(24, 19, TILES.FENCE_H, true);
+    setDeco(25, 19, TILES.FENCE_H, true);
+    setDeco(26, 19, TILES.FENCE_POST, true);
+    setDeco(26, 20, TILES.FENCE_POST, true);
+    setDeco(26, 21, TILES.FENCE_POST, true);
+    setDeco(26, 22, TILES.FENCE_POST, true);
+    setDeco(25, 22, TILES.FENCE_H, true);
+    setDeco(24, 22, TILES.FENCE_H, true);
+    setDeco(23, 22, TILES.FENCE_H, true);
+    setDeco(22, 22, TILES.FENCE_POST, true);
+    this.houseDoors.push({
+      sceneId: 'guard_house',
+      label: 'Cuartel de Kael (Capitán)',
+      ownerName: 'Guardia Kael',
+      doorCol: 22,
+      doorRow: 18,
+      worldX: 22 * this.tileSize + 8,
+      worldY: 19 * this.tileSize + 2,
+      returnX: 22 * this.tileSize,
+      returnY: 19 * this.tileSize + 2,
+      interiorSpawnX: 5.5 * this.tileSize,
+      interiorSpawnY: 6 * this.tileSize
+    });
 
     // === ARCO DE SALIDA AL VALLE DE LOS TEMPLOS (AL ESTE DEL PUENTE) ===
     setDeco(33, 11, TILES.LAMPPOST, true);
@@ -1509,11 +1667,9 @@ export class Tilemap {
       color: '#38bdf8'
     });
 
-    setDeco(26, 6, TILES.ANVIL, true);
-    setDeco(26, 5, TILES.CRATE, true);
     setDeco(20, 6, TILES.CRATE, true);
 
-    // Corral / Jardín
+    // Corral central / Jardín municipal
     for (let c = 11; c <= 14; c++) {
       setDeco(c, 16, TILES.FENCE_H, true);
       setDeco(c, 19, TILES.FENCE_H, true);
@@ -1524,8 +1680,7 @@ export class Tilemap {
 
     const flowerCoords = [
       [12, 17], [13, 17], [12, 18], [13, 18],
-      [5, 8], [11, 5], [20, 8],
-      [25, 15], [32, 10], [33, 14]
+      [20, 8], [25, 15], [32, 10], [33, 14]
     ];
     for (const [fc, fr] of flowerCoords) {
       setDeco(fc, fr, TILES.FLOWERS_1, false);
@@ -1533,7 +1688,7 @@ export class Tilemap {
 
     // Farolas
     const lampposts = [
-      [13, 9], [21, 9], [13, 15], [21, 15],
+      [13, 9], [21, 9], [13, 14], [21, 14],
       [8, 11], [26, 11], [32, 11]
     ];
     for (const [lc, lr] of lampposts) {
@@ -1546,8 +1701,117 @@ export class Tilemap {
       });
     }
 
-    // === LETREROS DE SEÑALIZACIÓN DE CAMINOS ===
+    // === LETREROS DE SEÑALIZACIÓN VISIBLES DE TIENDAS Y CAMINOS ===
     const signposts = [
+      // 1. Tienda de Panadería de Clara
+      {
+        c: 13,
+        r: 11,
+        shortName: 'Panadería Clara',
+        title: '🪧 [MERCADO] Panadería y Frutas de Clara · Alimentos & Fruta [Comprar / Vender]',
+        lines: [
+          '«Panadería y Frutas de Clara: Pan campesino recién horneado, manzanas jugosas y pasteles de bayas.»',
+          '«¡Acércate a Clara tras el mostrador para comprar provisiones o vender tus cosechas!»'
+        ]
+      },
+      // 2. Tienda de Software de Byte
+      {
+        c: 21,
+        r: 11,
+        shortName: 'Almacén Byte',
+        title: '🪧 [TIENDA] Almacén de Byte · Software & Café [Comprar / Vender]',
+        lines: [
+          '«Almacén de Dependencias de Byte: Café Compilado, Parches Hotfix y optimizaciones de software.»',
+          '«¡Acércate a Byte tras el mostrador para adquirir mejoras o vender chatarra de silicio!»'
+        ]
+      },
+      // 3. Botica de Pip
+      {
+        c: 13,
+        r: 16,
+        shortName: 'Botica de Pip',
+        title: '🪧 [BOTICA] Pociones de Pip · Herboristería [Pociones & Remedios]',
+        lines: [
+          '«Herboristería y Pociones de Pip: Elixires herbales, brebajes curativos y ungüentos anti-robotización.»',
+          '«¡Acércate a Pip tras el mostrador para reponer tus pociones!»'
+        ]
+      },
+      // 4. Pescadería de Finn
+      {
+        c: 21,
+        r: 16,
+        shortName: 'Pescadería Finn',
+        title: '🪧 [PESCADERÍA] Muelle de Finn · Pescado del Río Alba [Comprar / Vender]',
+        lines: [
+          '«Pescadería de Finn: Truchas plateadas y salmones frescos pescados en el Río Alba.»',
+          '«¡Acércate a Finn tras el mostrador para vender capturas de pesca o comprar pescado fresco!»'
+        ]
+      },
+      // 5. Forja de Brom
+      {
+        c: 23,
+        r: 7,
+        shortName: 'Forja de Brom',
+        title: '🪧 [FORJA] Taller de Brom · Forja de Espadas y Armaduras [Mejora & Venta]',
+        lines: [
+          '«Maestro Forjador Brom: Forjado de Espada de Silicio, Espada Overclockeada y Blindaje Térmico.»',
+          '«Brom trabaja incansablemente en su yunque exterior durante las horas diurnas.»'
+        ]
+      },
+      // 6. Invernadero de Lyra
+      {
+        c: 9,
+        r: 18,
+        shortName: 'Invernadero Lyra',
+        title: '🪧 [BOTICA] Invernadero de Lyra · Alquimia & Silicio [Pociones & Remedios]',
+        lines: [
+          '«Cabaña Botánica y Alambique de Lyra: Recolección de Flores de Silicio y elixires mágicos.»',
+          '«Lyra cuida sus plantas y atiende a los viajeros en su huerto aromático.»'
+        ]
+      },
+      // 7. Campo de Entrenamiento del Binario
+      {
+        c: 20,
+        r: 18,
+        shortName: 'Campo Entrenamiento',
+        title: '🪧 [CUARTEL] Guardia del Binario · Campo de Entrenamiento [Práctica & Nivel]',
+        lines: [
+          '«Campo de Entrenamiento de Valleverde: Área cercada para combate de práctica militar.»',
+          '«¡Derrota los drones y bugs de prueba para ganar experiencia (XP) y subir de nivel antes de partir!»'
+        ]
+      },
+      // 8. Casa del Programador
+      {
+        c: 5,
+        r: 11,
+        shortName: 'Tu Hogar',
+        title: '🪧 [HOGAR] Casa del Programador · Tu Refugio',
+        lines: [
+          '«Tu residencia en Valleverde. Usa tu cama en el interior con [E] para descansar y cambiar el ciclo día/noche.»',
+          '«Dormir purga al 100% la robotización binaria y restaura tu salud y energía.»'
+        ]
+      },
+      // 9. Mansión de Aurelio
+      {
+        c: 9,
+        r: 6,
+        shortName: 'Mansión Aurelio',
+        title: '🪧 [ARCHIVO] Mansión del Sabio Aurelio · Cronista de Valleverde',
+        lines: [
+          '«Residencia y archivo histórico del Gran Sabio Aurelio. Consulta la crónica del Reino y tramita el Pase del Puente.»'
+        ]
+      },
+      // 10. Observatorio de Orion
+      {
+        c: 15,
+        r: 6,
+        shortName: 'Torre de Orion',
+        title: '🪧 [OBSERVATORIO] Torre de Orion · Astrología Cuántica e IA',
+        lines: [
+          '«Observatorio Astronómico y Computacional del Oráculo Orion [IA]. Consulta predicciones y charla con la IA.»'
+        ]
+      },
+      // 11. Frontera Oeste
       {
         c: 4,
         r: 11,
@@ -1558,6 +1822,7 @@ export class Tilemap {
           '«¡PRECAUCIÓN! Más allá de los límites protegidos de Valleverde acechan drones y anomalías corruptas. Requieres equipo completo.»'
         ]
       },
+      // 12. Puente Este
       {
         c: 26,
         r: 11,
@@ -1566,9 +1831,10 @@ export class Tilemap {
         lines: [
           '«→ ESTE: Puente hacia el Valle de la Consagración.»',
           '«Conduce a los Santuarios Sagrados de la Armadura Binaria y la Espada de la Recursividad.»',
-          '«(Nota del Cronista: Valleverde es una aldea pacífica de descanso. No hay monstruos ni peligros dentro del pueblo).»'
+          '«(Valleverde es una aldea pacífica de descanso. El entrenamiento se realiza en el cuartel sur).»'
         ]
       },
+      // 13. Plaza Central
       {
         c: 16,
         r: 12,
@@ -1580,7 +1846,7 @@ export class Tilemap {
           '«• Noroeste: Panadería de Clara (Pan Campesino y Manzanas frescas).»',
           '«• Suroeste: Alquimia de Pip (Pociones Herbales y Ungüentos).»',
           '«• Sureste: Pescadería de Finn (Truchas plateadas y Agua fresca).»',
-          '«← Oeste: Casa del Programador. ↑ Norte: Casa del Sabio. ↓ Sur: Cuartel de la Guardia.»'
+          '«← Oeste: Casa del Programador. ↑ Norte: Casa del Sabio. ↓ Sur: Cuartel y Campo de Entrenamiento.»'
         ]
       },
       {
@@ -1600,7 +1866,7 @@ export class Tilemap {
         title: '🪧 Cruce Sur de Valleverde · Marismas del Hardware Legacy',
         lines: [
           '«↓ SUR: Descenso a las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).»',
-          '«← Cabaña de Lyra. → Cuartel de Kael.»'
+          '«← Cabaña de Lyra. → Cuartel de Kael y Campo de Entrenamiento.»'
         ]
       },
       {
@@ -1620,14 +1886,32 @@ export class Tilemap {
     }
 
     const bushes = [
-      [5, 7], [11, 7], [20, 7], [4, 19], [10, 19], [25, 19]
+      [5, 7], [11, 7], [20, 7], [4, 21], [10, 19], [21, 21]
     ];
     for (const [bc, br] of bushes) {
       setDeco(bc, br, TILES.BUSH, true);
     }
 
-    // Comprueba si una celda corresponde a caminos hacia otras zonas o la plaza para NO plantar árboles
+    // Delimita las huellas espaciales protegidas de cada edificio para que NINGÚN árbol recorte tejados o muros
+    const isHouseProtected = (c, r) => {
+      // 1. Casa del Programador: cols 1..7, rows 6..12
+      if (c >= 1 && c <= 7 && r >= 6 && r <= 12) return true;
+      // 2. Mansión de Aurelio: cols 5..12, rows 2..8
+      if (c >= 5 && c <= 12 && r >= 2 && r <= 8) return true;
+      // 3. Observatorio de Orion: cols 12..17, rows 2..8
+      if (c >= 12 && c <= 17 && r >= 2 && r <= 8) return true;
+      // 4. Herrería de Brom: cols 20..27, rows 3..8
+      if (c >= 20 && c <= 27 && r >= 3 && r <= 8) return true;
+      // 5. Cabaña de Lyra: cols 3..10, rows 15..21
+      if (c >= 3 && c <= 10 && r >= 15 && r <= 21) return true;
+      // 6. Cuartel y Campo de Entrenamiento: cols 19..27, rows 15..23
+      if (c >= 19 && c <= 27 && r >= 15 && r <= 23) return true;
+      return false;
+    };
+
+    // Comprueba si una celda corresponde a caminos hacia otras zonas, plaza o viviendas protegidas
     const isRoadOrPlazaArea = (c, r) => {
+      if (isHouseProtected(c, r)) return true;
       // Portal rúnico místico al norte hacia Reinos Condenados
       if (c >= 10 && c <= 13 && r <= 4) return true;
       // Camino Oeste hacia Ruinas del Despertar (completamente despejado para ver la salida)
