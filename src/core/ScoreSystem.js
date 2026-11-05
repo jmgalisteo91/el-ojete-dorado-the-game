@@ -20,6 +20,7 @@ export const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 672,
     playTimeFormatted: '11:12',
     deaths: 0,
+    bytes: 420,
     score: 93280,
     rank: 'S',
     title: 'Arquitecto Supremo del Gran Ojal',
@@ -30,6 +31,7 @@ export const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 835,
     playTimeFormatted: '13:55',
     deaths: 1,
+    bytes: 315,
     score: 86650,
     rank: 'A',
     title: 'Senior Lead de Valleverde',
@@ -40,6 +42,7 @@ export const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 1080,
     playTimeFormatted: '18:00',
     deaths: 2,
+    bytes: 280,
     score: 79200,
     rank: 'A',
     title: 'Senior Lead de Valleverde',
@@ -50,6 +53,7 @@ export const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 1420,
     playTimeFormatted: '23:40',
     deaths: 3,
+    bytes: 195,
     score: 70800,
     rank: 'A',
     title: 'Senior Lead de Valleverde',
@@ -60,6 +64,7 @@ export const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 1850,
     playTimeFormatted: '30:50',
     deaths: 5,
+    bytes: 140,
     score: 56500,
     rank: 'B',
     title: 'Programador Competente',
@@ -195,6 +200,7 @@ export function saveLocalScore(data = {}) {
 
   const playTimeSeconds = data.playTimeSeconds ?? 0;
   const deaths = data.deaths ?? 0;
+  const bytes = Math.max(0, Math.floor(Number(data.bytes ?? data.coins) || 0));
 
   // Si ya viene precalculado con rank y score, usarlo; si no, calcularlo
   const result = (data.score != null && data.rank != null)
@@ -213,6 +219,7 @@ export function saveLocalScore(data = {}) {
     playTimeSeconds: result.playTimeSeconds,
     playTimeFormatted: result.playTimeFormatted,
     deaths: result.deaths,
+    bytes,
     score: result.score,
     rank: result.rank,
     title: result.title,
@@ -323,7 +330,8 @@ export async function submitGlobalScore(data = {}) {
       body: JSON.stringify({
         username: localResult.entry.username,
         playTimeSeconds: localResult.entry.playTimeSeconds,
-        deaths: localResult.entry.deaths
+        deaths: localResult.entry.deaths,
+        bytes: localResult.entry.bytes ?? 0
       }),
       signal: controller ? controller.signal : undefined
     });

@@ -3,6 +3,7 @@ import { WorldMap } from './WorldMap.js?v=7';
 import { EndingCredits } from './EndingCredits.js?v=7';
 import { SpeechBubble, GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=7';
 import { getLocalLeaderboard, fetchGlobalLeaderboard } from '../core/ScoreSystem.js?v=7';
+import { LeaderboardView } from './LeaderboardView.js?v=7';
 
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art
@@ -18,6 +19,7 @@ export class MainMenuAndScenes {
 
     this.worldMap = new WorldMap(this);
     this.worldMapContext = null;
+    this.leaderboardView = new LeaderboardView(viewportWidth, viewportHeight);
 
     // Estados: 'title' | 'options' | 'cutscene' | 'exit_screen' | 'pause' | 'none'
     this.state = 'title';
@@ -203,6 +205,13 @@ export class MainMenuAndScenes {
     this.selectedIndex = 0;
     this.music.playMenuSelect();
 
+    if (this.leaderboardView) {
+      this.leaderboardView.isOpen = true;
+      this.leaderboardView.loading = true;
+      this.leaderboardView.scrollOffset = 0;
+      this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.leaderboardList || []);
+    }
+
     this.isFetchingGlobal = true;
     fetchGlobalLeaderboard().then((res) => {
       this.isFetchingGlobal = false;
@@ -212,10 +221,21 @@ export class MainMenuAndScenes {
         if (this.leaderboardTab === 'global') {
           this.leaderboardList = this.globalLeaderboardList;
         }
+        if (this.leaderboardView) {
+          this.leaderboardView.loading = false;
+          this.leaderboardView.source = res.source || 'cloud';
+          this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.leaderboardList);
+        }
       }
     }).catch(() => {
       this.isFetchingGlobal = false;
       this.leaderboardStatus = '💾 Modo Local';
+      if (this.leaderboardView) {
+        this.leaderboardView.loading = false;
+        this.leaderboardView.source = 'offline_local';
+        this.leaderboardView.errorMsg = 'Sin conexión a Vercel KV · Mostrando caché local';
+        this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.localLeaderboardList || []);
+      }
     });
   }
 
@@ -229,10 +249,18 @@ export class MainMenuAndScenes {
       this.localLeaderboardList = getLocalLeaderboard();
       this.leaderboardList = this.localLeaderboardList;
     }
+    if (this.leaderboardView) {
+      this.leaderboardView.scrollOffset = 0;
+      this.leaderboardView.source = tab === 'global' ? 'cloud' : 'local';
+      this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.leaderboardList || []);
+    }
     this.music.playMenuMove();
   }
 
   closeLeaderboardScreen() {
+    if (this.leaderboardView) {
+      this.leaderboardView.close();
+    }
     this.state = this.previousStateBeforeLeaderboard || 'title';
     this.music.playMenuMove();
   }
@@ -1390,196 +1418,21 @@ export class MainMenuAndScenes {
   }
 
   /**
-   * Pantalla de Salón de la Fama y Clasificación Global de Speedrun (Rango S a C).
+   * Pantalla de Salón de la Fama y Clasificación Global de Speedrun (Rango S a C)
+   * Renderizada dentro del contenedor unificado de 290×150 px mediante LeaderboardView.
    */
   _renderLeaderboardScreen(ctx) {
-    const W = this.viewportWidth;
-    const H = this.viewportHeight;
-    const winW = 300;
-    const winH = 166;
-    const winX = Math.round((W - winW) / 2);
-    const winY = Math.round((H - winH) / 2);
-
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-
-    // Fondo oscurecido con viñeta
-    ctx.fillStyle = 'rgba(5, 8, 16, 0.90)';
-    ctx.fillRect(0, 0, W, H);
-
-    // Marco exterior con doble borde dorado
-    ctx.fillStyle = '#0a0f1d';
-    ctx.fillRect(winX, winY, winW, winH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(winX + 2, winY + 2, winW - 4, winH - 4);
-
-    // Cabecera estilizada
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(winX + 2, winY + 2, winW - 4, 25);
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillRect(winX + 2, winY + 27, winW - 4, 1);
-
-    ctx.font = 'bold 7.5px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fde047';
-    ctx.fillText('🏆 SALÓN DE LA FAMA · SPEEDRUN CLASIFICATORIO', W / 2, winY + 8);
-
-    // Pestañas interactivas: [1] 🌐 Ranking Mundial (Nube) | [2] 💾 Récords Locales
-    const tabY = winY + 14;
-    const tabW = 95;
-    const tabH = 11;
-    const tab1X = winX + 14;
-    const tab2X = winX + 114;
-
-    const isGlobal = this.leaderboardTab !== 'local';
-
-    // Tab 1: Global
-    ctx.fillStyle = isGlobal ? '#0284c7' : '#0f172a';
-    ctx.fillRect(tab1X, tabY, tabW, tabH);
-    ctx.strokeStyle = isGlobal ? '#38bdf8' : '#334155';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(tab1X + 0.5, tabY + 0.5, tabW - 1, tabH - 1);
-    ctx.font = 'bold 5.5px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = isGlobal ? '#ffffff' : '#94a3b8';
-    ctx.fillText('🌐 [1] Global (Nube)', tab1X + tabW / 2, tabY + 5.5);
-
-    // Tab 2: Local
-    ctx.fillStyle = !isGlobal ? '#059669' : '#0f172a';
-    ctx.fillRect(tab2X, tabY, tabW, tabH);
-    ctx.strokeStyle = !isGlobal ? '#34d399' : '#334155';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(tab2X + 0.5, tabY + 0.5, tabW - 1, tabH - 1);
-    ctx.fillStyle = !isGlobal ? '#ffffff' : '#94a3b8';
-    ctx.fillText('💾 [2] Local (Este PC)', tab2X + tabW / 2, tabY + 5.5);
-
-    // Estado del servidor / nube
-    ctx.textAlign = 'right';
-    ctx.font = '5px monospace';
-    ctx.fillStyle = this.leaderboardStatus?.includes('Nube') ? '#38bdf8' : '#94a3b8';
-    ctx.fillText(this.leaderboardStatus || '🌐 Vercel API', winX + winW - 8, tabY + 5.5);
-
-    // Encabezados de tabla
-    const tableY = winY + 29;
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(winX + 6, tableY, winW - 12, 11);
-
-    ctx.font = 'bold 5.5px monospace';
-    ctx.fillStyle = '#cbd5e1';
-    ctx.textAlign = 'left';
-    ctx.fillText('#', winX + 10, tableY + 6);
-    ctx.fillText('JUGADOR', winX + 26, tableY + 6);
-    ctx.fillText('TIEMPO', winX + 112, tableY + 6);
-    ctx.fillText('BUGS', winX + 162, tableY + 6);
-    ctx.fillText('RANGO', winX + 204, tableY + 6);
-    ctx.textAlign = 'right';
-    ctx.fillText('SCORE', winX + winW - 12, tableY + 6);
-
-    const list = this.leaderboardList || [];
-    const scroll = this.leaderboardScroll || 0;
-    const maxVisible = 6;
-    const visibleItems = list.slice(scroll, scroll + maxVisible);
-
-    const rowH = 15;
-    const startRowY = tableY + 13;
-
-    if (visibleItems.length === 0) {
-      ctx.font = '6.5px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#64748b';
-      ctx.fillText('No hay récords registrados todavía.', W / 2, winY + 80);
-    }
-
-    visibleItems.forEach((entry, idx) => {
-      const realIndex = scroll + idx + 1;
-      const ry = startRowY + idx * rowH;
-
-      // Fila alterna
-      if (idx % 2 === 0) {
-        ctx.fillStyle = 'rgba(30, 41, 59, 0.4)';
-        ctx.fillRect(winX + 6, ry, winW - 12, rowH - 1);
+    if (this.leaderboardView) {
+      this.leaderboardView.scrollOffset = this.leaderboardScroll || 0;
+      if (!this.leaderboardView.entries || this.leaderboardView.entries.length === 0) {
+        this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.leaderboardList || []);
       }
-
-      // Medalla o posición
-      ctx.font = 'bold 6px monospace';
-      ctx.textAlign = 'left';
-      let posText = `#${realIndex}`;
-      let posColor = '#94a3b8';
-      if (realIndex === 1) { posText = '🥇'; posColor = '#fde047'; }
-      else if (realIndex === 2) { posText = '🥈'; posColor = '#cbd5e1'; }
-      else if (realIndex === 3) { posText = '🥉'; posColor = '#f97316'; }
-      ctx.fillStyle = posColor;
-      ctx.fillText(posText, winX + 9, ry + 8);
-
-      // Nombre
-      ctx.font = 'bold 6px monospace';
-      ctx.fillStyle = realIndex <= 3 ? '#ffffff' : '#e2e8f0';
-      ctx.fillText(entry.username || 'ANÓNIMO', winX + 26, ry + 8);
-
-      // Tiempo
-      ctx.font = '5.5px monospace';
-      ctx.fillStyle = '#38bdf8';
-      ctx.fillText(entry.playTimeFormatted || '00:00', winX + 112, ry + 8);
-
-      // Muertes
-      const deaths = entry.deaths || 0;
-      ctx.fillStyle = deaths === 0 ? '#4ade80' : deaths <= 2 ? '#fde047' : '#f87171';
-      ctx.fillText(`${deaths} ${deaths === 1 ? 'muerte' : 'muertes'}`, winX + 162, ry + 8);
-
-      // Badge de Rango
-      const rank = entry.rank || 'C';
-      const rankColor = rank === 'S' ? '#fde047' : rank === 'A' ? '#38bdf8' : rank === 'B' ? '#4ade80' : '#f87171';
-      const badgeX = winX + 204;
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      ctx.fillRect(badgeX, ry + 2, 26, 10);
-      ctx.strokeStyle = rankColor;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(badgeX + 0.5, ry + 2.5, 25, 9);
-      ctx.font = 'bold 5.5px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = rankColor;
-      ctx.fillText(rank, badgeX + 13, ry + 7.5);
-
-      // Score
-      ctx.font = 'bold 6px monospace';
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#fde047';
-      ctx.fillText(`${(entry.score || 0).toLocaleString('es-ES')} pts`, winX + winW - 12, ry + 8);
-    });
-
-    // Pie de pantalla: atajos y scroll
-    ctx.font = '5px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#64748b';
-    ctx.fillText('[Tab/1/2] Alternar Global/Local', winX + 8, winY + winH - 6);
-
-    if (list.length > maxVisible) {
-      ctx.textAlign = 'right';
-      ctx.fillText(`Reg. ${scroll + 1}-${Math.min(list.length, scroll + maxVisible)} de ${list.length} · [▲/▼] Scroll`, winX + winW - 8, winY + winH - 6);
+      this.leaderboardView.render(ctx, {
+        forceRender: true,
+        closeLabel: '[Esc] Volver',
+        backdropAlpha: 0.78
+      });
     }
-
-    // Botón interactivo de retorno
-    const btnW = 120;
-    const btnH = 12;
-    const btnX = Math.round(winX + (winW - btnW) / 2);
-    const btnY = winY + winH - 17;
-
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(btnX, btnY, btnW, btnH);
-    ctx.strokeStyle = '#ffd885';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(btnX + 0.5, btnY + 0.5, btnW - 1, btnH - 1);
-
-    ctx.font = 'bold 6px monospace';
-    ctx.fillStyle = '#ffd885';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('◀ VOLVER [Escape / Clic]', btnX + btnW / 2, btnY + btnH / 2);
-
-    ctx.restore();
   }
 
   /**

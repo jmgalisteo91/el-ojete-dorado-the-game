@@ -50,7 +50,8 @@ export default async function handler(req, res) {
 
   // GET: Cargar partida por código
   if (req.method === 'GET') {
-    const { searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const host = (req.headers && req.headers.host) || 'localhost';
+    const { searchParams } = new URL(req.url || '/', `http://${host}`);
     const rawCode = searchParams.get('code') || '';
     const code = rawCode.trim().toUpperCase();
 

@@ -38,6 +38,15 @@ import handleSave from '../api/save.js';
 import { Tilemap } from '../src/world/Tilemap.js';
 import { DialogueBox } from '../src/ui/DialogueBox.js';
 import { NPC } from '../src/entities/NPC.js';
+import { DayNightCycle } from '../src/world/DayNightCycle.js';
+import { RenderPipeline } from '../src/graphics/RenderPipeline.js';
+import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT } from '../src/ui/UILayout.js';
+import { CloudStorage } from '../src/services/CloudStorage.js';
+import { LeaderboardView } from '../src/ui/LeaderboardView.js';
+import { Inventory } from '../src/ui/Inventory.js';
+import { QuestLog } from '../src/core/QuestLog.js';
+import { QuestLogView } from '../src/ui/QuestLogView.js';
+import { CharacterStats } from '../src/ui/CharacterStats.js';
 
 let passed = 0;
 const failures = [];
@@ -323,6 +332,7 @@ function makeMockCtx() {
   const calls = [];
   return {
     calls,
+    canvas: { width: 320, height: 180 },
     save: () => calls.push('save'),
     restore: () => calls.push('restore'),
     beginPath: () => calls.push('beginPath'),
@@ -330,14 +340,23 @@ function makeMockCtx() {
     moveTo: (x, y) => calls.push(`moveTo(${x},${y})`),
     lineTo: (x, y) => calls.push(`lineTo(${x},${y})`),
     arcTo: (x1, y1, x2, y2, r) => calls.push(`arcTo(${x1},${y1},${x2},${y2},${r})`),
+    arc: (...args) => calls.push(['arc', ...args]),
+    ellipse: (...args) => calls.push(['ellipse', ...args]),
     fill: () => calls.push('fill'),
     stroke: () => calls.push('stroke'),
     strokeRect: () => calls.push('strokeRect'),
     fillRect: () => calls.push('fillRect'),
+    clearRect: () => calls.push('clearRect'),
     fillText: (text, x, y) => calls.push(`fillText(${text},${x},${y})`),
     measureText: (text) => ({ width: (text || '').length * 4 }),
     translate: () => calls.push('translate'),
-    scale: () => calls.push('scale')
+    rotate: () => calls.push('rotate'),
+    scale: () => calls.push('scale'),
+    setTransform: () => calls.push('setTransform'),
+    setLineDash: () => calls.push('setLineDash'),
+    drawImage: (...args) => calls.push(['drawImage', ...args]),
+    createLinearGradient: () => ({ addColorStop: () => {} }),
+    createRadialGradient: () => ({ addColorStop: () => {} })
   };
 }
 
@@ -932,6 +951,134 @@ test('syncPendingSaveToCloud sube la partida pendiente a la API en cuanto hay co
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+console.log('Motor Gráfico 2.5D, Safe Layout UI y CloudStorage (v3.5+)');
+
+test('DayNightCycle.getSunState y Entity.renderShadow proyectan sombras pseudo-3D según la hora solar', () => {
+  const dn = new DayNightCycle(320, 180, 720);
+  dn.timeOfDayHours = 9.0; // Mañana: el sol sale por el este -> la sombra apunta al oeste (dx < 0)
+  const morningSun = dn.getSunState();
+  assert.ok(morningSun.dx < 0, 'Por la mañana la sombra debe proyectarse hacia el oeste');
+  assert.equal(morningSun.isDay, true);
+
+  dn.timeOfDayHours = 16.0; // Tarde: el sol al oeste -> la sombra apunta al este (dx > 0)
+  const afternoonSun = dn.getSunState();
+  assert.ok(afternoonSun.dx > 0, 'Por la tarde la sombra debe proyectarse hacia el este');
+
+  const player = new Player({ x: 100, y: 120 });
+  assert.equal(player.sortY, 120 + player.height, 'sortY debe ser igual a y + height');
+
+  const ctx = makeMockCtx();
+  player.renderShadow(ctx, { renderX: 0, renderY: 0 }, afternoonSun);
+  assert.ok(ctx.calls.some((c) => c[0] === 'ellipse'), 'renderShadow debe trazar una elipse traslúcida');
+});
+
+test('RenderPipeline ordena Y-sorted props y entidades por y + height y ejecuta las 4 capas 2.5D', () => {
+  const tm = new Tilemap();
+  tm.loadScene('overworld');
+  const dn = new DayNightCycle(320, 180, 720);
+  const pipeline = new RenderPipeline(320, 180);
+  const player = new Player({ x: 160, y: 160 });
+  const npcNorth = new NPC({ name: 'Norte', x: 160, y: 112, sceneId: 'overworld' });
+  const npcSouth = new NPC({ name: 'Sur', x: 160, y: 192, sceneId: 'overworld' });
+
+  const ctx = makeMockCtx();
+  let groundCallbackRan = false;
+  pipeline.update(0.016);
+  pipeline.render(ctx, {
+    tilemap: tm,
+    camera: { renderX: 80, renderY: 40, viewportWidth: 320, viewportHeight: 180 },
+    dayNight: dn,
+    player,
+    npcs: [npcSouth, npcNorth],
+    animals: [],
+    enemies: [],
+    onGround: () => {
+      groundCallbackRan = true;
+    }
+  });
+
+  assert.equal(groundCallbackRan, true, 'El callback onGround de la Capa 0 debe ejecutarse');
+  assert.ok(pipeline.stats.sorted >= 3, 'El pipeline debe ordenar entidades y props por sortY');
+  assert.equal(pipeline.stats.entities, 3, 'Debe contabilizar las 3 entidades móviles en Capa 1');
+});
+
+test('UILayout centraliza SAFE_WIDTH=308, SAFE_HEIGHT=168 y contenedor modal unificado 290x150', () => {
+  assert.equal(SAFE_WIDTH, 308);
+  assert.equal(SAFE_HEIGHT, 168);
+  assert.equal(MODAL_WIDTH, 290);
+  assert.equal(MODAL_HEIGHT, 150);
+
+  const safe = UILayout.safeRect();
+  assert.deepEqual(safe, { x: 6, y: 6, w: 308, h: 168 });
+
+  const modal = UILayout.modalRect();
+  assert.deepEqual(modal, { x: 15, y: 15, w: 290, h: 150 });
+
+  const ctx = makeMockCtx();
+  const frame = UILayout.drawModalFrame(ctx, { title: 'MODAL TEST', closeLabel: '[Esc] Cerrar' });
+  assert.equal(frame.modal.w, 290);
+  assert.equal(frame.modal.h, 150);
+  assert.ok(frame.content.w > 270 && frame.content.h > 120);
+});
+
+test('Modales modulares (Inventory 2x4 22x22, QuestLogView max 4, CharacterStats y LeaderboardView) renderizan sin desbordar', () => {
+  const ctx = makeMockCtx();
+
+  // 1. Inventory (2 filas x 4 columnas, slots de 22x22 px)
+  const inv = new Inventory(null, 320, 180);
+  assert.equal(inv.visibleSlots, 8);
+  assert.equal(inv.slotSize, 22);
+  inv.addItem({ id: 'bread', name: 'Pan Campesino', description: 'Restaura 2 corazones.', iconIndex: 0, qty: 3 });
+  inv.open();
+  inv.render(ctx, new Player({ x: 0, y: 0 }));
+
+  // 2. QuestLogView (máximo 4 simultáneas visibles)
+  const ql = new QuestLog();
+  const qlv = new QuestLogView(ql, 320, 180);
+  assert.equal(qlv.maxVisibleQuests, 4);
+  qlv.open();
+  qlv.render(ctx);
+
+  // 3. CharacterStats ([Tab] alterna entre stats, achievements y skills)
+  const cs = new CharacterStats(320, 180);
+  cs.open();
+  assert.equal(cs.activeTab, 'stats');
+  cs.cycleTab();
+  assert.equal(cs.activeTab, 'achievements');
+  cs.render(ctx, new Player({ x: 0, y: 0 }), null);
+
+  // 4. LeaderboardView (Top 10 dentro de contenedor 290x150)
+  const lbv = new LeaderboardView(320, 180);
+  lbv.open({ entries: DEFAULT_LEADERBOARD, source: 'cloud' });
+  assert.equal(lbv.isOpen, true);
+  assert.ok(lbv.entries.length > 0);
+  lbv.render(ctx);
+});
+
+test('CloudStorage.sanitizeSaveData protege contra undefined en shieldHP y hasPermission_*', () => {
+  const legacyRaw = {
+    sceneId: 'overworld',
+    playerHasArmor: true
+    // Sin shieldHP ni housePermissions definidos
+  };
+  const clean = CloudStorage.sanitizeSaveData(legacyRaw);
+  assert.ok(clean);
+  assert.equal(clean.shieldHP, 3, 'Si tiene armadura y no viene shieldHP, debe inicializar en 3');
+  assert.equal(clean.armorPoints, 3);
+  assert.equal(clean.hasPermission_elder, false);
+  assert.equal(clean.hasPermission_blacksmith, false);
+  assert.equal(clean.hasPermission_herbalist, false);
+  assert.equal(clean.hasPermission_guard, false);
+  assert.equal(clean.hasPermission_oracle, false);
+  assert.deepEqual(clean.housePermissions, {
+    elder: false,
+    blacksmith: false,
+    herbalist: false,
+    guard: false,
+    oracle: false
+  });
 });
 
 await Promise.all(asyncQueue);

@@ -12,6 +12,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 672,
     playTimeFormatted: '11:12',
     deaths: 0,
+    bytes: 420,
     score: 93280,
     rank: 'S',
     title: 'Arquitecto Supremo del Gran Ojal',
@@ -22,6 +23,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 835,
     playTimeFormatted: '13:55',
     deaths: 1,
+    bytes: 315,
     score: 86650,
     rank: 'A',
     title: 'Senior Lead de Valleverde',
@@ -32,6 +34,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 1080,
     playTimeFormatted: '18:00',
     deaths: 2,
+    bytes: 280,
     score: 79200,
     rank: 'A',
     title: 'Senior Lead de Valleverde',
@@ -42,6 +45,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 1420,
     playTimeFormatted: '23:40',
     deaths: 3,
+    bytes: 195,
     score: 70800,
     rank: 'A',
     title: 'Senior Lead de Valleverde',
@@ -52,6 +56,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 1850,
     playTimeFormatted: '30:50',
     deaths: 5,
+    bytes: 140,
     score: 56500,
     rank: 'B',
     title: 'Programador Competente',
@@ -151,6 +156,7 @@ export default async function handler(req, res) {
 
     const playTimeSeconds = Math.max(10, Math.round(Number(body.playTimeSeconds) || 0));
     const deaths = Math.max(0, Math.floor(Number(body.deaths) || 0));
+    const bytes = Math.max(0, Math.floor(Number(body.bytes ?? body.coins) || 0));
 
     // Recalcular puntuación real en el servidor (anti-trampas)
     const baseScore = 100000;
@@ -176,6 +182,7 @@ export default async function handler(req, res) {
       playTimeSeconds,
       playTimeFormatted: formatPlayTime(playTimeSeconds),
       deaths,
+      bytes,
       score: finalScore,
       rank,
       title,

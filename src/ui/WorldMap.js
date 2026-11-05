@@ -10,6 +10,8 @@
  * Soporta estados activos/despejados de los jefes, marcador de posición '★ TÚ' y estética retro pixel art.
  */
 
+import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
+
 export class WorldMap {
   constructor(menuSystem = null) {
     this.menuSystem = menuSystem;
@@ -909,58 +911,53 @@ export class WorldMap {
   }
 
   /**
-   * Dibuja el encabezado superior y la barra inferior con leyenda y controles.
+   * Dibuja el encabezado superior con [Esc] Cerrar y la barra inferior de ubicación sin textos redundantes.
    */
   _drawHeaderAndFooter(ctx, W, H, currentSceneId) {
     const cx = W / 2;
     const locationName = this._lastLocationName || 'Aldea de Valleverde';
 
-    // 1. Encabezado superior
-    ctx.fillStyle = '#ffd885';
-    ctx.font = 'bold 7px monospace';
-    ctx.textAlign = 'center';
+    // 1. Encabezado superior limpio con [Esc] Cerrar único
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.92)';
+    ctx.fillRect(6, 4, W - 12, 12);
+    ctx.strokeStyle = UI_COLORS.borderOuter;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(6.5, 4.5, W - 13, 11);
+
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.font = `bold 5px ${UI_FONT}`;
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText('🗺 REINO DEL GRAN OJAL · RUTA DE PROGRESIÓN 🗺', cx, 6);
+    ctx.fillText('🗺 CARTOGRAFÍA DEL REINO DEL GRAN OJAL', 11, 7.5);
 
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#94a3b8';
+    ctx.font = `bold 4.5px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.textSecondary;
     ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Cerrar', W - 10, 6);
+    ctx.fillText('[Esc] Cerrar', W - 11, 7.5);
 
-    // 2. Barra inferior con leyenda limpia y controles
+    // 2. Barra inferior de estado (solo ubicación y leyenda cartográfica, sin controles redundantes)
     const footerW = W - 24;
-    const footerH = 12;
+    const footerH = 11;
     const footerX = 12;
     const footerY = H - 15;
 
-    ctx.fillStyle = 'rgba(18, 14, 10, 0.92)';
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.92)';
     ctx.fillRect(footerX, footerY, footerW, footerH);
-    ctx.strokeStyle = 'rgba(214, 169, 88, 0.8)';
+    ctx.strokeStyle = 'rgba(214, 169, 88, 0.75)';
     ctx.lineWidth = 0.8;
     ctx.strokeRect(footerX + 0.5, footerY + 0.5, footerW - 1, footerH - 1);
 
-    // Lado izquierdo: Ubicación
-    ctx.fillStyle = '#ffd166';
-    ctx.font = 'bold 5.5px monospace';
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.font = `bold 4.5px ${UI_FONT}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`UBICACIÓN: ${locationName}`, footerX + 5, footerY + footerH / 2);
+    ctx.fillText(UILayout.fitText(ctx, `UBICACIÓN: ${locationName}`, 185), footerX + 5, footerY + footerH / 2);
 
-    // Centro: Leyenda limpia
-    ctx.fillStyle = '#ef4444';
-    ctx.fillText('☠', footerX + 172, footerY + footerH / 2);
-    ctx.fillStyle = '#cfbda0';
-    ctx.fillText('Boss', footerX + 178, footerY + footerH / 2);
+    ctx.fillStyle = UI_COLORS.crimson;
+    ctx.fillText('☠ Amenaza', footerX + 200, footerY + footerH / 2);
 
-    ctx.fillStyle = '#10b981';
-    ctx.fillText('✓', footerX + 198, footerY + footerH / 2);
-    ctx.fillStyle = '#cfbda0';
-    ctx.fillText('Despejado', footerX + 204, footerY + footerH / 2);
-
-    // Lado derecho: Atajo de salida
-    ctx.fillStyle = '#e8dcc4';
-    ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Cerrar', footerX + footerW - 5, footerY + footerH / 2);
+    ctx.fillStyle = UI_COLORS.emerald;
+    ctx.fillText('✓ Despejado', footerX + 248, footerY + footerH / 2);
   }
 }
 

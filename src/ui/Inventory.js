@@ -1,10 +1,12 @@
 /**
  * Inventory.js - Sistema de Inventario y Mochila de Objetos Consumibles ('El Ojete Dorado')
- * 
- * Propósito exclusivo: Almacenar, inspeccionar, usar y descartar objetos y consumibles
- * (Pan, Café Compilado, Pociones, Truchas, Llaves, etc.).
- * No incluye habilidades permanentes ni métricas de robotización.
+ *
+ * Rediseñado bajo UILayout (Safe Layout 290×150 px):
+ * - Izquierda: Rejilla fija de 2 filas × 4 columnas con slots de 22×22 px y paginación estricta.
+ * - Panel lateral derecho: Icono, nombre, tipo de objeto, cantidad y descripción con wrapText estricto.
  */
+
+import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
 
 const KEY_OR_QUEST_ITEM_IDS = new Set([
   'dawn_armor',
@@ -18,6 +20,14 @@ const KEY_OR_QUEST_ITEM_IDS = new Set([
   'river_trout'
 ]);
 
+const CONSUMABLE_ITEM_IDS = new Set([
+  'bread',
+  'coffee',
+  'armor_potion',
+  'golden_apple',
+  'river_trout'
+]);
+
 export class Inventory {
   constructor(itemsSheet, viewportWidth = 320, viewportHeight = 180) {
     this.itemsSheet = itemsSheet;
@@ -26,7 +36,8 @@ export class Inventory {
 
     this.isOpen = false;
     this.maxSlots = 16;
-    this.visibleSlots = 8;
+    this.visibleSlots = 8; // 2 filas x 4 columnas por página
+    this.slotSize = 22;    // 22x22 px exactos por slot
     this.items = [];
     this.selectedIndex = 0;
     this.statusMessage = '';
@@ -95,8 +106,14 @@ export class Inventory {
   }
 
   /**
+   * Devuelve el primer consumible activo para la ranura rápida (Quick-Slot [R]/[1])
+   */
+  getFirstConsumable() {
+    return this.items.find((it) => CONSUMABLE_ITEM_IDS.has(it.id) && it.qty > 0) || null;
+  }
+
+  /**
    * Descarta 1 unidad del objeto seleccionado.
-   * Retorna una copia del objeto descartado para poder reaparecerlo en el suelo si se desea.
    */
   dropSelectedItem() {
     const item = this.getSelectedItem();
@@ -127,11 +144,29 @@ export class Inventory {
   }
 
   /**
-   * Navegación por la cuadrícula de 4 columnas del inventario (con páginas de 2 filas visibles).
+   * Clasifica el tipo semántico del objeto para el panel de detalles
+   */
+  getItemCategory(item) {
+    if (!item || !item.id) return { label: 'VACÍO', color: UI_COLORS.textMuted };
+    if (item.id === 'dawn_armor' || item.id === 'dawn_sword' || item.id === 'item_abyssal_pointer') {
+      return { label: 'RELIQUIA SAGRADA', color: UI_COLORS.gold };
+    }
+    if (CONSUMABLE_ITEM_IDS.has(item.id)) {
+      return { label: 'CONSUMIBLE [R]', color: UI_COLORS.emerald };
+    }
+    if (KEY_OR_QUEST_ITEM_IDS.has(item.id)) {
+      return { label: 'OBJETO CLAVE', color: UI_COLORS.cyan };
+    }
+    return { label: 'MATERIAL / BOTÍN', color: UI_COLORS.purple };
+  }
+
+  /**
+   * Navegación por la cuadrícula de 4 columnas × 2 filas por página
    */
   moveSelection(dir) {
     const cols = 4;
-    const totalSlots = Math.max(this.visibleSlots, Math.ceil(Math.max(this.items.length, this.selectedIndex + 1) / cols) * cols);
+    const totalPages = Math.max(1, Math.ceil(Math.max(this.items.length, this.selectedIndex + 1) / this.visibleSlots));
+    const totalSlots = totalPages * this.visibleSlots;
     const rows = Math.max(2, Math.ceil(totalSlots / cols));
     const col = this.selectedIndex % cols;
     const row = Math.floor(this.selectedIndex / cols);
@@ -157,171 +192,238 @@ export class Inventory {
   }
 
   /**
-   * Renderiza la ventana modal de la Mochila de Consumibles y Objetos.
-   * @param {CanvasRenderingContext2D} ctx Contexto de dibujo
-   * @param {Player} player Instancia del jugador
+   * Renderiza el modal unificado de 290×150 px de la Mochila.
+   * Izquierda: Rejilla 2 filas × 4 columnas (slots de 22×22 px).
+   * Derecha: Panel de detalle con icono, nombre, tipo y descripción con wrapText estricto.
    */
   render(ctx, player = null) {
     if (!this.isOpen) return;
 
-    const winW = 246;
-    const winH = 154;
-    const winX = Math.round((this.viewportWidth - winW) / 2);
-    const winY = Math.round((this.viewportHeight - winH) / 2);
+    const totalItems = this.items.length;
+    const currentPage = Math.floor(this.selectedIndex / this.visibleSlots);
+    const totalPages = Math.max(1, Math.ceil(Math.max(totalItems, this.selectedIndex + 1) / this.visibleSlots));
+
+    const frame = UILayout.drawModalFrame(ctx, {
+      title: 'MOCHILA E INVENTARIO',
+      icon: '🎒',
+      badge: `${totalItems}/${this.maxSlots} SLOTS`,
+      closeLabel: '[Esc] Cerrar'
+    });
+
+    const { content } = frame;
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-
-    // Fondo oscurecido
-    ctx.fillStyle = 'rgba(6, 8, 14, 0.76)';
-    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
-
-    // Marco exterior retro
-    ctx.fillStyle = '#0f1423';
-    ctx.fillRect(winX, winY, winW, winH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
-    ctx.fillStyle = '#161e31';
-    ctx.fillRect(winX + 2.5, winY + 2.5, winW - 5, winH - 5);
-
-    // Cabecera
-    ctx.font = 'bold 7.5px monospace';
-    ctx.fillStyle = '#ffd885';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    ctx.fillText('🎒 MOCHILA DE CONSUMIBLES & OBJETOS', winX + 8, winY + 6);
-
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Cerrar', winX + winW - 8, winY + 7);
 
     // =========================================================================
-    // Cuadrícula de 8 ranuras visibles (4 columnas x 2 filas, con paginación automática)
+    // COLUMNA IZQUIERDA: Rejilla fija 2 filas × 4 columnas (slots de 22×22 px)
     // =========================================================================
+    const leftW = 112;
+    const leftRect = {
+      x: content.x,
+      y: content.y,
+      w: leftW,
+      h: content.h
+    };
+
+    UILayout.drawPanel(ctx, leftRect, {
+      bg: UI_COLORS.panelBg,
+      border: UI_COLORS.borderInner,
+      headerText: `RANURAS (PÁG ${currentPage + 1}/${totalPages})`
+    });
+
     const cols = 4;
-    const slotW = 53;
-    const slotH = 28;
-    const gapX = 6;
+    const rows = 2;
+    const slotSize = 22; // 22×22 px estrictos según especificación
+    const gapX = 4;
     const gapY = 5;
-    const startX = winX + 8;
-    const startY = winY + 20;
+    const gridW = cols * slotSize + (cols - 1) * gapX; // 100 px
+    const gridStartX = leftRect.x + Math.floor((leftRect.w - gridW) / 2);
+    const gridStartY = leftRect.y + 16;
 
-    const selectedRow = Math.floor(this.selectedIndex / cols);
-    const startRow = selectedRow >= 2 ? selectedRow - 1 : 0;
-    const firstSlotIndex = startRow * cols;
+    const firstSlotIndex = currentPage * this.visibleSlots;
+    const quickItem = this.getFirstConsumable();
 
-    for (let v = 0; v < this.visibleSlots; v++) {
-      const i = firstSlotIndex + v;
-      const col = v % cols;
-      const row = Math.floor(v / cols);
-      const sx = startX + col * (slotW + gapX);
-      const sy = startY + row * (slotH + gapY);
-      const isSelected = i === this.selectedIndex;
-      const item = this.items[i];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const v = r * cols + c;
+        const slotIndex = firstSlotIndex + v;
+        const sx = gridStartX + c * (slotSize + gapX);
+        const sy = gridStartY + r * (slotSize + gapY);
+        const isSelected = slotIndex === this.selectedIndex;
+        const item = this.items[slotIndex];
 
-      // Fondo de la ranura
-      ctx.fillStyle = isSelected ? '#ffd885' : '#334155';
-      ctx.fillRect(sx, sy, slotW, slotH);
-      ctx.fillStyle = isSelected ? '#1e293b' : '#0f172a';
-      ctx.fillRect(sx + 1, sy + 1, slotW - 2, slotH - 2);
+        // Fondo y bisel de ranura 22×22 px
+        ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+        ctx.fillRect(sx, sy, slotSize, slotSize);
 
-      if (item) {
-        const srcScale = this.itemsSheet.height >= 64 ? 4 : 1;
-        ctx.drawImage(
-          this.itemsSheet,
-          item.iconIndex * 16 * srcScale,
-          0,
-          16 * srcScale,
-          16 * srcScale,
-          sx + 3,
-          sy + 6,
-          16,
-          16
-        );
+        ctx.strokeStyle = isSelected ? UI_COLORS.slotSelectedBorder : UI_COLORS.slotBorder;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx + 0.5, sy + 0.5, slotSize - 1, slotSize - 1);
 
-        ctx.font = '6px monospace';
-        ctx.fillStyle = '#f1f5f9';
-        ctx.textAlign = 'left';
-        const shortName = item.name.length > 6 ? `${item.name.slice(0, 5)}..` : item.name;
-        ctx.fillText(shortName, sx + 21, sy + 6);
+        if (item) {
+          // Dibujar sprite 16x16 centrado dentro del slot de 22x22
+          UILayout.drawItemIcon(ctx, this.itemsSheet, item.iconIndex, sx + 3, sy + 2, 16);
 
-        ctx.fillStyle = '#ffd885';
-        ctx.fillText(`x${item.qty}`, sx + 21, sy + 15);
-      } else {
-        ctx.font = '5.5px monospace';
-        ctx.fillStyle = '#475569';
-        ctx.textAlign = 'center';
-        ctx.fillText(`[Slot ${i + 1}]`, sx + slotW / 2, sy + 11);
+          // Etiqueta de cantidad en esquina inferior derecha
+          const qtyStr = `x${item.qty}`;
+          ctx.font = `bold 4px ${UI_FONT}`;
+          const qw = ctx.measureText(qtyStr).width;
+          ctx.fillStyle = 'rgba(10, 14, 23, 0.86)';
+          ctx.fillRect(sx + slotSize - qw - 3, sy + slotSize - 7, qw + 2, 6);
+          ctx.fillStyle = UI_COLORS.gold;
+          ctx.fillText(qtyStr, sx + slotSize - qw - 2, sy + slotSize - 6);
+
+          // Indicador discreto si es el Quick-Slot [R] activo
+          if (quickItem && quickItem.id === item.id) {
+            ctx.fillStyle = UI_COLORS.emerald;
+            ctx.fillRect(sx + 1, sy + 1, 5, 5);
+            ctx.font = `bold 3.5px ${UI_FONT}`;
+            ctx.fillStyle = '#06101e';
+            ctx.fillText('R', sx + 2, sy + 1.5);
+          }
+        } else {
+          // Ranura vacía
+          ctx.font = `4px ${UI_FONT}`;
+          ctx.fillStyle = 'rgba(100, 116, 139, 0.45)';
+          const numStr = String(slotIndex + 1);
+          const nw = ctx.measureText(numStr).width;
+          ctx.fillText(numStr, sx + Math.floor((slotSize - nw) / 2), sy + 9);
+        }
       }
     }
 
-    // =========================================================================
-    // Panel de detalles del objeto seleccionado
-    // =========================================================================
-    const detailX = winX + 8;
-    const detailY = winY + 86;
-    const detailW = winW - 16;
-    const detailH = 50;
+    // Resumen compacto inferior izquierdo (Bytes + Ranura Rápida [R])
+    const summaryY = gridStartY + rows * (slotSize + gapY) + 4;
+    ctx.strokeStyle = 'rgba(51, 65, 85, 0.6)';
+    ctx.beginPath();
+    ctx.moveTo(leftRect.x + 5, summaryY);
+    ctx.lineTo(leftRect.x + leftRect.w - 5, summaryY);
+    ctx.stroke();
 
-    ctx.fillStyle = '#0a0f1d';
-    ctx.fillRect(detailX, detailY, detailW, detailH);
-    ctx.strokeStyle = '#2b3652';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(detailX + 0.5, detailY + 0.5, detailW - 1, detailH - 1);
+    const coins = player ? (player.coins ?? 0) : 0;
+    ctx.font = `bold 4.5px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.fillText(`◈ BYTES: ${coins}`, leftRect.x + 6, summaryY + 5);
+
+    ctx.font = `4px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.textSecondary;
+    const quickText = quickItem
+      ? `[R] Rápido: ${quickItem.name} (x${quickItem.qty})`
+      : '[R] Rápido: Sin consumible';
+    ctx.fillText(UILayout.fitText(ctx, quickText, leftRect.w - 12), leftRect.x + 6, summaryY + 14);
+
+    if (totalPages > 1) {
+      UILayout.drawPager(ctx, leftRect.x + leftRect.w - 28, summaryY + 4, currentPage + 1, totalPages);
+    }
+
+    // =========================================================================
+    // PANEL LATERAL DERECHO: Icono, Nombre, Tipo y Descripción con wrapText
+    // =========================================================================
+    const rightRect = {
+      x: leftRect.x + leftRect.w + 4,
+      y: content.y,
+      w: content.w - leftRect.w - 4,
+      h: content.h
+    };
+
+    UILayout.drawPanel(ctx, rightRect, {
+      bg: UI_COLORS.panelBgAlt,
+      border: UI_COLORS.borderInner,
+      headerText: 'INSPECCIÓN DEL OBJETO'
+    });
 
     const selected = this.getSelectedItem();
-    ctx.textAlign = 'left';
+    const padX = rightRect.x + 6;
+    const innerW = rightRect.w - 12;
 
     if (this.statusMessage) {
-      ctx.font = 'bold 6.5px monospace';
-      ctx.fillStyle = '#86efac';
-      ctx.fillText(this.statusMessage, detailX + 6, detailY + 6);
+      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.emerald;
+      const msgLines = UILayout.wrapText(ctx, this.statusMessage, innerW);
+      msgLines.slice(0, 3).forEach((line, idx) => {
+        ctx.fillText(line, padX, rightRect.y + 18 + idx * 8);
+      });
     } else if (selected) {
-      ctx.font = 'bold 7px monospace';
-      ctx.fillStyle = '#ffd885';
-      ctx.fillText(`${selected.name}  (x${selected.qty})`, detailX + 6, detailY + 5.5);
+      // Caja de icono 24×24
+      const iconBoxX = padX;
+      const iconBoxY = rightRect.y + 16;
+      ctx.fillStyle = UI_COLORS.slotBg;
+      ctx.fillRect(iconBoxX, iconBoxY, 24, 24);
+      ctx.strokeStyle = UI_COLORS.goldDim;
+      ctx.strokeRect(iconBoxX + 0.5, iconBoxY + 0.5, 23, 23);
 
-      ctx.font = '6px monospace';
-      ctx.fillStyle = '#cbd5e1';
-      const lines = this._wrapText(ctx, selected.description, detailW - 12);
-      lines.slice(0, 2).forEach((l, idx) => {
-        ctx.fillText(l, detailX + 6, detailY + 15 + idx * 8);
+      UILayout.drawItemIcon(ctx, this.itemsSheet, selected.iconIndex, iconBoxX + 4, iconBoxY + 4, 16);
+
+      // Nombre del objeto
+      const titleX = iconBoxX + 29;
+      const titleMaxW = rightRect.w - 39;
+      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.fillText(UILayout.fitText(ctx, selected.name, titleMaxW), titleX, iconBoxY + 1);
+
+      // Tipo y cantidad
+      const category = this.getItemCategory(selected);
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.fillStyle = category.color;
+      ctx.fillText(category.label, titleX, iconBoxY + 9);
+
+      ctx.font = `4px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textSecondary;
+      ctx.fillText(`Cantidad: x${selected.qty}`, titleX, iconBoxY + 16);
+
+      // Separador
+      const sepY = iconBoxY + 28;
+      ctx.strokeStyle = 'rgba(51, 65, 85, 0.7)';
+      ctx.beginPath();
+      ctx.moveTo(padX, sepY);
+      ctx.lineTo(padX + innerW, sepY);
+      ctx.stroke();
+
+      // Descripción con wrapText estricto (máximo 5 líneas dentro de la caja)
+      ctx.font = `4.3px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textPrimary;
+      const descLines = UILayout.wrapText(ctx, selected.description || 'Sin descripción.', innerW);
+      descLines.slice(0, 5).forEach((line, idx) => {
+        ctx.fillText(line, padX, sepY + 5 + idx * 7);
       });
 
-      // Botones de acción disponibles
-      ctx.fillStyle = '#38bdf8';
-      ctx.font = 'bold 6px monospace';
-      ctx.fillText('▶ [E] Usar Objeto', detailX + 6, detailY + 36);
+      // Acciones contextuales en la base del panel derecho
+      const actY = rightRect.y + rightRect.h - 15;
+      ctx.fillStyle = 'rgba(20, 29, 47, 0.92)';
+      ctx.fillRect(padX, actY, innerW, 11);
+      ctx.strokeStyle = UI_COLORS.borderInner;
+      ctx.strokeRect(padX + 0.5, actY + 0.5, innerW - 1, 10);
 
-      ctx.fillStyle = '#f87171';
-      ctx.fillText('✕ [X] Tirar al Suelo', detailX + 110, detailY + 36);
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.cyan;
+      ctx.fillText('[E] Usar / Equipar', padX + 4, actY + 3.5);
+
+      ctx.fillStyle = UI_COLORS.crimson;
+      ctx.fillText('[X] Descartar', padX + innerW - 48, actY + 3.5);
     } else {
-      ctx.font = '6px monospace';
-      ctx.fillStyle = '#64748b';
-      ctx.fillText('Ranura vacía.', detailX + 6, detailY + 8);
-      ctx.fillText('Explora Valleverde y los cofres para conseguir comida y pociones.', detailX + 6, detailY + 18);
+      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textMuted;
+      ctx.fillText('RANURA VACÍA', padX, rightRect.y + 20);
+
+      ctx.font = `4.2px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textSecondary;
+      const emptyLines = UILayout.wrapText(
+        ctx,
+        'Selecciona una ranura con objetos para inspeccionar sus propiedades, consumir provisiones o equipar reliquias.',
+        innerW
+      );
+      emptyLines.slice(0, 5).forEach((line, idx) => {
+        ctx.fillText(line, padX, rightRect.y + 32 + idx * 7.5);
+      });
     }
 
     ctx.restore();
   }
 
   _wrapText(ctx, text, maxWidth) {
-    if (!text) return [];
-    const words = text.split(' ');
-    const lines = [];
-    let currentLine = '';
-
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    }
-    if (currentLine) lines.push(currentLine);
-    return lines;
+    return UILayout.wrapText(ctx, text, maxWidth);
   }
 }

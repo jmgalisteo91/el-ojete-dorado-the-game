@@ -50,6 +50,52 @@ export class Entity {
     return Math.hypot(this.centerX - other.centerX, this.centerY - other.centerY);
   }
 
+  /** Coordenadas de los pies (centro inferior de la hitbox) en el mundo. */
+  get feetX() {
+    return this.x + this.boundingBox.offsetX + this.boundingBox.width / 2;
+  }
+
+  get feetY() {
+    return this.y + this.boundingBox.offsetY + this.boundingBox.height;
+  }
+
+  /**
+   * Clave de ordenación Y para el renderizado 2.5D: borde inferior del sprite (y + height).
+   * Mayor valor → más cerca del espectador → se dibuja después.
+   */
+  get sortY() {
+    return this.y + this.height;
+  }
+
+  /**
+   * Sombra proyectada pseudo-3D: elipse traslúcida en el suelo bajo los pies, cuya longitud,
+   * dirección e inclinación dependen del reloj solar (getSunState).
+   */
+  renderShadow(ctx, camera, sun) {
+    if (this.dead || this.hideShadow) return;
+
+    const stretch = sun ? sun.length : 1;
+    const dx = sun ? sun.dx : 0;
+    const dy = sun ? sun.dy : 0.18;
+    const alphaScale = sun ? sun.alphaScale : 1;
+
+    const baseRx = this.boundingBox.width * 0.62 + 1;
+    const baseRy = baseRx * 0.38;
+    const rx = baseRx * (1 + 0.35 * stretch * Math.abs(dx));
+    const ry = baseRy * (1 + 0.12 * stretch);
+    const cx = this.feetX - camera.renderX + dx * baseRx * 0.45 * stretch;
+    const cy = this.feetY - camera.renderY - 1 + dy * stretch * 1.2;
+    const tilt = dx * 0.22;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alphaScale));
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(Math.round(cx), Math.round(cy), rx, ry, tilt, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   update(dt) {
     if (this.animator) {
       this.animator.update(dt, this.direction, this.isMoving);

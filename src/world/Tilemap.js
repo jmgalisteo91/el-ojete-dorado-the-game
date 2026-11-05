@@ -2,6 +2,12 @@ import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=7';
 import { SpeechBubble, renderFloatingBadge } from '../ui/SpeechBubble.js?v=7';
 
 /**
+ * Tiles de la CAPA 2 (estructuras elevadas) del pipeline 2.5D: se dibujan siempre por encima
+ * de las entidades (copas de árboles y tejados).
+ */
+const OVERHEAD_TILE_IDS = new Set([TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE]);
+
+/**
  * Tilemap multicapa con soporte para:
  * - Primer Escenario: Las Ruinas del Despertar ('first_stage' 36x24 tiles) donde el jugador consigue su Armadura y primera Espada
  * - Mundo exterior del pueblo (Overworld 36x24 tiles)
@@ -16,6 +22,9 @@ export class Tilemap {
 
     this.animTimer = 0;
     this.animFrame = 0;
+    this.waterClock = 0;
+    this._propPool = [];
+    this.windowLights = [];
 
     // Estado del puente de Valleverde y del portal del Primer Escenario
     this.bridgeOpen = false;
@@ -136,6 +145,33 @@ export class Tilemap {
     this.layers = scene.layers;
     this.lightSources = scene.lightSources;
     this.sceneTitle = scene.title;
+
+    // Luces de ventanas (se encienden al anochecer): se calculan una vez por escena y se cachean
+    if (!scene.windowLights) {
+      scene.windowLights = this._computeWindowLights(scene);
+    }
+    this.windowLights = scene.windowLights;
+  }
+
+  /** Busca los tiles de ventana de la escena y genera una luz ámbar por cada uno. */
+  _computeWindowLights(scene) {
+    const lights = [];
+    const deco = scene.layers.decoration;
+    for (let r = 0; r < scene.rows; r++) {
+      for (let c = 0; c < scene.cols; c++) {
+        if (deco[r][c] === TILES.WALL_WINDOW) {
+          lights.push({
+            x: c * this.tileSize + 8,
+            y: r * this.tileSize + 9,
+            radius: 26,
+            intensity: 0.8,
+            glow: 'amber',
+            kind: 'window'
+          });
+        }
+      }
+    }
+    return lights;
   }
 
   isInterior() {
@@ -166,6 +202,7 @@ export class Tilemap {
 
   update(dt, currentHour = 12) {
     this.animTimer += dt;
+    this.waterClock += dt;
     if (this.animTimer >= 0.45) {
       this.animTimer -= 0.45;
       this.animFrame = (this.animFrame + 1) % 2;
@@ -821,12 +858,6 @@ export class Tilemap {
           });
         } else if (localC === 1 || localC === width - 2) {
           setDeco(c, wallRow, TILES.WALL_WINDOW, true);
-          lightSources.push({
-            x: c * this.tileSize + 8,
-            y: wallRow * this.tileSize + 8,
-            radius: 28,
-            intensity: 0.7
-          });
         } else {
           setDeco(c, wallRow, TILES.WALL_WOOD, true);
         }
@@ -1864,22 +1895,28 @@ export class Tilemap {
     };
   }
 
-  render(ctx, camera, enemies = [], player = null) {
+  /** Rango de tiles visibles (con 1 tile de margen para las copas/tejados que sobresalen). */
+  _visibleTileRange(camera) {
     const camX = camera.renderX;
     const camY = camera.renderY;
+    return {
+      startCol: Math.max(0, Math.floor(camX / this.tileSize)),
+      endCol: Math.min(this.cols - 1, Math.ceil((camX + camera.viewportWidth) / this.tileSize)),
+      startRow: Math.max(0, Math.floor(camY / this.tileSize)),
+      endRow: Math.min(this.rows - 1, Math.ceil((camY + camera.viewportHeight) / this.tileSize))
+    };
+  }
 
-    const startCol = Math.max(0, Math.floor(camX / this.tileSize));
-    const endCol = Math.min(
-      this.cols - 1,
-      Math.ceil((camX + camera.viewportWidth) / this.tileSize)
-    );
-    const startRow = Math.max(0, Math.floor(camY / this.tileSize));
-    const endRow = Math.min(
-      this.rows - 1,
-      Math.ceil((camY + camera.viewportHeight) / this.tileSize)
-    );
-
-    const { ground, decoration } = this.layers;
+  /**
+   * CAPA 0 · Suelo: hierba, caminos, baldosas, alfombras y agua con ondulación sinusoidal sutil
+   * (Río Alba). Solo se dibujan aquí las decoraciones planas (flores, alfombras, felpudos...).
+   * Los obstáculos sólidos van a la capa 1 (Y-sorted) y las copas/tejados a la capa 2.
+   */
+  renderGround(ctx, camera) {
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const { startCol, endCol, startRow, endRow } = this._visibleTileRange(camera);
+    const { ground, decoration, collision } = this.layers;
 
     for (let r = startRow; r <= endRow; r++) {
       for (let c = startCol; c <= endCol; c++) {
@@ -1887,29 +1924,176 @@ export class Tilemap {
         const screenY = r * this.tileSize - camY;
 
         let groundTile = ground[r][c];
+        const isWater = groundTile === TILES.WATER_1 || groundTile === TILES.WATER_2;
         if (groundTile === TILES.WATER_1 && this.animFrame === 1) {
           groundTile = TILES.WATER_2;
         }
         this._drawTile(ctx, groundTile, screenX, screenY);
+        if (isWater) {
+          this._drawWaterRipple(ctx, screenX, screenY, c, r);
+        }
 
         let decoTile = decoration[r][c];
-        if (decoTile !== -1) {
-          if (decoTile === TILES.FLOWERS_1 && this.animFrame === 1) {
-            decoTile = TILES.FLOWERS_2;
+        if (decoTile === -1 || decoTile === undefined || decoTile === null) continue;
+        if (OVERHEAD_TILE_IDS.has(decoTile) || collision[r][c] === 1) continue;
+
+        if (decoTile === TILES.FLOWERS_1 && this.animFrame === 1) {
+          decoTile = TILES.FLOWERS_2;
+        }
+        this._drawTile(ctx, decoTile, screenX, screenY);
+      }
+    }
+
+    // Elementos de suelo de los minijuegos (interruptores, barrera de fuego, indicador de pila, portal)
+    if (this.currentSceneId === 'armor_temple') {
+      this.renderArmorPuzzle(ctx, camera, false);
+    } else if (this.currentSceneId === 'sword_temple') {
+      this.renderSwordPuzzle(ctx, camera, false);
+    }
+  }
+
+  /** Ondulación del agua: dos destellos horizontales por tile que fluyen con una onda senoidal. */
+  _drawWaterRipple(ctx, screenX, screenY, col, row) {
+    const t = this.waterClock;
+    for (let k = 0; k < 2; k++) {
+      const wobble = Math.sin(t * 1.3 + (col + k * 3) * 0.8 + row * 0.35) * 1.5;
+      const localY = Math.round(3 + k * 8 + wobble);
+      const phase = Math.sin(t * 0.9 + row * 1.3 + k * 2.1) * 0.5 + 0.5;
+      const localX = Math.round(phase * 8);
+      ctx.fillStyle = k === 0 ? 'rgba(255, 255, 255, 0.16)' : 'rgba(180, 225, 255, 0.10)';
+      ctx.fillRect(Math.round(screenX) + localX, Math.round(screenY) + localY, 7, 1);
+    }
+    // Sombreado alterno muy tenue para sugerir profundidad
+    const shade = 0.04 + (Math.sin(t * 0.7 + col * 0.5 - row * 0.9) * 0.5 + 0.5) * 0.04;
+    ctx.fillStyle = `rgba(8, 24, 64, ${shade.toFixed(3)})`;
+    ctx.fillRect(Math.round(screenX), Math.round(screenY), this.tileSize, this.tileSize);
+  }
+
+  /**
+   * CAPA 1 · Obstáculos Y-sorted: recoge en `out` los tiles sólidos visibles (troncos, muros, cajas,
+   * mobiliario, monolitos...) como entradas ordenables por `sortY` = borde inferior del tile.
+   * Las entradas se reutilizan entre fotogramas (pool) para no generar basura.
+   * @param {Camera2D} camera
+   * @param {Array} out lista a la que se añaden los props (se mezcla con las entidades)
+   */
+  collectYSortedProps(camera, out) {
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const { startCol, endCol, startRow, endRow } = this._visibleTileRange(camera);
+    const { decoration, collision } = this.layers;
+    let used = 0;
+
+    const acquire = () => {
+      let p = this._propPool[used];
+      if (!p) {
+        p = { isTileProp: true, tileId: 0, sx: 0, sy: 0, sortY: 0, puzzle: null, mono: null };
+        this._propPool[used] = p;
+      }
+      used++;
+      return p;
+    };
+
+    for (let r = startRow; r <= endRow; r++) {
+      for (let c = startCol; c <= endCol; c++) {
+        const decoTile = decoration[r][c];
+        if (decoTile === -1 || decoTile === undefined || decoTile === null) continue;
+        if (OVERHEAD_TILE_IDS.has(decoTile) || collision[r][c] !== 1) continue;
+
+        const p = acquire();
+        p.tileId = decoTile;
+        p.sx = c * this.tileSize - camX;
+        p.sy = r * this.tileSize - camY;
+        p.sortY = (r + 1) * this.tileSize;
+        p.puzzle = null;
+        p.mono = null;
+        out.push(p);
+      }
+    }
+
+    // Monolitos de los templos: obeliscos altos que ocluyen al jugador según su posición Y
+    let monoliths = null;
+    let puzzleKind = null;
+    if (this.currentSceneId === 'armor_temple' && this.armorPuzzle.monoliths) {
+      monoliths = this.armorPuzzle.monoliths;
+      puzzleKind = 'armor';
+    } else if (this.currentSceneId === 'sword_temple' && this.swordPuzzle.monoliths) {
+      monoliths = this.swordPuzzle.monoliths;
+      puzzleKind = 'sword';
+    }
+    if (monoliths) {
+      for (const mono of Object.values(monoliths)) {
+        const p = acquire();
+        p.tileId = -1;
+        p.sx = 0;
+        p.sy = 0;
+        p.sortY = (mono.row + 1) * this.tileSize;
+        p.puzzle = puzzleKind;
+        p.mono = mono;
+        out.push(p);
+      }
+    }
+  }
+
+  /** Dibuja una entrada devuelta por collectYSortedProps(). */
+  drawProp(ctx, camera, prop) {
+    if (prop.puzzle === 'armor') {
+      this.drawArmorMonolith(ctx, camera, prop.mono);
+    } else if (prop.puzzle === 'sword') {
+      this.drawSwordMonolith(ctx, camera, prop.mono);
+    } else {
+      this._drawTile(ctx, prop.tileId, prop.sx, prop.sy);
+    }
+  }
+
+  /**
+   * CAPA 2 · Estructuras elevadas: copas de árboles, tejados (con sombra de alero sobre el muro) y
+   * carteles de jefes/mazmorras. Se dibuja SIEMPRE por encima de jugador, NPCs y enemigos.
+   */
+  renderOverhead(ctx, camera, enemies = [], player = null) {
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const { startCol, endCol, startRow, endRow } = this._visibleTileRange(camera);
+    const { decoration } = this.layers;
+
+    for (let r = startRow; r <= endRow; r++) {
+      for (let c = startCol; c <= endCol; c++) {
+        const decoTile = decoration[r][c];
+        if (!OVERHEAD_TILE_IDS.has(decoTile)) continue;
+
+        const screenX = c * this.tileSize - camX;
+        const screenY = r * this.tileSize - camY;
+        this._drawTile(ctx, decoTile, screenX, screenY);
+
+        // Sombra de alero proyectada sobre el muro situado justo debajo del tejado
+        if (decoTile !== TILES.TREE_TOP && r + 1 < this.rows) {
+          const below = decoration[r + 1][c];
+          if (below === TILES.WALL_WOOD || below === TILES.WALL_WINDOW || below === TILES.WALL_DOOR) {
+            const baseY = Math.round(screenY) + this.tileSize;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
+            ctx.fillRect(Math.round(screenX), baseY, this.tileSize, 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+            ctx.fillRect(Math.round(screenX), baseY + 2, this.tileSize, 2);
           }
-          this._drawTile(ctx, decoTile, screenX, screenY);
         }
       }
     }
 
-    // Renderizar elementos dinámicos de los minijuegos y señalizaciones de Bosses/Mazmorras
-    if (this.currentSceneId === 'armor_temple') {
-      this.renderArmorPuzzle(ctx, camera);
-    } else if (this.currentSceneId === 'sword_temple') {
-      this.renderSwordPuzzle(ctx, camera);
-    }
-
     this.renderBossAndDungeonIndicators(ctx, camera, enemies, player);
+  }
+
+  /**
+   * Renderizado completo compatible (sin entidades): suelo → props Y-sorted → estructuras elevadas.
+   * El pipeline 2.5D (RenderPipeline) usa las tres capas por separado para intercalar entidades.
+   */
+  render(ctx, camera, enemies = [], player = null) {
+    this.renderGround(ctx, camera);
+    const props = [];
+    this.collectYSortedProps(camera, props);
+    props.sort((a, b) => a.sortY - b.sortY);
+    for (const prop of props) {
+      this.drawProp(ctx, camera, prop);
+    }
+    this.renderOverhead(ctx, camera, enemies, player);
   }
 
   /**
@@ -2149,7 +2333,7 @@ export class Tilemap {
    * Renderiza los 4 interruptores de presión, los 3 monolitos crípticos y la barrera de fuego.
    * Sin fórmulas explícitas en la pared.
    */
-  renderArmorPuzzle(ctx, camera) {
+  renderArmorPuzzle(ctx, camera, withMonoliths = true) {
     const camX = camera.renderX;
     const camY = camera.renderY;
     const t = performance.now() * 0.003;
@@ -2192,24 +2376,11 @@ export class Tilemap {
       }
     }
 
-    // 2. Render de los 3 Monolitos Crípticos de Lógica Abstracta (Alfa, Beta, Gamma)
-    if (this.armorPuzzle.monoliths) {
+    // 2. Monolitos Crípticos (Alfa, Beta, Gamma): en el pipeline 2.5D se ordenan en Y con el resto
+    // de props (withMonoliths = false); el modo compatible los dibuja aquí.
+    if (withMonoliths && this.armorPuzzle.monoliths) {
       for (const mono of Object.values(this.armorPuzzle.monoliths)) {
-        const mx = Math.round(mono.col * this.tileSize - camX);
-        const my = Math.round(mono.row * this.tileSize - camY);
-
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(mx + 2, my - 2, 12, 18);
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
-
-        // Símbolo rúnico grabado
-        ctx.font = 'bold 6.5px monospace';
-        ctx.fillStyle = '#7dd3fc';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(mono.symbol, mx + 8, my + 6);
+        this.drawArmorMonolith(ctx, camera, mono);
       }
     }
 
@@ -2234,6 +2405,28 @@ export class Tilemap {
       }
     }
 
+    ctx.restore();
+  }
+
+  /** Dibuja un monolito críptico del Templo de la Armadura (obelisco de 12×18 px). */
+  drawArmorMonolith(ctx, camera, mono) {
+    const mx = Math.round(mono.col * this.tileSize - camera.renderX);
+    const my = Math.round(mono.row * this.tileSize - camera.renderY);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(mx + 2, my - 2, 12, 18);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
+
+    // Símbolo rúnico grabado
+    ctx.font = 'bold 6.5px monospace';
+    ctx.fillStyle = '#7dd3fc';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(mono.symbol, mx + 8, my + 6);
     ctx.restore();
   }
 
@@ -2284,7 +2477,7 @@ export class Tilemap {
   /**
    * Renderiza los 3 monolitos rúnicos, el indicador de pila y el portal de la arena.
    */
-  renderSwordPuzzle(ctx, camera) {
+  renderSwordPuzzle(ctx, camera, withMonoliths = true) {
     const camX = camera.renderX;
     const camY = camera.renderY;
     const t = performance.now() * 0.003;
@@ -2292,30 +2485,10 @@ export class Tilemap {
     ctx.save();
     ctx.imageSmoothingEnabled = false;
 
-    // 1. Render de los 3 Monolitos Rúnicos
-    for (const [key, mono] of Object.entries(this.swordPuzzle.monoliths)) {
-      const isActiveInStack = this.swordPuzzle.stack.includes(mono.id);
-      const mx = Math.round(mono.col * this.tileSize - camX);
-      const my = Math.round(mono.row * this.tileSize - camY);
-
-      // Obelisco / Estela de piedra
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(mx + 2, my - 2, 12, 18);
-      ctx.strokeStyle = isActiveInStack ? '#fde047' : '#64748b';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
-
-      // Símbolo rúnico grabado
-      ctx.font = 'bold 7px monospace';
-      ctx.fillStyle = isActiveInStack ? '#fde047' : '#94a3b8';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(mono.symbol, mx + 8, my + 6);
-
-      // Halo áureo flotante si la runa está activada en la pila
-      if (isActiveInStack) {
-        ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
-        ctx.strokeRect(mx, my - 4, 16, 22);
+    // 1. Monolitos Rúnicos: ordenados en Y por el pipeline 2.5D (withMonoliths = false)
+    if (withMonoliths) {
+      for (const mono of Object.values(this.swordPuzzle.monoliths)) {
+        this.drawSwordMonolith(ctx, camera, mono);
       }
     }
 
@@ -2351,6 +2524,33 @@ export class Tilemap {
       ctx.fill();
     }
 
+    ctx.restore();
+  }
+
+  /** Dibuja una runa/monolito del Templo de la Espada (estela de 12×18 px con halo si está en la pila). */
+  drawSwordMonolith(ctx, camera, mono) {
+    const isActiveInStack = this.swordPuzzle.stack.includes(mono.id);
+    const mx = Math.round(mono.col * this.tileSize - camera.renderX);
+    const my = Math.round(mono.row * this.tileSize - camera.renderY);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(mx + 2, my - 2, 12, 18);
+    ctx.strokeStyle = isActiveInStack ? '#fde047' : '#64748b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
+
+    ctx.font = 'bold 7px monospace';
+    ctx.fillStyle = isActiveInStack ? '#fde047' : '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(mono.symbol, mx + 8, my + 6);
+
+    if (isActiveInStack) {
+      ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+      ctx.strokeRect(mx, my - 4, 16, 22);
+    }
     ctx.restore();
   }
 

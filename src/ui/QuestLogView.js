@@ -1,10 +1,12 @@
 /**
  * QuestLogView.js - Interfaz Modal Canvas 2D del Diario de Misiones ('El Ojete Dorado')
- * 
- * Se abre y cierra con la tecla [L] o desde el Menú de Pausa.
- * Presenta navegación por tareas principales y secundarias en el panel izquierdo
- * y detalle narrativo, objetivo actual y recompensas en el panel derecho.
+ *
+ * Rediseñado bajo UILayout (Safe Layout 290×150 px):
+ * - Columna izquierda: Lista de misiones con máximo 4 simultáneas visibles y scroll discreto.
+ * - Columna derecha: Detalles narrativos, objetivo actual y recompensas en Bytes con wrapText estricto.
  */
+
+import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
 
 export class QuestLogView {
   constructor(questLog, viewportWidth = 320, viewportHeight = 180) {
@@ -14,6 +16,8 @@ export class QuestLogView {
 
     this.isOpen = false;
     this.selectedIndex = 0;
+    this.scrollOffset = 0;
+    this.maxVisibleQuests = 4; // Máximo 4 simultáneas visibles según especificación
   }
 
   open() {
@@ -33,17 +37,30 @@ export class QuestLogView {
   }
 
   _getQuestList() {
-    return this.questLog ? this.questLog.getAllQuests() : [];
+    if (!this.questLog) return [];
+    const all = this.questLog.getAllQuests();
+    // Ordenar primero misiones principales (MAIN) y luego encargos secundarios (SIDE)
+    const main = all.filter((q) => q.category === 'MAIN');
+    const side = all.filter((q) => q.category !== 'MAIN');
+    return [...main, ...side];
   }
 
   _clampSelection() {
     const list = this._getQuestList();
     if (list.length === 0) {
       this.selectedIndex = 0;
+      this.scrollOffset = 0;
       return;
     }
     if (this.selectedIndex < 0) this.selectedIndex = 0;
     if (this.selectedIndex >= list.length) this.selectedIndex = list.length - 1;
+
+    // Mantener selectedIndex dentro de la ventana de 4 elementos visibles
+    if (this.selectedIndex < this.scrollOffset) {
+      this.scrollOffset = this.selectedIndex;
+    } else if (this.selectedIndex >= this.scrollOffset + this.maxVisibleQuests) {
+      this.scrollOffset = this.selectedIndex - this.maxVisibleQuests + 1;
+    }
   }
 
   moveSelection(dir) {
@@ -55,233 +72,199 @@ export class QuestLogView {
     } else if (dir === 'down') {
       this.selectedIndex = (this.selectedIndex + 1) % list.length;
     }
+    this._clampSelection();
   }
 
   render(ctx) {
     if (!this.isOpen || !this.questLog) return;
 
-    const W = this.viewportWidth;
-    const H = this.viewportHeight;
-    const winW = 296;
-    const winH = 168;
-    const winX = Math.round((W - winW) / 2);
-    const winY = Math.round((H - winH) / 2);
-
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-
-    // Fondo oscurecido con velo
-    ctx.fillStyle = 'rgba(5, 8, 15, 0.88)';
-    ctx.fillRect(0, 0, W, H);
-
-    // Marco exterior de la ventana
-    ctx.fillStyle = '#0a0f1d';
-    ctx.fillRect(winX, winY, winW, winH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
-    ctx.fillStyle = '#101728';
-    ctx.fillRect(winX + 2.5, winY + 2.5, winW - 5, winH - 5);
-
-    // Cantoneras doradas pixel art
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(winX + 3, winY + 3, 5, 2);
-    ctx.fillRect(winX + 3, winY + 3, 2, 5);
-    ctx.fillRect(winX + winW - 8, winY + 3, 5, 2);
-    ctx.fillRect(winX + winW - 5, winY + 3, 2, 5);
-    ctx.fillRect(winX + 3, winY + winH - 5, 5, 2);
-    ctx.fillRect(winX + 3, winY + winH - 8, 2, 5);
-    ctx.fillRect(winX + winW - 8, winY + winH - 5, 5, 2);
-    ctx.fillRect(winX + winW - 5, winY + winH - 8, 2, 5);
-
-    // Cabecera de la ventana
-    ctx.font = 'bold 7px monospace';
-    ctx.fillStyle = '#ffd885';
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    ctx.fillText('📜 DIARIO DEL DESARROLLADOR · OBJETIVOS ACTIVOS', winX + 8, winY + 6);
-
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Cerrar', winX + winW - 8, winY + 7);
-
-    // Separador horizontal bajo la cabecera
-    ctx.fillStyle = '#23304a';
-    ctx.fillRect(winX + 6, winY + 17, winW - 12, 1);
-
-    // ── Panel Izquierdo: Lista de Misiones ──
-    const leftX = winX + 8;
-    const leftY = winY + 21;
-    const leftW = 126;
-    const leftH = winH - 35;
-
     const quests = this._getQuestList();
     this._clampSelection();
 
-    let curY = leftY;
-    let listIdx = 0;
+    const completedCount = quests.filter((q) => q.status === 'COMPLETED').length;
 
-    const renderQuestGroup = (headerText, headerColor, categoryKey) => {
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = headerColor;
-      ctx.textAlign = 'left';
-      ctx.fillText(headerText, leftX, curY);
-      curY += 9;
+    const frame = UILayout.drawModalFrame(ctx, {
+      title: 'DIARIO DE MISIONES',
+      icon: '📜',
+      badge: `${completedCount}/${quests.length} COMPLETADAS`,
+      closeLabel: '[Esc] Cerrar'
+    });
 
-      const groupQuests = quests.filter((q) => q.category === categoryKey);
-      for (const q of groupQuests) {
-        const fullIndex = quests.indexOf(q);
-        const isSelected = fullIndex === this.selectedIndex;
-        const isCompleted = q.status === 'COMPLETED';
+    const { content } = frame;
 
-        const rowH = 10;
-        if (isSelected) {
-          ctx.fillStyle = '#1e293b';
-          ctx.fillRect(leftX - 2, curY - 1, leftW + 2, rowH);
-          ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(leftX - 1.5, curY - 0.5, leftW + 1, rowH - 1);
-        }
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
 
-        // Icono de estado
-        const icon = isSelected ? '▶' : isCompleted ? '✓' : '•';
-        const iconColor = isSelected ? '#38bdf8' : isCompleted ? '#4ade80' : '#ffd885';
-
-        ctx.font = 'bold 6px monospace';
-        ctx.fillStyle = iconColor;
-        ctx.fillText(icon, leftX, curY + 1);
-
-        // Título de la misión (truncado a 19 caracteres)
-        const titleStr = q.title.length > 19 ? q.title.slice(0, 18) + '…' : q.title;
-        ctx.font = isSelected ? 'bold 5.5px monospace' : '5.5px monospace';
-        ctx.fillStyle = isSelected
-          ? '#ffffff'
-          : isCompleted
-            ? '#64748b'
-            : '#cbd5e1';
-        ctx.fillText(titleStr, leftX + 9, curY + 1);
-
-        curY += rowH;
-        listIdx++;
-      }
-      curY += 4;
+    // =========================================================================
+    // COLUMNA IZQUIERDA: Lista de Misiones (máximo 4 simultáneas visibles + scroll)
+    // =========================================================================
+    const leftW = 114;
+    const leftRect = {
+      x: content.x,
+      y: content.y,
+      w: leftW,
+      h: content.h
     };
 
-    renderQuestGroup('── MISIONES PRINCIPALES ──', '#38bdf8', 'MAIN');
-    renderQuestGroup('── ENCARGOS SECUNDARIOS ──', '#ffd885', 'SIDE');
+    UILayout.drawPanel(ctx, leftRect, {
+      bg: UI_COLORS.panelBg,
+      border: UI_COLORS.borderInner,
+      headerText: `ENCARGOS (${this.selectedIndex + 1}/${Math.max(1, quests.length)})`
+    });
 
-    // ── Divisor Central Vertical ──
-    const divX = winX + 138;
-    ctx.fillStyle = '#23304a';
-    ctx.fillRect(divX, winY + 21, 1, winH - 39);
+    const listStartX = leftRect.x + 4;
+    const listStartY = leftRect.y + 16;
+    const rowH = 24;
+    const rowW = leftRect.w - 12;
 
-    // ── Panel Derecho: Detalle del Objetivo Seleccionado ──
-    const rightX = divX + 7;
-    const rightY = winY + 22;
-    const rightW = winW - 146;
+    const visibleQuests = quests.slice(this.scrollOffset, this.scrollOffset + this.maxVisibleQuests);
+
+    visibleQuests.forEach((q, idx) => {
+      const fullIndex = this.scrollOffset + idx;
+      const isSelected = fullIndex === this.selectedIndex;
+      const isCompleted = q.status === 'COMPLETED';
+      const isMain = q.category === 'MAIN';
+      const ry = listStartY + idx * (rowH + 2);
+
+      // Caja de la fila
+      ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+      ctx.fillRect(listStartX, ry, rowW, rowH);
+
+      ctx.strokeStyle = isSelected
+        ? UI_COLORS.slotSelectedBorder
+        : (isCompleted ? 'rgba(74, 222, 128, 0.35)' : UI_COLORS.slotBorder);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(listStartX + 0.5, ry + 0.5, rowW - 1, rowH - 1);
+
+      // Etiqueta superior de categoría y estado
+      ctx.font = `bold 3.8px ${UI_FONT}`;
+      ctx.fillStyle = isMain ? UI_COLORS.cyan : UI_COLORS.gold;
+      ctx.fillText(isMain ? '★ PRINCIPAL' : '◆ SECUNDARIA', listStartX + 3, ry + 2.5);
+
+      ctx.fillStyle = isCompleted ? UI_COLORS.emerald : UI_COLORS.textSecondary;
+      const stateIcon = isCompleted ? '✓ HECHA' : '▶ ACTIVA';
+      const sw = ctx.measureText(stateIcon).width;
+      ctx.fillText(stateIcon, listStartX + rowW - sw - 3, ry + 2.5);
+
+      // Título de la misión ajustado al ancho
+      ctx.font = `bold 4.4px ${UI_FONT}`;
+      ctx.fillStyle = isSelected
+        ? UI_COLORS.textPrimary
+        : (isCompleted ? UI_COLORS.textMuted : UI_COLORS.textSecondary);
+      ctx.fillText(
+        UILayout.fitText(ctx, q.title, rowW - 6),
+        listStartX + 3,
+        ry + 11.5
+      );
+    });
+
+    // Scrollbar vertical discreto para la lista de 4 visibles
+    UILayout.drawScrollbar(
+      ctx,
+      leftRect.x + leftRect.w - 5,
+      listStartY,
+      this.maxVisibleQuests * (rowH + 2) - 2,
+      quests.length,
+      this.maxVisibleQuests,
+      this.scrollOffset
+    );
+
+    // =========================================================================
+    // COLUMNA DERECHA: Detalles, Objetivos y Recompensas en Bytes
+    // =========================================================================
+    const rightRect = {
+      x: leftRect.x + leftRect.w + 4,
+      y: content.y,
+      w: content.w - leftRect.w - 4,
+      h: content.h
+    };
 
     const selectedQuest = quests[this.selectedIndex] || quests[0];
 
+    UILayout.drawPanel(ctx, rightRect, {
+      bg: UI_COLORS.panelBgAlt,
+      border: UI_COLORS.borderInner,
+      headerText: selectedQuest
+        ? (selectedQuest.category === 'MAIN' ? '★ HISTORIA PRINCIPAL' : '◆ ENCARGO DE ALDEA')
+        : 'DETALLE DE MISIÓN'
+    });
+
     if (selectedQuest) {
-      let ry = rightY;
+      const padX = rightRect.x + 6;
+      const innerW = rightRect.w - 12;
+      let ry = rightRect.y + 15;
 
-      // Badge de Categoría y Estado
-      const isMain = selectedQuest.category === 'MAIN';
-      const catLabel = isMain ? '★ MISIÓN PRINCIPAL' : '◆ ENCARGO SECUNDARIO';
-      const catColor = isMain ? '#38bdf8' : '#eab308';
+      // Título y badge de estado
+      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.fillText(UILayout.fitText(ctx, selectedQuest.title, innerW - 38), padX, ry);
 
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = catColor;
-      ctx.fillText(catLabel, rightX, ry);
+      const isDone = selectedQuest.status === 'COMPLETED';
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.fillStyle = isDone ? UI_COLORS.emerald : UI_COLORS.cyan;
+      const badgeStr = isDone ? '[COMPLETADA]' : '[EN CURSO]';
+      const bw = ctx.measureText(badgeStr).width;
+      ctx.fillText(badgeStr, padX + innerW - bw, ry + 0.5);
+      ry += 9;
 
-      const statusText = selectedQuest.status === 'COMPLETED' ? '[✓ COMPLETADA]' : '[▶ ACTIVA]';
-      const statusColor = selectedQuest.status === 'COMPLETED' ? '#4ade80' : '#38bdf8';
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = statusColor;
-      ctx.textAlign = 'right';
-      ctx.fillText(statusText, winX + winW - 9, ry);
-      ctx.textAlign = 'left';
-      ry += 10;
-
-      // Título Destacado
-      ctx.font = 'bold 7px monospace';
-      ctx.fillStyle = '#ffd700';
-      ctx.fillText(selectedQuest.title, rightX, ry);
-      ry += 11;
-
-      // Línea divisoria suave
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(rightX, ry - 2, rightW - 2, 1);
-      ry += 4;
-
-      // Descripción narrativa (con salto de línea automático)
-      ctx.font = '5px monospace';
-      ctx.fillStyle = '#cbd5e1';
-      ry = this._renderWrappedText(ctx, selectedQuest.description, rightX, ry, rightW - 4, 7.5);
-      ry += 7;
-
-      // Sección "OBJETIVO ACTUAL:"
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = '#fde047';
-      ctx.fillText('⚡ OBJETIVO ACTUAL:', rightX, ry);
-      ry += 8;
-
-      // Caja de paso actual
-      const stepLines = this._wrapText(ctx, selectedQuest.currentStep, rightW - 10);
-      const boxH = Math.max(16, stepLines.length * 7 + 6);
-
-      ctx.fillStyle = '#080d1a';
-      ctx.fillRect(rightX, ry - 1, rightW - 4, boxH);
-      ctx.strokeStyle = selectedQuest.status === 'COMPLETED' ? '#22c55e' : '#f59e0b';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(rightX + 0.5, ry - 0.5, rightW - 5, boxH - 1);
-
-      ctx.font = 'bold 5px monospace';
-      ctx.fillStyle = selectedQuest.status === 'COMPLETED' ? '#86efac' : '#fff5d6';
-      stepLines.forEach((line, lIdx) => {
-        ctx.fillText(line, rightX + 4, ry + 3 + lIdx * 7);
+      // Descripción narrativa con wrapText estricto (máximo 3 líneas)
+      ctx.font = `4.2px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textSecondary;
+      const descLines = UILayout.wrapText(ctx, selectedQuest.description || '', innerW);
+      descLines.slice(0, 3).forEach((line, idx) => {
+        ctx.fillText(line, padX, ry + idx * 6.5);
       });
-      ry += boxH + 7;
+      ry += Math.min(3, descLines.length) * 6.5 + 4;
 
-      // Sección "RECOMPENSA:"
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = '#34d399';
-      ctx.fillText('🎁 RECOMPENSA:', rightX, ry);
-      ry += 7;
+      // Caja de Objetivo Actual
+      ctx.font = `bold 4.2px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.fillText('⚡ OBJETIVO ACTUAL:', padX, ry);
+      ry += 6;
 
-      ctx.font = '5px monospace';
-      ctx.fillStyle = '#a7f3d0';
-      this._renderWrappedText(ctx, selectedQuest.reward, rightX, ry, rightW - 4, 7);
+      ctx.font = `4.2px ${UI_FONT}`;
+      const stepLines = UILayout.wrapText(ctx, selectedQuest.currentStep || '', innerW - 8);
+      const stepSlice = stepLines.slice(0, 3);
+      const stepBoxH = Math.max(15, stepSlice.length * 6.5 + 5);
+
+      ctx.fillStyle = 'rgba(10, 15, 28, 0.92)';
+      ctx.fillRect(padX, ry, innerW, stepBoxH);
+      ctx.strokeStyle = isDone ? UI_COLORS.emerald : UI_COLORS.goldDim;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(padX + 0.5, ry + 0.5, innerW - 1, stepBoxH - 1);
+
+      ctx.fillStyle = isDone ? UI_COLORS.emerald : UI_COLORS.textPrimary;
+      stepSlice.forEach((line, idx) => {
+        ctx.fillText(line, padX + 4, ry + 3 + idx * 6.5);
+      });
+      ry += stepBoxH + 5;
+
+      // Caja de Recompensa en Bytes / Objetos
+      const rewardY = Math.min(ry, rightRect.y + rightRect.h - 22);
+      ctx.fillStyle = 'rgba(16, 26, 42, 0.9)';
+      ctx.fillRect(padX, rewardY, innerW, 18);
+      ctx.strokeStyle = 'rgba(74, 222, 128, 0.45)';
+      ctx.strokeRect(padX + 0.5, rewardY + 0.5, innerW - 1, 17);
+
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.emerald;
+      ctx.fillText('🎁 RECOMPENSA (BYTES & BOTÍN):', padX + 4, rewardY + 2.5);
+
+      ctx.font = `4.1px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.fillText(
+        UILayout.fitText(ctx, selectedQuest.reward || 'Recompensa en Bytes', innerW - 8),
+        padX + 4,
+        rewardY + 10
+      );
     }
 
     ctx.restore();
   }
 
   _wrapText(ctx, text, maxWidth) {
-    if (!text) return [];
-    const words = text.split(' ');
-    const lines = [];
-    let curLine = '';
-
-    for (const w of words) {
-      const test = curLine ? curLine + ' ' + w : w;
-      if (ctx.measureText(test).width <= maxWidth) {
-        curLine = test;
-      } else {
-        if (curLine) lines.push(curLine);
-        curLine = w;
-      }
-    }
-    if (curLine) lines.push(curLine);
-    return lines;
-  }
-
-  _renderWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
-    const lines = this._wrapText(ctx, text, maxWidth);
-    lines.forEach((line, idx) => {
-      ctx.fillText(line, x, y + idx * lineHeight);
-    });
-    return y + lines.length * lineHeight;
+    return UILayout.wrapText(ctx, text, maxWidth);
   }
 }
-

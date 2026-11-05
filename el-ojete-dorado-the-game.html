@@ -1755,6 +1755,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 672,
     playTimeFormatted: '11:12',
     deaths: 0,
+    bytes: 420,
     score: 93280,
     rank: 'S',
     title: 'Arquitecto Supremo del Gran Ojal',
@@ -1765,6 +1766,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 835,
     playTimeFormatted: '13:55',
     deaths: 1,
+    bytes: 315,
     score: 86650,
     rank: 'A',
     title: 'Senior Lead de Valleverde',
@@ -1775,6 +1777,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 1080,
     playTimeFormatted: '18:00',
     deaths: 2,
+    bytes: 280,
     score: 79200,
     rank: 'A',
     title: 'Senior Lead de Valleverde',
@@ -1785,6 +1788,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 1420,
     playTimeFormatted: '23:40',
     deaths: 3,
+    bytes: 195,
     score: 70800,
     rank: 'A',
     title: 'Senior Lead de Valleverde',
@@ -1795,6 +1799,7 @@ const DEFAULT_LEADERBOARD = [
     playTimeSeconds: 1850,
     playTimeFormatted: '30:50',
     deaths: 5,
+    bytes: 140,
     score: 56500,
     rank: 'B',
     title: 'Programador Competente',
@@ -1930,6 +1935,7 @@ function saveLocalScore(data = {}) {
 
   const playTimeSeconds = data.playTimeSeconds ?? 0;
   const deaths = data.deaths ?? 0;
+  const bytes = Math.max(0, Math.floor(Number(data.bytes ?? data.coins) || 0));
 
   // Si ya viene precalculado con rank y score, usarlo; si no, calcularlo
   const result = (data.score != null && data.rank != null)
@@ -1948,6 +1954,7 @@ function saveLocalScore(data = {}) {
     playTimeSeconds: result.playTimeSeconds,
     playTimeFormatted: result.playTimeFormatted,
     deaths: result.deaths,
+    bytes,
     score: result.score,
     rank: result.rank,
     title: result.title,
@@ -2058,7 +2065,8 @@ async function submitGlobalScore(data = {}) {
       body: JSON.stringify({
         username: localResult.entry.username,
         playTimeSeconds: localResult.entry.playTimeSeconds,
-        deaths: localResult.entry.deaths
+        deaths: localResult.entry.deaths,
+        bytes: localResult.entry.bytes ?? 0
       }),
       signal: controller ? controller.signal : undefined
     });
@@ -2307,6 +2315,786 @@ async function syncPendingSaveToCloud(nickname = 'HERO') {
 }
 
   // ==========================================
+  // Módulo: src/services/CloudStorage.js
+  // ==========================================
+/**
+ * CloudStorage.js · Servicio de Persistencia Híbrida (Vercel KV Redis + LocalStorage 0ms)
+ *
+ * Garantiza:
+ * 1. Escritura síncrona inmediata (0 ms) en localStorage para no bloquear jamás los 60 FPS.
+ * 2. Sincronización en paralelo y en segundo plano contra `/api/save` y `/api/leaderboard`.
+ * 3. Sanitización integral (`sanitizeSaveData`) para evitar valores `undefined` al cargar
+ *    partidas de versiones anteriores o remotas (incluyendo `shieldHP`, `armorPoints`,
+ *    `hasPermission_*`, `housePermissions`, `robotizationLevel`, etc.).
+ */
+
+
+class CloudStorage {
+  static _syncStatus = 'synced'; // 'synced' | 'syncing' | 'pending' | 'offline'
+  static _lastSyncTime = 0;
+  static _lastCloudCode = null;
+  static _lastError = null;
+  static _inFlightSave = false;
+
+  /**
+   * Sanitiza y normaliza cualquier payload de partida (local o remoto)
+   * asegurando que todas las propiedades nuevas (v3.5+) tengan valores seguros.
+   */
+  static sanitizeSaveData(raw) {
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+
+    // Si viene envuelto en un contenedor { savePayload: {...} }, extraerlo
+    const src = (raw.savePayload && typeof raw.savePayload === 'object')
+      ? raw.savePayload
+      : raw;
+
+    const playerHasArmor = Boolean(src.playerHasArmor);
+    const playerHasSword = Boolean(src.playerHasSword);
+
+    const rawArmorPts = src.shieldHP ?? src.armorPoints;
+    const defaultArmorPts = playerHasArmor ? 3 : 0;
+    const armorPoints = Number.isFinite(Number(rawArmorPts))
+      ? Math.max(0, Math.min(3, Math.floor(Number(rawArmorPts))))
+      : defaultArmorPts;
+
+    const rawPerms = (src.housePermissions && typeof src.housePermissions === 'object')
+      ? src.housePermissions
+      : {};
+
+    const hasPermission_elder = Boolean(src.hasPermission_elder ?? rawPerms.elder ?? false);
+    const hasPermission_blacksmith = Boolean(src.hasPermission_blacksmith ?? rawPerms.blacksmith ?? false);
+    const hasPermission_herbalist = Boolean(src.hasPermission_herbalist ?? rawPerms.herbalist ?? false);
+    const hasPermission_guard = Boolean(src.hasPermission_guard ?? rawPerms.guard ?? false);
+    const hasPermission_oracle = Boolean(src.hasPermission_oracle ?? rawPerms.oracle ?? false);
+
+    const housePermissions = {
+      elder: hasPermission_elder,
+      blacksmith: hasPermission_blacksmith,
+      herbalist: hasPermission_herbalist,
+      guard: hasPermission_guard,
+      oracle: hasPermission_oracle
+    };
+
+    const maxHealth = Number.isFinite(Number(src.maxHealth)) && Number(src.maxHealth) > 0
+      ? Number(src.maxHealth)
+      : 6;
+    const health = Number.isFinite(Number(src.health))
+      ? Math.max(1, Math.min(maxHealth, Number(src.health)))
+      : maxHealth;
+
+    const coins = Number.isFinite(Number(src.coins ?? src.bytes))
+      ? Math.max(0, Math.floor(Number(src.coins ?? src.bytes)))
+      : 0;
+
+    const robotizationLevel = Number.isFinite(Number(src.robotizationLevel))
+      ? Math.max(0, Math.min(100, Number(src.robotizationLevel)))
+      : 10;
+
+    const playTimeSeconds = Number.isFinite(Number(src.playTimeSeconds))
+      ? Math.max(0, Number(src.playTimeSeconds))
+      : 0;
+
+    const totalDeaths = Number.isFinite(Number(src.totalDeaths))
+      ? Math.max(0, Math.floor(Number(src.totalDeaths)))
+      : 0;
+
+    return {
+      ...src,
+      version: src.version || '3.5',
+      sceneId: typeof src.sceneId === 'string' && src.sceneId ? src.sceneId : 'village',
+      playerX: Number.isFinite(Number(src.playerX)) ? Number(src.playerX) : 144,
+      playerY: Number.isFinite(Number(src.playerY)) ? Number(src.playerY) : 108,
+      health,
+      maxHealth,
+      coins,
+      bytes: coins,
+      robotizationLevel,
+      playerHasSword,
+      playerHasArmor,
+      shieldHP: armorPoints,
+      armorPoints,
+      maxArmorPoints: Number.isFinite(Number(src.maxArmorPoints)) ? Number(src.maxArmorPoints) : 3,
+      hasPermission_elder,
+      hasPermission_blacksmith,
+      hasPermission_herbalist,
+      hasPermission_guard,
+      hasPermission_oracle,
+      housePermissions,
+      armorTempleSolved: Boolean(src.armorTempleSolved),
+      swordTempleSolved: Boolean(src.swordTempleSolved),
+      abyssPortalUnlocked: Boolean(src.abyssPortalUnlocked),
+      playTimeSeconds,
+      totalDeaths,
+      gameTimeMinutes: Number.isFinite(Number(src.gameTimeMinutes)) ? Number(src.gameTimeMinutes) : 8 * 60,
+      inventoryItems: Array.isArray(src.inventoryItems) ? src.inventoryItems : [],
+      unlockedRegions: Array.isArray(src.unlockedRegions) ? src.unlockedRegions : ['village'],
+      savedAt: Number.isFinite(Number(src.savedAt)) ? Number(src.savedAt) : Date.now()
+    };
+  }
+
+  /**
+   * Devuelve el estado actual de sincronización para el micro-indicador del HUD (☁️)
+   */
+  static getSyncState() {
+    const container = getLocalSaveContainer();
+    const code = CloudStorage._lastCloudCode || container?.cloudCode || getSavedCloudCode() || null;
+    if (CloudStorage._inFlightSave) {
+      return {
+        status: 'syncing',
+        code,
+        pending: true,
+        lastSyncTime: CloudStorage._lastSyncTime
+      };
+    }
+    if (container && container.pendingCloudSync) {
+      return {
+        status: CloudStorage._syncStatus === 'offline' ? 'offline' : 'pending',
+        code,
+        pending: true,
+        lastSyncTime: CloudStorage._lastSyncTime
+      };
+    }
+    return {
+      status: CloudStorage._syncStatus || 'synced',
+      code,
+      pending: false,
+      lastSyncTime: CloudStorage._lastSyncTime || container?.cloudSyncedAt || 0
+    };
+  }
+
+  /**
+   * Guarda primero en localStorage en 0 ms y lanza la subida a `/api/save` en background
+   * sin bloquear jamás el hilo de renderizado.
+   */
+  static saveGameAsync(rawPayload, nickname = 'HERO', onComplete = null) {
+    const cleanPayload = CloudStorage.sanitizeSaveData(rawPayload);
+    if (!cleanPayload) {
+      if (typeof onComplete === 'function') {
+        onComplete({ ok: false, error: 'INVALID_PAYLOAD' });
+      }
+      return { ok: false, localSaved: false };
+    }
+
+    const existingCode = CloudStorage._lastCloudCode || getSavedCloudCode() || null;
+
+    // 1. Prioridad 0ms en localStorage (síncrono e instantáneo)
+    const localSaved = saveLocalFallback(cleanPayload, existingCode, true);
+    CloudStorage._syncStatus = 'syncing';
+    CloudStorage._inFlightSave = true;
+
+    // 2. Sincronización en paralelo no bloqueante hacia Vercel KV
+    Promise.resolve().then(async () => {
+      try {
+        const res = await uploadGameToCloud(cleanPayload, nickname, existingCode);
+        CloudStorage._inFlightSave = false;
+
+        if (res && res.ok && res.code) {
+          CloudStorage._lastCloudCode = res.code;
+          CloudStorage._lastSyncTime = res.savedAt || Date.now();
+          CloudStorage._syncStatus = 'synced';
+          CloudStorage._lastError = null;
+          setSavedCloudCode(res.code);
+          markLocalFallbackSynced(res.code, CloudStorage._lastSyncTime);
+          if (typeof onComplete === 'function') {
+            onComplete({
+              ok: true,
+              synced: true,
+              code: res.code,
+              savedAt: CloudStorage._lastSyncTime,
+              saveData: cleanPayload
+            });
+          }
+        } else {
+          CloudStorage._syncStatus = res?.error === 'MODO_OFFLINE' ? 'offline' : 'pending';
+          CloudStorage._lastError = res?.message || 'Error de sincronización cloud';
+          if (typeof onComplete === 'function') {
+            onComplete({
+              ok: false,
+              synced: false,
+              localSaved,
+              code: existingCode,
+              error: res?.error || 'CLOUD_SYNC_ERROR',
+              message: res?.message || 'Guardado en fallback local; pendiente de nube.'
+            });
+          }
+        }
+      } catch (err) {
+        CloudStorage._inFlightSave = false;
+        CloudStorage._syncStatus = 'offline';
+        CloudStorage._lastError = err?.message || 'Offline';
+        if (typeof onComplete === 'function') {
+          onComplete({
+            ok: false,
+            synced: false,
+            localSaved,
+            code: existingCode,
+            error: 'NETWORK_EXCEPTION',
+            message: err?.message || 'Sin conexión a la nube.'
+          });
+        }
+      }
+    });
+
+    return {
+      ok: true,
+      localSaved,
+      code: existingCode,
+      saveData: cleanPayload
+    };
+  }
+
+  /**
+   * Carga y sanitiza el contenedor local (0 ms)
+   */
+  static loadLocalSave() {
+    const container = getLocalSaveContainer();
+    if (!container || !container.savePayload) return null;
+    const sanitized = CloudStorage.sanitizeSaveData(container.savePayload);
+    return {
+      ...container,
+      savePayload: sanitized
+    };
+  }
+
+  /**
+   * Descarga una partida desde `/api/save?code=...` y la sanitiza antes de inyectarla al juego.
+   */
+  static async loadFromCloudCode(code) {
+    CloudStorage._inFlightSave = true;
+    CloudStorage._syncStatus = 'syncing';
+    try {
+      const res = await downloadGameFromCloud(code);
+      CloudStorage._inFlightSave = false;
+      if (res && res.ok && res.saveData) {
+        const sanitized = CloudStorage.sanitizeSaveData(res.saveData);
+        CloudStorage._lastCloudCode = res.code;
+        CloudStorage._lastSyncTime = res.savedAt || Date.now();
+        CloudStorage._syncStatus = 'synced';
+        setSavedCloudCode(res.code);
+        saveLocalFallback(sanitized, res.code, false);
+        return {
+          ok: true,
+          code: res.code,
+          nickname: res.nickname || 'HERO',
+          savedAt: res.savedAt,
+          saveData: sanitized
+        };
+      }
+      CloudStorage._syncStatus = 'pending';
+      return {
+        ok: false,
+        error: res?.error || 'LOAD_FAILED',
+        message: res?.message || 'No se pudo recuperar la partida desde la nube.'
+      };
+    } catch (err) {
+      CloudStorage._inFlightSave = false;
+      CloudStorage._syncStatus = 'offline';
+      return {
+        ok: false,
+        error: 'NETWORK_ERROR',
+        message: err?.message || 'Error de red al descargar partida.'
+      };
+    }
+  }
+
+  /**
+   * Intenta sincronizar en segundo plano cualquier guardado local pendiente.
+   */
+  static async syncPendingInBackground(nickname = 'HERO') {
+    const res = await syncPendingSaveToCloud(nickname);
+    if (res && res.ok && res.synced) {
+      CloudStorage._syncStatus = 'synced';
+      CloudStorage._lastCloudCode = res.code || CloudStorage._lastCloudCode;
+      CloudStorage._lastSyncTime = Date.now();
+    }
+    return res;
+  }
+
+  /**
+   * Consulta el Top 10 del Salón de la Fama con sanitización de filas
+   */
+  static async fetchTopLeaderboard(limit = 10) {
+    const res = await fetchGlobalLeaderboard();
+    const rawList = Array.isArray(res?.leaderboard) ? res.leaderboard : [];
+    const normalized = rawList.slice(0, limit).map((item, idx) => {
+      const secs = Math.max(0, Math.floor(Number(item?.playTimeSeconds) || 0));
+      const deaths = Math.max(0, Math.floor(Number(item?.deaths) || 0));
+      const calc = calculateGameScore(secs, deaths);
+      return {
+        position: idx + 1,
+        username: String(item?.username || 'HERO').slice(0, 12).toUpperCase(),
+        playTimeSeconds: secs,
+        playTimeFormatted: item?.playTimeFormatted || formatPlayTime(secs),
+        deaths,
+        bytes: Math.max(0, Math.floor(Number(item?.bytes ?? item?.coins) || 0)),
+        score: Number.isFinite(Number(item?.score)) ? Number(item.score) : calc.score,
+        rank: item?.rank || calc.rank,
+        title: item?.title || calc.title
+      };
+    });
+
+    return {
+      ok: Boolean(res?.ok),
+      source: res?.source || 'local',
+      configured: res?.configured !== false,
+      error: res?.error || null,
+      leaderboard: normalized
+    };
+  }
+
+  /**
+   * Publica la puntuación en localStorage (0ms) y en `/api/leaderboard` en paralelo
+   */
+  static async submitRunScore(data = {}) {
+    return submitGlobalScore(data);
+  }
+}
+
+  // ==========================================
+  // Módulo: src/ui/UILayout.js
+  // ==========================================
+/**
+ * UILayout.js · Gestor de Layout Seguro de la interfaz (320×180 lógicos)
+ *
+ * Centraliza TODAS las coordenadas y utilidades de dibujo compartidas por los modales
+ * ([I] Inventario, [C] Ficha, [L] Diario, [M] Mapa, Ranking) y el HUD, de modo que ningún
+ * panel pueda desbordar el área segura ni solaparse con otro:
+ *
+ *  - Área segura:      SAFE_WIDTH × SAFE_HEIGHT (308×168) centrada en pantalla → margen de 6 px.
+ *  - Contenedor modal: MODAL_WIDTH × MODAL_HEIGHT (290×150) con fondo glassmorphism,
+ *                      bisel de 1 px y cabecera limpia con el atajo «[Esc] Cerrar».
+ *  - Texto:            wrapText estricto (nunca corta palabras salvo que una palabra sola
+ *                      supere el ancho) y paginación en diapositivas.
+ */
+
+const LOGICAL_WIDTH = 320;
+const LOGICAL_HEIGHT = 180;
+const SAFE_WIDTH = 308;
+const SAFE_HEIGHT = 168;
+const MODAL_WIDTH = 290;
+const MODAL_HEIGHT = 150;
+const MODAL_HEADER_HEIGHT = 15;
+
+const UI_COLORS = {
+  glass: 'rgba(13, 17, 23, 0.94)',
+  glassSoft: 'rgba(22, 28, 40, 0.92)',
+  veil: 'rgba(3, 5, 10, 0.55)',
+  bevelLight: 'rgba(255, 255, 255, 0.16)',
+  bevelDark: 'rgba(0, 0, 0, 0.55)',
+  border: '#3b4a6b',
+  borderInner: '#2b3652',
+  borderOuter: 'rgba(229, 192, 123, 0.65)',
+  panelBg: 'rgba(11, 16, 28, 0.92)',
+  panelBgAlt: 'rgba(15, 22, 38, 0.92)',
+  slotBg: '#0b1220',
+  slotBorder: '#2b3652',
+  slotSelectedBg: 'rgba(30, 41, 59, 0.95)',
+  slotSelectedBorder: '#ffd885',
+  accent: '#e5c07b',
+  accentBright: '#ffd885',
+  gold: '#fde047',
+  goldDim: 'rgba(253, 224, 71, 0.45)',
+  cyan: '#38bdf8',
+  emerald: '#4ade80',
+  crimson: '#f87171',
+  purple: '#c084fc',
+  title: '#ffd885',
+  text: '#e2e8f0',
+  textPrimary: '#f8fafc',
+  textSecondary: '#cbd5e1',
+  textDim: '#94a3b8',
+  textMuted: '#64748b',
+  good: '#4ade80',
+  warn: '#fbbf24',
+  bad: '#f87171',
+  info: '#38bdf8',
+  slot: '#0b1220'
+};
+
+const UI_FONT = 'monospace';
+
+class UILayout {
+  /** Rectángulo seguro centrado: ningún elemento de UI debe salir de aquí. */
+  static safeRect() {
+    return {
+      x: Math.round((LOGICAL_WIDTH - SAFE_WIDTH) / 2),
+      y: Math.round((LOGICAL_HEIGHT - SAFE_HEIGHT) / 2),
+      w: SAFE_WIDTH,
+      h: SAFE_HEIGHT
+    };
+  }
+
+  /** Rectángulo exterior del contenedor unificado de modales (290×150, centrado). */
+  static modalRect() {
+    return {
+      x: Math.round((LOGICAL_WIDTH - MODAL_WIDTH) / 2),
+      y: Math.round((LOGICAL_HEIGHT - MODAL_HEIGHT) / 2),
+      w: MODAL_WIDTH,
+      h: MODAL_HEIGHT
+    };
+  }
+
+  /** Área útil del modal bajo la cabecera, con padding interior de 6 px. */
+  static contentRect() {
+    const m = UILayout.modalRect();
+    return {
+      x: m.x + 6,
+      y: m.y + MODAL_HEADER_HEIGHT + 3,
+      w: m.w - 12,
+      h: m.h - MODAL_HEADER_HEIGHT - 9
+    };
+  }
+
+  /** Desplaza un rectángulo para que quede completamente dentro del área segura. */
+  static clampToSafe(x, y, w, h) {
+    const s = UILayout.safeRect();
+    return {
+      x: Math.max(s.x, Math.min(x, s.x + s.w - w)),
+      y: Math.max(s.y, Math.min(y, s.y + s.h - h)),
+      w,
+      h
+    };
+  }
+
+  /** Recorta un texto con puntos suspensivos para que quepa en maxWidth (usa ctx.font actual). */
+  static fitText(ctx, text, maxWidth) {
+    const str = String(text ?? '');
+    if (ctx.measureText(str).width <= maxWidth) return str;
+    let lo = 0;
+    let hi = str.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (ctx.measureText(`${str.slice(0, mid)}…`).width <= maxWidth) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo > 0 ? `${str.slice(0, lo)}…` : '…';
+  }
+
+  /**
+   * wrapText estricto: divide por palabras respetando saltos de línea explícitos;
+   * si una palabra individual excede el ancho se parte por caracteres (nunca desborda).
+   * @param {CanvasRenderingContext2D} ctx   (la fuente debe estar ya fijada)
+   * @param {string} text
+   * @param {number} maxWidth
+   * @param {number} [maxLines=Infinity]  si se supera, la última línea se corta con «…»
+   * @returns {string[]}
+   */
+  static wrapText(ctx, text, maxWidth, maxLines = Infinity) {
+    const lines = [];
+    const paragraphs = String(text ?? '').split('\n');
+
+    for (const paragraph of paragraphs) {
+      const words = paragraph.split(/\s+/).filter((w) => w.length > 0);
+      if (words.length === 0) {
+        lines.push('');
+        continue;
+      }
+      let current = '';
+      for (const word of words) {
+        let piece = word;
+        while (ctx.measureText(piece).width > maxWidth && piece.length > 1) {
+          // Palabra demasiado larga: partir por caracteres
+          let cut = piece.length - 1;
+          while (cut > 1 && ctx.measureText(piece.slice(0, cut)).width > maxWidth) cut--;
+          if (current) {
+            lines.push(current);
+            current = '';
+          }
+          lines.push(piece.slice(0, cut));
+          piece = piece.slice(cut);
+        }
+        const candidate = current ? `${current} ${piece}` : piece;
+        if (ctx.measureText(candidate).width <= maxWidth) {
+          current = candidate;
+        } else {
+          if (current) lines.push(current);
+          current = piece;
+        }
+      }
+      if (current) lines.push(current);
+    }
+
+    if (lines.length > maxLines) {
+      const kept = lines.slice(0, maxLines);
+      kept[maxLines - 1] = UILayout.fitText(ctx, `${kept[maxLines - 1]} …`, maxWidth);
+      return kept;
+    }
+    return lines;
+  }
+
+  /** Divide una lista de líneas en páginas de `linesPerPage` líneas. */
+  static paginate(lines, linesPerPage) {
+    const pages = [];
+    const size = Math.max(1, linesPerPage | 0);
+    for (let i = 0; i < lines.length; i += size) {
+      pages.push(lines.slice(i, i + size));
+    }
+    return pages.length > 0 ? pages : [[]];
+  }
+
+  /**
+   * Dibuja el velo oscuro + contenedor unificado de modal (290×150) con cabecera.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{title?:string, subtitle?:string, icon?:string, badge?:string, closeLabel?:string|null, tabs?:Array<{label:string,active:boolean}>, veil?:boolean, backdropAlpha?:number}} [opts]
+   * @returns {{modal:{x:number,y:number,w:number,h:number}, content:{x:number,y:number,w:number,h:number}, x:number, y:number, w:number, h:number}}
+   */
+  static drawModalFrame(ctx, opts = {}) {
+    const {
+      title = '',
+      subtitle = '',
+      icon = '',
+      badge = '',
+      closeLabel = '[Esc] Cerrar',
+      tabs = null,
+      veil = true,
+      backdropAlpha = 0.55
+    } = opts;
+    const m = UILayout.modalRect();
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    if (veil) {
+      ctx.fillStyle = `rgba(3, 5, 10, ${backdropAlpha})`;
+      ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    }
+
+    // Sombra de elevación
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.fillRect(m.x + 2, m.y + 3, m.w, m.h);
+
+    // Cristal oscuro translúcido
+    ctx.fillStyle = UI_COLORS.glass;
+    ctx.fillRect(m.x, m.y, m.w, m.h);
+
+    // Brillo superior sutil (glassmorphism)
+    if (typeof ctx.createLinearGradient === 'function') {
+      const sheen = ctx.createLinearGradient(0, m.y, 0, m.y + m.h * 0.45);
+      sheen.addColorStop(0, 'rgba(255, 255, 255, 0.07)');
+      sheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = sheen;
+      ctx.fillRect(m.x, m.y, m.w, m.h * 0.45);
+    }
+
+    // Borde exterior + bisel de 1 px
+    ctx.strokeStyle = UI_COLORS.border;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(m.x + 0.5, m.y + 0.5, m.w - 1, m.h - 1);
+    ctx.fillStyle = UI_COLORS.bevelLight;
+    ctx.fillRect(m.x + 1, m.y + 1, m.w - 2, 1);
+    ctx.fillRect(m.x + 1, m.y + 1, 1, m.h - 2);
+    ctx.fillStyle = UI_COLORS.bevelDark;
+    ctx.fillRect(m.x + 1, m.y + m.h - 2, m.w - 2, 1);
+    ctx.fillRect(m.x + m.w - 2, m.y + 1, 1, m.h - 2);
+
+    // Cabecera limpia
+    ctx.textBaseline = 'middle';
+    const headY = m.y + MODAL_HEADER_HEIGHT / 2 + 1;
+    let cursorX = m.x + 7;
+
+    const fullTitle = icon ? `${icon} ${title}` : title;
+    if (fullTitle) {
+      ctx.font = `bold 6.5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.title;
+      ctx.textAlign = 'left';
+      ctx.fillText(fullTitle, cursorX, headY);
+      cursorX += Math.ceil(ctx.measureText(fullTitle).width) + 6;
+    }
+
+    if (badge) {
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.accentBright;
+      ctx.textAlign = 'left';
+      ctx.fillText(`[${badge}]`, cursorX, headY);
+      cursorX += Math.ceil(ctx.measureText(`[${badge}]`).width) + 6;
+    }
+
+    if (tabs && tabs.length > 0) {
+      ctx.font = `bold 5.5px ${UI_FONT}`;
+      for (const tab of tabs) {
+        const label = tab.label;
+        const tw = Math.ceil(ctx.measureText(label).width) + 8;
+        ctx.fillStyle = tab.active ? 'rgba(229, 192, 123, 0.18)' : 'rgba(255, 255, 255, 0.04)';
+        ctx.fillRect(cursorX, m.y + 3, tw, MODAL_HEADER_HEIGHT - 5);
+        ctx.fillStyle = tab.active ? UI_COLORS.accentBright : UI_COLORS.textMuted;
+        ctx.textAlign = 'center';
+        ctx.fillText(label, cursorX + tw / 2, headY);
+        if (tab.active) {
+          ctx.fillStyle = UI_COLORS.accent;
+          ctx.fillRect(cursorX, m.y + MODAL_HEADER_HEIGHT - 3, tw, 1);
+        }
+        cursorX += tw + 2;
+      }
+    } else if (subtitle) {
+      ctx.font = `5.5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textDim;
+      ctx.textAlign = 'left';
+      ctx.fillText(subtitle, cursorX, headY);
+    }
+
+    if (closeLabel) {
+      ctx.font = `5.5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textDim;
+      ctx.textAlign = 'right';
+      ctx.fillText(closeLabel, m.x + m.w - 7, headY);
+    }
+
+    // Separador de cabecera
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.10)';
+    ctx.fillRect(m.x + 4, m.y + MODAL_HEADER_HEIGHT, m.w - 8, 1);
+
+    ctx.restore();
+
+    const content = UILayout.contentRect();
+    return {
+      modal: m,
+      content,
+      x: content.x,
+      y: content.y,
+      w: content.w,
+      h: content.h
+    };
+  }
+
+  /** Panel interior con fondo y borde fino. Soporta tanto (ctx, rect, opts) como (ctx, x, y, w, h, opts). */
+  static drawPanel(ctx, xOrRect, yOrOpts, w, h, opts = {}) {
+    let px, py, pw, ph, popts;
+    if (typeof xOrRect === 'object' && xOrRect !== null) {
+      px = xOrRect.x;
+      py = xOrRect.y;
+      pw = xOrRect.w ?? xOrRect.width;
+      ph = xOrRect.h ?? xOrRect.height;
+      popts = yOrOpts || {};
+    } else {
+      px = xOrRect;
+      py = yOrOpts;
+      pw = w;
+      ph = h;
+      popts = opts || {};
+    }
+    const bg = popts.bg || popts.fill || UI_COLORS.slotBg || UI_COLORS.slot;
+    const border = popts.border || UI_COLORS.slotBorder;
+    ctx.save();
+    ctx.fillStyle = bg;
+    ctx.fillRect(px, py, pw, ph);
+    if (border) {
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+    }
+    if (popts.headerText) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.fillRect(px + 1, py + 1, pw - 2, 11);
+      ctx.font = `bold 4.2px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.accent;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(popts.headerText, px + 4, py + 6.5);
+    }
+    ctx.restore();
+  }
+
+  /** Barra de progreso compacta. Soporta tanto (ctx, rectOrOpts) como (ctx, x, y, w, h, pct, color, opts). */
+  static drawBar(ctx, arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+    let bx, by, bw, bh, pct, color, label, valueText, back, border;
+    if (typeof arg1 === 'object' && arg1 !== null) {
+      bx = arg1.x;
+      by = arg1.y;
+      bw = arg1.w ?? arg1.width;
+      bh = arg1.h ?? arg1.height;
+      const val = arg1.value ?? arg1.val ?? 0;
+      const max = arg1.max ?? 1;
+      pct = max > 0 ? val / max : 0;
+      color = arg1.color || UI_COLORS.good;
+      label = arg1.label || null;
+      valueText = arg1.valueText || null;
+      back = arg1.back || '#111827';
+      border = arg1.border || '#334155';
+    } else {
+      bx = arg1;
+      by = arg2;
+      bw = arg3;
+      bh = arg4;
+      pct = arg5;
+      color = arg6;
+      const o = arg7 || {};
+      back = o.back || '#111827';
+      border = o.border || '#334155';
+      label = o.label || null;
+      valueText = o.valueText || null;
+    }
+
+    const p = Math.max(0, Math.min(1, Number.isFinite(pct) ? pct : 0));
+    ctx.save();
+
+    if (label || valueText) {
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.textBaseline = 'bottom';
+      if (label) {
+        ctx.fillStyle = UI_COLORS.textDim;
+        ctx.textAlign = 'left';
+        ctx.fillText(label, bx, by - 1.5);
+      }
+      if (valueText) {
+        ctx.fillStyle = color;
+        ctx.textAlign = 'right';
+        ctx.fillText(valueText, bx + bw, by - 1.5);
+      }
+    }
+
+    ctx.fillStyle = back;
+    ctx.fillRect(bx, by, bw, bh);
+    const fillW = Math.round((bw - 2) * p);
+    if (fillW > 0) {
+      ctx.fillStyle = color;
+      ctx.fillRect(bx + 1, by + 1, fillW, bh - 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.fillRect(bx + 1, by + 1, fillW, 1);
+    }
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+    ctx.restore();
+  }
+
+  /** Dibuja un icono del atlas de objetos (una sola fila; el factor de escala se deduce del alto). */
+  static drawItemIcon(ctx, sheet, iconIndex, x, y, size = 16) {
+    if (!sheet || typeof iconIndex !== 'number') return;
+    const frame = (sheet.height || 16) >= 16 ? sheet.height : 16;
+    ctx.drawImage(sheet, iconIndex * frame, 0, frame, frame, x, y, size, size);
+  }
+
+  /** Indicador discreto de scroll/paginación («‹ 1/2 ›»). */
+  static drawPager(ctx, rightX, y, page, pages) {
+    if (pages <= 1) return;
+    ctx.save();
+    ctx.font = `5.5px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.textDim;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`‹ ${page + 1}/${pages} ›`, rightX, y);
+    ctx.restore();
+  }
+
+  /** Barra de scroll vertical discreta (2 px) para listas. */
+  static drawScrollbar(ctx, x, y, h, firstVisible, visibleCount, total) {
+    if (total <= visibleCount) return;
+    const trackH = h;
+    const thumbH = Math.max(6, Math.round((visibleCount / total) * trackH));
+    const maxFirst = total - visibleCount;
+    const thumbY = y + Math.round((firstVisible / maxFirst) * (trackH - thumbH));
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.fillRect(x, y, 2, trackH);
+    ctx.fillStyle = UI_COLORS.accent;
+    ctx.fillRect(x, thumbY, 2, thumbH);
+    ctx.restore();
+  }
+}
+
+  // ==========================================
   // Módulo: src/graphics/SpriteSheetGenerator.js
   // ==========================================
 /**
@@ -2375,7 +3163,14 @@ const TILES = {
   STONE_FLOOR: 36,
   ALTAR_PEDESTAL: 37,
   PORTAL_GATE_CLOSED: 38,
-  PORTAL_GATE_OPEN: 39
+  PORTAL_GATE_OPEN: 39,
+
+  // Alias semánticos usados por los constructores de escenas (reutilizan sprites existentes)
+  DOOR: 15,          // WALL_DOOR
+  ALTAR: 37,         // ALTAR_PEDESTAL
+  STONE_PATH: 36,    // STONE_FLOOR
+  TEMPLE_WALL: 26,   // WALL_INTERIOR
+  TEMPLE_PILLAR: 37  // ALTAR_PEDESTAL (columna de piedra)
 };
 
 const ITEM_ICONS = {
@@ -3954,6 +4749,12 @@ function renderCombatBanner(ctx, text, x, y, color = '#fde047') {
   // Módulo: src/world/Tilemap.js
   // ==========================================
 /**
+ * Tiles de la CAPA 2 (estructuras elevadas) del pipeline 2.5D: se dibujan siempre por encima
+ * de las entidades (copas de árboles y tejados).
+ */
+const OVERHEAD_TILE_IDS = new Set([TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE]);
+
+/**
  * Tilemap multicapa con soporte para:
  * - Primer Escenario: Las Ruinas del Despertar ('first_stage' 36x24 tiles) donde el jugador consigue su Armadura y primera Espada
  * - Mundo exterior del pueblo (Overworld 36x24 tiles)
@@ -3968,6 +4769,9 @@ class Tilemap {
 
     this.animTimer = 0;
     this.animFrame = 0;
+    this.waterClock = 0;
+    this._propPool = [];
+    this.windowLights = [];
 
     // Estado del puente de Valleverde y del portal del Primer Escenario
     this.bridgeOpen = false;
@@ -4088,6 +4892,33 @@ class Tilemap {
     this.layers = scene.layers;
     this.lightSources = scene.lightSources;
     this.sceneTitle = scene.title;
+
+    // Luces de ventanas (se encienden al anochecer): se calculan una vez por escena y se cachean
+    if (!scene.windowLights) {
+      scene.windowLights = this._computeWindowLights(scene);
+    }
+    this.windowLights = scene.windowLights;
+  }
+
+  /** Busca los tiles de ventana de la escena y genera una luz ámbar por cada uno. */
+  _computeWindowLights(scene) {
+    const lights = [];
+    const deco = scene.layers.decoration;
+    for (let r = 0; r < scene.rows; r++) {
+      for (let c = 0; c < scene.cols; c++) {
+        if (deco[r][c] === TILES.WALL_WINDOW) {
+          lights.push({
+            x: c * this.tileSize + 8,
+            y: r * this.tileSize + 9,
+            radius: 26,
+            intensity: 0.8,
+            glow: 'amber',
+            kind: 'window'
+          });
+        }
+      }
+    }
+    return lights;
   }
 
   isInterior() {
@@ -4118,6 +4949,7 @@ class Tilemap {
 
   update(dt, currentHour = 12) {
     this.animTimer += dt;
+    this.waterClock += dt;
     if (this.animTimer >= 0.45) {
       this.animTimer -= 0.45;
       this.animFrame = (this.animFrame + 1) % 2;
@@ -4773,12 +5605,6 @@ class Tilemap {
           });
         } else if (localC === 1 || localC === width - 2) {
           setDeco(c, wallRow, TILES.WALL_WINDOW, true);
-          lightSources.push({
-            x: c * this.tileSize + 8,
-            y: wallRow * this.tileSize + 8,
-            radius: 28,
-            intensity: 0.7
-          });
         } else {
           setDeco(c, wallRow, TILES.WALL_WOOD, true);
         }
@@ -5816,22 +6642,28 @@ class Tilemap {
     };
   }
 
-  render(ctx, camera, enemies = [], player = null) {
+  /** Rango de tiles visibles (con 1 tile de margen para las copas/tejados que sobresalen). */
+  _visibleTileRange(camera) {
     const camX = camera.renderX;
     const camY = camera.renderY;
+    return {
+      startCol: Math.max(0, Math.floor(camX / this.tileSize)),
+      endCol: Math.min(this.cols - 1, Math.ceil((camX + camera.viewportWidth) / this.tileSize)),
+      startRow: Math.max(0, Math.floor(camY / this.tileSize)),
+      endRow: Math.min(this.rows - 1, Math.ceil((camY + camera.viewportHeight) / this.tileSize))
+    };
+  }
 
-    const startCol = Math.max(0, Math.floor(camX / this.tileSize));
-    const endCol = Math.min(
-      this.cols - 1,
-      Math.ceil((camX + camera.viewportWidth) / this.tileSize)
-    );
-    const startRow = Math.max(0, Math.floor(camY / this.tileSize));
-    const endRow = Math.min(
-      this.rows - 1,
-      Math.ceil((camY + camera.viewportHeight) / this.tileSize)
-    );
-
-    const { ground, decoration } = this.layers;
+  /**
+   * CAPA 0 · Suelo: hierba, caminos, baldosas, alfombras y agua con ondulación sinusoidal sutil
+   * (Río Alba). Solo se dibujan aquí las decoraciones planas (flores, alfombras, felpudos...).
+   * Los obstáculos sólidos van a la capa 1 (Y-sorted) y las copas/tejados a la capa 2.
+   */
+  renderGround(ctx, camera) {
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const { startCol, endCol, startRow, endRow } = this._visibleTileRange(camera);
+    const { ground, decoration, collision } = this.layers;
 
     for (let r = startRow; r <= endRow; r++) {
       for (let c = startCol; c <= endCol; c++) {
@@ -5839,29 +6671,176 @@ class Tilemap {
         const screenY = r * this.tileSize - camY;
 
         let groundTile = ground[r][c];
+        const isWater = groundTile === TILES.WATER_1 || groundTile === TILES.WATER_2;
         if (groundTile === TILES.WATER_1 && this.animFrame === 1) {
           groundTile = TILES.WATER_2;
         }
         this._drawTile(ctx, groundTile, screenX, screenY);
+        if (isWater) {
+          this._drawWaterRipple(ctx, screenX, screenY, c, r);
+        }
 
         let decoTile = decoration[r][c];
-        if (decoTile !== -1) {
-          if (decoTile === TILES.FLOWERS_1 && this.animFrame === 1) {
-            decoTile = TILES.FLOWERS_2;
+        if (decoTile === -1 || decoTile === undefined || decoTile === null) continue;
+        if (OVERHEAD_TILE_IDS.has(decoTile) || collision[r][c] === 1) continue;
+
+        if (decoTile === TILES.FLOWERS_1 && this.animFrame === 1) {
+          decoTile = TILES.FLOWERS_2;
+        }
+        this._drawTile(ctx, decoTile, screenX, screenY);
+      }
+    }
+
+    // Elementos de suelo de los minijuegos (interruptores, barrera de fuego, indicador de pila, portal)
+    if (this.currentSceneId === 'armor_temple') {
+      this.renderArmorPuzzle(ctx, camera, false);
+    } else if (this.currentSceneId === 'sword_temple') {
+      this.renderSwordPuzzle(ctx, camera, false);
+    }
+  }
+
+  /** Ondulación del agua: dos destellos horizontales por tile que fluyen con una onda senoidal. */
+  _drawWaterRipple(ctx, screenX, screenY, col, row) {
+    const t = this.waterClock;
+    for (let k = 0; k < 2; k++) {
+      const wobble = Math.sin(t * 1.3 + (col + k * 3) * 0.8 + row * 0.35) * 1.5;
+      const localY = Math.round(3 + k * 8 + wobble);
+      const phase = Math.sin(t * 0.9 + row * 1.3 + k * 2.1) * 0.5 + 0.5;
+      const localX = Math.round(phase * 8);
+      ctx.fillStyle = k === 0 ? 'rgba(255, 255, 255, 0.16)' : 'rgba(180, 225, 255, 0.10)';
+      ctx.fillRect(Math.round(screenX) + localX, Math.round(screenY) + localY, 7, 1);
+    }
+    // Sombreado alterno muy tenue para sugerir profundidad
+    const shade = 0.04 + (Math.sin(t * 0.7 + col * 0.5 - row * 0.9) * 0.5 + 0.5) * 0.04;
+    ctx.fillStyle = `rgba(8, 24, 64, ${shade.toFixed(3)})`;
+    ctx.fillRect(Math.round(screenX), Math.round(screenY), this.tileSize, this.tileSize);
+  }
+
+  /**
+   * CAPA 1 · Obstáculos Y-sorted: recoge en `out` los tiles sólidos visibles (troncos, muros, cajas,
+   * mobiliario, monolitos...) como entradas ordenables por `sortY` = borde inferior del tile.
+   * Las entradas se reutilizan entre fotogramas (pool) para no generar basura.
+   * @param {Camera2D} camera
+   * @param {Array} out lista a la que se añaden los props (se mezcla con las entidades)
+   */
+  collectYSortedProps(camera, out) {
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const { startCol, endCol, startRow, endRow } = this._visibleTileRange(camera);
+    const { decoration, collision } = this.layers;
+    let used = 0;
+
+    const acquire = () => {
+      let p = this._propPool[used];
+      if (!p) {
+        p = { isTileProp: true, tileId: 0, sx: 0, sy: 0, sortY: 0, puzzle: null, mono: null };
+        this._propPool[used] = p;
+      }
+      used++;
+      return p;
+    };
+
+    for (let r = startRow; r <= endRow; r++) {
+      for (let c = startCol; c <= endCol; c++) {
+        const decoTile = decoration[r][c];
+        if (decoTile === -1 || decoTile === undefined || decoTile === null) continue;
+        if (OVERHEAD_TILE_IDS.has(decoTile) || collision[r][c] !== 1) continue;
+
+        const p = acquire();
+        p.tileId = decoTile;
+        p.sx = c * this.tileSize - camX;
+        p.sy = r * this.tileSize - camY;
+        p.sortY = (r + 1) * this.tileSize;
+        p.puzzle = null;
+        p.mono = null;
+        out.push(p);
+      }
+    }
+
+    // Monolitos de los templos: obeliscos altos que ocluyen al jugador según su posición Y
+    let monoliths = null;
+    let puzzleKind = null;
+    if (this.currentSceneId === 'armor_temple' && this.armorPuzzle.monoliths) {
+      monoliths = this.armorPuzzle.monoliths;
+      puzzleKind = 'armor';
+    } else if (this.currentSceneId === 'sword_temple' && this.swordPuzzle.monoliths) {
+      monoliths = this.swordPuzzle.monoliths;
+      puzzleKind = 'sword';
+    }
+    if (monoliths) {
+      for (const mono of Object.values(monoliths)) {
+        const p = acquire();
+        p.tileId = -1;
+        p.sx = 0;
+        p.sy = 0;
+        p.sortY = (mono.row + 1) * this.tileSize;
+        p.puzzle = puzzleKind;
+        p.mono = mono;
+        out.push(p);
+      }
+    }
+  }
+
+  /** Dibuja una entrada devuelta por collectYSortedProps(). */
+  drawProp(ctx, camera, prop) {
+    if (prop.puzzle === 'armor') {
+      this.drawArmorMonolith(ctx, camera, prop.mono);
+    } else if (prop.puzzle === 'sword') {
+      this.drawSwordMonolith(ctx, camera, prop.mono);
+    } else {
+      this._drawTile(ctx, prop.tileId, prop.sx, prop.sy);
+    }
+  }
+
+  /**
+   * CAPA 2 · Estructuras elevadas: copas de árboles, tejados (con sombra de alero sobre el muro) y
+   * carteles de jefes/mazmorras. Se dibuja SIEMPRE por encima de jugador, NPCs y enemigos.
+   */
+  renderOverhead(ctx, camera, enemies = [], player = null) {
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const { startCol, endCol, startRow, endRow } = this._visibleTileRange(camera);
+    const { decoration } = this.layers;
+
+    for (let r = startRow; r <= endRow; r++) {
+      for (let c = startCol; c <= endCol; c++) {
+        const decoTile = decoration[r][c];
+        if (!OVERHEAD_TILE_IDS.has(decoTile)) continue;
+
+        const screenX = c * this.tileSize - camX;
+        const screenY = r * this.tileSize - camY;
+        this._drawTile(ctx, decoTile, screenX, screenY);
+
+        // Sombra de alero proyectada sobre el muro situado justo debajo del tejado
+        if (decoTile !== TILES.TREE_TOP && r + 1 < this.rows) {
+          const below = decoration[r + 1][c];
+          if (below === TILES.WALL_WOOD || below === TILES.WALL_WINDOW || below === TILES.WALL_DOOR) {
+            const baseY = Math.round(screenY) + this.tileSize;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
+            ctx.fillRect(Math.round(screenX), baseY, this.tileSize, 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+            ctx.fillRect(Math.round(screenX), baseY + 2, this.tileSize, 2);
           }
-          this._drawTile(ctx, decoTile, screenX, screenY);
         }
       }
     }
 
-    // Renderizar elementos dinámicos de los minijuegos y señalizaciones de Bosses/Mazmorras
-    if (this.currentSceneId === 'armor_temple') {
-      this.renderArmorPuzzle(ctx, camera);
-    } else if (this.currentSceneId === 'sword_temple') {
-      this.renderSwordPuzzle(ctx, camera);
-    }
-
     this.renderBossAndDungeonIndicators(ctx, camera, enemies, player);
+  }
+
+  /**
+   * Renderizado completo compatible (sin entidades): suelo → props Y-sorted → estructuras elevadas.
+   * El pipeline 2.5D (RenderPipeline) usa las tres capas por separado para intercalar entidades.
+   */
+  render(ctx, camera, enemies = [], player = null) {
+    this.renderGround(ctx, camera);
+    const props = [];
+    this.collectYSortedProps(camera, props);
+    props.sort((a, b) => a.sortY - b.sortY);
+    for (const prop of props) {
+      this.drawProp(ctx, camera, prop);
+    }
+    this.renderOverhead(ctx, camera, enemies, player);
   }
 
   /**
@@ -6101,7 +7080,7 @@ class Tilemap {
    * Renderiza los 4 interruptores de presión, los 3 monolitos crípticos y la barrera de fuego.
    * Sin fórmulas explícitas en la pared.
    */
-  renderArmorPuzzle(ctx, camera) {
+  renderArmorPuzzle(ctx, camera, withMonoliths = true) {
     const camX = camera.renderX;
     const camY = camera.renderY;
     const t = performance.now() * 0.003;
@@ -6144,24 +7123,11 @@ class Tilemap {
       }
     }
 
-    // 2. Render de los 3 Monolitos Crípticos de Lógica Abstracta (Alfa, Beta, Gamma)
-    if (this.armorPuzzle.monoliths) {
+    // 2. Monolitos Crípticos (Alfa, Beta, Gamma): en el pipeline 2.5D se ordenan en Y con el resto
+    // de props (withMonoliths = false); el modo compatible los dibuja aquí.
+    if (withMonoliths && this.armorPuzzle.monoliths) {
       for (const mono of Object.values(this.armorPuzzle.monoliths)) {
-        const mx = Math.round(mono.col * this.tileSize - camX);
-        const my = Math.round(mono.row * this.tileSize - camY);
-
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(mx + 2, my - 2, 12, 18);
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
-
-        // Símbolo rúnico grabado
-        ctx.font = 'bold 6.5px monospace';
-        ctx.fillStyle = '#7dd3fc';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(mono.symbol, mx + 8, my + 6);
+        this.drawArmorMonolith(ctx, camera, mono);
       }
     }
 
@@ -6186,6 +7152,28 @@ class Tilemap {
       }
     }
 
+    ctx.restore();
+  }
+
+  /** Dibuja un monolito críptico del Templo de la Armadura (obelisco de 12×18 px). */
+  drawArmorMonolith(ctx, camera, mono) {
+    const mx = Math.round(mono.col * this.tileSize - camera.renderX);
+    const my = Math.round(mono.row * this.tileSize - camera.renderY);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(mx + 2, my - 2, 12, 18);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
+
+    // Símbolo rúnico grabado
+    ctx.font = 'bold 6.5px monospace';
+    ctx.fillStyle = '#7dd3fc';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(mono.symbol, mx + 8, my + 6);
     ctx.restore();
   }
 
@@ -6236,7 +7224,7 @@ class Tilemap {
   /**
    * Renderiza los 3 monolitos rúnicos, el indicador de pila y el portal de la arena.
    */
-  renderSwordPuzzle(ctx, camera) {
+  renderSwordPuzzle(ctx, camera, withMonoliths = true) {
     const camX = camera.renderX;
     const camY = camera.renderY;
     const t = performance.now() * 0.003;
@@ -6244,30 +7232,10 @@ class Tilemap {
     ctx.save();
     ctx.imageSmoothingEnabled = false;
 
-    // 1. Render de los 3 Monolitos Rúnicos
-    for (const [key, mono] of Object.entries(this.swordPuzzle.monoliths)) {
-      const isActiveInStack = this.swordPuzzle.stack.includes(mono.id);
-      const mx = Math.round(mono.col * this.tileSize - camX);
-      const my = Math.round(mono.row * this.tileSize - camY);
-
-      // Obelisco / Estela de piedra
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(mx + 2, my - 2, 12, 18);
-      ctx.strokeStyle = isActiveInStack ? '#fde047' : '#64748b';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
-
-      // Símbolo rúnico grabado
-      ctx.font = 'bold 7px monospace';
-      ctx.fillStyle = isActiveInStack ? '#fde047' : '#94a3b8';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(mono.symbol, mx + 8, my + 6);
-
-      // Halo áureo flotante si la runa está activada en la pila
-      if (isActiveInStack) {
-        ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
-        ctx.strokeRect(mx, my - 4, 16, 22);
+    // 1. Monolitos Rúnicos: ordenados en Y por el pipeline 2.5D (withMonoliths = false)
+    if (withMonoliths) {
+      for (const mono of Object.values(this.swordPuzzle.monoliths)) {
+        this.drawSwordMonolith(ctx, camera, mono);
       }
     }
 
@@ -6303,6 +7271,33 @@ class Tilemap {
       ctx.fill();
     }
 
+    ctx.restore();
+  }
+
+  /** Dibuja una runa/monolito del Templo de la Espada (estela de 12×18 px con halo si está en la pila). */
+  drawSwordMonolith(ctx, camera, mono) {
+    const isActiveInStack = this.swordPuzzle.stack.includes(mono.id);
+    const mx = Math.round(mono.col * this.tileSize - camera.renderX);
+    const my = Math.round(mono.row * this.tileSize - camera.renderY);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(mx + 2, my - 2, 12, 18);
+    ctx.strokeStyle = isActiveInStack ? '#fde047' : '#64748b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
+
+    ctx.font = 'bold 7px monospace';
+    ctx.fillStyle = isActiveInStack ? '#fde047' : '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(mono.symbol, mx + 8, my + 6);
+
+    if (isActiveInStack) {
+      ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+      ctx.strokeRect(mx, my - 4, 16, 22);
+    }
     ctx.restore();
   }
 
@@ -6475,6 +7470,52 @@ class Entity {
 
   distanceTo(other) {
     return Math.hypot(this.centerX - other.centerX, this.centerY - other.centerY);
+  }
+
+  /** Coordenadas de los pies (centro inferior de la hitbox) en el mundo. */
+  get feetX() {
+    return this.x + this.boundingBox.offsetX + this.boundingBox.width / 2;
+  }
+
+  get feetY() {
+    return this.y + this.boundingBox.offsetY + this.boundingBox.height;
+  }
+
+  /**
+   * Clave de ordenación Y para el renderizado 2.5D: borde inferior del sprite (y + height).
+   * Mayor valor → más cerca del espectador → se dibuja después.
+   */
+  get sortY() {
+    return this.y + this.height;
+  }
+
+  /**
+   * Sombra proyectada pseudo-3D: elipse traslúcida en el suelo bajo los pies, cuya longitud,
+   * dirección e inclinación dependen del reloj solar (getSunState).
+   */
+  renderShadow(ctx, camera, sun) {
+    if (this.dead || this.hideShadow) return;
+
+    const stretch = sun ? sun.length : 1;
+    const dx = sun ? sun.dx : 0;
+    const dy = sun ? sun.dy : 0.18;
+    const alphaScale = sun ? sun.alphaScale : 1;
+
+    const baseRx = this.boundingBox.width * 0.62 + 1;
+    const baseRy = baseRx * 0.38;
+    const rx = baseRx * (1 + 0.35 * stretch * Math.abs(dx));
+    const ry = baseRy * (1 + 0.12 * stretch);
+    const cx = this.feetX - camera.renderX + dx * baseRx * 0.45 * stretch;
+    const cy = this.feetY - camera.renderY - 1 + dy * stretch * 1.2;
+    const tilt = dx * 0.22;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alphaScale));
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(Math.round(cx), Math.round(cy), rx, ry, tilt, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   update(dt) {
@@ -11211,11 +12252,12 @@ class DialogueBox {
   // ==========================================
 /**
  * Inventory.js - Sistema de Inventario y Mochila de Objetos Consumibles ('El Ojete Dorado')
- * 
- * Propósito exclusivo: Almacenar, inspeccionar, usar y descartar objetos y consumibles
- * (Pan, Café Compilado, Pociones, Truchas, Llaves, etc.).
- * No incluye habilidades permanentes ni métricas de robotización.
+ *
+ * Rediseñado bajo UILayout (Safe Layout 290×150 px):
+ * - Izquierda: Rejilla fija de 2 filas × 4 columnas con slots de 22×22 px y paginación estricta.
+ * - Panel lateral derecho: Icono, nombre, tipo de objeto, cantidad y descripción con wrapText estricto.
  */
+
 
 const KEY_OR_QUEST_ITEM_IDS = new Set([
   'dawn_armor',
@@ -11229,6 +12271,14 @@ const KEY_OR_QUEST_ITEM_IDS = new Set([
   'river_trout'
 ]);
 
+const CONSUMABLE_ITEM_IDS = new Set([
+  'bread',
+  'coffee',
+  'armor_potion',
+  'golden_apple',
+  'river_trout'
+]);
+
 class Inventory {
   constructor(itemsSheet, viewportWidth = 320, viewportHeight = 180) {
     this.itemsSheet = itemsSheet;
@@ -11237,7 +12287,8 @@ class Inventory {
 
     this.isOpen = false;
     this.maxSlots = 16;
-    this.visibleSlots = 8;
+    this.visibleSlots = 8; // 2 filas x 4 columnas por página
+    this.slotSize = 22;    // 22x22 px exactos por slot
     this.items = [];
     this.selectedIndex = 0;
     this.statusMessage = '';
@@ -11306,8 +12357,14 @@ class Inventory {
   }
 
   /**
+   * Devuelve el primer consumible activo para la ranura rápida (Quick-Slot [R]/[1])
+   */
+  getFirstConsumable() {
+    return this.items.find((it) => CONSUMABLE_ITEM_IDS.has(it.id) && it.qty > 0) || null;
+  }
+
+  /**
    * Descarta 1 unidad del objeto seleccionado.
-   * Retorna una copia del objeto descartado para poder reaparecerlo en el suelo si se desea.
    */
   dropSelectedItem() {
     const item = this.getSelectedItem();
@@ -11338,11 +12395,29 @@ class Inventory {
   }
 
   /**
-   * Navegación por la cuadrícula de 4 columnas del inventario (con páginas de 2 filas visibles).
+   * Clasifica el tipo semántico del objeto para el panel de detalles
+   */
+  getItemCategory(item) {
+    if (!item || !item.id) return { label: 'VACÍO', color: UI_COLORS.textMuted };
+    if (item.id === 'dawn_armor' || item.id === 'dawn_sword' || item.id === 'item_abyssal_pointer') {
+      return { label: 'RELIQUIA SAGRADA', color: UI_COLORS.gold };
+    }
+    if (CONSUMABLE_ITEM_IDS.has(item.id)) {
+      return { label: 'CONSUMIBLE [R]', color: UI_COLORS.emerald };
+    }
+    if (KEY_OR_QUEST_ITEM_IDS.has(item.id)) {
+      return { label: 'OBJETO CLAVE', color: UI_COLORS.cyan };
+    }
+    return { label: 'MATERIAL / BOTÍN', color: UI_COLORS.purple };
+  }
+
+  /**
+   * Navegación por la cuadrícula de 4 columnas × 2 filas por página
    */
   moveSelection(dir) {
     const cols = 4;
-    const totalSlots = Math.max(this.visibleSlots, Math.ceil(Math.max(this.items.length, this.selectedIndex + 1) / cols) * cols);
+    const totalPages = Math.max(1, Math.ceil(Math.max(this.items.length, this.selectedIndex + 1) / this.visibleSlots));
+    const totalSlots = totalPages * this.visibleSlots;
     const rows = Math.max(2, Math.ceil(totalSlots / cols));
     const col = this.selectedIndex % cols;
     const row = Math.floor(this.selectedIndex / cols);
@@ -11368,172 +12443,239 @@ class Inventory {
   }
 
   /**
-   * Renderiza la ventana modal de la Mochila de Consumibles y Objetos.
-   * @param {CanvasRenderingContext2D} ctx Contexto de dibujo
-   * @param {Player} player Instancia del jugador
+   * Renderiza el modal unificado de 290×150 px de la Mochila.
+   * Izquierda: Rejilla 2 filas × 4 columnas (slots de 22×22 px).
+   * Derecha: Panel de detalle con icono, nombre, tipo y descripción con wrapText estricto.
    */
   render(ctx, player = null) {
     if (!this.isOpen) return;
 
-    const winW = 246;
-    const winH = 154;
-    const winX = Math.round((this.viewportWidth - winW) / 2);
-    const winY = Math.round((this.viewportHeight - winH) / 2);
+    const totalItems = this.items.length;
+    const currentPage = Math.floor(this.selectedIndex / this.visibleSlots);
+    const totalPages = Math.max(1, Math.ceil(Math.max(totalItems, this.selectedIndex + 1) / this.visibleSlots));
+
+    const frame = UILayout.drawModalFrame(ctx, {
+      title: 'MOCHILA E INVENTARIO',
+      icon: '🎒',
+      badge: `${totalItems}/${this.maxSlots} SLOTS`,
+      closeLabel: '[Esc] Cerrar'
+    });
+
+    const { content } = frame;
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-
-    // Fondo oscurecido
-    ctx.fillStyle = 'rgba(6, 8, 14, 0.76)';
-    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
-
-    // Marco exterior retro
-    ctx.fillStyle = '#0f1423';
-    ctx.fillRect(winX, winY, winW, winH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
-    ctx.fillStyle = '#161e31';
-    ctx.fillRect(winX + 2.5, winY + 2.5, winW - 5, winH - 5);
-
-    // Cabecera
-    ctx.font = 'bold 7.5px monospace';
-    ctx.fillStyle = '#ffd885';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    ctx.fillText('🎒 MOCHILA DE CONSUMIBLES & OBJETOS', winX + 8, winY + 6);
-
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Cerrar', winX + winW - 8, winY + 7);
 
     // =========================================================================
-    // Cuadrícula de 8 ranuras visibles (4 columnas x 2 filas, con paginación automática)
+    // COLUMNA IZQUIERDA: Rejilla fija 2 filas × 4 columnas (slots de 22×22 px)
     // =========================================================================
+    const leftW = 112;
+    const leftRect = {
+      x: content.x,
+      y: content.y,
+      w: leftW,
+      h: content.h
+    };
+
+    UILayout.drawPanel(ctx, leftRect, {
+      bg: UI_COLORS.panelBg,
+      border: UI_COLORS.borderInner,
+      headerText: `RANURAS (PÁG ${currentPage + 1}/${totalPages})`
+    });
+
     const cols = 4;
-    const slotW = 53;
-    const slotH = 28;
-    const gapX = 6;
+    const rows = 2;
+    const slotSize = 22; // 22×22 px estrictos según especificación
+    const gapX = 4;
     const gapY = 5;
-    const startX = winX + 8;
-    const startY = winY + 20;
+    const gridW = cols * slotSize + (cols - 1) * gapX; // 100 px
+    const gridStartX = leftRect.x + Math.floor((leftRect.w - gridW) / 2);
+    const gridStartY = leftRect.y + 16;
 
-    const selectedRow = Math.floor(this.selectedIndex / cols);
-    const startRow = selectedRow >= 2 ? selectedRow - 1 : 0;
-    const firstSlotIndex = startRow * cols;
+    const firstSlotIndex = currentPage * this.visibleSlots;
+    const quickItem = this.getFirstConsumable();
 
-    for (let v = 0; v < this.visibleSlots; v++) {
-      const i = firstSlotIndex + v;
-      const col = v % cols;
-      const row = Math.floor(v / cols);
-      const sx = startX + col * (slotW + gapX);
-      const sy = startY + row * (slotH + gapY);
-      const isSelected = i === this.selectedIndex;
-      const item = this.items[i];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const v = r * cols + c;
+        const slotIndex = firstSlotIndex + v;
+        const sx = gridStartX + c * (slotSize + gapX);
+        const sy = gridStartY + r * (slotSize + gapY);
+        const isSelected = slotIndex === this.selectedIndex;
+        const item = this.items[slotIndex];
 
-      // Fondo de la ranura
-      ctx.fillStyle = isSelected ? '#ffd885' : '#334155';
-      ctx.fillRect(sx, sy, slotW, slotH);
-      ctx.fillStyle = isSelected ? '#1e293b' : '#0f172a';
-      ctx.fillRect(sx + 1, sy + 1, slotW - 2, slotH - 2);
+        // Fondo y bisel de ranura 22×22 px
+        ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+        ctx.fillRect(sx, sy, slotSize, slotSize);
 
-      if (item) {
-        const srcScale = this.itemsSheet.height >= 64 ? 4 : 1;
-        ctx.drawImage(
-          this.itemsSheet,
-          item.iconIndex * 16 * srcScale,
-          0,
-          16 * srcScale,
-          16 * srcScale,
-          sx + 3,
-          sy + 6,
-          16,
-          16
-        );
+        ctx.strokeStyle = isSelected ? UI_COLORS.slotSelectedBorder : UI_COLORS.slotBorder;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx + 0.5, sy + 0.5, slotSize - 1, slotSize - 1);
 
-        ctx.font = '6px monospace';
-        ctx.fillStyle = '#f1f5f9';
-        ctx.textAlign = 'left';
-        const shortName = item.name.length > 6 ? `${item.name.slice(0, 5)}..` : item.name;
-        ctx.fillText(shortName, sx + 21, sy + 6);
+        if (item) {
+          // Dibujar sprite 16x16 centrado dentro del slot de 22x22
+          UILayout.drawItemIcon(ctx, this.itemsSheet, item.iconIndex, sx + 3, sy + 2, 16);
 
-        ctx.fillStyle = '#ffd885';
-        ctx.fillText(`x${item.qty}`, sx + 21, sy + 15);
-      } else {
-        ctx.font = '5.5px monospace';
-        ctx.fillStyle = '#475569';
-        ctx.textAlign = 'center';
-        ctx.fillText(`[Slot ${i + 1}]`, sx + slotW / 2, sy + 11);
+          // Etiqueta de cantidad en esquina inferior derecha
+          const qtyStr = `x${item.qty}`;
+          ctx.font = `bold 4px ${UI_FONT}`;
+          const qw = ctx.measureText(qtyStr).width;
+          ctx.fillStyle = 'rgba(10, 14, 23, 0.86)';
+          ctx.fillRect(sx + slotSize - qw - 3, sy + slotSize - 7, qw + 2, 6);
+          ctx.fillStyle = UI_COLORS.gold;
+          ctx.fillText(qtyStr, sx + slotSize - qw - 2, sy + slotSize - 6);
+
+          // Indicador discreto si es el Quick-Slot [R] activo
+          if (quickItem && quickItem.id === item.id) {
+            ctx.fillStyle = UI_COLORS.emerald;
+            ctx.fillRect(sx + 1, sy + 1, 5, 5);
+            ctx.font = `bold 3.5px ${UI_FONT}`;
+            ctx.fillStyle = '#06101e';
+            ctx.fillText('R', sx + 2, sy + 1.5);
+          }
+        } else {
+          // Ranura vacía
+          ctx.font = `4px ${UI_FONT}`;
+          ctx.fillStyle = 'rgba(100, 116, 139, 0.45)';
+          const numStr = String(slotIndex + 1);
+          const nw = ctx.measureText(numStr).width;
+          ctx.fillText(numStr, sx + Math.floor((slotSize - nw) / 2), sy + 9);
+        }
       }
     }
 
-    // =========================================================================
-    // Panel de detalles del objeto seleccionado
-    // =========================================================================
-    const detailX = winX + 8;
-    const detailY = winY + 86;
-    const detailW = winW - 16;
-    const detailH = 50;
+    // Resumen compacto inferior izquierdo (Bytes + Ranura Rápida [R])
+    const summaryY = gridStartY + rows * (slotSize + gapY) + 4;
+    ctx.strokeStyle = 'rgba(51, 65, 85, 0.6)';
+    ctx.beginPath();
+    ctx.moveTo(leftRect.x + 5, summaryY);
+    ctx.lineTo(leftRect.x + leftRect.w - 5, summaryY);
+    ctx.stroke();
 
-    ctx.fillStyle = '#0a0f1d';
-    ctx.fillRect(detailX, detailY, detailW, detailH);
-    ctx.strokeStyle = '#2b3652';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(detailX + 0.5, detailY + 0.5, detailW - 1, detailH - 1);
+    const coins = player ? (player.coins ?? 0) : 0;
+    ctx.font = `bold 4.5px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.fillText(`◈ BYTES: ${coins}`, leftRect.x + 6, summaryY + 5);
+
+    ctx.font = `4px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.textSecondary;
+    const quickText = quickItem
+      ? `[R] Rápido: ${quickItem.name} (x${quickItem.qty})`
+      : '[R] Rápido: Sin consumible';
+    ctx.fillText(UILayout.fitText(ctx, quickText, leftRect.w - 12), leftRect.x + 6, summaryY + 14);
+
+    if (totalPages > 1) {
+      UILayout.drawPager(ctx, leftRect.x + leftRect.w - 28, summaryY + 4, currentPage + 1, totalPages);
+    }
+
+    // =========================================================================
+    // PANEL LATERAL DERECHO: Icono, Nombre, Tipo y Descripción con wrapText
+    // =========================================================================
+    const rightRect = {
+      x: leftRect.x + leftRect.w + 4,
+      y: content.y,
+      w: content.w - leftRect.w - 4,
+      h: content.h
+    };
+
+    UILayout.drawPanel(ctx, rightRect, {
+      bg: UI_COLORS.panelBgAlt,
+      border: UI_COLORS.borderInner,
+      headerText: 'INSPECCIÓN DEL OBJETO'
+    });
 
     const selected = this.getSelectedItem();
-    ctx.textAlign = 'left';
+    const padX = rightRect.x + 6;
+    const innerW = rightRect.w - 12;
 
     if (this.statusMessage) {
-      ctx.font = 'bold 6.5px monospace';
-      ctx.fillStyle = '#86efac';
-      ctx.fillText(this.statusMessage, detailX + 6, detailY + 6);
+      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.emerald;
+      const msgLines = UILayout.wrapText(ctx, this.statusMessage, innerW);
+      msgLines.slice(0, 3).forEach((line, idx) => {
+        ctx.fillText(line, padX, rightRect.y + 18 + idx * 8);
+      });
     } else if (selected) {
-      ctx.font = 'bold 7px monospace';
-      ctx.fillStyle = '#ffd885';
-      ctx.fillText(`${selected.name}  (x${selected.qty})`, detailX + 6, detailY + 5.5);
+      // Caja de icono 24×24
+      const iconBoxX = padX;
+      const iconBoxY = rightRect.y + 16;
+      ctx.fillStyle = UI_COLORS.slotBg;
+      ctx.fillRect(iconBoxX, iconBoxY, 24, 24);
+      ctx.strokeStyle = UI_COLORS.goldDim;
+      ctx.strokeRect(iconBoxX + 0.5, iconBoxY + 0.5, 23, 23);
 
-      ctx.font = '6px monospace';
-      ctx.fillStyle = '#cbd5e1';
-      const lines = this._wrapText(ctx, selected.description, detailW - 12);
-      lines.slice(0, 2).forEach((l, idx) => {
-        ctx.fillText(l, detailX + 6, detailY + 15 + idx * 8);
+      UILayout.drawItemIcon(ctx, this.itemsSheet, selected.iconIndex, iconBoxX + 4, iconBoxY + 4, 16);
+
+      // Nombre del objeto
+      const titleX = iconBoxX + 29;
+      const titleMaxW = rightRect.w - 39;
+      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.fillText(UILayout.fitText(ctx, selected.name, titleMaxW), titleX, iconBoxY + 1);
+
+      // Tipo y cantidad
+      const category = this.getItemCategory(selected);
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.fillStyle = category.color;
+      ctx.fillText(category.label, titleX, iconBoxY + 9);
+
+      ctx.font = `4px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textSecondary;
+      ctx.fillText(`Cantidad: x${selected.qty}`, titleX, iconBoxY + 16);
+
+      // Separador
+      const sepY = iconBoxY + 28;
+      ctx.strokeStyle = 'rgba(51, 65, 85, 0.7)';
+      ctx.beginPath();
+      ctx.moveTo(padX, sepY);
+      ctx.lineTo(padX + innerW, sepY);
+      ctx.stroke();
+
+      // Descripción con wrapText estricto (máximo 5 líneas dentro de la caja)
+      ctx.font = `4.3px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textPrimary;
+      const descLines = UILayout.wrapText(ctx, selected.description || 'Sin descripción.', innerW);
+      descLines.slice(0, 5).forEach((line, idx) => {
+        ctx.fillText(line, padX, sepY + 5 + idx * 7);
       });
 
-      // Botones de acción disponibles
-      ctx.fillStyle = '#38bdf8';
-      ctx.font = 'bold 6px monospace';
-      ctx.fillText('▶ [E] Usar Objeto', detailX + 6, detailY + 36);
+      // Acciones contextuales en la base del panel derecho
+      const actY = rightRect.y + rightRect.h - 15;
+      ctx.fillStyle = 'rgba(20, 29, 47, 0.92)';
+      ctx.fillRect(padX, actY, innerW, 11);
+      ctx.strokeStyle = UI_COLORS.borderInner;
+      ctx.strokeRect(padX + 0.5, actY + 0.5, innerW - 1, 10);
 
-      ctx.fillStyle = '#f87171';
-      ctx.fillText('✕ [X] Tirar al Suelo', detailX + 110, detailY + 36);
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.cyan;
+      ctx.fillText('[E] Usar / Equipar', padX + 4, actY + 3.5);
+
+      ctx.fillStyle = UI_COLORS.crimson;
+      ctx.fillText('[X] Descartar', padX + innerW - 48, actY + 3.5);
     } else {
-      ctx.font = '6px monospace';
-      ctx.fillStyle = '#64748b';
-      ctx.fillText('Ranura vacía.', detailX + 6, detailY + 8);
-      ctx.fillText('Explora Valleverde y los cofres para conseguir comida y pociones.', detailX + 6, detailY + 18);
+      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textMuted;
+      ctx.fillText('RANURA VACÍA', padX, rightRect.y + 20);
+
+      ctx.font = `4.2px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textSecondary;
+      const emptyLines = UILayout.wrapText(
+        ctx,
+        'Selecciona una ranura con objetos para inspeccionar sus propiedades, consumir provisiones o equipar reliquias.',
+        innerW
+      );
+      emptyLines.slice(0, 5).forEach((line, idx) => {
+        ctx.fillText(line, padX, rightRect.y + 32 + idx * 7.5);
+      });
     }
 
     ctx.restore();
   }
 
   _wrapText(ctx, text, maxWidth) {
-    if (!text) return [];
-    const words = text.split(' ');
-    const lines = [];
-    let currentLine = '';
-
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    }
-    if (currentLine) lines.push(currentLine);
-    return lines;
+    return UILayout.wrapText(ctx, text, maxWidth);
   }
 }
 
@@ -11542,12 +12684,12 @@ class Inventory {
   // ==========================================
 /**
  * CharacterStats.js - Ficha Técnica y Progresión Permanente del Héroe ('El Ojete Dorado')
- * 
- * Propósito: Mostrar el perfil del personaje, métricas vitales (salud, robotización,
- * armadura, saldo de bytes), árbol de habilidades de combate y pestaña de consulta
- * del Sistema de Trofeos y Logros desbloqueados/bloqueados.
- * Se abre y cierra con la tecla 'C'.
+ *
+ * Rediseñado bajo UILayout (Safe Layout 290×150 px):
+ * - Barras de progreso compactas para Salud, Blindaje Binario, Robotización y Atributos.
+ * - Selector superior con [Tab] / [1] / [2] / [3] para conmutar entre Perfil, Logros y Habilidades.
  */
+
 
 
 class CharacterStats {
@@ -11612,7 +12754,6 @@ class CharacterStats {
   handleInput(input, player = null) {
     if (!this.isOpen || !input) return false;
 
-    // Pestaña de habilidades: W/S navegan, Enter/E compran. A/D/Tab siguen cambiando de pestaña.
     if (this.activeTab === 'skills') {
       if (input.consumeKey('KeyW') || input.consumeKey('ArrowUp')) {
         this.skillCursor = (this.skillCursor + SKILL_DEFS.length - 1) % SKILL_DEFS.length;
@@ -11637,7 +12778,6 @@ class CharacterStats {
       }
     }
 
-    // Cambiar de pestaña mediante Tab, 1, 2, A, D, Flechas
     if (
       input.consumeKey('Tab') ||
       input.consumeKey('KeyA') ||
@@ -11661,22 +12801,20 @@ class CharacterStats {
       return true;
     }
 
-    // Interacción por clic de ratón en las pestañas superiores
     if (input.pointerJustClicked) {
-      const winW = 276;
-      const winX = Math.round((this.viewportWidth - winW) / 2);
-      const tabY = Math.round((this.viewportHeight - 162) / 2) + 4;
+      const modal = UILayout.modalRect();
+      const tabY = modal.y + 18;
       const px = input.pointerX;
       const py = input.pointerY;
 
-      if (py >= tabY - 2 && py <= tabY + 14) {
-        if (px >= winX + 8 && px <= winX + 95) {
+      if (py >= tabY && py <= tabY + 12) {
+        if (px >= modal.x + 5 && px <= modal.x + 98) {
           this.switchTab('stats');
           return true;
-        } else if (px >= winX + 97 && px <= winX + 195) {
+        } else if (px >= modal.x + 100 && px <= modal.x + 196) {
           this.switchTab('achievements');
           return true;
-        } else if (px >= winX + 197 && px <= winX + 268) {
+        } else if (px >= modal.x + 198 && px <= modal.x + modal.w - 5) {
           this.switchTab('skills');
           return true;
         }
@@ -11687,552 +12825,418 @@ class CharacterStats {
   }
 
   /**
-   * Renderiza la ventana de la Ficha de Desarrollo o la pestaña de Logros.
-   * @param {CanvasRenderingContext2D} ctx Contexto de dibujo
-   * @param {Player} player Instancia del jugador
-   * @param {AchievementManager} achievementManager Gestor de logros
+   * Renderiza el contenedor unificado de 290×150 px de la Ficha del Desarrollador.
    */
   render(ctx, player = null, achievementManager = null) {
     if (!this.isOpen) return;
 
-    const winW = 276;
-    const winH = 162;
-    const winX = Math.round((this.viewportWidth - winW) / 2);
-    const winY = Math.round((this.viewportHeight - winH) / 2);
+    const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;
+    const totalCount = achievementManager ? achievementManager.getTotalCount() : 11;
+    const skillPts = player ? (player.skillPoints || 0) : 0;
+
+    const frame = UILayout.drawModalFrame(ctx, {
+      title: 'FICHA DEL DESARROLLADOR',
+      icon: '⚙️',
+      badge: '[Tab] Cambiar Vista',
+      closeLabel: '[Esc] Cerrar'
+    });
+
+    const { content } = frame;
     const t = performance.now() * 0.001;
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-
-    // Fondo oscurecido
-    ctx.fillStyle = 'rgba(6, 8, 14, 0.82)';
-    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
-
-    // Marco exterior con doble borde dorado
-    ctx.fillStyle = '#0e1322';
-    ctx.fillRect(winX, winY, winW, winH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
-    ctx.fillStyle = '#141c2e';
-    ctx.fillRect(winX + 2.5, winY + 2.5, winW - 5, winH - 5);
-
-    // Cantoneras decorativas
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(winX + 3, winY + 3, 5, 2);
-    ctx.fillRect(winX + 3, winY + 3, 2, 5);
-    ctx.fillRect(winX + winW - 8, winY + 3, 5, 2);
-    ctx.fillRect(winX + winW - 5, winY + 3, 2, 5);
-    ctx.fillRect(winX + 3, winY + winH - 5, 5, 2);
-    ctx.fillRect(winX + 3, winY + winH - 8, 2, 5);
-    ctx.fillRect(winX + winW - 8, winY + winH - 5, 5, 2);
-    ctx.fillRect(winX + winW - 5, winY + winH - 8, 2, 5);
-
-    // Atajo discreto de cierre en la esquina superior derecha
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('[Esc] Cerrar', winX + winW - 8, tabY + 5.5);
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
 
     // =========================================================================
-    // BARRA DE PESTAÑAS SUPERIOR ([1] FICHA / [2] LOGROS)
+    // BARRA DE PESTAÑAS COMPACTA ([Tab] Perfil / Logros / Habilidades)
     // =========================================================================
-    const tabY = winY + 5;
-    const tab1W = 86;
-    const tab2W = 96;
+    const tabBarY = content.y;
+    const tabH = 11;
+    const tabGap = 3;
+    const tabW = Math.floor((content.w - tabGap * 2) / 3);
 
-    // Pestaña 1: Ficha y Habilidades
-    const isTab1 = this.activeTab === 'stats';
-    ctx.fillStyle = isTab1 ? '#1e293b' : '#0b101c';
-    ctx.fillRect(winX + 8, tabY, tab1W, 11);
-    ctx.strokeStyle = isTab1 ? '#f59e0b' : '#334155';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(winX + 8.5, tabY + 0.5, tab1W - 1, 10);
+    const tabs = [
+      { id: 'stats', label: '[1] PERFIL & ATRIBUTOS' },
+      { id: 'achievements', label: `[2] LOGROS (${unlockedCount}/${totalCount})` },
+      { id: 'skills', label: `[3] HABILIDADES (${skillPts}pt)` }
+    ];
 
-    ctx.font = 'bold 5.5px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = isTab1 ? '#ffd885' : '#64748b';
-    ctx.fillText('[1] ⚙️ PERFIL & COMBATE', winX + 8 + tab1W / 2, tabY + 5.5);
+    tabs.forEach((tab, idx) => {
+      const tx = content.x + idx * (tabW + tabGap);
+      const isActive = this.activeTab === tab.id;
+      ctx.fillStyle = isActive ? UI_COLORS.slotSelectedBg : UI_COLORS.panelBg;
+      ctx.fillRect(tx, tabBarY, tabW, tabH);
+      ctx.strokeStyle = isActive ? UI_COLORS.gold : UI_COLORS.borderInner;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(tx + 0.5, tabBarY + 0.5, tabW - 1, tabH - 1);
 
-    // Pestaña 2: Trofeos y Logros
-    const isTab2 = this.activeTab === 'achievements';
-    const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;
-    const totalCount = achievementManager ? achievementManager.getTotalCount() : 11;
+      ctx.font = `bold 4.1px ${UI_FONT}`;
+      ctx.fillStyle = isActive ? UI_COLORS.gold : UI_COLORS.textSecondary;
+      const lw = ctx.measureText(tab.label).width;
+      ctx.fillText(tab.label, tx + Math.max(2, Math.floor((tabW - lw) / 2)), tabBarY + 3.5);
+    });
 
-    ctx.fillStyle = isTab2 ? '#1e293b' : '#0b101c';
-    ctx.fillRect(winX + 98, tabY, tab2W, 11);
-    ctx.strokeStyle = isTab2 ? '#f59e0b' : '#334155';
-    ctx.strokeRect(winX + 98.5, tabY + 0.5, tab2W - 1, 10);
+    const bodyRect = {
+      x: content.x,
+      y: content.y + tabH + 3,
+      w: content.w,
+      h: content.h - tabH - 3
+    };
 
-    ctx.fillStyle = isTab2 ? '#ffd885' : '#64748b';
-    ctx.fillText(`[2] 🏆 TROFEOS (${unlockedCount}/${totalCount})`, winX + 98 + tab2W / 2, tabY + 5.5);
-
-    // Pestaña 3: Árbol de habilidades
-    const isTab3 = this.activeTab === 'skills';
-    ctx.fillStyle = isTab3 ? '#1e293b' : '#0b101c';
-    ctx.fillRect(winX + 198, tabY, 70, 11);
-    ctx.strokeStyle = isTab3 ? '#f59e0b' : '#334155';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(winX + 198.5, tabY + 0.5, 69, 10);
-    ctx.font = 'bold 5.5px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = isTab3 ? '#ffd885' : '#64748b';
-    ctx.fillText(`[3] ⭐ HABIL. (${player ? player.skillPoints : 0})`, winX + 198 + 35, tabY + 5.5);
-
-    // =========================================================================
-    // CONTENIDO SEGÚN LA PESTAÑA ACTIVA
-    // =========================================================================
     if (this.activeTab === 'stats') {
-      this._renderStatsTab(ctx, winX, winY, winW, winH, player, t);
+      this._renderStatsTab(ctx, bodyRect, player, t);
     } else if (this.activeTab === 'skills') {
-      this._renderSkillsTab(ctx, winX, winY, winW, winH, player);
+      this._renderSkillsTab(ctx, bodyRect, player);
     } else {
-      this._renderAchievementsTab(ctx, winX, winY, winW, winH, achievementManager);
+      this._renderAchievementsTab(ctx, bodyRect, achievementManager);
     }
 
     ctx.restore();
   }
 
   /**
-   * Renderiza la vista de Perfil y Habilidades de combate.
+   * Renderiza la vista de Perfil con barras de progreso compactas para Robotización y atributos.
    */
-  _renderStatsTab(ctx, winX, winY, winW, winH, player, t) {
-    // -------------------------------------------------------------------------
-    // PANEL IZQUIERDO: RETRATO Y MÉTRICAS VITALES (Ancho: 124px)
-    // -------------------------------------------------------------------------
-    const leftX = winX + 8;
-    const leftY = winY + 19;
-    const leftW = 124;
-    const leftH = 124;
+  _renderStatsTab(ctx, rect, player, t) {
+    const leftW = 136;
+    const leftRect = {
+      x: rect.x,
+      y: rect.y,
+      w: leftW,
+      h: rect.h
+    };
 
-    ctx.fillStyle = '#0b101c';
-    ctx.fillRect(leftX, leftY, leftW, leftH);
-    ctx.strokeStyle = '#2b3652';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(leftX + 0.5, leftY + 0.5, leftW - 1, leftH - 1);
+    UILayout.drawPanel(ctx, leftRect, {
+      bg: UI_COLORS.panelBg,
+      border: UI_COLORS.borderInner,
+      headerText: 'MÉTRICAS DE SISTEMA'
+    });
 
-    // 1. Retrato pixel art del Dev
-    this._drawDevPortrait(ctx, leftX + 5, leftY + 5, player, t);
+    // 1. Retrato pixel art del Dev + Identidad
+    this._drawDevPortrait(ctx, leftRect.x + 5, leftRect.y + 15, player, t);
 
-    // Nombre y Título
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.font = 'bold 6.5px monospace';
-    ctx.fillStyle = '#ffd885';
-    ctx.fillText('DEV PROGRAMADOR', leftX + 42, leftY + 7);
+    ctx.font = `bold 5px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.fillText('DEV PROGRAMADOR', leftRect.x + 41, leftRect.y + 16);
 
-    const devTitle = this.getDevTitle(player);
-    ctx.font = '5.5px monospace';
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillText(devTitle, leftX + 42, leftY + 17);
+    ctx.font = `4.2px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.cyan;
+    ctx.fillText(UILayout.fitText(ctx, this.getDevTitle(player), leftW - 45), leftRect.x + 41, leftRect.y + 24);
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '5px monospace';
-    ctx.fillText('Valleverde · Nivel 1', leftX + 42, leftY + 26);
+    const coinsVal = player ? (player.coins ?? 0) : 0;
+    ctx.font = `bold 4.2px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.emerald;
+    ctx.fillText(`◈ Saldo: ${coinsVal} Bytes`, leftRect.x + 41, leftRect.y + 33);
 
-    // Línea divisoria
-    ctx.strokeStyle = '#1e293b';
-    ctx.beginPath();
-    ctx.moveTo(leftX + 4, leftY + 38);
-    ctx.lineTo(leftX + leftW - 4, leftY + 38);
-    ctx.stroke();
+    // 2. Barras de progreso compactas (Salud, Blindaje, Robotización, Ataque)
+    const barX = leftRect.x + 5;
+    const barW = leftRect.w - 10;
+    let by = leftRect.y + 50;
 
-    // 2. Métricas Vitales
-    const metricY = leftY + 41;
-    const coinsVal = player ? player.coins : 0;
-    const hasArmor = player ? player.hasArmor : false;
-    const hasSword = player ? player.hasSword : false;
-    const robotVal = player ? Math.round(player.robotizationLevel) : 0;
-    const hasCurse = player ? player.hasBrokenHeartCurse : false;
+    const hpCur = player ? Math.max(0, player.hp) : 6;
+    const hpMax = player ? (player.maxHp || 6) : 6;
+    UILayout.drawBar(ctx, {
+      x: barX,
+      y: by,
+      w: barW,
+      h: 5,
+      value: hpCur,
+      max: hpMax,
+      color: UI_COLORS.crimson,
+      label: 'SALUD VITAL',
+      valueText: `${hpCur.toFixed(1).replace('.0', '')}/${hpMax} ♥`
+    });
+    by += 16;
 
-    // Salud
-    ctx.font = '5.5px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Salud:', leftX + 5, metricY);
-    ctx.fillStyle = '#f43f5e';
-    const hpCur = player ? Math.ceil(player.hp) : 6;
-    const hpMax = player ? player.maxHp : 6;
-    ctx.fillText(`❤️ ${hpCur}/${hpMax} HP`, leftX + 42, metricY);
+    const hasArmor = Boolean(player && player.hasArmor);
+    const armorPts = player ? (player.armorPoints ?? 0) : 0;
+    const maxArmorPts = player ? (player.maxArmorPoints || 3) : 3;
+    UILayout.drawBar(ctx, {
+      x: barX,
+      y: by,
+      w: barW,
+      h: 5,
+      value: hasArmor ? armorPts : 0,
+      max: maxArmorPts,
+      color: UI_COLORS.cyan,
+      label: 'BLINDAJE BINARIO',
+      valueText: hasArmor ? `${armorPts}/${maxArmorPts} 🛡️` : 'SIN CORAZA'
+    });
+    by += 16;
 
-    // Saldo Bytes
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Saldo:', leftX + 5, metricY + 13);
-    ctx.fillStyle = '#fde047';
-    ctx.fillText(`🪙 ${coinsVal} Bytes`, leftX + 42, metricY + 13);
+    const robotVal = player ? Math.round(player.robotizationLevel || 0) : 0;
+    const robotColor = robotVal > 80
+      ? UI_COLORS.crimson
+      : (robotVal > 50 ? UI_COLORS.gold : UI_COLORS.emerald);
+    UILayout.drawBar(ctx, {
+      x: barX,
+      y: by,
+      w: barW,
+      h: 5,
+      value: robotVal,
+      max: 100,
+      color: robotColor,
+      label: 'ROBOTIZACIÓN IA',
+      valueText: `${robotVal}% 🤖`
+    });
+    by += 16;
 
-    // Armadura
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Defensa:', leftX + 5, metricY + 26);
-    ctx.fillStyle = hasArmor ? '#4ade80' : '#f87171';
-    ctx.fillText(hasArmor ? '🛡️ Armadura Binaria' : '⚠️ Indefenso (0 def)', leftX + 42, metricY + 26);
+    const hasSword = Boolean(player && player.hasSword);
+    const atkPower = hasSword ? (robotVal > 50 ? 70 : 100) : 25;
+    UILayout.drawBar(ctx, {
+      x: barX,
+      y: by,
+      w: barW,
+      h: 5,
+      value: atkPower,
+      max: 100,
+      color: hasSword ? UI_COLORS.gold : UI_COLORS.textMuted,
+      label: 'POTENCIA RECURSIVA',
+      valueText: hasSword ? (robotVal > 50 ? '-30% PENAL.' : '100% ⚔️') : 'DESARMADO'
+    });
 
-    // Arma
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Arma:', leftX + 5, metricY + 39);
-    ctx.fillStyle = hasSword ? '#38bdf8' : '#64748b';
-    ctx.fillText(hasSword ? '⚔️ Espada Recursiva' : 'Desarmado', leftX + 42, metricY + 39);
+    // =========================================================================
+    // PANEL DERECHO: Habilidades de Combate y Reliquias
+    // =========================================================================
+    const rightRect = {
+      x: leftRect.x + leftRect.w + 4,
+      y: rect.y,
+      w: rect.w - leftRect.w - 4,
+      h: rect.h
+    };
 
-    // Robotización con barra gráfica
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Robotiz.:', leftX + 5, metricY + 52);
+    UILayout.drawPanel(ctx, rightRect, {
+      bg: UI_COLORS.panelBgAlt,
+      border: UI_COLORS.borderInner,
+      headerText: 'MÓDULOS DE COMBATE ACTIVOS'
+    });
 
-    const barX = leftX + 42;
-    const barY = metricY + 51;
-    const barW = 50;
-    const barH = 5;
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(barX, barY, barW, barH);
-    ctx.strokeStyle = '#334155';
-    ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+    const cardX = rightRect.x + 4;
+    const cardW = rightRect.w - 8;
+    const cardH = 30;
 
-    const fillW = Math.round(barW * (Math.min(100, Math.max(0, robotVal)) / 100));
-    if (fillW > 0) {
-      ctx.fillStyle = robotVal > 75 ? '#ef4444' : robotVal > 40 ? '#f59e0b' : '#10b981';
-      ctx.fillRect(barX + 1, barY + 1, fillW - 2, barH - 2);
-    }
-    ctx.fillStyle = robotVal > 75 ? '#fca5a5' : '#cbd5e1';
-    ctx.fillText(`${robotVal}%`, barX + barW + 3, metricY + 52);
-
-    // Maldición / Espíritu
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Espíritu:', leftX + 5, metricY + 66);
-    if (hasCurse) {
-      ctx.fillStyle = '#f43f5e';
-      ctx.fillText('💔 Corazón Maldito (-0.5♥)', leftX + 42, metricY + 66);
-    } else {
-      ctx.fillStyle = '#38bdf8';
-      ctx.fillText('✨ Íntegro (100%)', leftX + 42, metricY + 66);
-    }
-
-    // -------------------------------------------------------------------------
-    // PANEL DERECHO: ÁRBOL / REGISTRO DE HABILIDADES DE COMBATE (Ancho: 130px)
-    // -------------------------------------------------------------------------
-    const rightX = winX + 138;
-    const rightY = winY + 19;
-    const rightW = 130;
-    const rightH = 124;
-
-    ctx.fillStyle = '#0b101c';
-    ctx.fillRect(rightX, rightY, rightW, rightH);
-    ctx.strokeStyle = '#2b3652';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(rightX + 0.5, rightY + 0.5, rightW - 1, rightH - 1);
-
-    // Cabecera derecha
-    ctx.font = 'bold 6.5px monospace';
-    ctx.fillStyle = '#ffd885';
-    ctx.fillText('⚔️ HABILIDADES DE COMBATE', rightX + 6, rightY + 6);
-
-    // 1. Dash Asíncrono
-    const hasDash = player && player.hasDash;
     this._drawSkillCard(
       ctx,
-      rightX + 4,
-      rightY + 16,
-      rightW - 8,
-      32,
+      cardX,
+      rightRect.y + 15,
+      cardW,
+      cardH,
       '💨 Dash Asíncrono',
-      '[Shift] + Dir',
-      hasDash,
-      '0.2s invulnerabilidad para esquivar.',
-      'Garbage Collector · Alcantarillas',
-      '#10b981'
+      '[Shift]',
+      Boolean(player && player.hasDash),
+      'Impulso con 0.2s de invulnerabilidad.',
+      'Devorador de Memoria',
+      UI_COLORS.emerald
     );
 
-    // 2. Corte en Cascada (Caso Base)
-    const hasCharged = player && player.hasChargedAttack;
     this._drawSkillCard(
       ctx,
-      rightX + 4,
-      rightY + 52,
-      rightW - 8,
-      32,
+      cardX,
+      rightRect.y + 48,
+      cardW,
+      cardH,
       '🌀 Corte en Cascada',
       '[Espacio 1s]',
-      hasCharged,
-      'Tajo radial 360° con daño triple.',
-      'Guardián del Stack Overflow',
-      '#38bdf8'
+      Boolean(player && player.hasChargedAttack),
+      'Tajo circular 360° de daño triple.',
+      'Coloso de la Pila Infinita',
+      UI_COLORS.cyan
     );
 
-    // 3. Escudo TypeScript (Barrera de Tipado Estricto)
-    const hasBarrier = player && player.hasBarrier;
     this._drawSkillCard(
       ctx,
-      rightX + 4,
-      rightY + 88,
-      rightW - 8,
-      32,
+      cardX,
+      rightRect.y + 81,
+      cardW,
+      cardH,
       '🛡️ Escudo TypeScript',
       '[Q]',
-      hasBarrier,
-      'Campo 3s que absorbe proyectiles.',
-      'Microondas Prototipo · Lab Alpha',
-      '#f59e0b'
+      Boolean(player && player.hasBarrier),
+      'Campo que absorbe proyectiles 3s.',
+      'Ciber-Horno Termonuclear',
+      UI_COLORS.gold
     );
   }
 
   /**
-   * Renderiza la pestaña de Trofeos y Logros del sistema.
+   * Árbol de habilidades adquiribles con puntos de combate
    */
-  /**
-   * Árbol de habilidades: se compran con puntos ganados al derrotar enemigos (1 cada 4, 2 por jefe).
-   */
-  _renderSkillsTab(ctx, winX, winY, winW, winH, player) {
-    const x = winX + 10;
-    let y = winY + 24;
-    ctx.save();
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    ctx.font = 'bold 6px monospace';
-    ctx.fillStyle = '#ffd885';
-    ctx.fillText(`PUNTOS DE HABILIDAD: ${player ? player.skillPoints : 0}`, x, y);
-    ctx.font = '5px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText(`Enemigos derrotados: ${player ? player.killCount : 0}  ·  Combo: 3 golpes · Parry: [Q] justo antes del impacto`, x, y + 9);
-    y += 22;
+  _renderSkillsTab(ctx, rect, player) {
+    UILayout.drawPanel(ctx, rect, {
+      bg: UI_COLORS.panelBg,
+      border: UI_COLORS.borderInner,
+      headerText: `ÁRBOL DE ESPECIALIZACIÓN · PUNTOS DISPONIBLES: ${player ? player.skillPoints : 0}`
+    });
+
+    const x = rect.x + 6;
+    const w = rect.w - 12;
+    let y = rect.y + 16;
 
     SKILL_DEFS.forEach((def, i) => {
       const owned = Boolean(player && player.skills[def.key]);
       const selected = i === this.skillCursor;
-      const rowH = 24;
-      ctx.fillStyle = selected ? '#1e293b' : '#0e1322';
-      ctx.fillRect(x, y, winW - 20, rowH - 3);
-      ctx.strokeStyle = owned ? '#22c55e' : selected ? '#f59e0b' : '#334155';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, y + 0.5, winW - 21, rowH - 4);
+      const rowH = 22;
 
-      ctx.font = 'bold 6px monospace';
-      ctx.fillStyle = owned ? '#86efac' : '#e2e8f0';
-      ctx.fillText(`${selected ? '▶ ' : '  '}${def.name}`, x + 5, y + 4);
-      ctx.font = '5px monospace';
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillText(def.desc, x + 12, y + 13);
-      ctx.textAlign = 'right';
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = owned ? '#22c55e' : (player && player.skillPoints >= def.cost ? '#fde047' : '#64748b');
-      ctx.fillText(owned ? '✓ ADQUIRIDA' : `${def.cost} pt`, x + winW - 26, y + 4);
-      ctx.textAlign = 'left';
+      ctx.fillStyle = selected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+      ctx.fillRect(x, y, w, rowH - 2);
+      ctx.strokeStyle = owned ? UI_COLORS.emerald : (selected ? UI_COLORS.gold : UI_COLORS.slotBorder);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, rowH - 3);
+
+      ctx.font = `bold 4.8px ${UI_FONT}`;
+      ctx.fillStyle = owned ? UI_COLORS.emerald : UI_COLORS.textPrimary;
+      ctx.fillText(`${selected ? '▶ ' : ''}${def.name}`, x + 4, y + 3);
+
+      ctx.font = `4.1px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textSecondary;
+      ctx.fillText(UILayout.fitText(ctx, def.desc, w - 55), x + 8, y + 11);
+
+      const statusStr = owned ? '✓ ACTIVA' : `[Enter] ${def.cost}pt`;
+      ctx.font = `bold 4.2px ${UI_FONT}`;
+      ctx.fillStyle = owned ? UI_COLORS.emerald : (player && player.skillPoints >= def.cost ? UI_COLORS.gold : UI_COLORS.textMuted);
+      const sw = ctx.measureText(statusStr).width;
+      ctx.fillText(statusStr, x + w - sw - 4, y + 3.5);
+
       y += rowH;
     });
 
     if (this.skillMessage) {
-      ctx.font = '5.5px monospace';
-      ctx.fillStyle = '#fde047';
-      ctx.fillText(this.skillMessage, x, y + 2);
+      ctx.font = `bold 4.4px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.fillText(this.skillMessage, x, rect.y + rect.h - 10);
     }
-    ctx.restore();
   }
 
-  _renderAchievementsTab(ctx, winX, winY, winW, winH, achievementManager) {
+  /**
+   * Pestaña de Trofeos y Logros
+   */
+  _renderAchievementsTab(ctx, rect, achievementManager) {
     const list = achievementManager ? achievementManager.getAll() : [];
     const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;
     const totalCount = achievementManager ? achievementManager.getTotalCount() : list.length;
-    const pct = totalCount > 0 ? Math.round((unlockedCount / totalCount) * 100) : 0;
 
-    // Barra de progreso superior
-    const barX = winX + 10;
-    const barY = winY + 20;
-    const barW = winW - 20;
-    const barH = 5;
+    UILayout.drawPanel(ctx, rect, {
+      bg: UI_COLORS.panelBg,
+      border: UI_COLORS.borderInner
+    });
 
-    ctx.fillStyle = '#0b101c';
-    ctx.fillRect(barX, barY, barW, barH);
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+    UILayout.drawBar(ctx, {
+      x: rect.x + 6,
+      y: rect.y + 4,
+      w: rect.w - 12,
+      h: 4,
+      value: unlockedCount,
+      max: Math.max(1, totalCount),
+      color: UI_COLORS.gold,
+      label: 'PROGRESO DE TROFEOS',
+      valueText: `${unlockedCount}/${totalCount}`
+    });
 
-    const fillW = Math.round(barW * (pct / 100));
-    if (fillW > 0) {
-      ctx.fillStyle = '#f59e0b';
-      ctx.fillRect(barX + 1, barY + 1, fillW - 2, barH - 2);
-    }
+    const colW = Math.floor((rect.w - 16) / 2);
+    const rowH = 15;
+    const startY = rect.y + 18;
 
-    ctx.font = '5px monospace';
-    ctx.fillStyle = '#fbbf24';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(`${unlockedCount}/${totalCount} Desbloqueados (${pct}%)`, barX + barW, barY - 2);
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('PROGRESIÓN DE TROFEOS:', barX, barY - 2);
-
-    // Distribución en 2 columnas: Columna Izquierda (6) y Columna Derecha (5)
-    const colW = 126;
-    const colH = 18;
-    const startY = winY + 28;
-
-    list.forEach((ach, index) => {
+    list.slice(0, 12).forEach((ach, index) => {
       const isRightCol = index >= 6;
       const rowIndex = isRightCol ? index - 6 : index;
-      const x = isRightCol ? winX + 138 : winX + 8;
-      const y = startY + rowIndex * (colH + 2);
+      const x = isRightCol ? rect.x + colW + 10 : rect.x + 6;
+      const y = startY + rowIndex * (rowH + 1);
+      const isUnlocked = Boolean(ach.unlocked);
 
-      const isUnlocked = ach.unlocked;
+      ctx.fillStyle = isUnlocked ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+      ctx.fillRect(x, y, colW, rowH);
+      ctx.strokeStyle = isUnlocked ? UI_COLORS.emerald : UI_COLORS.slotBorder;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, colW - 1, rowH - 1);
 
-      // Fondo de la tarjeta
-      ctx.fillStyle = isUnlocked ? '#111a2e' : '#0b101c';
-      ctx.fillRect(x, y, colW, colH);
+      ctx.font = `bold 4.2px ${UI_FONT}`;
+      ctx.fillStyle = isUnlocked ? UI_COLORS.gold : UI_COLORS.textMuted;
+      const prefix = isUnlocked ? '✓ ' : '🔒 ';
+      ctx.fillText(UILayout.fitText(ctx, `${prefix}${ach.title}`, colW - 6), x + 3, y + 2);
 
-      // Borde
-      ctx.strokeStyle = isUnlocked ? '#10b981' : '#1e293b';
-      ctx.lineWidth = 0.8;
-      ctx.strokeRect(x + 0.5, y + 0.5, colW - 1, colH - 1);
-
-      // Icono de estado
-      ctx.font = 'bold 5.5px monospace';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-
-      if (isUnlocked) {
-        ctx.fillStyle = '#10b981';
-        ctx.fillText('[✓]', x + 3, y + 3);
-        ctx.fillStyle = '#ffd885';
-        ctx.fillText(`${ach.icon} ${ach.title}`, x + 15, y + 3);
-      } else {
-        ctx.fillStyle = '#64748b';
-        ctx.fillText('[🔒]', x + 3, y + 3);
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`${ach.title}`, x + 15, y + 3);
-      }
-
-      // Descripción del logro
-      ctx.font = '4.2px monospace';
-      ctx.fillStyle = isUnlocked ? '#cbd5e1' : '#475569';
-      let desc = ach.description;
-      if (desc.length > 29) {
-        desc = desc.substring(0, 28) + '…';
-      }
-      ctx.fillText(desc, x + 3, y + 10.5);
+      ctx.font = `3.8px ${UI_FONT}`;
+      ctx.fillStyle = isUnlocked ? UI_COLORS.textSecondary : UI_COLORS.textMuted;
+      ctx.fillText(UILayout.fitText(ctx, ach.description || '', colW - 6), x + 3, y + 8.5);
     });
   }
 
-  /**
-   * Tarjeta visual de habilidad de combate con tecla y estado (Activa / Bloqueada).
-   */
   _drawSkillCard(ctx, x, y, w, h, name, keyPrompt, unlocked, description, source, themeColor) {
-    ctx.fillStyle = unlocked ? '#111a2e' : '#0d131f';
+    ctx.fillStyle = unlocked ? 'rgba(20, 30, 48, 0.94)' : UI_COLORS.slotBg;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = unlocked ? themeColor : '#253047';
-    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = unlocked ? themeColor : UI_COLORS.slotBorder;
+    ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
-    // Nombre y tecla
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.font = 'bold 5.5px monospace';
-    ctx.fillStyle = unlocked ? '#ffd885' : '#64748b';
-    ctx.fillText(name, x + 4, y + 4.5);
+    ctx.font = `bold 4.5px ${UI_FONT}`;
+    ctx.fillStyle = unlocked ? UI_COLORS.gold : UI_COLORS.textMuted;
+    ctx.fillText(name, x + 4, y + 3);
 
-    // Tecla rápida
-    ctx.font = 'bold 5px monospace';
-    ctx.fillStyle = unlocked ? themeColor : '#475569';
-    ctx.fillText(keyPrompt, x + 4, y + 13);
+    const badge = unlocked ? `${keyPrompt} ACTIVA` : 'BLOQUEADA';
+    ctx.font = `bold 3.8px ${UI_FONT}`;
+    ctx.fillStyle = unlocked ? themeColor : UI_COLORS.textMuted;
+    const bw = ctx.measureText(badge).width;
+    ctx.fillText(badge, x + w - bw - 4, y + 3.5);
 
-    // Badge de estado
-    ctx.textAlign = 'right';
-    if (unlocked) {
-      ctx.fillStyle = themeColor;
-      ctx.fillText('[✓ ACTIVA]', x + w - 4, y + 4.5);
-    } else {
-      ctx.fillStyle = '#64748b';
-      ctx.fillText('[🔒 BLOQUEADA]', x + w - 4, y + 4.5);
-    }
+    ctx.font = `4px ${UI_FONT}`;
+    ctx.fillStyle = unlocked ? UI_COLORS.textPrimary : UI_COLORS.textMuted;
+    ctx.fillText(UILayout.fitText(ctx, description, w - 8), x + 4, y + 11.5);
 
-    // Descripción y origen
-    ctx.textAlign = 'left';
-    ctx.font = '4.5px monospace';
-    ctx.fillStyle = unlocked ? '#cbd5e1' : '#475569';
-    ctx.fillText(description, x + 4, y + 21);
-
-    ctx.fillStyle = unlocked ? '#94a3b8' : '#334155';
-    ctx.fillText(`Origen: ${source}`, x + 4, y + 27);
+    ctx.font = `3.8px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.textSecondary;
+    ctx.fillText(UILayout.fitText(ctx, `Origen: ${source}`, w - 8), x + 4, y + 20);
   }
 
-  /**
-   * Dibuja el retrato estilizado en pixel art del desarrollador.
-   */
   _drawDevPortrait(ctx, px, py, player, t) {
-    const size = 32;
+    const size = 30;
 
-    // Marco exterior de avatar
     ctx.fillStyle = '#060a12';
     ctx.fillRect(px, py, size, size);
-    ctx.strokeStyle = player?.hasArmor ? '#38bdf8' : '#e5c07b';
+    ctx.strokeStyle = player?.hasArmor ? UI_COLORS.cyan : UI_COLORS.gold;
     ctx.lineWidth = 1;
     ctx.strokeRect(px + 0.5, py + 0.5, size - 1, size - 1);
 
-    // Fondo del retrato (degradado sutil de terminal / código)
     ctx.fillStyle = '#101a2e';
     ctx.fillRect(px + 1, py + 1, size - 2, size - 2);
 
-    // Cuerpo / Torso (sudadera de dev o armadura binaria)
-    const hasArmor = player && player.hasArmor;
+    const hasArmor = Boolean(player && player.hasArmor);
     if (hasArmor) {
       ctx.fillStyle = '#1e3a8a';
-      ctx.fillRect(px + 6, py + 22, 20, 9);
+      ctx.fillRect(px + 5, py + 20, 20, 9);
       ctx.fillStyle = '#38bdf8';
-      ctx.fillRect(px + 10, py + 24, 12, 3);
-      ctx.fillStyle = '#93c5fd';
-      ctx.fillRect(px + 14, py + 22, 4, 2);
+      ctx.fillRect(px + 9, py + 22, 12, 3);
     } else {
       ctx.fillStyle = '#334155';
-      ctx.fillRect(px + 6, py + 22, 20, 9);
-      ctx.fillStyle = '#475569';
-      ctx.fillRect(px + 11, py + 24, 10, 4);
+      ctx.fillRect(px + 5, py + 20, 20, 9);
     }
 
-    // Cuello
     ctx.fillStyle = '#e2b391';
-    ctx.fillRect(px + 13, py + 18, 6, 4);
+    ctx.fillRect(px + 12, py + 16, 6, 4);
 
-    // Cabeza y rostro
     ctx.fillStyle = '#fcd5b5';
-    ctx.fillRect(px + 9, py + 8, 14, 12);
-    ctx.fillStyle = '#e2b391';
-    ctx.fillRect(px + 8, py + 12, 1, 4); // Oreja izq
-    ctx.fillRect(px + 23, py + 12, 1, 4); // Oreja der
+    ctx.fillRect(px + 8, py + 7, 14, 11);
 
-    // Cabello castaño / dev
     ctx.fillStyle = '#451a03';
-    ctx.fillRect(px + 8, py + 5, 16, 5);
-    ctx.fillRect(px + 7, py + 8, 2, 5);
-    ctx.fillRect(px + 23, py + 8, 2, 4);
-    ctx.fillRect(px + 10, py + 4, 12, 2);
+    ctx.fillRect(px + 7, py + 4, 16, 5);
 
-    // Gafas de desarrollador con reflejo de pantalla
-    const robotVal = player ? player.robotizationLevel : 0;
+    const robotVal = player ? (player.robotizationLevel || 0) : 0;
     ctx.fillStyle = '#0f172a';
-    ctx.fillRect(px + 10, py + 11, 5, 4);
-    ctx.fillRect(px + 17, py + 11, 5, 4);
-    ctx.fillRect(px + 15, py + 12, 2, 1); // Puente de gafas
+    ctx.fillRect(px + 9, py + 10, 5, 4);
+    ctx.fillRect(px + 16, py + 10, 5, 4);
+    ctx.fillRect(px + 14, py + 11, 2, 1);
 
-    // Cristal izquierdo
     ctx.fillStyle = '#38bdf8';
-    ctx.fillRect(px + 11, py + 12, 3, 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(px + 11, py + 12, 1, 1);
+    ctx.fillRect(px + 10, py + 11, 3, 2);
 
-    // Cristal derecho: Si está muy robotizado (>50%), brilla en rojo cibernético
     if (robotVal > 50) {
       const eyeGlow = 0.8 + Math.sin(t * 8) * 0.2;
       ctx.fillStyle = `rgba(239, 68, 68, ${eyeGlow})`;
-      ctx.fillRect(px + 18, py + 12, 3, 2);
-      ctx.fillStyle = '#fef08a';
-      ctx.fillRect(px + 19, py + 12, 1, 1);
+      ctx.fillRect(px + 17, py + 11, 3, 2);
     } else {
       ctx.fillStyle = '#38bdf8';
-      ctx.fillRect(px + 18, py + 12, 3, 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(px + 18, py + 12, 1, 1);
+      ctx.fillRect(px + 17, py + 11, 3, 2);
     }
-
-    // Boca
-    ctx.fillStyle = '#b45309';
-    ctx.fillRect(px + 14, py + 17, 4, 1);
   }
 }
 
@@ -12250,6 +13254,7 @@ class CharacterStats {
  * 
  * Soporta estados activos/despejados de los jefes, marcador de posición '★ TÚ' y estética retro pixel art.
  */
+
 
 class WorldMap {
   constructor(menuSystem = null) {
@@ -13150,58 +14155,53 @@ class WorldMap {
   }
 
   /**
-   * Dibuja el encabezado superior y la barra inferior con leyenda y controles.
+   * Dibuja el encabezado superior con [Esc] Cerrar y la barra inferior de ubicación sin textos redundantes.
    */
   _drawHeaderAndFooter(ctx, W, H, currentSceneId) {
     const cx = W / 2;
     const locationName = this._lastLocationName || 'Aldea de Valleverde';
 
-    // 1. Encabezado superior
-    ctx.fillStyle = '#ffd885';
-    ctx.font = 'bold 7px monospace';
-    ctx.textAlign = 'center';
+    // 1. Encabezado superior limpio con [Esc] Cerrar único
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.92)';
+    ctx.fillRect(6, 4, W - 12, 12);
+    ctx.strokeStyle = UI_COLORS.borderOuter;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(6.5, 4.5, W - 13, 11);
+
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.font = `bold 5px ${UI_FONT}`;
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText('🗺 REINO DEL GRAN OJAL · RUTA DE PROGRESIÓN 🗺', cx, 6);
+    ctx.fillText('🗺 CARTOGRAFÍA DEL REINO DEL GRAN OJAL', 11, 7.5);
 
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#94a3b8';
+    ctx.font = `bold 4.5px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.textSecondary;
     ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Cerrar', W - 10, 6);
+    ctx.fillText('[Esc] Cerrar', W - 11, 7.5);
 
-    // 2. Barra inferior con leyenda limpia y controles
+    // 2. Barra inferior de estado (solo ubicación y leyenda cartográfica, sin controles redundantes)
     const footerW = W - 24;
-    const footerH = 12;
+    const footerH = 11;
     const footerX = 12;
     const footerY = H - 15;
 
-    ctx.fillStyle = 'rgba(18, 14, 10, 0.92)';
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.92)';
     ctx.fillRect(footerX, footerY, footerW, footerH);
-    ctx.strokeStyle = 'rgba(214, 169, 88, 0.8)';
+    ctx.strokeStyle = 'rgba(214, 169, 88, 0.75)';
     ctx.lineWidth = 0.8;
     ctx.strokeRect(footerX + 0.5, footerY + 0.5, footerW - 1, footerH - 1);
 
-    // Lado izquierdo: Ubicación
-    ctx.fillStyle = '#ffd166';
-    ctx.font = 'bold 5.5px monospace';
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.font = `bold 4.5px ${UI_FONT}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`UBICACIÓN: ${locationName}`, footerX + 5, footerY + footerH / 2);
+    ctx.fillText(UILayout.fitText(ctx, `UBICACIÓN: ${locationName}`, 185), footerX + 5, footerY + footerH / 2);
 
-    // Centro: Leyenda limpia
-    ctx.fillStyle = '#ef4444';
-    ctx.fillText('☠', footerX + 172, footerY + footerH / 2);
-    ctx.fillStyle = '#cfbda0';
-    ctx.fillText('Boss', footerX + 178, footerY + footerH / 2);
+    ctx.fillStyle = UI_COLORS.crimson;
+    ctx.fillText('☠ Amenaza', footerX + 200, footerY + footerH / 2);
 
-    ctx.fillStyle = '#10b981';
-    ctx.fillText('✓', footerX + 198, footerY + footerH / 2);
-    ctx.fillStyle = '#cfbda0';
-    ctx.fillText('Despejado', footerX + 204, footerY + footerH / 2);
-
-    // Lado derecho: Atajo de salida
-    ctx.fillStyle = '#e8dcc4';
-    ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Cerrar', footerX + footerW - 5, footerY + footerH / 2);
+    ctx.fillStyle = UI_COLORS.emerald;
+    ctx.fillText('✓ Despejado', footerX + 248, footerY + footerH / 2);
   }
 }
 
@@ -13210,11 +14210,12 @@ class WorldMap {
   // ==========================================
 /**
  * QuestLogView.js - Interfaz Modal Canvas 2D del Diario de Misiones ('El Ojete Dorado')
- * 
- * Se abre y cierra con la tecla [L] o desde el Menú de Pausa.
- * Presenta navegación por tareas principales y secundarias en el panel izquierdo
- * y detalle narrativo, objetivo actual y recompensas en el panel derecho.
+ *
+ * Rediseñado bajo UILayout (Safe Layout 290×150 px):
+ * - Columna izquierda: Lista de misiones con máximo 4 simultáneas visibles y scroll discreto.
+ * - Columna derecha: Detalles narrativos, objetivo actual y recompensas en Bytes con wrapText estricto.
  */
+
 
 class QuestLogView {
   constructor(questLog, viewportWidth = 320, viewportHeight = 180) {
@@ -13224,6 +14225,8 @@ class QuestLogView {
 
     this.isOpen = false;
     this.selectedIndex = 0;
+    this.scrollOffset = 0;
+    this.maxVisibleQuests = 4; // Máximo 4 simultáneas visibles según especificación
   }
 
   open() {
@@ -13243,17 +14246,30 @@ class QuestLogView {
   }
 
   _getQuestList() {
-    return this.questLog ? this.questLog.getAllQuests() : [];
+    if (!this.questLog) return [];
+    const all = this.questLog.getAllQuests();
+    // Ordenar primero misiones principales (MAIN) y luego encargos secundarios (SIDE)
+    const main = all.filter((q) => q.category === 'MAIN');
+    const side = all.filter((q) => q.category !== 'MAIN');
+    return [...main, ...side];
   }
 
   _clampSelection() {
     const list = this._getQuestList();
     if (list.length === 0) {
       this.selectedIndex = 0;
+      this.scrollOffset = 0;
       return;
     }
     if (this.selectedIndex < 0) this.selectedIndex = 0;
     if (this.selectedIndex >= list.length) this.selectedIndex = list.length - 1;
+
+    // Mantener selectedIndex dentro de la ventana de 4 elementos visibles
+    if (this.selectedIndex < this.scrollOffset) {
+      this.scrollOffset = this.selectedIndex;
+    } else if (this.selectedIndex >= this.scrollOffset + this.maxVisibleQuests) {
+      this.scrollOffset = this.selectedIndex - this.maxVisibleQuests + 1;
+    }
   }
 
   moveSelection(dir) {
@@ -13265,233 +14281,535 @@ class QuestLogView {
     } else if (dir === 'down') {
       this.selectedIndex = (this.selectedIndex + 1) % list.length;
     }
+    this._clampSelection();
   }
 
   render(ctx) {
     if (!this.isOpen || !this.questLog) return;
 
-    const W = this.viewportWidth;
-    const H = this.viewportHeight;
-    const winW = 296;
-    const winH = 168;
-    const winX = Math.round((W - winW) / 2);
-    const winY = Math.round((H - winH) / 2);
-
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-
-    // Fondo oscurecido con velo
-    ctx.fillStyle = 'rgba(5, 8, 15, 0.88)';
-    ctx.fillRect(0, 0, W, H);
-
-    // Marco exterior de la ventana
-    ctx.fillStyle = '#0a0f1d';
-    ctx.fillRect(winX, winY, winW, winH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
-    ctx.fillStyle = '#101728';
-    ctx.fillRect(winX + 2.5, winY + 2.5, winW - 5, winH - 5);
-
-    // Cantoneras doradas pixel art
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(winX + 3, winY + 3, 5, 2);
-    ctx.fillRect(winX + 3, winY + 3, 2, 5);
-    ctx.fillRect(winX + winW - 8, winY + 3, 5, 2);
-    ctx.fillRect(winX + winW - 5, winY + 3, 2, 5);
-    ctx.fillRect(winX + 3, winY + winH - 5, 5, 2);
-    ctx.fillRect(winX + 3, winY + winH - 8, 2, 5);
-    ctx.fillRect(winX + winW - 8, winY + winH - 5, 5, 2);
-    ctx.fillRect(winX + winW - 5, winY + winH - 8, 2, 5);
-
-    // Cabecera de la ventana
-    ctx.font = 'bold 7px monospace';
-    ctx.fillStyle = '#ffd885';
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    ctx.fillText('📜 DIARIO DEL DESARROLLADOR · OBJETIVOS ACTIVOS', winX + 8, winY + 6);
-
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Cerrar', winX + winW - 8, winY + 7);
-
-    // Separador horizontal bajo la cabecera
-    ctx.fillStyle = '#23304a';
-    ctx.fillRect(winX + 6, winY + 17, winW - 12, 1);
-
-    // ── Panel Izquierdo: Lista de Misiones ──
-    const leftX = winX + 8;
-    const leftY = winY + 21;
-    const leftW = 126;
-    const leftH = winH - 35;
-
     const quests = this._getQuestList();
     this._clampSelection();
 
-    let curY = leftY;
-    let listIdx = 0;
+    const completedCount = quests.filter((q) => q.status === 'COMPLETED').length;
 
-    const renderQuestGroup = (headerText, headerColor, categoryKey) => {
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = headerColor;
-      ctx.textAlign = 'left';
-      ctx.fillText(headerText, leftX, curY);
-      curY += 9;
+    const frame = UILayout.drawModalFrame(ctx, {
+      title: 'DIARIO DE MISIONES',
+      icon: '📜',
+      badge: `${completedCount}/${quests.length} COMPLETADAS`,
+      closeLabel: '[Esc] Cerrar'
+    });
 
-      const groupQuests = quests.filter((q) => q.category === categoryKey);
-      for (const q of groupQuests) {
-        const fullIndex = quests.indexOf(q);
-        const isSelected = fullIndex === this.selectedIndex;
-        const isCompleted = q.status === 'COMPLETED';
+    const { content } = frame;
 
-        const rowH = 10;
-        if (isSelected) {
-          ctx.fillStyle = '#1e293b';
-          ctx.fillRect(leftX - 2, curY - 1, leftW + 2, rowH);
-          ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(leftX - 1.5, curY - 0.5, leftW + 1, rowH - 1);
-        }
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
 
-        // Icono de estado
-        const icon = isSelected ? '▶' : isCompleted ? '✓' : '•';
-        const iconColor = isSelected ? '#38bdf8' : isCompleted ? '#4ade80' : '#ffd885';
-
-        ctx.font = 'bold 6px monospace';
-        ctx.fillStyle = iconColor;
-        ctx.fillText(icon, leftX, curY + 1);
-
-        // Título de la misión (truncado a 19 caracteres)
-        const titleStr = q.title.length > 19 ? q.title.slice(0, 18) + '…' : q.title;
-        ctx.font = isSelected ? 'bold 5.5px monospace' : '5.5px monospace';
-        ctx.fillStyle = isSelected
-          ? '#ffffff'
-          : isCompleted
-            ? '#64748b'
-            : '#cbd5e1';
-        ctx.fillText(titleStr, leftX + 9, curY + 1);
-
-        curY += rowH;
-        listIdx++;
-      }
-      curY += 4;
+    // =========================================================================
+    // COLUMNA IZQUIERDA: Lista de Misiones (máximo 4 simultáneas visibles + scroll)
+    // =========================================================================
+    const leftW = 114;
+    const leftRect = {
+      x: content.x,
+      y: content.y,
+      w: leftW,
+      h: content.h
     };
 
-    renderQuestGroup('── MISIONES PRINCIPALES ──', '#38bdf8', 'MAIN');
-    renderQuestGroup('── ENCARGOS SECUNDARIOS ──', '#ffd885', 'SIDE');
+    UILayout.drawPanel(ctx, leftRect, {
+      bg: UI_COLORS.panelBg,
+      border: UI_COLORS.borderInner,
+      headerText: `ENCARGOS (${this.selectedIndex + 1}/${Math.max(1, quests.length)})`
+    });
 
-    // ── Divisor Central Vertical ──
-    const divX = winX + 138;
-    ctx.fillStyle = '#23304a';
-    ctx.fillRect(divX, winY + 21, 1, winH - 39);
+    const listStartX = leftRect.x + 4;
+    const listStartY = leftRect.y + 16;
+    const rowH = 24;
+    const rowW = leftRect.w - 12;
 
-    // ── Panel Derecho: Detalle del Objetivo Seleccionado ──
-    const rightX = divX + 7;
-    const rightY = winY + 22;
-    const rightW = winW - 146;
+    const visibleQuests = quests.slice(this.scrollOffset, this.scrollOffset + this.maxVisibleQuests);
+
+    visibleQuests.forEach((q, idx) => {
+      const fullIndex = this.scrollOffset + idx;
+      const isSelected = fullIndex === this.selectedIndex;
+      const isCompleted = q.status === 'COMPLETED';
+      const isMain = q.category === 'MAIN';
+      const ry = listStartY + idx * (rowH + 2);
+
+      // Caja de la fila
+      ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+      ctx.fillRect(listStartX, ry, rowW, rowH);
+
+      ctx.strokeStyle = isSelected
+        ? UI_COLORS.slotSelectedBorder
+        : (isCompleted ? 'rgba(74, 222, 128, 0.35)' : UI_COLORS.slotBorder);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(listStartX + 0.5, ry + 0.5, rowW - 1, rowH - 1);
+
+      // Etiqueta superior de categoría y estado
+      ctx.font = `bold 3.8px ${UI_FONT}`;
+      ctx.fillStyle = isMain ? UI_COLORS.cyan : UI_COLORS.gold;
+      ctx.fillText(isMain ? '★ PRINCIPAL' : '◆ SECUNDARIA', listStartX + 3, ry + 2.5);
+
+      ctx.fillStyle = isCompleted ? UI_COLORS.emerald : UI_COLORS.textSecondary;
+      const stateIcon = isCompleted ? '✓ HECHA' : '▶ ACTIVA';
+      const sw = ctx.measureText(stateIcon).width;
+      ctx.fillText(stateIcon, listStartX + rowW - sw - 3, ry + 2.5);
+
+      // Título de la misión ajustado al ancho
+      ctx.font = `bold 4.4px ${UI_FONT}`;
+      ctx.fillStyle = isSelected
+        ? UI_COLORS.textPrimary
+        : (isCompleted ? UI_COLORS.textMuted : UI_COLORS.textSecondary);
+      ctx.fillText(
+        UILayout.fitText(ctx, q.title, rowW - 6),
+        listStartX + 3,
+        ry + 11.5
+      );
+    });
+
+    // Scrollbar vertical discreto para la lista de 4 visibles
+    UILayout.drawScrollbar(
+      ctx,
+      leftRect.x + leftRect.w - 5,
+      listStartY,
+      this.maxVisibleQuests * (rowH + 2) - 2,
+      quests.length,
+      this.maxVisibleQuests,
+      this.scrollOffset
+    );
+
+    // =========================================================================
+    // COLUMNA DERECHA: Detalles, Objetivos y Recompensas en Bytes
+    // =========================================================================
+    const rightRect = {
+      x: leftRect.x + leftRect.w + 4,
+      y: content.y,
+      w: content.w - leftRect.w - 4,
+      h: content.h
+    };
 
     const selectedQuest = quests[this.selectedIndex] || quests[0];
 
+    UILayout.drawPanel(ctx, rightRect, {
+      bg: UI_COLORS.panelBgAlt,
+      border: UI_COLORS.borderInner,
+      headerText: selectedQuest
+        ? (selectedQuest.category === 'MAIN' ? '★ HISTORIA PRINCIPAL' : '◆ ENCARGO DE ALDEA')
+        : 'DETALLE DE MISIÓN'
+    });
+
     if (selectedQuest) {
-      let ry = rightY;
+      const padX = rightRect.x + 6;
+      const innerW = rightRect.w - 12;
+      let ry = rightRect.y + 15;
 
-      // Badge de Categoría y Estado
-      const isMain = selectedQuest.category === 'MAIN';
-      const catLabel = isMain ? '★ MISIÓN PRINCIPAL' : '◆ ENCARGO SECUNDARIO';
-      const catColor = isMain ? '#38bdf8' : '#eab308';
+      // Título y badge de estado
+      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.fillText(UILayout.fitText(ctx, selectedQuest.title, innerW - 38), padX, ry);
 
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = catColor;
-      ctx.fillText(catLabel, rightX, ry);
+      const isDone = selectedQuest.status === 'COMPLETED';
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.fillStyle = isDone ? UI_COLORS.emerald : UI_COLORS.cyan;
+      const badgeStr = isDone ? '[COMPLETADA]' : '[EN CURSO]';
+      const bw = ctx.measureText(badgeStr).width;
+      ctx.fillText(badgeStr, padX + innerW - bw, ry + 0.5);
+      ry += 9;
 
-      const statusText = selectedQuest.status === 'COMPLETED' ? '[✓ COMPLETADA]' : '[▶ ACTIVA]';
-      const statusColor = selectedQuest.status === 'COMPLETED' ? '#4ade80' : '#38bdf8';
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = statusColor;
-      ctx.textAlign = 'right';
-      ctx.fillText(statusText, winX + winW - 9, ry);
-      ctx.textAlign = 'left';
-      ry += 10;
-
-      // Título Destacado
-      ctx.font = 'bold 7px monospace';
-      ctx.fillStyle = '#ffd700';
-      ctx.fillText(selectedQuest.title, rightX, ry);
-      ry += 11;
-
-      // Línea divisoria suave
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(rightX, ry - 2, rightW - 2, 1);
-      ry += 4;
-
-      // Descripción narrativa (con salto de línea automático)
-      ctx.font = '5px monospace';
-      ctx.fillStyle = '#cbd5e1';
-      ry = this._renderWrappedText(ctx, selectedQuest.description, rightX, ry, rightW - 4, 7.5);
-      ry += 7;
-
-      // Sección "OBJETIVO ACTUAL:"
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = '#fde047';
-      ctx.fillText('⚡ OBJETIVO ACTUAL:', rightX, ry);
-      ry += 8;
-
-      // Caja de paso actual
-      const stepLines = this._wrapText(ctx, selectedQuest.currentStep, rightW - 10);
-      const boxH = Math.max(16, stepLines.length * 7 + 6);
-
-      ctx.fillStyle = '#080d1a';
-      ctx.fillRect(rightX, ry - 1, rightW - 4, boxH);
-      ctx.strokeStyle = selectedQuest.status === 'COMPLETED' ? '#22c55e' : '#f59e0b';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(rightX + 0.5, ry - 0.5, rightW - 5, boxH - 1);
-
-      ctx.font = 'bold 5px monospace';
-      ctx.fillStyle = selectedQuest.status === 'COMPLETED' ? '#86efac' : '#fff5d6';
-      stepLines.forEach((line, lIdx) => {
-        ctx.fillText(line, rightX + 4, ry + 3 + lIdx * 7);
+      // Descripción narrativa con wrapText estricto (máximo 3 líneas)
+      ctx.font = `4.2px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textSecondary;
+      const descLines = UILayout.wrapText(ctx, selectedQuest.description || '', innerW);
+      descLines.slice(0, 3).forEach((line, idx) => {
+        ctx.fillText(line, padX, ry + idx * 6.5);
       });
-      ry += boxH + 7;
+      ry += Math.min(3, descLines.length) * 6.5 + 4;
 
-      // Sección "RECOMPENSA:"
-      ctx.font = 'bold 5.5px monospace';
-      ctx.fillStyle = '#34d399';
-      ctx.fillText('🎁 RECOMPENSA:', rightX, ry);
-      ry += 7;
+      // Caja de Objetivo Actual
+      ctx.font = `bold 4.2px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.fillText('⚡ OBJETIVO ACTUAL:', padX, ry);
+      ry += 6;
 
-      ctx.font = '5px monospace';
-      ctx.fillStyle = '#a7f3d0';
-      this._renderWrappedText(ctx, selectedQuest.reward, rightX, ry, rightW - 4, 7);
+      ctx.font = `4.2px ${UI_FONT}`;
+      const stepLines = UILayout.wrapText(ctx, selectedQuest.currentStep || '', innerW - 8);
+      const stepSlice = stepLines.slice(0, 3);
+      const stepBoxH = Math.max(15, stepSlice.length * 6.5 + 5);
+
+      ctx.fillStyle = 'rgba(10, 15, 28, 0.92)';
+      ctx.fillRect(padX, ry, innerW, stepBoxH);
+      ctx.strokeStyle = isDone ? UI_COLORS.emerald : UI_COLORS.goldDim;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(padX + 0.5, ry + 0.5, innerW - 1, stepBoxH - 1);
+
+      ctx.fillStyle = isDone ? UI_COLORS.emerald : UI_COLORS.textPrimary;
+      stepSlice.forEach((line, idx) => {
+        ctx.fillText(line, padX + 4, ry + 3 + idx * 6.5);
+      });
+      ry += stepBoxH + 5;
+
+      // Caja de Recompensa en Bytes / Objetos
+      const rewardY = Math.min(ry, rightRect.y + rightRect.h - 22);
+      ctx.fillStyle = 'rgba(16, 26, 42, 0.9)';
+      ctx.fillRect(padX, rewardY, innerW, 18);
+      ctx.strokeStyle = 'rgba(74, 222, 128, 0.45)';
+      ctx.strokeRect(padX + 0.5, rewardY + 0.5, innerW - 1, 17);
+
+      ctx.font = `bold 4px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.emerald;
+      ctx.fillText('🎁 RECOMPENSA (BYTES & BOTÍN):', padX + 4, rewardY + 2.5);
+
+      ctx.font = `4.1px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.fillText(
+        UILayout.fitText(ctx, selectedQuest.reward || 'Recompensa en Bytes', innerW - 8),
+        padX + 4,
+        rewardY + 10
+      );
     }
 
     ctx.restore();
   }
 
   _wrapText(ctx, text, maxWidth) {
-    if (!text) return [];
-    const words = text.split(' ');
-    const lines = [];
-    let curLine = '';
+    return UILayout.wrapText(ctx, text, maxWidth);
+  }
+}
 
-    for (const w of words) {
-      const test = curLine ? curLine + ' ' + w : w;
-      if (ctx.measureText(test).width <= maxWidth) {
-        curLine = test;
-      } else {
-        if (curLine) lines.push(curLine);
-        curLine = w;
-      }
-    }
-    if (curLine) lines.push(curLine);
-    return lines;
+  // ==========================================
+  // Módulo: src/ui/LeaderboardView.js
+  // ==========================================
+/**
+ * LeaderboardView.js · Modal Unificado del Salón de la Fama (Top 10 Global & Local)
+ *
+ * Contenedor unificado de 290×150 px mediante UILayout.
+ * Muestra el Top 10 (#1 - #10): Posición, Tag del jugador, Tiempo de Run (mm:ss),
+ * Bytes recolectados y Puntuación final con insignia de Rango (S, A, B, C).
+ * Gestiona visualmente los estados de carga, renderizado de tabla y fallback offline.
+ */
+
+
+
+
+class LeaderboardView {
+  constructor(width = 320, height = 180) {
+    this.width = width;
+    this.height = height;
+    this.isOpen = false;
+    this.loading = false;
+    this.source = 'cloud'; // 'cloud' | 'local' | 'offline_local' | 'local_fallback'
+    this.errorMsg = null;
+    this.entries = [];
+    this.scrollOffset = 0;
+    this.visibleRows = 6;
+    this.highlightUsername = null;
+    this.animTimer = 0;
   }
 
-  _renderWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
-    const lines = this._wrapText(ctx, text, maxWidth);
-    lines.forEach((line, idx) => {
-      ctx.fillText(line, x, y + idx * lineHeight);
+  /**
+   * Abre el modal y lanza la consulta asíncrona no bloqueante del Top 10
+   */
+  open(options = {}) {
+    this.isOpen = true;
+    this.scrollOffset = 0;
+    this.highlightUsername = options.highlightUsername
+      ? String(options.highlightUsername).trim().toUpperCase()
+      : null;
+
+    if (Array.isArray(options.entries) && options.entries.length > 0) {
+      this.entries = this._normalizeEntries(options.entries);
+      this.source = options.source || 'cloud';
+      this.loading = false;
+      this.errorMsg = options.errorMsg || null;
+      return;
+    }
+
+    this.refresh();
+  }
+
+  close() {
+    this.isOpen = false;
+  }
+
+  toggle(options = {}) {
+    if (this.isOpen) {
+      this.close();
+    } else {
+      this.open(options);
+    }
+    return this.isOpen;
+  }
+
+  /**
+   * Consulta el Top 10 desde CloudStorage (Vercel KV con fallback local automático)
+   */
+  async refresh() {
+    this.loading = true;
+    this.errorMsg = null;
+    try {
+      const res = await CloudStorage.fetchTopLeaderboard(10);
+      this.entries = this._normalizeEntries(res.leaderboard || []);
+      this.source = res.source || 'local';
+      this.loading = false;
+      if (!res.ok) {
+        this.errorMsg = 'Sin conexión a Vercel KV · Mostrando caché local';
+      }
+    } catch (err) {
+      this.loading = false;
+      this.source = 'offline_local';
+      this.errorMsg = err?.message || 'Modo sin conexión · Tabla local';
+    }
+  }
+
+  _normalizeEntries(raw = []) {
+    return raw.slice(0, 10).map((item, idx) => {
+      const secs = Math.max(0, Math.floor(Number(item?.playTimeSeconds) || 0));
+      return {
+        position: idx + 1,
+        username: String(item?.username || 'HERO').slice(0, 12).toUpperCase(),
+        playTimeSeconds: secs,
+        playTimeFormatted: item?.playTimeFormatted || formatPlayTime(secs),
+        deaths: Math.max(0, Math.floor(Number(item?.deaths) || 0)),
+        bytes: Math.max(0, Math.floor(Number(item?.bytes ?? item?.coins) || 0)),
+        score: Math.max(0, Math.floor(Number(item?.score) || 0)),
+        rank: String(item?.rank || 'C').toUpperCase()
+      };
     });
-    return y + lines.length * lineHeight;
+  }
+
+  /**
+   * Procesa navegación por teclado dentro del modal (Arriba/Abajo, R para refrescar, Esc para cerrar)
+   */
+  handleInput(input) {
+    if (!this.isOpen || !input) return false;
+
+    const maxScroll = Math.max(0, this.entries.length - this.visibleRows);
+    if (input.isJustPressed('ArrowUp') || input.isJustPressed('KeyW')) {
+      this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+      return true;
+    }
+    if (input.isJustPressed('ArrowDown') || input.isJustPressed('KeyS')) {
+      this.scrollOffset = Math.min(maxScroll, this.scrollOffset + 1);
+      return true;
+    }
+    if (input.isJustPressed('Escape')) {
+      this.close();
+      return true;
+    }
+    return false;
+  }
+
+  scrollUp() {
+    this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+  }
+
+  scrollDown() {
+    const maxScroll = Math.max(0, this.entries.length - this.visibleRows);
+    this.scrollOffset = Math.min(maxScroll, this.scrollOffset + 1);
+  }
+
+  update(dt = 0.016) {
+    if (!this.isOpen) return;
+    this.animTimer += dt;
+  }
+
+  /**
+   * Renderiza el contenedor unificado de 290×150 px del Salón de la Fama
+   */
+  render(ctx, options = {}) {
+    if (!this.isOpen && !options.forceRender) return;
+
+    this.animTimer += 0.016;
+
+    const sourceBadge = this.loading
+      ? '☁️ SINCRONIZANDO...'
+      : (this.source === 'cloud' ? '☁️ VERCEL KV ONLINE' : '💾 FALLBACK LOCAL');
+
+    const frame = UILayout.drawModalFrame(ctx, {
+      title: 'SALÓN DE LA FAMA · TOP 10',
+      icon: '🏆',
+      badge: sourceBadge,
+      closeLabel: options.closeLabel || '[Esc] Cerrar',
+      backdropAlpha: options.backdropAlpha ?? 0.6
+    });
+
+    const { content } = frame;
+
+    ctx.save();
+    ctx.textBaseline = 'top';
+
+    // Sub-barra de estado / conexión (12 px de alto)
+    const statusRect = {
+      x: content.x,
+      y: content.y,
+      w: content.w,
+      h: 13
+    };
+    UILayout.drawPanel(ctx, statusRect, {
+      bg: 'rgba(20, 27, 38, 0.92)',
+      border: UI_COLORS.borderInner
+    });
+
+    ctx.font = `4px ${UI_FONT}`;
+    if (this.loading) {
+      ctx.fillStyle = UI_COLORS.cyan;
+      const dots = '.'.repeat(1 + (Math.floor(this.animTimer * 4) % 3));
+      ctx.fillText(`Consultando récords globales en Vercel KV${dots}`, statusRect.x + 5, statusRect.y + 4);
+    } else if (this.errorMsg || this.source !== 'cloud') {
+      ctx.fillStyle = UI_COLORS.gold;
+      const msg = this.errorMsg || 'Modo local activo: puntuaciones guardadas en caché local';
+      ctx.fillText(UILayout.fitText(ctx, `⚠ ${msg}`, statusRect.w - 10), statusRect.x + 5, statusRect.y + 4);
+    } else {
+      ctx.fillStyle = UI_COLORS.emerald;
+      ctx.fillText('✓ Conectado a Vercel KV Redis · Top 10 Speedrun & Compilación', statusRect.x + 5, statusRect.y + 4);
+    }
+
+    // Tabla principal
+    const tableRect = {
+      x: content.x,
+      y: statusRect.y + statusRect.h + 3,
+      w: content.w,
+      h: content.h - statusRect.h - 3
+    };
+
+    UILayout.drawPanel(ctx, tableRect, {
+      bg: UI_COLORS.panelBg,
+      border: UI_COLORS.borderInner
+    });
+
+    // Cabecera de columnas
+    const headerY = tableRect.y + 3;
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+    ctx.fillRect(tableRect.x + 1, tableRect.y + 1, tableRect.w - 2, 12);
+
+    const colPos = tableRect.x + 5;
+    const colTag = tableRect.x + 28;
+    const colTime = tableRect.x + 114;
+    const colBytes = tableRect.x + 158;
+    const colRank = tableRect.x + 198;
+    const colScore = tableRect.x + 228;
+
+    ctx.font = `bold 4px ${UI_FONT}`;
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.fillText('POS', colPos, headerY + 2);
+    ctx.fillText('JUGADOR (TAG)', colTag, headerY + 2);
+    ctx.fillText('TIEMPO', colTime, headerY + 2);
+    ctx.fillText('BYTES', colBytes, headerY + 2);
+    ctx.fillText('RANGO', colRank, headerY + 2);
+    ctx.fillText('SCORE', colScore, headerY + 2);
+
+    // Estado 1: Cargando datos
+    if (this.loading && this.entries.length === 0) {
+      const centerY = tableRect.y + Math.floor(tableRect.h / 2) - 4;
+      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.cyan;
+      ctx.textAlign = 'center';
+      ctx.fillText('CARGANDO TOP 10 GLOBAL...', tableRect.x + Math.floor(tableRect.w / 2), centerY);
+      ctx.textAlign = 'left';
+      ctx.restore();
+      return;
+    }
+
+    // Estado 2: Sin datos
+    if (this.entries.length === 0) {
+      const centerY = tableRect.y + Math.floor(tableRect.h / 2) - 4;
+      ctx.font = `4.5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.textMuted;
+      ctx.textAlign = 'center';
+      ctx.fillText('No hay registros disponibles todavía.', tableRect.x + Math.floor(tableRect.w / 2), centerY);
+      ctx.textAlign = 'left';
+      ctx.restore();
+      return;
+    }
+
+    // Estado 3: Renderizado de filas del Top 10
+    const rowsStartY = tableRect.y + 15;
+    const rowH = 14;
+    const slice = this.entries.slice(this.scrollOffset, this.scrollOffset + this.visibleRows);
+
+    slice.forEach((entry, idx) => {
+      const rankNum = this.scrollOffset + idx + 1;
+      const ry = rowsStartY + idx * rowH;
+
+      const isHighlighted = this.highlightUsername && entry.username === this.highlightUsername;
+
+      // Fondo de fila alterno o resaltado
+      if (isHighlighted) {
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
+        ctx.fillRect(tableRect.x + 2, ry, tableRect.w - 8, rowH - 1);
+      } else if (rankNum === 1) {
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.12)';
+        ctx.fillRect(tableRect.x + 2, ry, tableRect.w - 8, rowH - 1);
+      } else if (idx % 2 === 1) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+        ctx.fillRect(tableRect.x + 2, ry, tableRect.w - 8, rowH - 1);
+      }
+
+      // Color de posición (#1 Oro, #2 Plata, #3 Bronce)
+      let posColor = UI_COLORS.textSecondary;
+      if (rankNum === 1) posColor = '#fde047';
+      else if (rankNum === 2) posColor = '#e2e8f0';
+      else if (rankNum === 3) posColor = '#fb923c';
+
+      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.fillStyle = posColor;
+      ctx.fillText(`#${rankNum}`, colPos, ry + 4);
+
+      // Tag del jugador
+      ctx.fillStyle = isHighlighted ? UI_COLORS.cyan : (rankNum <= 3 ? UI_COLORS.textPrimary : UI_COLORS.textSecondary);
+      ctx.fillText(UILayout.fitText(ctx, entry.username, 80), colTag, ry + 4);
+
+      // Tiempo de Run (mm:ss)
+      ctx.font = `4.5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.cyan;
+      const timeStr = entry.playTimeFormatted || formatPlayTime(entry.playTimeSeconds);
+      ctx.fillText(timeStr, colTime, ry + 4);
+
+      // Bytes recolectados
+      ctx.fillStyle = UI_COLORS.gold;
+      const bytesVal = entry.bytes ?? 0;
+      ctx.fillText(`${bytesVal}B`, colBytes, ry + 4);
+
+      // Insignia de Rango (S, A, B, C)
+      const rankColor = this._getRankColor(entry.rank);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.fillRect(colRank, ry + 2, 16, 9);
+      ctx.strokeStyle = rankColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(colRank + 0.5, ry + 2.5, 15, 8);
+      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.fillStyle = rankColor;
+      ctx.fillText(entry.rank, colRank + 5, ry + 4);
+
+      // Score numérico
+      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.emerald;
+      ctx.fillText(String(entry.score), colScore, ry + 4);
+    });
+
+    // Barra de scroll vertical discreta a la derecha si hay más de 6 filas
+    UILayout.drawScrollbar(
+      ctx,
+      tableRect.x + tableRect.w - 5,
+      rowsStartY,
+      this.visibleRows * rowH - 2,
+      this.entries.length,
+      this.visibleRows,
+      this.scrollOffset
+    );
+
+    ctx.restore();
+  }
+
+  _getRankColor(rank) {
+    switch (String(rank).toUpperCase()) {
+      case 'S': return '#fde047';
+      case 'A': return '#38bdf8';
+      case 'B': return '#4ade80';
+      default:  return '#f87171';
+    }
   }
 }
 
@@ -13910,6 +15228,7 @@ class MainMenuAndScenes {
 
     this.worldMap = new WorldMap(this);
     this.worldMapContext = null;
+    this.leaderboardView = new LeaderboardView(viewportWidth, viewportHeight);
 
     // Estados: 'title' | 'options' | 'cutscene' | 'exit_screen' | 'pause' | 'none'
     this.state = 'title';
@@ -14095,6 +15414,13 @@ class MainMenuAndScenes {
     this.selectedIndex = 0;
     this.music.playMenuSelect();
 
+    if (this.leaderboardView) {
+      this.leaderboardView.isOpen = true;
+      this.leaderboardView.loading = true;
+      this.leaderboardView.scrollOffset = 0;
+      this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.leaderboardList || []);
+    }
+
     this.isFetchingGlobal = true;
     fetchGlobalLeaderboard().then((res) => {
       this.isFetchingGlobal = false;
@@ -14104,10 +15430,21 @@ class MainMenuAndScenes {
         if (this.leaderboardTab === 'global') {
           this.leaderboardList = this.globalLeaderboardList;
         }
+        if (this.leaderboardView) {
+          this.leaderboardView.loading = false;
+          this.leaderboardView.source = res.source || 'cloud';
+          this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.leaderboardList);
+        }
       }
     }).catch(() => {
       this.isFetchingGlobal = false;
       this.leaderboardStatus = '💾 Modo Local';
+      if (this.leaderboardView) {
+        this.leaderboardView.loading = false;
+        this.leaderboardView.source = 'offline_local';
+        this.leaderboardView.errorMsg = 'Sin conexión a Vercel KV · Mostrando caché local';
+        this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.localLeaderboardList || []);
+      }
     });
   }
 
@@ -14121,10 +15458,18 @@ class MainMenuAndScenes {
       this.localLeaderboardList = getLocalLeaderboard();
       this.leaderboardList = this.localLeaderboardList;
     }
+    if (this.leaderboardView) {
+      this.leaderboardView.scrollOffset = 0;
+      this.leaderboardView.source = tab === 'global' ? 'cloud' : 'local';
+      this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.leaderboardList || []);
+    }
     this.music.playMenuMove();
   }
 
   closeLeaderboardScreen() {
+    if (this.leaderboardView) {
+      this.leaderboardView.close();
+    }
     this.state = this.previousStateBeforeLeaderboard || 'title';
     this.music.playMenuMove();
   }
@@ -15282,196 +16627,21 @@ class MainMenuAndScenes {
   }
 
   /**
-   * Pantalla de Salón de la Fama y Clasificación Global de Speedrun (Rango S a C).
+   * Pantalla de Salón de la Fama y Clasificación Global de Speedrun (Rango S a C)
+   * Renderizada dentro del contenedor unificado de 290×150 px mediante LeaderboardView.
    */
   _renderLeaderboardScreen(ctx) {
-    const W = this.viewportWidth;
-    const H = this.viewportHeight;
-    const winW = 300;
-    const winH = 166;
-    const winX = Math.round((W - winW) / 2);
-    const winY = Math.round((H - winH) / 2);
-
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-
-    // Fondo oscurecido con viñeta
-    ctx.fillStyle = 'rgba(5, 8, 16, 0.90)';
-    ctx.fillRect(0, 0, W, H);
-
-    // Marco exterior con doble borde dorado
-    ctx.fillStyle = '#0a0f1d';
-    ctx.fillRect(winX, winY, winW, winH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(winX + 2, winY + 2, winW - 4, winH - 4);
-
-    // Cabecera estilizada
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(winX + 2, winY + 2, winW - 4, 25);
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillRect(winX + 2, winY + 27, winW - 4, 1);
-
-    ctx.font = 'bold 7.5px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fde047';
-    ctx.fillText('🏆 SALÓN DE LA FAMA · SPEEDRUN CLASIFICATORIO', W / 2, winY + 8);
-
-    // Pestañas interactivas: [1] 🌐 Ranking Mundial (Nube) | [2] 💾 Récords Locales
-    const tabY = winY + 14;
-    const tabW = 95;
-    const tabH = 11;
-    const tab1X = winX + 14;
-    const tab2X = winX + 114;
-
-    const isGlobal = this.leaderboardTab !== 'local';
-
-    // Tab 1: Global
-    ctx.fillStyle = isGlobal ? '#0284c7' : '#0f172a';
-    ctx.fillRect(tab1X, tabY, tabW, tabH);
-    ctx.strokeStyle = isGlobal ? '#38bdf8' : '#334155';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(tab1X + 0.5, tabY + 0.5, tabW - 1, tabH - 1);
-    ctx.font = 'bold 5.5px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = isGlobal ? '#ffffff' : '#94a3b8';
-    ctx.fillText('🌐 [1] Global (Nube)', tab1X + tabW / 2, tabY + 5.5);
-
-    // Tab 2: Local
-    ctx.fillStyle = !isGlobal ? '#059669' : '#0f172a';
-    ctx.fillRect(tab2X, tabY, tabW, tabH);
-    ctx.strokeStyle = !isGlobal ? '#34d399' : '#334155';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(tab2X + 0.5, tabY + 0.5, tabW - 1, tabH - 1);
-    ctx.fillStyle = !isGlobal ? '#ffffff' : '#94a3b8';
-    ctx.fillText('💾 [2] Local (Este PC)', tab2X + tabW / 2, tabY + 5.5);
-
-    // Estado del servidor / nube
-    ctx.textAlign = 'right';
-    ctx.font = '5px monospace';
-    ctx.fillStyle = this.leaderboardStatus?.includes('Nube') ? '#38bdf8' : '#94a3b8';
-    ctx.fillText(this.leaderboardStatus || '🌐 Vercel API', winX + winW - 8, tabY + 5.5);
-
-    // Encabezados de tabla
-    const tableY = winY + 29;
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(winX + 6, tableY, winW - 12, 11);
-
-    ctx.font = 'bold 5.5px monospace';
-    ctx.fillStyle = '#cbd5e1';
-    ctx.textAlign = 'left';
-    ctx.fillText('#', winX + 10, tableY + 6);
-    ctx.fillText('JUGADOR', winX + 26, tableY + 6);
-    ctx.fillText('TIEMPO', winX + 112, tableY + 6);
-    ctx.fillText('BUGS', winX + 162, tableY + 6);
-    ctx.fillText('RANGO', winX + 204, tableY + 6);
-    ctx.textAlign = 'right';
-    ctx.fillText('SCORE', winX + winW - 12, tableY + 6);
-
-    const list = this.leaderboardList || [];
-    const scroll = this.leaderboardScroll || 0;
-    const maxVisible = 6;
-    const visibleItems = list.slice(scroll, scroll + maxVisible);
-
-    const rowH = 15;
-    const startRowY = tableY + 13;
-
-    if (visibleItems.length === 0) {
-      ctx.font = '6.5px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#64748b';
-      ctx.fillText('No hay récords registrados todavía.', W / 2, winY + 80);
-    }
-
-    visibleItems.forEach((entry, idx) => {
-      const realIndex = scroll + idx + 1;
-      const ry = startRowY + idx * rowH;
-
-      // Fila alterna
-      if (idx % 2 === 0) {
-        ctx.fillStyle = 'rgba(30, 41, 59, 0.4)';
-        ctx.fillRect(winX + 6, ry, winW - 12, rowH - 1);
+    if (this.leaderboardView) {
+      this.leaderboardView.scrollOffset = this.leaderboardScroll || 0;
+      if (!this.leaderboardView.entries || this.leaderboardView.entries.length === 0) {
+        this.leaderboardView.entries = this.leaderboardView._normalizeEntries(this.leaderboardList || []);
       }
-
-      // Medalla o posición
-      ctx.font = 'bold 6px monospace';
-      ctx.textAlign = 'left';
-      let posText = `#${realIndex}`;
-      let posColor = '#94a3b8';
-      if (realIndex === 1) { posText = '🥇'; posColor = '#fde047'; }
-      else if (realIndex === 2) { posText = '🥈'; posColor = '#cbd5e1'; }
-      else if (realIndex === 3) { posText = '🥉'; posColor = '#f97316'; }
-      ctx.fillStyle = posColor;
-      ctx.fillText(posText, winX + 9, ry + 8);
-
-      // Nombre
-      ctx.font = 'bold 6px monospace';
-      ctx.fillStyle = realIndex <= 3 ? '#ffffff' : '#e2e8f0';
-      ctx.fillText(entry.username || 'ANÓNIMO', winX + 26, ry + 8);
-
-      // Tiempo
-      ctx.font = '5.5px monospace';
-      ctx.fillStyle = '#38bdf8';
-      ctx.fillText(entry.playTimeFormatted || '00:00', winX + 112, ry + 8);
-
-      // Muertes
-      const deaths = entry.deaths || 0;
-      ctx.fillStyle = deaths === 0 ? '#4ade80' : deaths <= 2 ? '#fde047' : '#f87171';
-      ctx.fillText(`${deaths} ${deaths === 1 ? 'muerte' : 'muertes'}`, winX + 162, ry + 8);
-
-      // Badge de Rango
-      const rank = entry.rank || 'C';
-      const rankColor = rank === 'S' ? '#fde047' : rank === 'A' ? '#38bdf8' : rank === 'B' ? '#4ade80' : '#f87171';
-      const badgeX = winX + 204;
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      ctx.fillRect(badgeX, ry + 2, 26, 10);
-      ctx.strokeStyle = rankColor;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(badgeX + 0.5, ry + 2.5, 25, 9);
-      ctx.font = 'bold 5.5px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = rankColor;
-      ctx.fillText(rank, badgeX + 13, ry + 7.5);
-
-      // Score
-      ctx.font = 'bold 6px monospace';
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#fde047';
-      ctx.fillText(`${(entry.score || 0).toLocaleString('es-ES')} pts`, winX + winW - 12, ry + 8);
-    });
-
-    // Pie de pantalla: atajos y scroll
-    ctx.font = '5px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#64748b';
-    ctx.fillText('[Tab/1/2] Alternar Global/Local', winX + 8, winY + winH - 6);
-
-    if (list.length > maxVisible) {
-      ctx.textAlign = 'right';
-      ctx.fillText(`Reg. ${scroll + 1}-${Math.min(list.length, scroll + maxVisible)} de ${list.length} · [▲/▼] Scroll`, winX + winW - 8, winY + winH - 6);
+      this.leaderboardView.render(ctx, {
+        forceRender: true,
+        closeLabel: '[Esc] Volver',
+        backdropAlpha: 0.78
+      });
     }
-
-    // Botón interactivo de retorno
-    const btnW = 120;
-    const btnH = 12;
-    const btnX = Math.round(winX + (winW - btnW) / 2);
-    const btnY = winY + winH - 17;
-
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(btnX, btnY, btnW, btnH);
-    ctx.strokeStyle = '#ffd885';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(btnX + 0.5, btnY + 0.5, btnW - 1, btnH - 1);
-
-    ctx.font = 'bold 6px monospace';
-    ctx.fillStyle = '#ffd885';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('◀ VOLVER [Escape / Clic]', btnX + btnW / 2, btnY + btnH / 2);
-
-    ctx.restore();
   }
 
   /**
@@ -18302,9 +19472,30 @@ const SCENE_DEUS_PURIFICATION = {
   // Módulo: src/world/DayNightCycle.js
   // ==========================================
 /**
- * Ciclo de Día/Noche con ritmo de reloj natural (1 minuto de juego cada 0.5 s reales = 12 min por día completo)
- * y soporte de iluminación interior cálida cuando el jugador entra en una vivienda.
+ * DayNightCycle.js · Reloj solar + Iluminación Dinámica Diferida (HD-2D sobre Canvas 2D)
+ *
+ *  - Reloj natural: 12 minutos reales por día completo (24 h de juego).
+ *  - getSunState(): dirección, longitud y opacidad de las sombras proyectadas según la hora
+ *    (mañana → sombras largas hacia el oeste, mediodía → cortas, tarde → largas hacia el este,
+ *    noche → luz lunar tenue).
+ *  - Iluminación diferida: un lienzo secundario en memoria (`lightingCanvas`, 320×180) se rellena con el
+ *    tinte ambiental de la hora, se perforan las fuentes de luz con `destination-out`
+ *    (farolas/antorchas con flicker procedural, destello cian de la Espada de la Recursividad,
+ *    ventanas de las casas al anochecer) y finalmente se proyecta sobre la escena con `multiply`.
+ *  - Los halos cálidos/cian se añaden con mezcla aditiva ('lighter') tras el multiply.
+ *
+ * Los sprites de luz (gradientes radiales) se pre-renderizan una sola vez y se escalan con drawImage,
+ * evitando crear gradientes cada fotograma (mantiene los 60 FPS).
  */
+
+const LIGHT_SPRITE_SIZE = 64;
+
+const GLOW_PALETTES = {
+  warm: [255, 214, 120],
+  amber: [255, 176, 82],
+  cyan: [96, 232, 255]
+};
+
 class DayNightCycle {
   constructor(viewportWidth = 320, viewportHeight = 180, dayDurationSeconds = 720) {
     this.viewportWidth = viewportWidth;
@@ -18314,31 +19505,36 @@ class DayNightCycle {
     // Empieza a las 08:30 AM
     this.timeOfDayHours = 8.5;
     this.pulseTimer = 0;
+    this.flickerClock = 0;
 
-    this.lightScale = 4;
-    this.lightCanvas = document.createElement('canvas');
-    this.lightCanvas.width = viewportWidth * this.lightScale;
-    this.lightCanvas.height = viewportHeight * this.lightScale;
-    this.lightCtx = this.lightCanvas.getContext('2d');
+    // Lienzo secundario en memoria (diferido) de 320×180 px
+    this.lightingCanvas = null;
+    this.lightingCtx = null;
+    this._holeSprite = null;
+    this._glowSprites = {};
 
     this.keyframes = [
-      { hour: 0,  r: 12,  g: 18,  b: 48,  a: 0.72 },
-      { hour: 4,  r: 16,  g: 22,  b: 56,  a: 0.68 },
-      { hour: 6,  r: 235, g: 130, b: 95,  a: 0.30 },
-      { hour: 8,  r: 255, g: 225, b: 160, a: 0.08 },
-      { hour: 12, r: 255, g: 255, b: 240, a: 0.00 },
-      { hour: 16, r: 255, g: 230, b: 170, a: 0.06 },
-      { hour: 18, r: 235, g: 110, b: 55,  a: 0.36 },
-      { hour: 20, r: 30,  g: 32,  b: 78,  a: 0.58 },
-      { hour: 22, r: 14,  g: 20,  b: 52,  a: 0.70 },
-      { hour: 24, r: 12,  g: 18,  b: 48,  a: 0.72 }
+      { hour: 0,  r: 28,  g: 40,  b: 96,  a: 0.66 },
+      { hour: 4,  r: 32,  g: 46,  b: 104, a: 0.62 },
+      { hour: 6,  r: 255, g: 150, b: 110, a: 0.30 },
+      { hour: 8,  r: 255, g: 232, b: 180, a: 0.08 },
+      { hour: 12, r: 255, g: 255, b: 245, a: 0.00 },
+      { hour: 16, r: 255, g: 236, b: 185, a: 0.07 },
+      { hour: 18, r: 255, g: 128, b: 70,  a: 0.34 },
+      { hour: 19, r: 150, g: 70,  b: 120, a: 0.44 },
+      { hour: 20, r: 50,  g: 52,  b: 120, a: 0.56 },
+      { hour: 22, r: 30,  g: 42,  b: 98,  a: 0.64 },
+      { hour: 24, r: 28,  g: 40,  b: 96,  a: 0.66 }
     ];
+
+    this._sun = { dx: -1, dy: 0.18, length: 1, alphaScale: 1, isDay: true, elevation: 0 };
   }
 
   update(dt) {
     const hoursPerSecond = 24 / this.dayDurationSeconds;
     this.timeOfDayHours = (this.timeOfDayHours + hoursPerSecond * dt) % 24;
     this.pulseTimer += dt * 3.2;
+    this.flickerClock += dt;
   }
 
   getCurrentTint() {
@@ -18365,6 +19561,39 @@ class DayNightCycle {
     };
   }
 
+  /**
+   * Estado del «reloj solar» para proyectar sombras:
+   *  dx ∈ [-1, 1]  → hacia dónde apunta la sombra (negativo = oeste/izquierda)
+   *  dy            → ligera caída hacia el espectador (profundidad pseudo-3D)
+   *  length        → multiplicador de longitud (corta a mediodía, larga al amanecer/atardecer)
+   *  alphaScale    → opacidad relativa (la luna proyecta sombras tenues)
+   *
+   * Devuelve siempre el mismo objeto (sin asignaciones por fotograma).
+   */
+  getSunState() {
+    const h = this.timeOfDayHours;
+    const sun = this._sun;
+    if (h >= 6 && h < 18) {
+      const t = (h - 6) / 12;
+      const elevation = Math.sin(Math.PI * t);
+      sun.dx = -Math.cos(Math.PI * t);
+      sun.dy = 0.18;
+      sun.length = 0.6 + (1 - elevation) * 3.2;
+      sun.alphaScale = Math.min(1, 0.6 + elevation * 0.6);
+      sun.isDay = true;
+      sun.elevation = elevation;
+    } else {
+      // Luz lunar: dirección fija y sombra suave
+      sun.dx = 0.45;
+      sun.dy = 0.2;
+      sun.length = 1.5;
+      sun.alphaScale = 0.45;
+      sun.isDay = false;
+      sun.elevation = 0;
+    }
+    return sun;
+  }
+
   getPhaseLabel() {
     const h = this.timeOfDayHours;
     if (h >= 5.5 && h < 8) return 'Amanecer';
@@ -18378,6 +19607,12 @@ class DayNightCycle {
     return h >= 20 || h < 6;
   }
 
+  /** Las ventanas se encienden desde el atardecer hasta el amanecer. */
+  areWindowsLit() {
+    const h = this.timeOfDayHours;
+    return h >= 18.5 || h < 6.5;
+  }
+
   getFormattedTime() {
     const hours = Math.floor(this.timeOfDayHours);
     const minutes = Math.floor((this.timeOfDayHours - hours) * 60);
@@ -18386,115 +19621,443 @@ class DayNightCycle {
     return `${hh}:${mm}`;
   }
 
-  render(ctx, camera, worldLights = [], player = null, isInterior = false) {
+  /** Parpadeo procedural suave y determinista por fuente de luz (1 ± ~10 %). */
+  _flicker(light, amplitude = 1) {
+    const p = light.x * 0.37 + light.y * 0.91;
+    const t = this.flickerClock;
+    const v =
+      0.07 * Math.sin(t * 5.1 + p) +
+      0.05 * Math.sin(t * 11.7 + p * 1.9) +
+      0.03 * Math.sin(t * 23.3 + p * 0.7);
+    return 1 + v * amplitude;
+  }
+
+  _ensureBuffers() {
+    if (this.lightingCanvas || typeof document === 'undefined') return;
+    this.lightingCanvas = document.createElement('canvas');
+    this.lightingCanvas.width = this.viewportWidth;
+    this.lightingCanvas.height = this.viewportHeight;
+    this.lightingCtx = this.lightingCanvas.getContext('2d');
+
+    // Sprite de agujero (alfa) pre-renderizado
+    const hole = document.createElement('canvas');
+    hole.width = LIGHT_SPRITE_SIZE;
+    hole.height = LIGHT_SPRITE_SIZE;
+    const hctx = hole.getContext('2d');
+    const c = LIGHT_SPRITE_SIZE / 2;
+    const hg = hctx.createRadialGradient(c, c, 2, c, c, c);
+    hg.addColorStop(0, 'rgba(0, 0, 0, 0.95)');
+    hg.addColorStop(0.55, 'rgba(0, 0, 0, 0.45)');
+    hg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    hctx.fillStyle = hg;
+    hctx.fillRect(0, 0, LIGHT_SPRITE_SIZE, LIGHT_SPRITE_SIZE);
+    this._holeSprite = hole;
+
+    // Sprites de halo de color pre-renderizados
+    for (const [name, [r, g, b]] of Object.entries(GLOW_PALETTES)) {
+      const glow = document.createElement('canvas');
+      glow.width = LIGHT_SPRITE_SIZE;
+      glow.height = LIGHT_SPRITE_SIZE;
+      const gctx = glow.getContext('2d');
+      const gg = gctx.createRadialGradient(c, c, 1, c, c, c);
+      gg.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.85)`);
+      gg.addColorStop(0.45, `rgba(${r}, ${g}, ${b}, 0.28)`);
+      gg.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      gctx.fillStyle = gg;
+      gctx.fillRect(0, 0, LIGHT_SPRITE_SIZE, LIGHT_SPRITE_SIZE);
+      this._glowSprites[name] = glow;
+    }
+  }
+
+  /**
+   * Reúne las luces activas en coordenadas de pantalla: fuentes del mapa (con flicker),
+   * ventanas nocturnas, destello de la Espada y linterna/aura del jugador.
+   */
+  _gatherLights(camera, worldLights, windowLights, player, extraLights) {
+    const out = [];
+    const vw = this.viewportWidth;
+    const vh = this.viewportHeight;
+
+    const push = (light, flickerAmp, kind) => {
+      const sx = light.x - camera.renderX;
+      const sy = light.y - camera.renderY;
+      const radius = light.radius * this._flicker(light, flickerAmp);
+      if (sx < -radius || sx > vw + radius || sy < -radius || sy > vh + radius) return;
+      out.push({
+        x: Math.round(sx),
+        y: Math.round(sy),
+        radius,
+        intensity: light.intensity ?? 0.8,
+        glow: light.glow || (kind === 'window' ? 'amber' : 'warm'),
+        kind
+      });
+    };
+
+    for (const l of worldLights || []) push(l, 1, l.kind || 'lamp');
+
+    if (windowLights && windowLights.length > 0 && this.areWindowsLit()) {
+      for (const w of windowLights) push(w, 0.35, 'window');
+    }
+
+    for (const l of extraLights || []) push(l, 0, l.kind || 'extra');
+
+    if (player) {
+      const px = player.centerX - camera.renderX;
+      const py = player.centerY - camera.renderY;
+      const lantern = Boolean(player.hasLanternEquipped);
+      out.push({
+        x: Math.round(px),
+        y: Math.round(py),
+        radius: (lantern ? 56 : 28) + Math.sin(this.pulseTimer) * 0.8,
+        intensity: lantern ? 0.92 : 0.65,
+        glow: 'warm',
+        kind: 'player',
+        glowScale: lantern ? 0.7 : 0
+      });
+
+      // Destello cian de la Espada de la Recursividad durante el ataque
+      if (player.hasSword && player.isAttacking && player.attackDuration > 0) {
+        const progress = 1 - player.attackTimer / player.attackDuration;
+        const pulse = Math.sin(Math.max(0, Math.min(1, progress)) * Math.PI);
+        const dirs = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+        const d = dirs[player.direction] || dirs.down;
+        out.push({
+          x: Math.round(px + d[0] * 11),
+          y: Math.round(py + d[1] * 11),
+          radius: 20 + pulse * 22,
+          intensity: 0.55 + pulse * 0.45,
+          glow: 'cyan',
+          kind: 'sword',
+          glowScale: 1.1 * pulse,
+          alwaysGlow: true
+        });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx   contexto principal (escala lógica 320×180)
+   * @param {Camera2D} camera
+   * @param {Array} worldLights  fuentes de luz fijas de la escena
+   * @param {Player|null} player
+   * @param {boolean} isInterior
+   * @param {Array} windowLights ventanas de las casas (solo se encienden de noche)
+   * @param {Array} extraLights  luces dinámicas adicionales
+   */
+  render(ctx, camera, worldLights = [], player = null, isInterior = false, windowLights = [], extraLights = []) {
+    this._ensureBuffers();
+    if (!this.lightingCtx) return;
+
     const tint = isInterior
-      ? { r: 24, g: 18, b: 32, a: 0.25 }
+      ? { r: 60, g: 44, b: 70, a: 0.3 }
       : this.getCurrentTint();
 
-    if (tint.a <= 0.01) return;
+    const lights = this._gatherLights(camera, worldLights, isInterior ? [] : windowLights, player, extraLights);
+    const hasSwordFlash = lights.some((l) => l.alwaysGlow);
 
-    const lctx = this.lightCtx;
+    if (tint.a <= 0.01 && !hasSwordFlash) return;
+
+    const darkness = isInterior
+      ? 0.65
+      : Math.max(0, Math.min(1, (tint.a - 0.1) / 0.5));
+
+    const lctx = this.lightingCtx;
     lctx.save();
-    lctx.setTransform(this.lightScale, 0, 0, this.lightScale, 0, 0);
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
+    lctx.globalCompositeOperation = 'source-over';
+    lctx.globalAlpha = 1;
     lctx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
 
-    lctx.globalCompositeOperation = 'source-over';
-    lctx.fillStyle = `rgba(${tint.r}, ${tint.g}, ${tint.b}, ${tint.a.toFixed(3)})`;
-    lctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+    // 1. Tinte ambiental según la hora
+    if (tint.a > 0.01) {
+      lctx.fillStyle = `rgba(${tint.r}, ${tint.g}, ${tint.b}, ${tint.a.toFixed(3)})`;
+      lctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+    }
 
-    const darknessFactor = isInterior
-      ? 0.65
-      : Math.max(0, Math.min(1, (tint.a - 0.15) / 0.55));
-
-    if (darknessFactor > 0.05) {
-      const flicker = Math.sin(this.pulseTimer) * 1.5;
+    // 2. Perforar las fuentes de luz (destination-out)
+    if (darkness > 0.04) {
       lctx.globalCompositeOperation = 'destination-out';
-
-      if (player) {
-        const px = Math.round(player.centerX - camera.renderX);
-        const py = Math.round(player.centerY - camera.renderY);
-        const playerRadius = player.hasLanternEquipped ? 56 : 28;
-        const playerStrength = player.hasLanternEquipped ? 0.92 : 0.65;
-        this._punchLightHole(
-          lctx,
-          px,
-          py,
-          playerRadius + flicker * 0.5,
-          playerStrength * darknessFactor
-        );
-      }
-
-      for (const light of worldLights) {
-        const sx = Math.round(light.x - camera.renderX);
-        const sy = Math.round(light.y - camera.renderY);
-        if (
-          sx < -light.radius ||
-          sx > this.viewportWidth + light.radius ||
-          sy < -light.radius ||
-          sy > this.viewportHeight + light.radius
-        ) {
-          continue;
-        }
-        this._punchLightHole(
-          lctx,
-          sx,
-          sy,
-          light.radius + flicker,
-          light.intensity * darknessFactor
-        );
+      for (const light of lights) {
+        const d = light.radius * 2;
+        lctx.globalAlpha = Math.min(1, light.intensity * darkness);
+        lctx.drawImage(this._holeSprite, light.x - light.radius, light.y - light.radius, d, d);
       }
     }
     lctx.restore();
 
+    // 3. Proyección multiplicativa sobre la escena
     ctx.save();
-    ctx.drawImage(
-      this.lightCanvas,
-      0,
-      0,
-      this.lightCanvas.width,
-      this.lightCanvas.height,
-      0,
-      0,
-      this.viewportWidth,
-      this.viewportHeight
-    );
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'low';
+    ctx.drawImage(this.lightingCanvas, 0, 0, this.viewportWidth, this.viewportHeight);
 
-    if (darknessFactor > 0.1) {
-      for (const light of worldLights) {
-        const sx = Math.round(light.x - camera.renderX);
-        const sy = Math.round(light.y - camera.renderY);
-        if (
-          sx < -light.radius ||
-          sx > this.viewportWidth + light.radius ||
-          sy < -light.radius ||
-          sy > this.viewportHeight + light.radius
-        ) {
-          continue;
-        }
+    // 4. Halos aditivos de color (cálido, ámbar de ventanas, cian de la espada)
+    ctx.globalCompositeOperation = 'lighter';
+    for (const light of lights) {
+      let strength;
+      if (light.alwaysGlow) {
+        strength = 0.55 * (light.glowScale ?? 1);
+      } else if (darkness > 0.1) {
+        strength = 0.3 * darkness * light.intensity * (light.glowScale ?? 1);
+        if (light.kind === 'player' && !light.glowScale) continue;
+      } else {
+        continue;
+      }
+      if (strength <= 0.01) continue;
+      const sprite = this._glowSprites[light.glow] || this._glowSprites.warm;
+      const gr = light.radius * 0.8;
+      ctx.globalAlpha = Math.min(1, strength);
+      ctx.drawImage(sprite, light.x - gr, light.y - gr, gr * 2, gr * 2);
+    }
+    ctx.restore();
+  }
+}
 
-        const grad = ctx.createRadialGradient(sx, sy, 1, sx, sy, light.radius * 0.75);
-        const glowAlpha = (0.22 * darknessFactor * light.intensity).toFixed(3);
-        grad.addColorStop(0, `rgba(255, 220, 120, ${glowAlpha})`);
-        grad.addColorStop(1, 'rgba(255, 180, 70, 0)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(sx, sy, light.radius * 0.75, 0, Math.PI * 2);
-        ctx.fill();
+  // ==========================================
+  // Módulo: src/graphics/RenderPipeline.js
+  // ==========================================
+/**
+ * RenderPipeline.js · Pipeline 2.5D estilizado (HD-2D) sobre Canvas 2D
+ *
+ * Orden de composición por fotograma:
+ *
+ *  CAPA 0  · Suelo ............ hierba, baldosas, alfombras y agua con ondulación (renderGround)
+ *            + decals del suelo (objetos recogibles, bytes, portales) mediante `frame.onGround`.
+ *  SOMBRAS · Elipses traslúcidas bajo cada entidad móvil, orientadas por el reloj solar.
+ *  CAPA 1  · Entidades y obstáculos Y-sorted ... jugador, NPCs, animales, enemigos y tiles sólidos
+ *            (troncos, muros, mobiliario, monolitos) ordenados cada fotograma por `y + height`.
+ *  CAPA 2  · Estructuras elevadas ........ copas de árboles, tejados, carteles de jefes (siempre encima).
+ *  CAPA 3  · Atmósfera y profundidad de campo: niebla ambiental ligera → iluminación dinámica
+ *            diferida (multiply) → viñeteado suave en los márgenes verticales (lente focal).
+ *
+ * Todas las texturas auxiliares (viñeta, niebla) se pre-renderizan una sola vez; el pipeline
+ * reutiliza sus buffers entre fotogramas para no generar basura y mantener los 60 FPS.
+ */
+
+const FOG_TEXTURE_WIDTH = 192;
+const FOG_TEXTURE_HEIGHT = 96;
+
+/** Sol «de interior»: luz cenital suave → sombras cortas y casi circulares. */
+const INTERIOR_SUN = { dx: 0.15, dy: 0.2, length: 0.55, alphaScale: 0.85, isDay: true, elevation: 1 };
+
+function compareBySortY(a, b) {
+  return a.sortY - b.sortY;
+}
+
+class RenderPipeline {
+  constructor(viewportWidth = 320, viewportHeight = 180) {
+    this.viewportWidth = viewportWidth;
+    this.viewportHeight = viewportHeight;
+
+    this._drawList = [];
+    this._casters = [];
+    this.clock = 0;
+
+    this._vignette = null;
+    this._fogTexture = null;
+
+    this.stats = { sorted: 0, props: 0, entities: 0, shadows: 0 };
+  }
+
+  /** Avanza el reloj interno de la niebla (llamar una vez por update lógico). */
+  update(dt) {
+    this.clock += dt;
+  }
+
+  /**
+   * Renderiza el mundo completo.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{
+   *   tilemap: Tilemap, camera: Camera2D, dayNight: DayNightCycle, player: Player,
+   *   npcs: Array, animals: Array, enemies: Array,
+   *   onGround?: (ctx: CanvasRenderingContext2D) => void,
+   *   skipLighting?: boolean
+   * }} frame
+   */
+  render(ctx, frame) {
+    const { tilemap, camera, dayNight, player, npcs, animals, enemies } = frame;
+    const isInterior = tilemap.isInterior();
+
+    // ── CAPA 0 · Suelo ───────────────────────────────────────────────────────
+    tilemap.renderGround(ctx, camera);
+    if (typeof frame.onGround === 'function') {
+      frame.onGround(ctx);
+    }
+
+    // ── Sombras proyectadas (bajo todas las entidades móviles) ───────────────
+    const sun = isInterior ? INTERIOR_SUN : dayNight.getSunState();
+    const casters = this._casters;
+    casters.length = 0;
+    casters.push(player);
+    for (const n of npcs) casters.push(n);
+    for (const a of animals) casters.push(a);
+    for (const e of enemies) casters.push(e);
+
+    let shadows = 0;
+    for (const caster of casters) {
+      if (!caster || caster.isSleeping || typeof caster.renderShadow !== 'function') continue;
+      caster.renderShadow(ctx, camera, sun);
+      shadows++;
+    }
+
+    // ── CAPA 1 · Entidades y obstáculos Y-sorted ─────────────────────────────
+    const list = this._drawList;
+    list.length = 0;
+    tilemap.collectYSortedProps(camera, list);
+    const propCount = list.length;
+    for (const c of casters) {
+      if (c) list.push(c);
+    }
+    list.sort(compareBySortY);
+
+    for (const entry of list) {
+      if (entry.isTileProp) {
+        tilemap.drawProp(ctx, camera, entry);
+      } else {
+        entry.render(ctx, camera);
       }
     }
 
+    this.stats.sorted = list.length;
+    this.stats.props = propCount;
+    this.stats.entities = list.length - propCount;
+    this.stats.shadows = shadows;
+
+    // ── CAPA 2 · Estructuras elevadas ────────────────────────────────────────
+    tilemap.renderOverhead(ctx, camera, enemies, player);
+
+    // ── CAPA 3 · Atmósfera y profundidad de campo ────────────────────────────
+    if (!isInterior) {
+      this._renderFog(ctx, camera, dayNight);
+    }
+
+    if (!frame.skipLighting) {
+      dayNight.render(ctx, camera, tilemap.lightSources, player, isInterior, tilemap.windowLights);
+    }
+
+    this._renderVignette(ctx, isInterior);
+  }
+
+  // ===========================================================================
+  // Texturas auxiliares pre-renderizadas
+  // ===========================================================================
+
+  _ensureVignette() {
+    if (this._vignette || typeof document === 'undefined') return;
+    const w = this.viewportWidth;
+    const h = this.viewportHeight;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const g = canvas.getContext('2d');
+
+    // Desenfoque de lente: bandas superior e inferior que oscurecen suavemente
+    const bandTop = 34;
+    const top = g.createLinearGradient(0, 0, 0, bandTop);
+    top.addColorStop(0, 'rgba(4, 6, 14, 0.46)');
+    top.addColorStop(1, 'rgba(4, 6, 14, 0)');
+    g.fillStyle = top;
+    g.fillRect(0, 0, w, bandTop);
+
+    const bandBottom = 38;
+    const bottom = g.createLinearGradient(0, h - bandBottom, 0, h);
+    bottom.addColorStop(0, 'rgba(4, 6, 14, 0)');
+    bottom.addColorStop(1, 'rgba(4, 6, 14, 0.52)');
+    g.fillStyle = bottom;
+    g.fillRect(0, h - bandBottom, w, bandBottom);
+
+    // Esquinas: refuerzo radial muy sutil para evitar bordes duros
+    const radial = g.createRadialGradient(w / 2, h / 2, h * 0.55, w / 2, h / 2, w * 0.62);
+    radial.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    radial.addColorStop(1, 'rgba(0, 0, 0, 0.22)');
+    g.fillStyle = radial;
+    g.fillRect(0, 0, w, h);
+
+    this._vignette = canvas;
+  }
+
+  _ensureFogTexture() {
+    if (this._fogTexture || typeof document === 'undefined') return;
+    const canvas = document.createElement('canvas');
+    canvas.width = FOG_TEXTURE_WIDTH;
+    canvas.height = FOG_TEXTURE_HEIGHT;
+    const g = canvas.getContext('2d');
+
+    // Nubes de niebla deterministas (LCG con semilla fija) con wrap horizontal para tilear sin costuras
+    let seed = 1337;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+
+    for (let i = 0; i < 16; i++) {
+      const bx = rand() * FOG_TEXTURE_WIDTH;
+      const by = 10 + rand() * (FOG_TEXTURE_HEIGHT - 20);
+      const br = 18 + rand() * 26;
+      for (const ox of [-FOG_TEXTURE_WIDTH, 0, FOG_TEXTURE_WIDTH]) {
+        const grad = g.createRadialGradient(bx + ox, by, 1, bx + ox, by, br);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+        grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        g.fillStyle = grad;
+        g.fillRect(bx + ox - br, by - br, br * 2, br * 2);
+      }
+    }
+    this._fogTexture = canvas;
+  }
+
+  // ===========================================================================
+  // Capa 3
+  // ===========================================================================
+
+  /** Niebla ambiental ligera con paralaje: más densa al amanecer/atardecer y de noche. */
+  _renderFog(ctx, camera, dayNight) {
+    this._ensureFogTexture();
+    if (!this._fogTexture) return;
+
+    const h = dayNight.timeOfDayHours;
+    let density;
+    if (h >= 5 && h < 8) density = 0.1;        // bruma del amanecer
+    else if (h >= 8 && h < 17) density = 0.03; // día despejado
+    else if (h >= 17 && h < 20) density = 0.07;
+    else density = 0.08;                       // noche
+
+    const tex = this._fogTexture;
+    const vw = this.viewportWidth;
+    const vh = this.viewportHeight;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'low';
+
+    const layers = [
+      { speed: 3.0, parallax: 0.16, y: 6, alpha: density, scale: 1.0 },
+      { speed: -1.7, parallax: 0.3, y: 70, alpha: density * 0.75, scale: 1.25 }
+    ];
+
+    for (const layer of layers) {
+      const tw = tex.width * layer.scale;
+      const th = tex.height * layer.scale;
+      let offset = -(this.clock * layer.speed + camera.renderX * layer.parallax) % tw;
+      if (offset > 0) offset -= tw;
+      ctx.globalAlpha = layer.alpha;
+      for (let x = offset; x < vw; x += tw) {
+        ctx.drawImage(tex, x, layer.y, tw, th);
+      }
+    }
+
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
-  _punchLightHole(lctx, x, y, radius, strength) {
-    const grad = lctx.createRadialGradient(x, y, 2, x, y, radius);
-    grad.addColorStop(0, `rgba(0, 0, 0, ${Math.min(1, strength * 0.95).toFixed(3)})`);
-    grad.addColorStop(0.55, `rgba(0, 0, 0, ${(strength * 0.45).toFixed(3)})`);
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    lctx.fillStyle = grad;
-    lctx.beginPath();
-    lctx.arc(x, y, radius, 0, Math.PI * 2);
-    lctx.fill();
+  _renderVignette(ctx, isInterior) {
+    this._ensureVignette();
+    if (!this._vignette) return;
+    ctx.save();
+    ctx.globalAlpha = isInterior ? 0.75 : 1;
+    ctx.drawImage(this._vignette, 0, 0, this.viewportWidth, this.viewportHeight);
+    ctx.restore();
   }
 }
 
@@ -20264,6 +21827,8 @@ class RPGGame {
     };
     this.questLogView = new QuestLogView(this.questLog, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
     this.dayNight = new DayNightCycle(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, 720);
+    this.renderPipeline = new RenderPipeline(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+    this.leaderboardView = new LeaderboardView(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
 
     this.jailRemainingSeconds = 0;
     this.jailerAngerCount = 0;
@@ -20602,7 +22167,17 @@ class RPGGame {
       playerCoins: this.player.coins,
       robotizationLevel: Math.round(this.player.robotizationLevel),
       hasArmor: this.player.hasArmor,
+      playerHasArmor: this.player.hasArmor,
       hasSword: this.player.hasSword,
+      playerHasSword: this.player.hasSword,
+      shieldHP: this.player.armorPoints ?? 0,
+      armorPoints: this.player.armorPoints ?? 0,
+      maxArmorPoints: this.player.maxArmorPoints || 3,
+      hasPermission_elder: Boolean(this.housePermissions.elder_house),
+      hasPermission_blacksmith: Boolean(this.housePermissions.blacksmith_house),
+      hasPermission_herbalist: Boolean(this.housePermissions.herbalist_house),
+      hasPermission_guard: Boolean(this.housePermissions.guard_house),
+      hasPermission_oracle: Boolean(this.housePermissions.oracle_house),
       hasDash: !!this.player.hasDash,
       hasChargedAttack: !!this.player.hasChargedAttack,
       hasBarrier: !!this.player.hasBarrier,
@@ -20998,7 +22573,9 @@ class RPGGame {
 
   _loadGameData(rawInput) {
     if (!rawInput) return false;
-    const data = rawInput.savePayload || rawInput;
+    const raw = rawInput.savePayload || rawInput;
+    const sanitized = CloudStorage.sanitizeSaveData(raw) || {};
+    const data = { ...sanitized, ...raw };
     try {
       this._resetWorldToInitialState();
 
@@ -21015,7 +22592,12 @@ class RPGGame {
       if (data.housePermissions) {
         this.housePermissions = {
           ...this.housePermissions,
-          ...data.housePermissions
+          ...data.housePermissions,
+          elder_house: Boolean(data.housePermissions.elder_house ?? data.hasPermission_elder),
+          blacksmith_house: Boolean(data.housePermissions.blacksmith_house ?? data.hasPermission_blacksmith),
+          herbalist_house: Boolean(data.housePermissions.herbalist_house ?? data.hasPermission_herbalist),
+          guard_house: Boolean(data.housePermissions.guard_house ?? data.hasPermission_guard),
+          oracle_house: Boolean(data.housePermissions.oracle_house ?? data.hasPermission_oracle)
         };
       }
 
@@ -21091,11 +22673,15 @@ class RPGGame {
 
       // Si es un guardado antiguo en overworld (v1), dotar de armadura y espada por compatibilidad
       const isLegacyOverworld = !data.version || data.version < 2;
-      if (data.hasArmor || (isLegacyOverworld && targetScene !== 'first_stage')) {
+      if (data.hasArmor || data.playerHasArmor || (isLegacyOverworld && targetScene !== 'first_stage')) {
         this.player.equipArmor();
+        const savedShield = data.shieldHP ?? data.armorPoints;
+        if (Number.isFinite(Number(savedShield))) {
+          this.player.armorPoints = Math.max(0, Math.min(3, Math.floor(Number(savedShield))));
+        }
       }
       this.player.hasSword = Boolean(
-        data.hasSword || (isLegacyOverworld && targetScene !== 'first_stage')
+        data.hasSword || data.playerHasSword || (isLegacyOverworld && targetScene !== 'first_stage')
       );
       this.player.hasDash = Boolean(data.hasDash);
       this.player.hasChargedAttack = Boolean(data.hasChargedAttack);
@@ -25440,6 +27026,9 @@ class RPGGame {
     const prevHour = this.dayNight.timeOfDayHours;
     this.dayNight.update(dt);
     this.tilemap.update(dt, this.dayNight.timeOfDayHours);
+    if (this.renderPipeline) {
+      this.renderPipeline.update(dt);
+    }
     if (Math.floor(prevHour) !== Math.floor(this.dayNight.timeOfDayHours)) {
       this._updateNPCSchedules();
     }
@@ -25804,52 +27393,47 @@ class RPGGame {
     ctx.fillStyle = '#0e111a';
     ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
 
-    this.tilemap.render(ctx, this.camera, this.enemies, this.player);
-
-    // Renderizado del Portal Abisal estilo Diablo (tanto en la escena de origen como en el retorno de Reinos Condenados)
-    if (this.activeAbyssalPortal && this.activeAbyssalPortal.sceneId === this.tilemap.currentSceneId) {
-      this._renderAbyssalPortal(ctx, this.activeAbyssalPortal);
-    } else if (this.tilemap.currentSceneId === 'condemned_realms') {
-      this._renderAbyssalPortal(ctx, {
-        x: Math.round(11.5 * 16 - 10),
-        y: Math.round(15.2 * 16 - 10),
-        timer: this.condemnedPortalTimer || 0
-      });
-    }
-
     const { npcs, animals, enemies, items } = this._getActiveSceneEntities();
 
-    for (const item of items) {
-      item.render(ctx, this.camera);
-    }
+    this.renderPipeline.render(ctx, {
+      tilemap: this.tilemap,
+      camera: this.camera,
+      dayNight: this.dayNight,
+      player: this.player,
+      npcs,
+      animals,
+      enemies,
+      onGround: (gctx) => {
+        // Portal Abisal en el suelo (Capa 0)
+        if (this.activeAbyssalPortal && this.activeAbyssalPortal.sceneId === this.tilemap.currentSceneId) {
+          this._renderAbyssalPortal(gctx, this.activeAbyssalPortal);
+        } else if (this.tilemap.currentSceneId === 'condemned_realms') {
+          this._renderAbyssalPortal(gctx, {
+            x: Math.round(11.5 * 16 - 10),
+            y: Math.round(15.2 * 16 - 10),
+            timer: this.condemnedPortalTimer || 0
+          });
+        }
 
-    // Renderizado de Bytes (monedas físicas con brillo) en el suelo
-    for (const coin of this.droppedCoins) {
-      if (coin.sceneId !== this.tilemap.currentSceneId) continue;
-      const cx = Math.round(coin.x - this.camera.renderX);
-      const cy = Math.round(coin.y - this.camera.renderY);
-      ctx.fillStyle = '#fde047';
-      ctx.fillRect(cx - 2, cy - 2, 4, 4);
-      ctx.fillStyle = '#f59e0b';
-      ctx.fillRect(cx - 1, cy - 1, 2, 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(cx - 1, cy - 2, 1, 1);
-    }
+        // Objetos recolectables y cofres
+        for (const item of items) {
+          item.render(gctx, this.camera);
+        }
 
-    const renderList = [this.player, ...npcs, ...animals, ...enemies].sort(
-      (a, b) => a.y + a.height - (b.y + b.height)
-    );
-    for (const entity of renderList) {
-      entity.render(ctx, this.camera);
-    }
-
-    this.dayNight.render(
-      ctx,
-      this.camera,
-      this.tilemap.lightSources,
-      this.player,
-      this.tilemap.isInterior()
-    );
+        // Bytes (monedas físicas con brillo) en el suelo
+        for (const coin of this.droppedCoins) {
+          if (coin.sceneId !== this.tilemap.currentSceneId) continue;
+          const cx = Math.round(coin.x - this.camera.renderX);
+          const cy = Math.round(coin.y - this.camera.renderY);
+          gctx.fillStyle = '#fde047';
+          gctx.fillRect(cx - 2, cy - 2, 4, 4);
+          gctx.fillStyle = '#f59e0b';
+          gctx.fillRect(cx - 1, cy - 1, 2, 2);
+          gctx.fillStyle = '#ffffff';
+          gctx.fillRect(cx - 1, cy - 2, 1, 1);
+        }
+      }
+    });
 
     if (
       !this.dialogueBox.active &&
@@ -26011,34 +27595,56 @@ class RPGGame {
 
   _renderHUD(ctx) {
     ctx.save();
-    ctx.font = '7px monospace';
     ctx.textBaseline = 'middle';
 
-    // 1. Reloj compacto (hora actual) en la esquina superior derecha con fondo semitransparente discreto
+    // =========================================================================
+    // 1. SUPERIOR DERECHA: Cápsula translúcida con reloj digital, icono solar/lunar y micro-indicador cloud (☁️)
+    // =========================================================================
     const timeStr = this.dayNight.getFormattedTime();
-    const clockPaddingX = 6;
-    const clockW = Math.ceil(ctx.measureText(timeStr).width) + clockPaddingX * 2;
-    const clockH = 13;
-    const clockX = VIEWPORT_WIDTH - clockW - 5;
-    const clockY = 5;
+    const hour = this.dayNight.timeOfDayHours;
+    const isNightHour = hour >= 20 || hour < 6;
+    const sunMoonIcon = isNightHour ? '🌙' : '☀️';
 
-    ctx.fillStyle = 'rgba(14, 18, 30, 0.65)';
-    ctx.fillRect(clockX, clockY, clockW, clockH);
-    ctx.strokeStyle = 'rgba(229, 192, 123, 0.4)';
-    ctx.strokeRect(clockX + 0.5, clockY + 0.5, clockW - 1, clockH - 1);
+    const capsuleW = 62;
+    const capsuleH = 14;
+    const capsuleX = VIEWPORT_WIDTH - capsuleW - 6;
+    const capsuleY = 6;
 
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
+    ctx.fillRect(capsuleX, capsuleY, capsuleW, capsuleH);
+    ctx.strokeStyle = 'rgba(229, 192, 123, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(capsuleX + 0.5, capsuleY + 0.5, capsuleW - 1, capsuleH - 1);
+
+    // Icono solar/lunar
+    ctx.font = `6px ${UI_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(sunMoonIcon, capsuleX + 4, capsuleY + 7.5);
+
+    // Hora digital
+    ctx.font = `bold 5.5px ${UI_FONT}`;
     ctx.fillStyle = '#ffe599';
-    ctx.textAlign = 'center';
-    ctx.fillText(timeStr, clockX + clockW / 2, clockY + clockH / 2);
+    ctx.fillText(timeStr, capsuleX + 16, capsuleY + 7.5);
 
-    // 2. Corazones de vida en la esquina superior izquierda
+    // Micro-indicador de guardado en la nube (☁️)
+    const syncColor = this.cloudSyncStatus === 'syncing'
+      ? '#38bdf8'
+      : (this.hasPendingCloudSync ? '#f59e0b' : '#4ade80');
+    ctx.font = `6px ${UI_FONT}`;
+    ctx.fillStyle = syncColor;
+    ctx.textAlign = 'right';
+    ctx.fillText('☁', capsuleX + capsuleW - 4, capsuleY + 7.5);
+
+    // =========================================================================
+    // 2. SUPERIOR IZQUIERDA: Corazones (rojos o blindados metálicos) + icono 🤖% SOLO si supera el 50%
+    // =========================================================================
     const heartSlotW = 12;
     const heartsW = this.player.maxHp * heartSlotW + 8;
     const heartsH = 15;
-    const heartsX = 5;
-    const heartsY = 5;
+    const heartsX = 6;
+    const heartsY = 6;
 
-    ctx.fillStyle = 'rgba(14, 18, 30, 0.7)';
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
     ctx.fillRect(heartsX, heartsY, heartsW, heartsH);
     ctx.strokeStyle = this.player.hasBrokenHeartCurse
       ? 'rgba(244, 63, 94, 0.65)'
@@ -26107,6 +27713,27 @@ class RPGGame {
       ctx.fillText(char, hx + 5.5, hy + 6);
     }
 
+    // Icono 🤖% junto a los corazones ÚNICAMENTE si la robotización supera el 50%
+    if (this.player.robotizationLevel > 50) {
+      const robVal = Math.round(this.player.robotizationLevel);
+      const robBadgeX = heartsX + heartsW + 4;
+      const robBadgeY = heartsY;
+      const robBadgeW = 34;
+      const robBadgeH = 15;
+      const isCrit = robVal > 80;
+
+      ctx.fillStyle = 'rgba(13, 17, 23, 0.86)';
+      ctx.fillRect(robBadgeX, robBadgeY, robBadgeW, robBadgeH);
+      ctx.strokeStyle = isCrit ? '#ef4444' : '#f59e0b';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(robBadgeX + 0.5, robBadgeY + 0.5, robBadgeW - 1, robBadgeH - 1);
+
+      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.fillStyle = isCrit ? '#f87171' : '#fde047';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🤖${robVal}%`, robBadgeX + robBadgeW / 2, robBadgeY + 7.5);
+    }
+
     // Barra de stamina bajo los corazones (solo visible si hay espada y no está llena)
     if (this.player.hasSword && (this.player.stamina < this.player.maxStamina - 0.5 || this.player.comboStep > 0)) {
       const sw = heartsW;
@@ -26127,16 +27754,6 @@ class RPGGame {
       SpeechBubble.renderCombatBanner(ctx, '¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, 28);
     }
 
-    // Indicador visual sutil si está sin armadura (pequeño punto carmesí discreto sin rótulo agresivo)
-    if (!this.player.hasArmor) {
-      const dotX = heartsX + heartsW + 4;
-      const dotY = heartsY + 6.5;
-      ctx.fillStyle = '#ef4444';
-      ctx.beginPath();
-      ctx.arc(dotX, dotY, 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
     // 3. Indicador de Calabozo Municipal (únicamente activo si está cumpliendo condena)
     if (this.isJailedForever || this.jailRemainingSeconds > 0) {
       const jailStr = this.isJailedForever
@@ -26144,7 +27761,7 @@ class RPGGame {
         : `⛓ CONDENA: ${String(Math.floor(this.jailRemainingSeconds / 60)).padStart(2, '0')}:${String(Math.floor(this.jailRemainingSeconds % 60)).padStart(2, '0')}`;
       const jw = Math.ceil(ctx.measureText(jailStr).width) + 12;
       const jx = Math.round((VIEWPORT_WIDTH - jw) / 2);
-      const jy = 5;
+      const jy = 6;
 
       ctx.fillStyle = this.isJailedForever ? 'rgba(90, 10, 10, 0.95)' : 'rgba(140, 25, 25, 0.9)';
       ctx.fillRect(jx, jy, jw, 13);
@@ -26155,7 +27772,7 @@ class RPGGame {
       ctx.fillText(jailStr, jx + jw / 2, jy + 6.5);
     }
 
-    // 4. Barra de Vida de Mini-Jefe (Boss HUD) en la parte inferior central
+    // 4. Barra de Vida de Amenaza Principal en la parte inferior central
     const curScene = this.tilemap.currentSceneId;
     const activeBoss = this.enemies.find(
       (e) => e.isBoss && e.sceneId === curScene && (!e.dead || e.defeatBannerTimer > 0)
@@ -26167,20 +27784,17 @@ class RPGGame {
       const barX = Math.round((VIEWPORT_WIDTH - barW) / 2);
       const barY = VIEWPORT_HEIGHT - 22;
 
-      // Marco del Boss HUD
       ctx.fillStyle = 'rgba(10, 14, 24, 0.88)';
       ctx.fillRect(barX, barY - 7, barW, barH + 7);
       ctx.strokeStyle = activeBoss.dead ? '#10b981' : '#ffd885';
       ctx.lineWidth = 1;
       ctx.strokeRect(barX + 0.5, barY - 6.5, barW - 1, barH + 6);
 
-      // Nombre y título del jefe
       ctx.font = 'bold 5.5px monospace';
       ctx.fillStyle = activeBoss.themeColor || '#38bdf8';
       ctx.textAlign = 'left';
       ctx.fillText(activeBoss.name.toUpperCase(), barX + 5, barY - 2);
 
-      // Puntos de vida o estado
       ctx.font = '5.5px monospace';
       ctx.textAlign = 'right';
       if (activeBoss.dead) {
@@ -26192,7 +27806,6 @@ class RPGGame {
         ctx.fillText(`${Math.ceil(activeBoss.hp)} / ${activeBoss.maxHp} HP${statusAdd}`, barX + barW - 5, barY - 2);
       }
 
-      // Barra de vida interna con fondo oscuro
       const innerW = barW - 8;
       const innerH = 5;
       const innerX = barX + 4;
@@ -26212,45 +27825,47 @@ class RPGGame {
       }
     }
 
-    // 5. Ranura Rápida de Consumibles (Quick-Slot [R] / [1]) en la esquina inferior izquierda
+    // =========================================================================
+    // 5. INFERIOR IZQUIERDA: Ranura rápida de consumible ([R] / [1]) de 16×16 px con contador flotante
+    // =========================================================================
     const quickItem = this._getQuickSlotConsumable();
-    const qsX = 5;
-    const qsY = VIEWPORT_HEIGHT - 18;
-    const qsW = 14;
-    const qsH = 14;
+    const qsX = 6;
+    const qsY = VIEWPORT_HEIGHT - 22;
+    const qsW = 16;
+    const qsH = 16;
 
-    ctx.fillStyle = 'rgba(14, 18, 30, 0.75)';
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
     ctx.fillRect(qsX, qsY, qsW, qsH);
-    ctx.strokeStyle = quickItem ? '#38bdf8' : 'rgba(229, 192, 123, 0.4)';
+    ctx.strokeStyle = quickItem ? '#38bdf8' : 'rgba(229, 192, 123, 0.45)';
     ctx.lineWidth = 1;
     ctx.strokeRect(qsX + 0.5, qsY + 0.5, qsW - 1, qsH - 1);
 
     if (quickItem) {
       if (this.inventory && this.inventory.itemsSheet) {
-        const iconIdx = typeof quickItem.iconIndex === 'number' ? quickItem.iconIndex : 0;
-        const srcCol = iconIdx % 4;
-        const srcRow = Math.floor(iconIdx / 4);
-        ctx.drawImage(
-          this.inventory.itemsSheet,
-          srcCol * 16, srcRow * 16, 16, 16,
-          qsX + 1, qsY + 1, 12, 12
-        );
+        UILayout.drawItemIcon(ctx, this.inventory.itemsSheet, quickItem.iconIndex, qsX + 2, qsY + 2, 12);
       } else {
         ctx.font = 'bold 6px monospace';
         ctx.fillStyle = '#38bdf8';
         ctx.textAlign = 'center';
-        ctx.fillText('+', qsX + 7, qsY + 7);
+        ctx.fillText('+', qsX + 8, qsY + 8);
       }
 
-      ctx.font = 'bold 5.5px monospace';
+      // Contador flotante de unidades y etiqueta [R]
+      const qtyStr = `x${quickItem.qty || 1}`;
+      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.fillStyle = 'rgba(10, 14, 23, 0.9)';
+      ctx.fillRect(qsX + qsW + 2, qsY + 3, 24, 10);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+      ctx.strokeRect(qsX + qsW + 2.5, qsY + 3.5, 23, 9);
+
       ctx.fillStyle = '#fde047';
       ctx.textAlign = 'left';
-      ctx.fillText(`[R] x${quickItem.qty || 1}`, qsX + qsW + 3, qsY + 7.5);
+      ctx.fillText(`[R]${qtyStr}`, qsX + qsW + 4, qsY + 8);
     } else {
-      ctx.font = 'bold 5px monospace';
+      ctx.font = `bold 4.5px ${UI_FONT}`;
       ctx.fillStyle = '#64748b';
       ctx.textAlign = 'center';
-      ctx.fillText('[R]', qsX + 7, qsY + 7.5);
+      ctx.fillText('[R]', qsX + 8, qsY + 8);
     }
 
     ctx.restore();

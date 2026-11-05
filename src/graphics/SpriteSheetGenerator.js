@@ -64,7 +64,14 @@ export const TILES = {
   STONE_FLOOR: 36,
   ALTAR_PEDESTAL: 37,
   PORTAL_GATE_CLOSED: 38,
-  PORTAL_GATE_OPEN: 39
+  PORTAL_GATE_OPEN: 39,
+
+  // Alias semánticos usados por los constructores de escenas (reutilizan sprites existentes)
+  DOOR: 15,          // WALL_DOOR
+  ALTAR: 37,         // ALTAR_PEDESTAL
+  STONE_PATH: 36,    // STONE_FLOOR
+  TEMPLE_WALL: 26,   // WALL_INTERIOR
+  TEMPLE_PILLAR: 37  // ALTAR_PEDESTAL (columna de piedra)
 };
 
 export const ITEM_ICONS = {
