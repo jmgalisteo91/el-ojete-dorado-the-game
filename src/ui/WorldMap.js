@@ -1,13 +1,19 @@
 /**
- * WorldMap.js - Pantalla de Cartografía y Progresión de 'El Ojete Dorado: The Game'
+ * WorldMap.js - Cartografía Dinámica y Progresión estilo The Legend of Zelda
+ * Reino del Gran Ojal · Mapa de las 5 Tierras Cardinales:
  * 
- * Representa la geografía sagrada del Reino del Gran Ojal con sus 4 nodos de progresión lógica:
- * 1. Villa de Valleverde (Centro / Refugio) + Sub-nodo Alcantarillas (Garbage Collector Furioso).
- * 2. Santuario de las Pruebas (Este, cruzando el río) + Templo de la Espada (Guardián del Stack Overflow).
- * 3. Ruinas Exteriores / Tierras Hostiles (Oeste) + Puesto Lab Alpha (Microondas Prototipo).
- * 4. Ciudadela de AI Alex (Norte) + Núcleo del Gran Ojal (Microondas Cuántico Final).
+ * • CENTRO: Aldea de Valleverde (Pueblo pacífico, mercado, casas, refugio).
+ * • ESTE: Valle de la Consagración (Templo de la Armadura y Templo de la Espada).
+ * • NORTE: Cumbres de la Recursión (Picos de silicio, Minas de la Recursión · Stack Overflow).
+ * • SUR: Marismas del Hardware Legacy (Cloacas del Garbage Collector & La Forja del Microondas).
+ * • OESTE: Páramo Corrupto de Mister AI Alex (Gran Puerta del Núcleo Cuántico & Ciudadela Final).
  * 
- * Soporta estados activos/despejados de los jefes, marcador de posición '★ TÚ' y estética retro pixel art.
+ * Proporciona:
+ * - Delineación clara de las 5 zonas interconectadas con caminos y puentes.
+ * - Resalte dinámico estilo Zelda de la zona activa en la que se encuentra el héroe.
+ * - Marcador de posición "★ TÚ" animado y preciso según la sala o interior actual.
+ * - Panel inferior con zócalos de los 3 Núcleos de Mazmorra (Verde, Cian, Carmesí),
+ *   nivel de Armadura y Espada, y objetivo actual de la aventura.
  */
 
 import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
@@ -15,155 +21,248 @@ import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
 export class WorldMap {
   constructor(menuSystem = null) {
     this.menuSystem = menuSystem;
+    this._lastLocationName = 'Aldea de Valleverde';
+    this._lastZoneId = 'center';
   }
 
   /**
    * Renderiza el mapa completo sobre el canvas lógico (320x180).
    * @param {CanvasRenderingContext2D} ctx
-   * @param {string} currentSceneId - ID de la escena actual del jugador
-   * @param {object|null} player - Instancia del jugador para leer habilidades obtenidas
-   * @param {Array|null} enemies - Lista de enemigos/jefes del mundo
+   * @param {string} currentSceneId
+   * @param {object|null} player
+   * @param {Array|null} enemies
    */
   render(ctx, currentSceneId = 'overworld', player = null, enemies = null) {
     const W = ctx.canvas.width;
     const H = ctx.canvas.height;
-    const cx = W / 2;
     const t = performance.now() * 0.001;
 
-    // Lienzo interior del mapa (marco de 308x148)
+    // Lienzo interior del mapa (marco de 308x156)
     const mapX = 6;
     const mapY = 16;
     const mapW = W - 12; // 308
-    const mapH = 148;
+    const mapH = 140;
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
 
-    // 1. Marco pergamino exterior
-    this._drawParchmentBorder(ctx, W, H);
+    // 1. Marco pergamino exterior estilo Zelda clásico
+    this._drawZeldaFrame(ctx, W, H);
 
-    // 2. Fondo oceánico y rejilla cartográfica náutica
-    this._drawOceanAndGrid(ctx, mapX, mapY, mapW, mapH);
+    // 2. Fondo oceánico y cuadrícula topográfica
+    this._drawTopographyBackground(ctx, mapX, mapY, mapW, mapH);
 
-    // 3. Masas continentales y costas
-    this._drawCoastlines(ctx, mapX, mapY);
+    // 3. Senderos y conexiones viales entre provincias
+    this._drawInterconnectingRoads(ctx);
 
-    // 4. Senderos y ruta de progresión lógica entre los 4 nodos
-    this._drawProgressionPathways(ctx, mapX, mapY, t);
+    // 4. Determinar estado de progreso (Núcleos, Reliquias y Bosses)
+    const status = this._computeProgressStatus(player, enemies);
 
-    // 5. Detectar estado de progreso y jefes regionales derrotados
-    const garbageCollectorDefeated = Boolean(
-      player?.hasDash ||
-      (enemies && enemies.some((e) => (e.id === 'boss_garbage_collector' || e.rewardSkill === 'hasDash') && e.dead)) ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_hero_dash_unlocked') === 'true')
-    );
+    // 5. Determinar la zona y posición del jugador
+    const locInfo = this._resolvePlayerLocation(currentSceneId);
+    this._lastLocationName = locInfo.title;
+    this._lastZoneId = locInfo.zone;
 
-    const stackOverflowDefeated = Boolean(
-      player?.hasChargedAttack ||
-      (enemies && enemies.some((e) => (e.id === 'boss_stack_overflow' || e.rewardSkill === 'hasChargedAttack') && e.dead)) ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_hero_charged_attack_unlocked') === 'true')
-    );
+    // 6. Dibujar las 5 Provincias Cardinales
+    this._drawNorthPeaksRegion(ctx, locInfo.zone === 'north', status, t);
+    this._drawWestWastesRegion(ctx, locInfo.zone === 'west', status, t);
+    this._drawCenterVillageRegion(ctx, locInfo.zone === 'center', status, t);
+    this._drawEastSanctuaryRegion(ctx, locInfo.zone === 'east', status, t);
+    this._drawSouthSwampRegion(ctx, locInfo.zone === 'south', status, t);
 
-    const microwaveDefeated = Boolean(
-      player?.hasBarrier ||
-      (enemies && enemies.some((e) => (e.id === 'boss_prototype_microwave' || e.rewardSkill === 'hasBarrier') && e.dead)) ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_hero_barrier_unlocked') === 'true')
-    );
+    // 7. Decoraciones cartográficas (Rosa de los Vientos)
+    this._drawCompassRose(ctx, 22, 140);
 
-    const armorObtained = Boolean(
-      player?.hasArmor ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_armor_obtained') === 'true')
-    );
+    // 8. Marcador de Posición del Héroe "★ TÚ"
+    this._drawHeroLocationMarker(ctx, locInfo, t);
 
-    const finalDefeated = Boolean(
-      (player?.hasRelic && player?.hasSword) ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_game_won') === 'true')
-    );
-
-    // 6. Renderizado de los 4 Nodos Principales
-    // Nodo 1: Villa de Valleverde (Centro / Refugio) + Alcantarillas (Garbage Collector)
-    this._drawValleverdeNode(ctx, mapX, mapY, garbageCollectorDefeated, t);
-
-    // Nodo 2: Santuario de las Pruebas (Este, cruzando el río) + Templo de la Espada (Guardián del Stack Overflow)
-    this._drawSantuarioNode(ctx, mapX, mapY, stackOverflowDefeated, armorObtained, t);
-
-    // Nodo 3: Ruinas Exteriores / Tierras Hostiles (Oeste) + Puesto Lab Alpha (Microondas Prototipo)
-    this._drawRuinasNode(ctx, mapX, mapY, microwaveDefeated, t);
-
-    // Nodo 4: Ciudadela de AI Alex (Norte) + Núcleo del Gran Ojal
-    this._drawCiudadelaNode(ctx, mapX, mapY, finalDefeated, t);
-
-    // 7. Decoraciones de ambiente (Rosa de los vientos, velero, montes)
-    this._drawCompassRose(ctx, mapX + 32, mapY + 138);
-    this._drawSailingShip(ctx, mapX + 96, mapY + 140);
-
-    // 8. Marcador de posición animado "★ TÚ"
-    this._drawPlayerLocation(ctx, mapX, mapY, currentSceneId, t);
-
-    // 9. Encabezado superior y leyenda inferior limpia
-    this._drawHeaderAndFooter(ctx, W, H);
+    // 9. Encabezado superior y Barra HUD inferior estilo Zelda
+    this._drawZeldaHeader(ctx, W);
+    this._drawZeldaHUD(ctx, W, H, locInfo, status, player);
 
     ctx.restore();
   }
 
   /**
-   * Dibuja el marco de pergamino antiguo con esquinas doradas.
+   * Resuelve la provincia y coordenadas cartográficas del jugador según la escena.
    */
-  _drawParchmentBorder(ctx, W, H) {
-    ctx.fillStyle = '#1c150e';
-    ctx.fillRect(0, 0, W, H);
+  _resolvePlayerLocation(sceneId) {
+    // CENTRO: Valleverde
+    if (sceneId === 'overworld') {
+      return { zone: 'center', x: 160, y: 84, title: 'Aldea de Valleverde (Plaza Central)', detail: 'Refugio de la Aldea' };
+    }
+    if (sceneId === 'player_house') {
+      return { zone: 'center', x: 136, y: 76, title: 'Casa del Programador (Tu Hogar)', detail: 'Interior en Valleverde' };
+    }
+    if (sceneId === 'elder_house') {
+      return { zone: 'center', x: 148, y: 70, title: 'Casa del Sabio Aurelio', detail: 'Interior en Valleverde' };
+    }
+    if (sceneId === 'blacksmith_house') {
+      return { zone: 'center', x: 178, y: 70, title: 'Herrería de Brom', detail: 'Taller de Forja' };
+    }
+    if (sceneId === 'herbalist_house' || sceneId === 'guard_house' || sceneId === 'oracle_house') {
+      return { zone: 'center', x: 160, y: 92, title: 'Viviendas de Valleverde', detail: 'Interior en Valleverde' };
+    }
+    if (sceneId === 'jail_cell') {
+      return { zone: 'center', x: 184, y: 92, title: 'Calabozo Municipal de Valleverde', detail: 'Arresto por Falta Leve' };
+    }
 
-    ctx.fillStyle = '#2c2217';
-    ctx.fillRect(2, 2, W - 4, H - 4);
+    // ESTE: Valle de la Consagración
+    if (sceneId === 'first_stage') {
+      return { zone: 'east', x: 265, y: 84, title: 'Valle de la Consagración (Santuarios)', detail: 'Tierras Sagradas del Este' };
+    }
+    if (sceneId === 'armor_temple') {
+      return { zone: 'east', x: 236, y: 76, title: 'Templo de la Armadura Binaria', detail: 'Prueba de Paridad Lógica' };
+    }
+    if (sceneId === 'sword_temple') {
+      return { zone: 'east', x: 278, y: 70, title: 'Templo de la Espada de la Recursividad', detail: 'Altar de la Recursión' };
+    }
 
-    ctx.strokeStyle = '#8d7042';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(3.5, 3.5, W - 7, H - 7);
+    // NORTE: Cumbres de la Recursión
+    if (sceneId === 'north_peaks') {
+      return { zone: 'north', x: 160, y: 38, title: 'Cumbres de la Recursión (Picos de Silicio)', detail: 'Sendero Montañoso Norte' };
+    }
+    if (sceneId === 'mines_entry') {
+      return { zone: 'north', x: 160, y: 26, title: 'Minas de la Recursión (Piso 1 · Caverna)', detail: 'Entrada del Gran Abismo' };
+    }
+    if (sceneId === 'mines_puzzle') {
+      return { zone: 'north', x: 172, y: 24, title: 'Minas de la Recursión (Sala de Runas)', detail: 'Cámara del Guardián Stack Overflow' };
+    }
 
-    ctx.strokeStyle = '#c5a059';
-    ctx.strokeRect(5.5, 5.5, W - 11, H - 11);
+    // SUR: Marismas del Hardware Legacy
+    if (sceneId === 'south_swamp') {
+      return { zone: 'south', x: 160, y: 130, title: 'Marismas del Hardware Legacy', detail: 'Ciénaga Tóxica del Sur' };
+    }
+    if (sceneId === 'sewers_entry' || sceneId === 'sewers_puzzle') {
+      return { zone: 'south', x: 132, y: 136, title: 'Cloacas del Legacy (Válvulas y Desagüe)', detail: 'Subterráneo Residual' };
+    }
+    if (sceneId === 'sewers_dungeon') {
+      return { zone: 'south', x: 128, y: 142, title: 'Cloacas: Fosa de Memoria (Garbage Collector)', detail: 'Arena del Mini-Boss' };
+    }
+    if (sceneId === 'forge_entry' || sceneId === 'forge_puzzle') {
+      return { zone: 'south', x: 190, y: 136, title: 'La Forja del Prototipo (Calderas)', detail: 'Galería Térmica' };
+    }
+    if (sceneId === 'ai_fortress_gate') {
+      return { zone: 'south', x: 196, y: 142, title: 'La Forja: Cámara del Microondas Prototipo', detail: 'Arena del Mini-Boss' };
+    }
 
-    // Cantoneras doradas
-    const cSize = 7;
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(4, 4, cSize, 2);
-    ctx.fillRect(4, 4, 2, cSize);
-    ctx.fillRect(W - 4 - cSize, 4, cSize, 2);
-    ctx.fillRect(W - 6, 4, 2, cSize);
-    ctx.fillRect(4, H - 6, cSize, 2);
-    ctx.fillRect(4, H - 4 - cSize, 2, cSize);
-    ctx.fillRect(W - 4 - cSize, H - 6, cSize, 2);
-    ctx.fillRect(W - 6, H - 4 - cSize, 2, cSize);
+    // OESTE: Páramo de Mister AI Alex
+    if (sceneId === 'west_wastes') {
+      return { zone: 'west', x: 74, y: 84, title: 'Páramo Corrupto de Mister AI Alex', detail: 'Frontera Occidental Desolada' };
+    }
+    if (sceneId === 'quantum_gate') {
+      return { zone: 'west', x: 44, y: 84, title: 'La Gran Puerta del Núcleo Cuántico', detail: 'Antesala de la Ciudadela' };
+    }
+    if (sceneId === 'ai_citadel') {
+      return { zone: 'west', x: 26, y: 76, title: 'Ciudadela Cuántica de AI Alex · El Gran Ojal', detail: 'Mainframe · Batalla Final' };
+    }
+
+    return { zone: 'center', x: 160, y: 84, title: 'Reino del Gran Ojal', detail: 'Tierras Conocidas' };
   }
 
   /**
-   * Dibuja el mar antiguo con ondas sutiles y rejilla náutica.
+   * Determina qué jefes han sido purgados y qué equipo/núcleos posee el jugador.
    */
-  _drawOceanAndGrid(ctx, mapX, mapY, mapW, mapH) {
-    // Fondo de Océano Antiguo
-    ctx.fillStyle = '#20394f';
+  _computeProgressStatus(player, enemies) {
+    const isEnemyDead = (id) => {
+      if (enemies && enemies.some((e) => e.id === id && e.dead)) return true;
+      return false;
+    };
+
+    const gcDefeated = Boolean(
+      player?.dungeonCores?.gc ||
+      player?.hasDash ||
+      isEnemyDead('boss_garbage_collector') ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_core_gc') === 'true')
+    );
+
+    const stackDefeated = Boolean(
+      player?.dungeonCores?.stack ||
+      player?.hasChargedAttack ||
+      isEnemyDead('boss_stack_overflow') ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_core_stack') === 'true')
+    );
+
+    const microwaveDefeated = Boolean(
+      player?.dungeonCores?.microwave ||
+      player?.hasBarrier ||
+      isEnemyDead('boss_prototype_microwave') ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_core_microwave') === 'true')
+    );
+
+    const alexDefeated = Boolean(
+      isEnemyDead('boss_final_ai_alex') ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_game_won') === 'true')
+    );
+
+    const hasArmor = Boolean(player?.hasArmor || (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_armor_obtained') === 'true'));
+    const hasSword = Boolean(player?.hasSword || (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_sword_obtained') === 'true'));
+
+    const swordLevel = player?.swordLevel || (hasSword ? 1 : 0);
+    const armorLevel = player?.armorLevel || (hasArmor ? 1 : 0);
+
+    const coresCount = (gcDefeated ? 1 : 0) + (stackDefeated ? 1 : 0) + (microwaveDefeated ? 1 : 0);
+
+    return {
+      gcDefeated,
+      stackDefeated,
+      microwaveDefeated,
+      alexDefeated,
+      hasArmor,
+      hasSword,
+      swordLevel,
+      armorLevel,
+      coresCount
+    };
+  }
+
+  /**
+   * Marco antiguo de doble ribete dorado estilo Zelda (A Link to the Past).
+   */
+  _drawZeldaFrame(ctx, W, H) {
+    ctx.fillStyle = '#100b07';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = '#1c140d';
+    ctx.fillRect(2, 2, W - 4, H - 4);
+
+    ctx.strokeStyle = '#7c5f32';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(3.5, 3.5, W - 7, H - 7);
+
+    ctx.strokeStyle = '#d4af37';
+    ctx.strokeRect(5.5, 5.5, W - 11, H - 11);
+
+    // Remaches dorados esquineros
+    const corners = [
+      [4, 4], [W - 8, 4], [4, H - 8], [W - 8, H - 8]
+    ];
+    ctx.fillStyle = '#ffd700';
+    for (const [cx, cy] of corners) {
+      ctx.fillRect(cx, cy, 4, 4);
+      ctx.fillStyle = '#996515';
+      ctx.fillRect(cx + 1, cy + 1, 2, 2);
+      ctx.fillStyle = '#ffd700';
+    }
+  }
+
+  /**
+   * Fondo cartográfico: mar antiguo y cuadrícula náutica tenue.
+   */
+  _drawTopographyBackground(ctx, mapX, mapY, mapW, mapH) {
+    ctx.fillStyle = '#1d3345';
     ctx.fillRect(mapX, mapY, mapW, mapH);
 
-    // Textura y olas en el mar
-    ctx.fillStyle = '#2a4861';
-    for (let wy = mapY + 6; wy < mapY + mapH - 6; wy += 12) {
-      for (let wx = mapX + 8; wx < mapX + mapW - 12; wx += 24) {
-        const waveShift = (wx * 3 + wy * 5) % 9;
-        ctx.fillRect(wx + waveShift, wy, 6, 1);
-        ctx.fillRect(wx + waveShift + 1, wy + 1, 3, 1);
-      }
-    }
-
-    // Cuadrícula cartográfica sutil
-    ctx.strokeStyle = 'rgba(125, 175, 205, 0.12)';
+    // Rejilla cartográfica
+    ctx.strokeStyle = 'rgba(148, 197, 224, 0.08)';
     ctx.lineWidth = 0.5;
-    for (let x = mapX + 28; x < mapX + mapW; x += 38) {
+    for (let x = mapX + 20; x < mapX + mapW; x += 32) {
       ctx.beginPath();
       ctx.moveTo(x, mapY);
       ctx.lineTo(x, mapY + mapH);
       ctx.stroke();
     }
-    for (let y = mapY + 20; y < mapY + mapH; y += 28) {
+    for (let y = mapY + 16; y < mapY + mapH; y += 24) {
       ctx.beginPath();
       ctx.moveTo(mapX, y);
       ctx.lineTo(mapX + mapW, y);
@@ -172,792 +271,693 @@ export class WorldMap {
   }
 
   /**
-   * Dibuja los arrecifes y siluetas costeras poco profundas.
+   * Traza los caminos adoquinados y puentes que comunican Valleverde con las 4 direcciones.
    */
-  _drawCoastlines(ctx, mapX, mapY) {
-    ctx.fillStyle = '#2d5366';
-
-    // Costa Oeste: Ruinas Exteriores
-    ctx.beginPath();
-    ctx.ellipse(mapX + 70, mapY + 98, 60, 36, -0.05, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Costa Centro: Valleverde
-    ctx.beginPath();
-    ctx.ellipse(mapX + 155, mapY + 100, 56, 38, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Costa Este: Santuario de las Pruebas
-    ctx.beginPath();
-    ctx.ellipse(mapX + 248, mapY + 98, 48, 38, 0.05, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Costa Norte: Ciudadela de AI Alex
-    ctx.beginPath();
-    ctx.ellipse(mapX + 190, mapY + 38, 62, 28, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  /**
-   * Traza los senderos y la ruta de progresión lógica del juego:
-   * ① Valleverde -> ② Santuario de Pruebas -> ③ Tierras Hostiles -> ④ Ciudadela de AI Alex.
-   */
-  _drawProgressionPathways(ctx, mapX, mapY, t) {
+  _drawInterconnectingRoads(ctx) {
     ctx.save();
+    // Camino Norte: Valleverde a Cumbres
+    ctx.fillStyle = '#8f7b59';
+    ctx.fillRect(158, 54, 4, 10);
 
-    // 1. Camino de tierra firme entre Valleverde y Ruinas Oeste (forestal)
-    ctx.fillStyle = '#457a3b';
-    ctx.fillRect(mapX + 96, mapY + 94, 38, 14);
-    ctx.fillStyle = '#8a7448';
-    ctx.fillRect(mapX + 75, mapY + 100, 75, 3);
+    // Camino Sur: Valleverde a Marismas
+    ctx.fillRect(158, 104, 4, 10);
 
-    // 2. Líneas de progresión mística punteadas con pulsación
-    const pulseAlpha = 0.45 + Math.sin(t * 3) * 0.2;
-    ctx.strokeStyle = `rgba(255, 215, 0, ${pulseAlpha})`;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
-    ctx.lineDashOffset = -t * 8;
+    // Camino Oeste: Valleverde a Páramo de AI Alex
+    ctx.fillRect(98, 82, 14, 4);
 
-    // Tramo 1: Valleverde (Centro) -> Santuario de las Pruebas (Este)
-    ctx.beginPath();
-    ctx.moveTo(mapX + 165, mapY + 96);
-    ctx.lineTo(mapX + 185, mapY + 104);
-    ctx.lineTo(mapX + 225, mapY + 96);
-    ctx.stroke();
-
-    // Tramo 2: Santuario de las Pruebas (Este) -> Tierras Hostiles / Ruinas (Oeste)
-    ctx.beginPath();
-    ctx.moveTo(mapX + 225, mapY + 96);
-    ctx.bezierCurveTo(mapX + 180, mapY + 84, mapX + 130, mapY + 84, mapX + 78, mapY + 96);
-    ctx.stroke();
-
-    // Tramo 3: Tierras Hostiles (Oeste) -> Ciudadela de AI Alex (Norte)
-    ctx.beginPath();
-    ctx.moveTo(mapX + 68, mapY + 76);
-    ctx.bezierCurveTo(mapX + 72, mapY + 48, mapX + 120, mapY + 36, mapX + 175, mapY + 36);
-    ctx.stroke();
-
-    ctx.setLineDash([]);
+    // Camino Este: Valleverde al Valle de la Consagración (Puente de madera)
+    ctx.fillStyle = '#5c3a21';
+    ctx.fillRect(208, 81, 14, 6);
+    ctx.fillStyle = '#b38243';
+    ctx.fillRect(209, 82, 12, 4);
+    for (let bx = 210; bx <= 219; bx += 3) {
+      ctx.fillStyle = '#3a2210';
+      ctx.fillRect(bx, 81, 1, 6);
+    }
     ctx.restore();
   }
 
   /**
-   * NODO 1: Villa de Valleverde (Centro / Refugio)
-   * Incluye la plaza central, casas, Río del Alba, puente y el sub-nodo de Alcantarillas (Garbage Collector).
+   * CENTRO: Aldea de Valleverde (Pueblo Pacífico / Refugio del Jugador).
    */
-  _drawValleverdeNode(ctx, mapX, mapY, garbageCollectorDefeated, t) {
-    // Tierra verde viva
-    ctx.fillStyle = '#4c8541';
-    ctx.beginPath();
-    ctx.ellipse(mapX + 155, mapY + 100, 50, 34, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#2b5224';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+  _drawCenterVillageRegion(ctx, isActive, status, t) {
+    const rx = 108;
+    const ry = 60;
+    const rw = 104;
+    const rh = 46;
 
-    // Pinos de Valleverde
-    this._drawPineTree(ctx, mapX + 118, mapY + 86);
-    this._drawPineTree(ctx, mapX + 126, mapY + 82);
-    this._drawPineTree(ctx, mapX + 134, mapY + 88);
-    this._drawPineTree(ctx, mapX + 122, mapY + 106);
-    this._drawPineTree(ctx, mapX + 132, mapY + 120);
+    this._drawRegionCard(ctx, rx, ry, rw, rh, isActive, '#2e6b28', '#4c9644', 'CENTRO · ALDEA DE VALLEVERDE', t);
 
-    // Plaza de adoquines
-    const baseX = mapX + 152;
-    const baseY = mapY + 92;
-    ctx.fillStyle = '#827566';
-    ctx.fillRect(baseX - 4, baseY - 2, 22, 18);
+    // Río Alba que cruza el este de la aldea
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(rx + 90, ry + 4, 6, rh - 8);
+    ctx.fillStyle = '#0284c7';
+    ctx.fillRect(rx + 92, ry + 4, 2, rh - 8);
+
+    // Plaza de adoquines central
     ctx.fillStyle = '#a89885';
-    ctx.fillRect(baseX - 3, baseY - 1, 20, 16);
+    ctx.fillRect(rx + 36, ry + 12, 32, 22);
+    ctx.strokeStyle = '#6e5f4f';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(rx + 36.5, ry + 12.5, 31, 21);
 
-    // Casa Sabio Aurelio (Tejado azul)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(baseX - 2, baseY + 1, 7, 5);
-    ctx.fillStyle = '#2f60a3';
-    ctx.fillRect(baseX - 3, baseY - 2, 9, 3);
-    ctx.fillRect(baseX - 2, baseY - 4, 7, 2);
-
-    // Casa Programador (Tejado rojo)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(baseX + 7, baseY + 6, 7, 5);
-    ctx.fillStyle = '#b3392b';
-    ctx.fillRect(baseX + 6, baseY + 4, 9, 3);
-    ctx.fillRect(baseX + 7, baseY + 2, 7, 2);
-
-    // Capilla con cruz dorada
-    ctx.fillStyle = '#d5c8b5';
-    ctx.fillRect(baseX + 8, baseY - 6, 5, 10);
-    ctx.fillStyle = '#8a4b38';
-    ctx.fillRect(baseX + 7, baseY - 8, 7, 2);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(baseX + 10, baseY - 12, 1, 3);
-    ctx.fillRect(baseX + 9, baseY - 11, 3, 1);
-
-    // Pozo
-    ctx.fillStyle = '#596573';
-    ctx.fillRect(baseX + 1, baseY + 8, 4, 4);
-    ctx.fillStyle = '#4da3d4';
-    ctx.fillRect(baseX + 2, baseY + 9, 2, 2);
-
-    // Río del Alba
-    ctx.strokeStyle = '#4ea1c7';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(mapX + 165, mapY + 44);
-    ctx.bezierCurveTo(mapX + 168, mapY + 65, mapX + 182, mapY + 82, mapX + 182, mapY + 98);
-    ctx.bezierCurveTo(mapX + 182, mapY + 112, mapX + 188, mapY + 125, mapX + 205, mapY + 138);
-    ctx.stroke();
-
-    // Reflejos
-    ctx.strokeStyle = '#c5efff';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(mapX + 167, mapY + 50);
-    ctx.lineTo(mapX + 180, mapY + 88);
-    ctx.moveTo(mapX + 183, mapY + 115);
-    ctx.lineTo(mapX + 195, mapY + 132);
-    ctx.stroke();
-
-    // Puente de Valleverde
-    ctx.fillStyle = '#543216';
-    ctx.fillRect(mapX + 178, mapY + 104, 11, 6);
-    ctx.fillStyle = '#945c2f';
-    ctx.fillRect(mapX + 177, mapY + 103, 11, 4);
-    ctx.fillStyle = '#d49857';
-    ctx.fillRect(mapX + 177, mapY + 102, 11, 1);
-    ctx.fillRect(mapX + 177, mapY + 107, 11, 1);
-
-    // ==============================================================
-    // SUB-NODO: ALCANTARILLAS / SÓTANO (Garbage Collector Furioso)
-    // ==============================================================
-    const sewerX = mapX + 146;
-    const sewerY = mapY + 118;
-
-    // Trampilla / Entrada de rejas metálicas
-    ctx.fillStyle = '#1c1c1c';
-    ctx.fillRect(sewerX - 5, sewerY - 4, 10, 8);
-    ctx.strokeStyle = '#5a626a';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(sewerX - 4.5, sewerY - 3.5, 9, 7);
-
-    // Barrotes de hierro de la alcantarilla
-    ctx.fillStyle = '#8392a5';
-    ctx.fillRect(sewerX - 3, sewerY - 3, 1, 6);
-    ctx.fillRect(sewerX - 1, sewerY - 3, 1, 6);
-    ctx.fillRect(sewerX + 1, sewerY - 3, 1, 6);
-    ctx.fillRect(sewerX + 3, sewerY - 3, 1, 6);
-
-    // Efluvio de ácido / fuga de memoria si no está derrotado
-    if (!garbageCollectorDefeated) {
-      const bubbleY = sewerY + Math.sin(t * 7) * 2;
-      ctx.fillStyle = '#84cc16';
-      ctx.fillRect(sewerX - 2, bubbleY - 1, 2, 2);
-      ctx.fillRect(sewerX + 2, bubbleY, 2, 2);
-    }
-
-    // Indicador sutil de Jefe / Estado (Calavera o Check)
-    const b1IconX = sewerX + 8;
-    const b1IconY = sewerY;
-    if (garbageCollectorDefeated) {
-      this._drawPixelCheck(ctx, b1IconX, b1IconY);
-    } else {
-      this._drawPixelSkull(ctx, b1IconX, b1IconY, '#ef4444', t);
-    }
-
-    // Rótulo limpio del Nodo 1
-    this._drawNodeLabel(
-      ctx,
-      mapX + 152,
-      mapY + 132,
-      '1. VALLEVERDE',
-      garbageCollectorDefeated ? 'Alcantarillas [✓]' : 'Alcantarillas [☠ Garbage]'
-    );
-  }
-
-  /**
-   * NODO 2: Santuario de las Pruebas (Este, cruzando el río)
-   * Incluye el Templo de la Armadura Binaria y el Templo de la Espada (Guardián del Stack Overflow).
-   */
-  _drawSantuarioNode(ctx, mapX, mapY, stackOverflowDefeated, armorObtained, t) {
-    // Acantilados dorados de la meseta
-    ctx.fillStyle = '#9e8048';
-    ctx.beginPath();
-    ctx.ellipse(mapX + 248, mapY + 98, 44, 35, 0.05, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#5c451e';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Superficie de césped
-    ctx.fillStyle = '#4c783c';
-    ctx.beginPath();
-    ctx.ellipse(mapX + 248, mapY + 98, 38, 29, 0.05, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 1. Templo Norte: Armadura del Código Binario
-    const temple1X = mapX + 234;
-    const temple1Y = mapY + 80;
-    ctx.fillStyle = '#4d5d6e';
-    ctx.fillRect(temple1X - 6, temple1Y - 4, 13, 9);
-    ctx.fillStyle = '#2f60a3';
-    ctx.fillRect(temple1X - 7, temple1Y - 6, 3, 11);
-    ctx.fillRect(temple1X + 5, temple1Y - 6, 3, 11);
-    ctx.fillStyle = '#dbe5f0';
-    ctx.fillRect(temple1X - 8, temple1Y - 7, 17, 2);
-    ctx.fillStyle = armorObtained ? '#10b981' : '#00e5ff';
-    ctx.fillRect(temple1X - 1, temple1Y - 1, 3, 2);
-
-    if (armorObtained) {
-      this._drawPixelCheck(ctx, temple1X + 10, temple1Y - 2);
-    }
-
-    // 2. Templo Sur: Espada de la Recursividad (Cámara del Guardián del Stack Overflow)
-    const temple2X = mapX + 234;
-    const temple2Y = mapY + 115;
-    ctx.fillStyle = '#7a3e30';
-    ctx.fillRect(temple2X - 8, temple2Y - 2, 17, 8);
-    ctx.fillRect(temple2X - 6, temple2Y - 5, 13, 4);
-    ctx.fillRect(temple2X - 4, temple2Y - 7, 9, 3);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(temple2X - 1, temple2Y - 9, 3, 3);
-    ctx.fillStyle = '#ff3366';
-    ctx.fillRect(temple2X, temple2Y - 8, 1, 4);
-
-    // Indicador: Guardián del Stack Overflow
-    const b2IconX = temple2X + 11;
-    const b2IconY = temple2Y - 3;
-    if (stackOverflowDefeated) {
-      this._drawPixelCheck(ctx, b2IconX, b2IconY);
-    } else {
-      this._drawPixelSkull(ctx, b2IconX, b2IconY, '#a855f7', t);
-    }
-
-    // 3. Altar Oriental: Reliquia Microondas Little
-    const relicX = mapX + 276;
-    const relicY = mapY + 98;
-    ctx.strokeStyle = 'rgba(255, 215, 0, 0.45)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(relicX - 5, relicY);
-    ctx.lineTo(relicX + 7, relicY);
-    ctx.moveTo(relicX + 1, relicY - 6);
-    ctx.lineTo(relicX + 1, relicY + 6);
-    ctx.stroke();
-
-    ctx.fillStyle = '#e6b800';
-    ctx.fillRect(relicX - 3, relicY - 3, 8, 6);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(relicX - 1, relicY - 2, 4, 4);
-
-    // Rótulo del Nodo 2
-    this._drawNodeLabel(
-      ctx,
-      mapX + 248,
-      mapY + 130,
-      '2. SANTUARIO PRUEBAS',
-      stackOverflowDefeated ? 'Templos [✓ Despejado]' : 'Templo Espada [☠ Stack]'
-    );
-  }
-
-  /**
-   * NODO 3: Ruinas Exteriores / Tierras Hostiles (Oeste)
-   * Incluye las columnas derruidas y el Puesto de Control / Lab Alpha (Microondas Prototipo).
-   */
-  _drawRuinasNode(ctx, mapX, mapY, microwaveDefeated, t) {
-    // Suelo verde musgo y piedra agrietada
-    ctx.fillStyle = '#3c5a3d';
-    ctx.beginPath();
-    ctx.ellipse(mapX + 68, mapY + 98, 54, 32, -0.05, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#233924';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Columnas derruidas y círculo ritual
-    ctx.fillStyle = '#7a8594';
-    ctx.fillRect(mapX + 44, mapY + 92, 3, 8);
-    ctx.fillRect(mapX + 52, mapY + 95, 3, 5);
-    ctx.fillRect(mapX + 60, mapY + 90, 3, 10);
-    ctx.fillRect(mapX + 76, mapY + 91, 3, 9);
-    ctx.fillRect(mapX + 84, mapY + 96, 3, 6);
-
-    ctx.strokeStyle = '#9ca6b5';
-    ctx.strokeRect(mapX + 56, mapY + 94, 16, 12);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(mapX + 63, mapY + 99, 2, 2);
-
-    // ==============================================================
-    // PUESTO DE CONTROL: LABORATORIO ALPHA (Microondas Prototipo)
-    // ==============================================================
-    const labX = mapX + 68;
-    const labY = mapY + 70;
-
-    // Búnker / Compuerta tecnológica blindada
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(labX - 7, labY - 5, 14, 10);
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(labX - 6.5, labY - 4.5, 13, 9);
-
-    // Compuerta de acceso con franjas de advertencia
+    // Pozo de agua en el centro de la plaza
     ctx.fillStyle = '#334155';
-    ctx.fillRect(labX - 4, labY - 2, 8, 7);
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillRect(labX - 3, labY - 2, 2, 1);
-    ctx.fillRect(labX + 1, labY - 2, 2, 1);
+    ctx.fillRect(rx + 50, ry + 20, 5, 5);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(rx + 51, ry + 21, 3, 3);
 
-    // Antena parabólica emisora de ondas térmicas
-    ctx.strokeStyle = '#94a3b8';
-    ctx.beginPath();
-    ctx.moveTo(labX, labY - 5);
-    ctx.lineTo(labX, labY - 9);
-    ctx.stroke();
-    ctx.fillStyle = microwaveDefeated ? '#10b981' : '#f97316';
-    ctx.fillRect(labX - 2, labY - 10, 5, 2);
+    // Casas con tejados rojos y azules
+    // Casa Programador (Oeste)
+    this._drawTinyHouse(ctx, rx + 16, ry + 14, '#b91c1c', '#f87171');
+    // Casa Sabio Aurelio (Norte)
+    this._drawTinyHouse(ctx, rx + 44, ry + 6, '#1d4ed8', '#60a5fa');
+    // Herrería de Brom (Noreste)
+    this._drawTinyHouse(ctx, rx + 74, ry + 6, '#9a3412', '#f97316');
+    // Cuartel de la Guardia / Calabozo (Sur)
+    this._drawTinyHouse(ctx, rx + 70, ry + 26, '#374151', '#9ca3af');
 
-    // Indicador: Microondas Prototipo (V0.1 Alpha)
-    const b3IconX = labX + 11;
-    const b3IconY = labY - 1;
-    if (microwaveDefeated) {
-      this._drawPixelCheck(ctx, b3IconX, b3IconY);
-    } else {
-      this._drawPixelSkull(ctx, b3IconX, b3IconY, '#f97316', t);
-    }
+    // Arboledas verdes
+    this._drawTinyTree(ctx, rx + 8, ry + 8);
+    this._drawTinyTree(ctx, rx + 8, ry + 30);
+    this._drawTinyTree(ctx, rx + 24, ry + 32);
 
-    // Rótulo del Nodo 3
-    this._drawNodeLabel(
-      ctx,
-      mapX + 68,
-      mapY + 114,
-      '3. TIERRAS HOSTILES',
-      microwaveDefeated ? 'Lab Alpha [✓ Despejado]' : 'Lab Alpha [☠ Microondas]'
-    );
+    // Etiqueta de la zona
+    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, 'Pueblo Pacífico (Refugio & Tiendas)', '#a7f3d0');
   }
 
   /**
-   * NODO 4: Ciudadela de AI Alex (Norte)
-   * Incluye las montañas, monolito del Gran Ojal, ríos de cibermagma y antena final.
+   * ESTE: Valle de la Consagración (Templos de Armadura y Espada).
    */
-  _drawCiudadelaNode(ctx, mapX, mapY, finalDefeated, t) {
-    // Cordillera central-norte (Montes de la Recursividad)
-    this._drawMountain(ctx, mapX + 75, mapY + 54, 28, 22);
-    this._drawMountain(ctx, mapX + 102, mapY + 50, 32, 26);
-    this._drawMountain(ctx, mapX + 130, mapY + 46, 36, 30);
-    this._drawMountain(ctx, mapX + 158, mapY + 44, 34, 28);
-    this._drawMountain(ctx, mapX + 220, mapY + 52, 28, 22);
+  _drawEastSanctuaryRegion(ctx, isActive, status, t) {
+    const rx = 218;
+    const ry = 52;
+    const rw = 94;
+    const rh = 62;
 
-    // Meseta volcánica de la Ciudadela
-    ctx.fillStyle = '#2c121e';
+    this._drawRegionCard(ctx, rx, ry, rw, rh, isActive, '#1e293b', '#334155', 'ESTE · VALLE CONSAGRACIÓN', t);
+
+    // Senderos sagrados
+    ctx.fillStyle = '#64748b';
+    ctx.fillRect(rx + 4, ry + 31, 86, 3);
+    ctx.fillRect(rx + 22, ry + 16, 3, 16);
+    ctx.fillRect(rx + 62, ry + 16, 3, 16);
+
+    // 1. Templo de la Armadura Binaria (Noroeste del Valle)
+    const armorX = rx + 22;
+    const armorY = ry + 12;
+    this._drawTempleShrine(ctx, armorX, armorY, '#38bdf8', '🛡️');
+    if (status.hasArmor) {
+      this._drawMiniCheck(ctx, armorX + 8, armorY - 4);
+    }
+
+    // 2. Templo de la Espada de la Recursividad (Noreste del Valle)
+    const swordX = rx + 62;
+    const swordY = ry + 12;
+    this._drawTempleShrine(ctx, swordX, swordY, '#f59e0b', '⚔️');
+    if (status.hasSword) {
+      this._drawMiniCheck(ctx, swordX + 8, swordY - 4);
+    }
+
+    // Altar de reliquias en el centro-sur
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(rx + 36, ry + 36, 22, 12);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(rx + 36.5, ry + 36.5, 21, 11);
+
+    ctx.font = 'bold 4.5px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.fillText('ALTAR SACRO', rx + 47, ry + 43);
+
+    // Badge de estado de equipo
+    const equipLabel = status.hasArmor && status.hasSword ? '✓ Equipo Consagrado' : 'Pruebas del Héroe';
+    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, equipLabel, status.hasArmor && status.hasSword ? '#6ee7b7' : '#fde047');
+  }
+
+  /**
+   * NORTE: Las Cumbres de la Recursión (Picos de Silicio, Nieve & Minas).
+   */
+  _drawNorthPeaksRegion(ctx, isActive, status, t) {
+    const rx = 108;
+    const ry = 16;
+    const rw = 104;
+    const rh = 40;
+
+    this._drawRegionCard(ctx, rx, ry, rw, rh, isActive, '#1e293b', '#475569', 'NORTE · CUMBRES RECURSIÓN', t);
+
+    // Picos nevados
+    this._drawSnowMountain(ctx, rx + 16, ry + 24, 20, 16);
+    this._drawSnowMountain(ctx, rx + 86, ry + 24, 20, 16);
+    this._drawSnowMountain(ctx, rx + 32, ry + 20, 16, 12);
+    this._drawSnowMountain(ctx, rx + 72, ry + 20, 16, 12);
+
+    // Entrada a las Minas de la Recursión (Cueva central)
+    const caveX = rx + rw / 2;
+    const caveY = ry + 16;
+
+    ctx.fillStyle = '#090d16';
     ctx.beginPath();
-    ctx.ellipse(mapX + 192, mapY + 36, 54, 26, 0, 0, Math.PI * 2);
+    ctx.arc(caveX, caveY + 4, 7, Math.PI, 0);
     ctx.fill();
-    ctx.strokeStyle = '#18070f';
+    ctx.strokeStyle = '#06b6d4';
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Ríos de ciber-lava / magma eléctrico
-    ctx.strokeStyle = '#ff5722';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(mapX + 172, mapY + 40);
-    ctx.lineTo(mapX + 185, mapY + 44);
-    ctx.lineTo(mapX + 200, mapY + 40);
-    ctx.lineTo(mapX + 214, mapY + 46);
-    ctx.stroke();
+    // Cristales de silicio brillantes
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(caveX - 14, caveY + 2, 2, 5);
+    ctx.fillRect(caveX + 12, caveY + 2, 2, 5);
 
-    // Pilones eléctricos
-    ctx.fillStyle = '#18070f';
-    ctx.fillRect(mapX + 174, mapY + 22, 4, 14);
-    ctx.fillRect(mapX + 210, mapY + 22, 4, 14);
+    // Indicador Mini-Boss / Núcleo Cian
+    if (status.stackDefeated) {
+      this._drawMiniCheck(ctx, caveX + 10, caveY - 6);
+    } else {
+      this._drawMiniSkull(ctx, caveX + 10, caveY - 6, '#06b6d4', t);
+    }
 
-    const sparkY = mapY + 24 + Math.sin(t * 8) * 2;
-    ctx.strokeStyle = '#d65bf5';
+    const bossText = status.stackDefeated ? '✓ Minas [Stack Overflow Purgado]' : 'Minas: Guardián Stack Overflow';
+    this._drawRegionBadge(ctx, caveX, ry + rh - 6, bossText, status.stackDefeated ? '#6ee7b7' : '#7dd3fc');
+  }
+
+  /**
+   * SUR: Las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).
+   */
+  _drawSouthSwampRegion(ctx, isActive, status, t) {
+    const rx = 108;
+    const ry = 112;
+    const rw = 104;
+    const rh = 42;
+
+    this._drawRegionCard(ctx, rx, ry, rw, rh, isActive, '#192618', '#2e3d2c', 'SUR · MARISMAS DEL LEGACY', t);
+
+    // Charcas de fango y líquido tóxico
+    ctx.fillStyle = '#14532d';
+    ctx.fillRect(rx + 10, ry + 12, 18, 10);
+    ctx.fillRect(rx + 76, ry + 12, 18, 10);
+    ctx.fillStyle = '#22c55e';
+    ctx.fillRect(rx + 14, ry + 15, 10, 4);
+
+    // 1. Cloacas del Legacy (Suroeste · Garbage Collector)
+    const sewersX = rx + 24;
+    const sewersY = ry + 18;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(sewersX - 6, sewersY - 4, 12, 9);
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sewersX - 5.5, sewersY - 3.5, 11, 8);
+    ctx.fillStyle = '#22c55e';
+    ctx.fillRect(sewersX - 2, sewersY - 1, 4, 3);
+
+    if (status.gcDefeated) {
+      this._drawMiniCheck(ctx, sewersX + 8, sewersY - 8);
+    } else {
+      this._drawMiniSkull(ctx, sewersX + 8, sewersY - 8, '#22c55e', t);
+    }
+
+    // 2. La Forja del Prototipo (Sureste · Microondas)
+    const forgeX = rx + 80;
+    const forgeY = ry + 18;
+    ctx.fillStyle = '#431407';
+    ctx.fillRect(forgeX - 6, forgeY - 4, 12, 9);
+    ctx.strokeStyle = '#f97316';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(forgeX - 5.5, forgeY - 3.5, 11, 8);
+    ctx.fillStyle = '#ea580c';
+    ctx.fillRect(forgeX - 2, forgeY - 1, 4, 3);
+
+    if (status.microwaveDefeated) {
+      this._drawMiniCheck(ctx, forgeX + 8, forgeY - 8);
+    } else {
+      this._drawMiniSkull(ctx, forgeX + 8, forgeY - 8, '#f97316', t);
+    }
+
+    const swampText = status.gcDefeated && status.microwaveDefeated ? '✓ Mazmorras del Sur Purgadas' : 'Cloacas [GC] · Forja [Horno]';
+    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, swampText, status.gcDefeated && status.microwaveDefeated ? '#6ee7b7' : '#fdba74');
+  }
+
+  /**
+   * OESTE: El Páramo Corrupto de Mister AI Alex (Gran Puerta del Núcleo & Ciudadela Final).
+   */
+  _drawWestWastesRegion(ctx, isActive, status, t) {
+    const rx = 8;
+    const ry = 52;
+    const rw = 94;
+    const rh = 62;
+
+    this._drawRegionCard(ctx, rx, ry, rw, rh, isActive, '#1c0d1c', '#2e122b', 'OESTE · DOMINIO DE AI ALEX', t);
+
+    // Líneas de pulso cibernético
+    const pulseAlpha = 0.4 + Math.sin(t * 5) * 0.25;
+    ctx.strokeStyle = `rgba(168, 85, 247, ${pulseAlpha})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(mapX + 176, sparkY);
-    ctx.lineTo(mapX + 192, sparkY + 2);
-    ctx.lineTo(mapX + 212, sparkY);
+    ctx.moveTo(rx + 86, ry + 32);
+    ctx.lineTo(rx + 56, ry + 32);
+    ctx.lineTo(rx + 32, ry + 24);
     ctx.stroke();
 
-    // Monolito central de EL GRAN OJAL
-    const citadelX = mapX + 192;
-    const citadelY = mapY + 22;
-    ctx.fillStyle = '#0f050b';
-    ctx.fillRect(citadelX - 6, citadelY - 6, 13, 18);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(citadelX - 7, citadelY - 8, 15, 2);
+    // 1. La Gran Puerta del Núcleo Cuántico
+    const gateX = rx + 56;
+    const gateY = ry + 32;
+    ctx.fillStyle = '#0f0511';
+    ctx.fillRect(gateX - 6, gateY - 8, 12, 16);
+    ctx.strokeStyle = status.coresCount >= 3 ? '#22c55e' : '#ef4444';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(gateX - 5.5, gateY - 7.5, 11, 15);
 
-    // Antena del Microondas Cuántico
+    // Zócalos de los 3 núcleos en la puerta
+    ctx.fillStyle = status.gcDefeated ? '#22c55e' : '#334155';
+    ctx.fillRect(gateX - 3, gateY - 5, 2, 2);
+    ctx.fillStyle = status.stackDefeated ? '#06b6d4' : '#334155';
+    ctx.fillRect(gateX + 1, gateY - 5, 2, 2);
+    ctx.fillStyle = status.microwaveDefeated ? '#ef4444' : '#334155';
+    ctx.fillRect(gateX - 1, gateY - 1, 2, 2);
+
+    // 2. Ciudadela Cuántica de Alex (Fortaleza Final)
+    const citadelX = rx + 24;
+    const citadelY = ry + 22;
+    ctx.fillStyle = '#09030b';
+    ctx.fillRect(citadelX - 8, citadelY - 8, 16, 18);
+    ctx.strokeStyle = '#d946ef';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(citadelX - 7.5, citadelY - 7.5, 15, 17);
+
+    // Antena y Ojo Rojo de Mister AI Alex
     ctx.strokeStyle = '#ffd166';
     ctx.beginPath();
     ctx.moveTo(citadelX, citadelY - 8);
     ctx.lineTo(citadelX, citadelY - 14);
     ctx.stroke();
-    ctx.fillStyle = '#ff2a55';
-    ctx.fillRect(citadelX - 2, citadelY - 15, 5, 2);
 
-    // Ojo cibernético pulsante
     const eyePulse = 1.5 + Math.sin(t * 6) * 0.8;
-    ctx.fillStyle = finalDefeated ? '#10b981' : '#ff0044';
+    ctx.fillStyle = status.alexDefeated ? '#10b981' : '#ff0055';
     ctx.beginPath();
     ctx.arc(citadelX, citadelY, eyePulse, 0, Math.PI * 2);
     ctx.fill();
 
-    // Indicador final
-    const finalIconX = citadelX + 11;
-    const finalIconY = citadelY - 6;
-    if (finalDefeated) {
-      this._drawPixelCheck(ctx, finalIconX, finalIconY);
+    // Calavera del jefe final
+    if (status.alexDefeated) {
+      this._drawMiniCheck(ctx, citadelX + 11, citadelY - 6);
     } else {
-      this._drawPixelSkull(ctx, finalIconX, finalIconY, '#e11d48', t, true);
+      this._drawMiniSkull(ctx, citadelX + 11, citadelY - 6, '#ef4444', t, true);
     }
 
-    // Rótulo del Nodo 4
-    this._drawNodeLabel(
-      ctx,
-      mapX + 192,
-      mapY + 8,
-      '4. CIUDADELA DE AI ALEX',
-      finalDefeated ? 'El Gran Ojal [✓ Despejado]' : 'El Gran Ojal [Microondas Final]'
-    );
+    const citadelText = status.alexDefeated ? '✓ AI Alex Derrotado' : (status.coresCount >= 3 ? '¡Puerta Abierta! Entra' : 'Ciudadela: Mister AI Alex');
+    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, citadelText, status.alexDefeated ? '#6ee7b7' : (status.coresCount >= 3 ? '#fde047' : '#fca5a5'));
   }
 
   /**
-   * Rótulo compacto y limpio con estilo pergamino oscuro.
+   * Tarjeta base de provincia con borde iluminado si es la zona activa.
    */
-  _drawNodeLabel(ctx, rx, ry, title, sub) {
-    ctx.font = 'bold 5.5px monospace';
-    const tw = Math.max(ctx.measureText(title).width, ctx.measureText(sub).width);
-    const bx = Math.round(rx - tw / 2 - 4);
-    const by = ry - 2;
+  _drawRegionCard(ctx, x, y, w, h, isActive, bgColor, borderColor, title, t) {
+    ctx.save();
+    // Fondo de la provincia
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(x, y, w, h);
 
-    ctx.fillStyle = 'rgba(18, 14, 10, 0.82)';
-    ctx.fillRect(bx, by, tw + 8, 13);
-    ctx.strokeStyle = 'rgba(214, 169, 88, 0.65)';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(bx + 0.5, by + 0.5, tw + 7, 12);
+    if (isActive) {
+      // Halo pulsante Zelda de Zona Activa
+      const pulse = 0.65 + Math.sin(t * 6) * 0.35;
+      ctx.strokeStyle = `rgba(255, 215, 0, ${pulse})`;
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
 
-    ctx.fillStyle = '#fff2bf';
+      // Resplandor interior
+      ctx.fillStyle = 'rgba(255, 230, 100, 0.08)';
+      ctx.fillRect(x, y, w, h);
+
+      // Pastilla animada superior "► ZONA ACTUAL ◄"
+      ctx.fillStyle = '#ffd700';
+      ctx.fillRect(x + w / 2 - 24, y - 4, 48, 7);
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 4.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('► ZONA ACTUAL ◄', x + w / 2, y + 1.2);
+    } else {
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    }
+
+    // Título de la provincia
+    ctx.fillStyle = isActive ? '#fffbeb' : '#cbd5e1';
+    ctx.font = 'bold 5px monospace';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(title, rx, by + 1.5);
+    ctx.fillText(title, x + w / 2, y + 6);
 
-    const isCleared = sub.includes('[✓');
-    ctx.fillStyle = isCleared ? '#34d399' : '#cfbda0';
-    ctx.font = '5px monospace';
-    ctx.fillText(sub, rx, by + 7);
+    ctx.restore();
   }
 
   /**
-   * Calavera pixel art de 7x7 px con iluminación de advertencia.
+   * Rótulo inferior de sub-área / estado de provincia.
    */
-  _drawPixelSkull(ctx, x, y, accentColor = '#ef4444', t = 0, hasCrown = false) {
-    const pulse = 0.8 + Math.sin(t * 6) * 0.2;
+  _drawRegionBadge(ctx, cx, cy, text, color) {
+    ctx.font = 'bold 4.5px monospace';
+    const tw = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(10, 8, 6, 0.85)';
+    ctx.fillRect(cx - tw / 2 - 3, cy - 3.5, tw + 6, 7);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(cx - tw / 2 - 2.5, cy - 3, tw + 5, 6);
+
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx, cy + 0.5);
+  }
+
+  /**
+   * Marcador de posición animado "★ TÚ" del Héroe estilo Zelda.
+   */
+  _drawHeroLocationMarker(ctx, locInfo, t) {
+    const px = locInfo.x;
+    const py = locInfo.y;
+
     ctx.save();
-    ctx.globalAlpha = pulse;
 
-    // Halo de advertencia
-    ctx.fillStyle = accentColor;
-    ctx.fillRect(x - 4, y - 5, 9, 8);
+    // 1. Onda radar concéntrica en expansión
+    const ringRadius = 5 + Math.sin(t * 6) * 3;
+    ctx.strokeStyle = 'rgba(255, 215, 0, 0.75)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(px, py, ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
 
-    // Base craneal blanca
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(x - 3, y - 4, 7, 4);
-    ctx.fillRect(x - 2, y, 5, 2);
+    // 2. Icono de Héroe (capucha verde y pluma/espada estilo Link)
+    const bob = Math.sin(t * 6) * 1.5;
+    const hy = py - 4 + bob;
 
-    // Cuencas oculares
+    // Cabeza / gorro verde
+    ctx.fillStyle = '#15803d';
+    ctx.beginPath();
+    ctx.moveTo(px, hy - 4);
+    ctx.lineTo(px - 3.5, hy + 2);
+    ctx.lineTo(px + 3.5, hy + 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cara
+    ctx.fillStyle = '#fed7aa';
+    ctx.fillRect(px - 2, hy + 1, 4, 3);
+
+    // Ojos
     ctx.fillStyle = '#0f172a';
-    ctx.fillRect(x - 2, y - 3, 2, 2);
-    ctx.fillRect(x + 1, y - 3, 2, 2);
+    ctx.fillRect(px - 1, hy + 2, 1, 1);
+    ctx.fillRect(px + 1, hy + 2, 1, 1);
 
-    // Dientes / hendidura
-    ctx.fillStyle = '#334155';
-    ctx.fillRect(x - 1, y + 1, 1, 1);
-    ctx.fillRect(x + 1, y + 1, 1, 1);
+    // Túnica verde
+    ctx.fillStyle = '#16a34a';
+    ctx.fillRect(px - 2.5, hy + 4, 5, 3);
 
-    // Corona opcional para jefe final
-    if (hasCrown) {
-      ctx.fillStyle = '#ffd166';
-      ctx.fillRect(x - 3, y - 6, 7, 1);
-      ctx.fillRect(x - 3, y - 7, 1, 1);
-      ctx.fillRect(x, y - 7, 1, 1);
-      ctx.fillRect(x + 3, y - 7, 1, 1);
+    // 3. Cartel "★ TÚ" flotante
+    ctx.fillStyle = '#090705';
+    ctx.fillRect(px - 10, hy - 13, 20, 8);
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(px - 9.5, hy - 12.5, 19, 7);
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★ TÚ', px, hy - 8.5);
+
+    ctx.restore();
+  }
+
+  /**
+   * Encabezado superior del mapa estilo pergamino Zelda.
+   */
+  _drawZeldaHeader(ctx, W) {
+    ctx.fillStyle = 'rgba(15, 11, 7, 0.94)';
+    ctx.fillRect(6, 4, W - 12, 11);
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(6.5, 4.5, W - 13, 10);
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = `bold 5px ${UI_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🗺️ MAPA DEL REINO DEL GRAN OJAL · CARTOGRAFÍA SAGRADA', 12, 9.5);
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = `bold 4.5px ${UI_FONT}`;
+    ctx.textAlign = 'right';
+    ctx.fillText('[Esc / M] Cerrar Mapa', W - 12, 9.5);
+  }
+
+  /**
+   * Barra inferior HUD estilo Zelda (Zócalos de Cristales/Núcleos, Equipo del Héroe y Misión).
+   */
+  _drawZeldaHUD(ctx, W, H, locInfo, status, player) {
+    const barX = 6;
+    const barY = H - 22;
+    const barW = W - 12;
+    const barH = 18;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(12, 9, 6, 0.96)';
+    ctx.fillRect(barX, barY, barW, barH);
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+
+    // 1. Zócalos de los 3 Núcleos de Mazmorra (Cristales estilo Zelda Pendants)
+    ctx.font = 'bold 4.5px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText('NÚCLEOS (3):', barX + 5, barY + 3);
+
+    // Núcleo Verde (Garbage Collector)
+    this._drawCrystalGem(ctx, barX + 46, barY + 5, status.gcDefeated, '#22c55e', 'GC');
+
+    // Núcleo Cian (Stack Overflow)
+    this._drawCrystalGem(ctx, barX + 72, barY + 5, status.stackDefeated, '#06b6d4', 'STACK');
+
+    // Núcleo Carmesí (Microondas)
+    this._drawCrystalGem(ctx, barX + 104, barY + 5, status.microwaveDefeated, '#ef4444', 'FORJA');
+
+    // 2. Reliquias y Nivel de Equipo del Héroe
+    const swordLvl = player?.swordLevel || (status.hasSword ? 1 : 0);
+    const armorLvl = player?.armorLevel || (status.hasArmor ? 1 : 0);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(`🛡️Armadura: Nv.${armorLvl}`, barX + 145, barY + 3);
+    ctx.fillText(`⚔️Espada: Nv.${swordLvl}`, barX + 210, barY + 3);
+
+    // 3. Línea inferior: Ubicación precisa y Objetivo de la misión
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText(`📍 ${locInfo.title}`, barX + 5, barY + 11);
+
+    let questText = '';
+    if (!status.hasArmor) {
+      questText = '🎯 Misión: Consagrar la Armadura Binaria en el Valle del Este.';
+    } else if (!status.hasSword) {
+      questText = '🎯 Misión: Empuñar la Espada de la Recursividad en el Valle del Este.';
+    } else if (status.coresCount < 3) {
+      questText = `🎯 Misión: Conseguir los 3 Núcleos de Mazmorra (${status.coresCount}/3) en Norte y Sur.`;
+    } else if (!status.alexDefeated) {
+      questText = '🎯 ¡FINAL! Abre la Gran Puerta del Núcleo en el Oeste y purga a Mister AI Alex.';
+    } else {
+      questText = '🏆 ¡VICTORIA! El Reino del Gran Ojal ha sido liberado de Mister AI Alex.';
     }
 
+    ctx.fillStyle = status.coresCount >= 3 ? '#fde047' : '#e2e8f0';
+    ctx.textAlign = 'right';
+    ctx.fillText(UILayout.fitText(ctx, questText, 180), barX + barW - 6, barY + 11);
+
     ctx.restore();
   }
 
   /**
-   * Check verde pixel art para indicar zona/jefe despejado.
+   * Dibuja un gema/cristal sagrado en su zócalo de la barra HUD.
    */
-  _drawPixelCheck(ctx, x, y) {
+  _drawCrystalGem(ctx, x, y, isCollected, glowColor, label) {
     ctx.save();
-    // Base circular esmeralda
-    ctx.fillStyle = '#064e3b';
-    ctx.fillRect(x - 4, y - 4, 8, 8);
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x - 3.5, y - 3.5, 7, 7);
+    // Zócalo metálico
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x - 3, y - 3, 6, 6);
+    ctx.strokeStyle = isCollected ? glowColor : '#475569';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(x - 2.5, y - 2.5, 5, 5);
 
-    // Marca de verificación blanca/verde lima
-    ctx.fillStyle = '#6ee7b7';
-    ctx.fillRect(x - 2, y, 1, 2);
-    ctx.fillRect(x - 1, y + 1, 1, 2);
-    ctx.fillRect(x, y + 2, 1, 1);
-    ctx.fillRect(x + 1, y, 1, 2);
-    ctx.fillRect(x + 2, y - 2, 1, 2);
+    if (isCollected) {
+      ctx.fillStyle = glowColor;
+      ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+    }
+
+    ctx.font = 'bold 4px monospace';
+    ctx.fillStyle = isCollected ? glowColor : '#64748b';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + 5, y);
     ctx.restore();
   }
 
   /**
-   * Dibuja un pino retro pixel art con sombreado.
+   * Dibuja una casa en miniatura con tejado a dos aguas.
    */
-  _drawPineTree(ctx, px, py) {
-    ctx.fillStyle = '#193016';
-    ctx.fillRect(px + 1, py + 6, 4, 2);
-    ctx.fillStyle = '#5c3a21';
-    ctx.fillRect(px + 2, py + 4, 2, 3);
-    ctx.fillStyle = '#225220';
-    ctx.fillRect(px, py + 1, 6, 4);
-    ctx.fillRect(px + 1, py - 2, 4, 3);
-    ctx.fillRect(px + 2, py - 4, 2, 2);
-    ctx.fillStyle = '#428a38';
-    ctx.fillRect(px + 2, py - 2, 2, 2);
+  _drawTinyHouse(ctx, x, y, wallColor, roofColor) {
+    ctx.fillStyle = wallColor;
+    ctx.fillRect(x, y + 3, 7, 5);
+    ctx.fillStyle = roofColor;
+    ctx.fillRect(x - 1, y + 1, 9, 2);
+    ctx.fillRect(x + 1, y - 1, 5, 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x + 2, y + 5, 3, 3);
   }
 
   /**
-   * Dibuja montañas con laderas de sol/sombra y pico nevado.
+   * Dibuja un árbol verde en miniatura.
    */
-  _drawMountain(ctx, mx, my, mw, mh) {
-    // Sombra derecha
-    ctx.fillStyle = '#373d47';
+  _drawTinyTree(ctx, x, y) {
+    ctx.fillStyle = '#5c3a21';
+    ctx.fillRect(x + 2, y + 4, 2, 3);
+    ctx.fillStyle = '#15803d';
+    ctx.beginPath();
+    ctx.arc(x + 3, y + 2, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /**
+   * Dibuja un templo/santuario en miniatura con columnas y frontón.
+   */
+  _drawTempleShrine(ctx, x, y, accentColor, icon) {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x - 6, y - 3, 12, 10);
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 5.5, y - 2.5, 11, 9);
+
+    ctx.font = 'bold 5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(icon, x, y + 2);
+  }
+
+  /**
+   * Dibuja una montaña con cumbre nevada.
+   */
+  _drawSnowMountain(ctx, mx, my, mw, mh) {
+    ctx.fillStyle = '#334155';
     ctx.beginPath();
     ctx.moveTo(mx, my - mh);
     ctx.lineTo(mx + mw / 2, my);
-    ctx.lineTo(mx, my);
-    ctx.closePath();
-    ctx.fill();
-
-    // Iluminación izquierda
-    ctx.fillStyle = '#6b7280';
-    ctx.beginPath();
-    ctx.moveTo(mx, my - mh);
     ctx.lineTo(mx - mw / 2, my);
-    ctx.lineTo(mx, my);
     ctx.closePath();
     ctx.fill();
 
-    // Cima nevada
+    // Cumbre de nieve blanca
     ctx.fillStyle = '#f8fafc';
     ctx.beginPath();
     ctx.moveTo(mx, my - mh);
-    ctx.lineTo(mx - mw / 5, my - mh + mh * 0.35);
-    ctx.lineTo(mx, my - mh + mh * 0.28);
-    ctx.lineTo(mx + mw / 5, my - mh + mh * 0.35);
+    ctx.lineTo(mx + mw / 4, my - mh * 0.55);
+    ctx.lineTo(mx, my - mh * 0.65);
+    ctx.lineTo(mx - mw / 4, my - mh * 0.55);
     ctx.closePath();
     ctx.fill();
   }
 
   /**
-   * Rosa de los Vientos estilizada en el mar.
+   * Calavera pixel-art de jefe.
    */
-  _drawCompassRose(ctx, compassX, compassY) {
-    const cr = 10;
-    ctx.strokeStyle = 'rgba(214, 169, 88, 0.6)';
-    ctx.lineWidth = 1;
+  _drawMiniSkull(ctx, x, y, accentColor = '#ef4444', t = 0, isCrown = false) {
+    const pulse = 0.8 + Math.sin(t * 6) * 0.2;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(x - 3, y - 3, 7, 6);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(x - 2, y - 2, 5, 3);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x - 1, y - 1, 1, 1);
+    ctx.fillRect(x + 1, y - 1, 1, 1);
+
+    if (isCrown) {
+      ctx.fillStyle = '#ffd700';
+      ctx.fillRect(x - 2, y - 4, 5, 1);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Check verde pixel-art para jefes o salas superadas.
+   */
+  _drawMiniCheck(ctx, x, y) {
+    ctx.save();
+    ctx.fillStyle = '#064e3b';
+    ctx.fillRect(x - 3, y - 3, 6, 6);
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(x - 2.5, y - 2.5, 5, 5);
+
+    ctx.fillStyle = '#6ee7b7';
+    ctx.fillRect(x - 1, y + 1, 1, 1);
+    ctx.fillRect(x, y + 2, 1, 1);
+    ctx.fillRect(x + 1, y, 1, 2);
+    ctx.restore();
+  }
+
+  /**
+   * Rosa de los vientos náutica retro en la esquina del mar.
+   */
+  _drawCompassRose(ctx, cx, cy) {
+    const r = 8;
+    ctx.strokeStyle = 'rgba(212, 175, 55, 0.6)';
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
-    ctx.arc(compassX, compassY, cr + 1, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Norte
-    ctx.fillStyle = '#ff2a55';
+    // Flecha Norte roja
+    ctx.fillStyle = '#ef4444';
     ctx.beginPath();
-    ctx.moveTo(compassX, compassY);
-    ctx.lineTo(compassX, compassY - cr - 3);
-    ctx.lineTo(compassX - 2.5, compassY);
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy - r - 2);
+    ctx.lineTo(cx - 2, cy);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#ffd166';
+    // Flecha Sur/Este/Oeste doradas
+    ctx.fillStyle = '#d4af37';
     ctx.beginPath();
-    ctx.moveTo(compassX, compassY);
-    ctx.lineTo(compassX, compassY - cr - 3);
-    ctx.lineTo(compassX + 2.5, compassY);
-    ctx.closePath();
-    ctx.fill();
-
-    // Sur / Este / Oeste
-    ctx.fillStyle = '#cca055';
-    ctx.beginPath();
-    ctx.moveTo(compassX, compassY);
-    ctx.lineTo(compassX, compassY + cr + 1);
-    ctx.lineTo(compassX + 2, compassY);
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy - r - 2);
+    ctx.lineTo(cx + 2, cy);
     ctx.closePath();
     ctx.fill();
 
     ctx.beginPath();
-    ctx.moveTo(compassX, compassY);
-    ctx.lineTo(compassX + cr + 1, compassY);
-    ctx.lineTo(compassX, compassY + 2);
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy + r + 1);
+    ctx.lineTo(cx + 2, cy);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#a67d3b';
     ctx.beginPath();
-    ctx.moveTo(compassX, compassY);
-    ctx.lineTo(compassX - cr - 1, compassY);
-    ctx.lineTo(compassX, compassY + 2);
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + r + 1, cy);
+    ctx.lineTo(cx, cy + 2);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#ffea9f';
-    ctx.font = 'bold 6px monospace';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx - r - 1, cy);
+    ctx.lineTo(cx, cy + 2);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 5px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText('N', compassX, compassY - cr - 4);
-  }
-
-  /**
-   * Barco de vela en el mar del sur.
-   */
-  _drawSailingShip(ctx, shipX, shipY) {
-    ctx.fillStyle = '#5c3818';
-    ctx.beginPath();
-    ctx.moveTo(shipX - 6, shipY + 2);
-    ctx.lineTo(shipX + 8, shipY + 2);
-    ctx.lineTo(shipX + 5, shipY + 5);
-    ctx.lineTo(shipX - 4, shipY + 5);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(shipX - 1, shipY + 2);
-    ctx.lineTo(shipX + 2, shipY - 5);
-    ctx.lineTo(shipX + 5, shipY + 2);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  /**
-   * Dibuja el marcador animado de ubicación actual "★ TÚ".
-   */
-  _drawPlayerLocation(ctx, mapX, mapY, currentSceneId, t) {
-    let playerMapX = mapX + 152;
-    let playerMapY = mapY + 92;
-    let locationName = 'Aldea de Valleverde';
-
-    if (currentSceneId === 'first_stage') {
-      playerMapX = mapX + 68;
-      playerMapY = mapY + 98;
-      locationName = 'Tierras Corruptas · Santuario de las Pruebas';
-    } else if (currentSceneId === 'armor_temple') {
-      playerMapX = mapX + 234;
-      playerMapY = mapY + 80;
-      locationName = 'Templo de la Armadura Binaria';
-    } else if (currentSceneId === 'sword_temple') {
-      playerMapX = mapX + 234;
-      playerMapY = mapY + 115;
-      locationName = 'Templo de la Espada (Stack Overflow)';
-    } else if (currentSceneId === 'sewers_dungeon') {
-      playerMapX = mapX + 146;
-      playerMapY = mapY + 118;
-      locationName = 'Alcantarillas de Valleverde (Garbage Collector)';
-    } else if (currentSceneId === 'ai_fortress_gate') {
-      playerMapX = mapX + 68;
-      playerMapY = mapY + 70;
-      locationName = 'Laboratorio Alpha (Microondas Prototipo)';
-    } else if (currentSceneId === 'citadel' || currentSceneId === 'ai_citadel') {
-      playerMapX = mapX + 192;
-      playerMapY = mapY + 22;
-      locationName = 'Ciudadela de AI Alex · El Gran Ojal';
-    } else if (currentSceneId === 'jail_cell') {
-      playerMapX = mapX + 160;
-      playerMapY = mapY + 104;
-      locationName = 'Calabozo Municipal de Valleverde';
-    }
-
-    // Halo pulsante
-    const haloRadius = 6 + Math.sin(t * 6) * 2;
-    ctx.strokeStyle = '#ffd166';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(playerMapX, playerMapY, haloRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Pin de posición
-    const bobPin = Math.sin(t * 6) * 2;
-    ctx.fillStyle = '#ff2a55';
-    ctx.beginPath();
-    ctx.arc(playerMapX, playerMapY - 5 + bobPin, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(playerMapX, playerMapY - 5 + bobPin, 1.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Cartel flotante "★ TÚ"
-    ctx.fillStyle = '#18120c';
-    ctx.fillRect(playerMapX - 12, playerMapY - 17 + bobPin, 24, 9);
-    ctx.strokeStyle = '#ffd166';
-    ctx.strokeRect(playerMapX - 11.5, playerMapY - 16.5 + bobPin, 23, 8);
-    ctx.fillStyle = '#ffd166';
-    ctx.font = 'bold 6px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('★ TÚ', playerMapX, playerMapY - 15 + bobPin);
-
-    this._lastLocationName = locationName;
-  }
-
-  /**
-   * Dibuja el encabezado superior con [Esc] Cerrar y la barra inferior de ubicación sin textos redundantes.
-   */
-  _drawHeaderAndFooter(ctx, W, H) {
-    const cx = W / 2;
-    const locationName = this._lastLocationName || 'Aldea de Valleverde';
-
-    // 1. Encabezado superior limpio con [Esc] Cerrar único
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.92)';
-    ctx.fillRect(6, 4, W - 12, 12);
-    ctx.strokeStyle = UI_COLORS.borderOuter;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(6.5, 4.5, W - 13, 11);
-
-    ctx.fillStyle = UI_COLORS.gold;
-    ctx.font = `bold 5px ${UI_FONT}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText('🗺 CARTOGRAFÍA DEL REINO DEL GRAN OJAL', 11, 7.5);
-
-    ctx.font = `bold 4.5px ${UI_FONT}`;
-    ctx.fillStyle = UI_COLORS.textSecondary;
-    ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Cerrar', W - 11, 7.5);
-
-    // 2. Barra inferior de estado (solo ubicación y leyenda cartográfica, sin controles redundantes)
-    const footerW = W - 24;
-    const footerH = 11;
-    const footerX = 12;
-    const footerY = H - 15;
-
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.92)';
-    ctx.fillRect(footerX, footerY, footerW, footerH);
-    ctx.strokeStyle = 'rgba(214, 169, 88, 0.75)';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(footerX + 0.5, footerY + 0.5, footerW - 1, footerH - 1);
-
-    ctx.fillStyle = UI_COLORS.gold;
-    ctx.font = `bold 4.5px ${UI_FONT}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(UILayout.fitText(ctx, `UBICACIÓN: ${locationName}`, 185), footerX + 5, footerY + footerH / 2);
-
-    ctx.fillStyle = UI_COLORS.crimson;
-    ctx.fillText('☠ Amenaza', footerX + 200, footerY + footerH / 2);
-
-    ctx.fillStyle = UI_COLORS.emerald;
-    ctx.fillText('✓ Despejado', footerX + 248, footerY + footerH / 2);
+    ctx.fillText('N', cx, cy - r - 3);
   }
 }
-

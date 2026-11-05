@@ -115,6 +115,9 @@ export class Tilemap {
     this.quantumGate = { coresPlaced: { gc: false, stack: false, microwave: false } };
 
     this._buildFirstStageScene();
+    this._buildNorthPeaksScene();
+    this._buildSouthSwampScene();
+    this._buildWestWastesScene();
     this._buildArmorTempleScene();
     this._buildSwordTempleScene();
     this._buildCondemnedRealmsScene();
@@ -182,7 +185,13 @@ export class Tilemap {
   }
 
   isInterior() {
-    return this.currentSceneId !== 'overworld' && this.currentSceneId !== 'first_stage';
+    return (
+      this.currentSceneId !== 'overworld' &&
+      this.currentSceneId !== 'first_stage' &&
+      this.currentSceneId !== 'north_peaks' &&
+      this.currentSceneId !== 'south_swamp' &&
+      this.currentSceneId !== 'west_wastes'
+    );
   }
 
   unlockFirstStageGate() {
@@ -262,15 +271,16 @@ export class Tilemap {
    * o la alfombra de salida si está en el interior.
    */
   findNearbyDoor(player) {
+    // 1. ZONA ESTE: Valle de la Consagración (Templos del Héroe: Armadura y Espada)
     if (this.currentSceneId === 'first_stage') {
-      // 1. Portal del Este hacia el Pueblo de Valleverde (retorno seguro a la aldea pacífica)
+      // Portal del Este hacia el Pueblo de Valleverde (retorno a la aldea pacífica)
       const gateX = 33 * this.tileSize;
       const gateY = 12.5 * this.tileSize;
-      if (Math.hypot(player.centerX - gateX, player.centerY - gateY) <= 24) {
+      if (Math.hypot(player.centerX - gateX, player.centerY - gateY) <= 26) {
         return {
           type: 'stage_transition',
           targetScene: 'overworld',
-          label: 'Regresar a la Aldea de Valleverde (Zona Pacífica)',
+          label: 'Regresar a la Aldea de Valleverde (Oeste)',
           worldX: gateX,
           worldY: gateY,
           spawnX: 30 * this.tileSize,
@@ -278,7 +288,7 @@ export class Tilemap {
         };
       }
 
-      // 2. Puerta del Templo del Bastión (Mazmorra de la Armadura Binaria - Oeste)
+      // Puerta del Templo de la Armadura Binaria (Oeste del Valle)
       const armorDoorX = 6.5 * this.tileSize;
       const armorDoorY = 8.5 * this.tileSize;
       if (Math.hypot(player.centerX - armorDoorX, player.centerY - armorDoorY) <= 22) {
@@ -293,7 +303,7 @@ export class Tilemap {
         };
       }
 
-      // 3. Puerta del Templo de la Espada de la Recursividad (Norte)
+      // Puerta del Templo de la Espada de la Recursividad (Norte del Valle)
       const swordDoorX = 17.5 * this.tileSize;
       const swordDoorY = 2.5 * this.tileSize;
       if (Math.hypot(player.centerX - swordDoorX, player.centerY - swordDoorY) <= 22) {
@@ -308,25 +318,15 @@ export class Tilemap {
         };
       }
 
-      // 4. Puerta de las Cloacas del Legacy (Mazmorra 1: Suroeste · Garbage Collector)
-      const sewersDoorX = 6.5 * this.tileSize;
-      const sewersDoorY = 18.5 * this.tileSize;
-      if (Math.hypot(player.centerX - sewersDoorX, player.centerY - sewersDoorY) <= 22) {
-        return {
-          type: 'stage_transition',
-          targetScene: 'sewers_entry',
-          label: 'Descender a las Cloacas del Legacy (Garbage Collector)',
-          worldX: sewersDoorX,
-          worldY: sewersDoorY,
-          spawnX: 11.5 * this.tileSize,
-          spawnY: 15 * this.tileSize
-        };
-      }
+      return null;
+    }
 
-      // 5. Puerta de las Minas de la Recursión (Mazmorra 2: Noreste · Stack Overflow)
-      const minesDoorX = 28.5 * this.tileSize;
-      const minesDoorY = 4.5 * this.tileSize;
-      if (Math.hypot(player.centerX - minesDoorX, player.centerY - minesDoorY) <= 22) {
+    // 2. ZONA NORTE: Las Cumbres de la Recursión (Picos de Silicio y Minas)
+    if (this.currentSceneId === 'north_peaks') {
+      // Puerta de las Minas de la Recursión (Norte · Stack Overflow)
+      const minesDoorX = 17.5 * this.tileSize;
+      const minesDoorY = 3.5 * this.tileSize;
+      if (Math.hypot(player.centerX - minesDoorX, player.centerY - minesDoorY) <= 24) {
         return {
           type: 'stage_transition',
           targetScene: 'mines_entry',
@@ -338,10 +338,45 @@ export class Tilemap {
         };
       }
 
-      // 6. Puerta de La Forja del Prototipo (Mazmorra 3: Sureste · Microondas Prototipo)
-      const forgeDoorX = 28.5 * this.tileSize;
-      const forgeDoorY = 18.5 * this.tileSize;
-      if (Math.hypot(player.centerX - forgeDoorX, player.centerY - forgeDoorY) <= 22) {
+      // Retorno al Sur hacia Valleverde
+      const southExitX = 17.5 * this.tileSize;
+      const southExitY = 23 * this.tileSize;
+      if (Math.hypot(player.centerX - southExitX, player.centerY - southExitY) <= 26) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'overworld',
+          label: 'Descender hacia la Aldea de Valleverde (Sur)',
+          worldX: southExitX,
+          worldY: southExitY,
+          spawnX: 17.5 * this.tileSize,
+          spawnY: 2 * this.tileSize
+        };
+      }
+
+      return null;
+    }
+
+    // 3. ZONA SUR: Las Marismas del Hardware Legacy (Cloacas y Forja)
+    if (this.currentSceneId === 'south_swamp') {
+      // Puerta de las Cloacas del Legacy (Suroeste · Garbage Collector)
+      const sewersDoorX = 8.5 * this.tileSize;
+      const sewersDoorY = 14.5 * this.tileSize;
+      if (Math.hypot(player.centerX - sewersDoorX, player.centerY - sewersDoorY) <= 24) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'sewers_entry',
+          label: 'Descender a las Cloacas del Legacy (Garbage Collector)',
+          worldX: sewersDoorX,
+          worldY: sewersDoorY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 15 * this.tileSize
+        };
+      }
+
+      // Puerta de La Forja del Prototipo (Sureste · Microondas)
+      const forgeDoorX = 26.5 * this.tileSize;
+      const forgeDoorY = 14.5 * this.tileSize;
+      if (Math.hypot(player.centerX - forgeDoorX, player.centerY - forgeDoorY) <= 24) {
         return {
           type: 'stage_transition',
           targetScene: 'forge_entry',
@@ -353,18 +388,53 @@ export class Tilemap {
         };
       }
 
-      // 7. Gran Puerta del Núcleo Cuántico (Sur Central · Acceso a Ciudadela de Alex)
-      const quantumDoorX = 17.5 * this.tileSize;
-      const quantumDoorY = 18.5 * this.tileSize;
-      if (Math.hypot(player.centerX - quantumDoorX, player.centerY - quantumDoorY) <= 24) {
+      // Retorno al Norte hacia Valleverde
+      const northExitX = 17.5 * this.tileSize;
+      const northExitY = 1 * this.tileSize;
+      if (Math.hypot(player.centerX - northExitX, player.centerY - northExitY) <= 26) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'overworld',
+          label: 'Regresar a la Aldea de Valleverde (Norte)',
+          worldX: northExitX,
+          worldY: northExitY,
+          spawnX: 17.5 * this.tileSize,
+          spawnY: 21.5 * this.tileSize
+        };
+      }
+
+      return null;
+    }
+
+    // 4. ZONA OESTE: Páramo Corrupto de Mister AI Alex
+    if (this.currentSceneId === 'west_wastes') {
+      // Gran Puerta del Núcleo Cuántico (Oeste · Acceso a Ciudadela)
+      const quantumDoorX = 8.5 * this.tileSize;
+      const quantumDoorY = 12.5 * this.tileSize;
+      if (Math.hypot(player.centerX - quantumDoorX, player.centerY - quantumDoorY) <= 26) {
         return {
           type: 'stage_transition',
           targetScene: 'quantum_gate',
-          label: 'Aproximarse a la Gran Puerta del Núcleo Cuántico (Ciudadela Final)',
+          label: 'Aproximarse a la Gran Puerta del Núcleo Cuántico',
           worldX: quantumDoorX,
           worldY: quantumDoorY,
           spawnX: 11.5 * this.tileSize,
           spawnY: 15 * this.tileSize
+        };
+      }
+
+      // Retorno al Este hacia Valleverde
+      const eastExitX = 34.5 * this.tileSize;
+      const eastExitY = 12.5 * this.tileSize;
+      if (Math.hypot(player.centerX - eastExitX, player.centerY - eastExitY) <= 26) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'overworld',
+          label: 'Regresar a la Aldea de Valleverde (Este)',
+          worldX: eastExitX,
+          worldY: eastExitY,
+          spawnX: 2 * this.tileSize,
+          spawnY: 12.5 * this.tileSize
         };
       }
 
@@ -508,13 +578,13 @@ export class Tilemap {
             this.currentSceneId === 'condemned_realms'
               ? 'Regresar a través de la Brecha Abisal'
               : this.currentSceneId === 'sewers_entry'
-                ? 'Salir al Valle de los Templos'
+                ? 'Salir a las Marismas del Hardware Legacy'
                 : this.currentSceneId === 'mines_entry'
-                  ? 'Salir al Valle de los Templos'
+                  ? 'Salir a las Cumbres de la Recursión'
                   : this.currentSceneId === 'forge_entry'
-                    ? 'Salir al Valle de los Templos'
+                    ? 'Salir a las Marismas del Hardware Legacy'
                     : this.currentSceneId === 'quantum_gate'
-                      ? 'Salir al Valle de los Templos'
+                      ? 'Salir al Páramo de Mister AI Alex'
                       : this.currentSceneId === 'ai_citadel'
                         ? 'Regresar a la Puerta del Núcleo'
                         : 'Retroceder a la cámara anterior';
@@ -533,18 +603,63 @@ export class Tilemap {
     }
 
     if (this.currentSceneId === 'overworld') {
-      // 1. Puente sobre el Río Alba hacia el Valle de los Templos Sagrados
+      // 1. Camino Este (Puente sobre el Río Alba -> Valle de la Consagración)
       const bridgeGateX = 33 * this.tileSize;
       const bridgeGateY = 12.5 * this.tileSize;
       if (Math.hypot(player.centerX - bridgeGateX, player.centerY - bridgeGateY) <= 32) {
         return {
           type: 'stage_transition',
           targetScene: 'first_stage',
-          label: 'Cruzar el Puente al Valle de los Templos',
+          label: 'Cruzar el Puente al Valle de la Consagración (Este)',
           worldX: bridgeGateX,
           worldY: bridgeGateY,
           spawnX: 31 * this.tileSize,
           spawnY: 12.5 * this.tileSize
+        };
+      }
+
+      // 2. Camino Oeste (Frontera Oeste -> Páramo Corrupto de Mister AI Alex)
+      const westX = 0.5 * this.tileSize;
+      const westY = 12.5 * this.tileSize;
+      if (Math.hypot(player.centerX - westX, player.centerY - westY) <= 26) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'west_wastes',
+          label: 'Adentrarse en el Páramo Corrupto de Mister AI Alex (Oeste)',
+          worldX: westX,
+          worldY: westY,
+          spawnX: 33 * this.tileSize,
+          spawnY: 12.5 * this.tileSize
+        };
+      }
+
+      // 3. Camino Norte (Cruce Norte -> Cumbres de la Recursión)
+      const northX = 17.5 * this.tileSize;
+      const northY = 0.5 * this.tileSize;
+      if (Math.hypot(player.centerX - northX, player.centerY - northY) <= 26) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'north_peaks',
+          label: 'Ascender a las Cumbres de la Recursión (Norte)',
+          worldX: northX,
+          worldY: northY,
+          spawnX: 17.5 * this.tileSize,
+          spawnY: 21.5 * this.tileSize
+        };
+      }
+
+      // 4. Camino Sur (Jardín Sur -> Marismas del Hardware Legacy)
+      const southX = 17.5 * this.tileSize;
+      const southY = 23 * this.tileSize;
+      if (Math.hypot(player.centerX - southX, player.centerY - southY) <= 26) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'south_swamp',
+          label: 'Descender a las Marismas del Hardware Legacy (Sur)',
+          worldX: southX,
+          worldY: southY,
+          spawnX: 17.5 * this.tileSize,
+          spawnY: 2 * this.tileSize
         };
       }
 
@@ -669,16 +784,11 @@ export class Tilemap {
       }
     };
 
-    // 1. Red de Caminos de Piedra Sagrada conectando todos los templos
-    // Eje horizontal principal (conecta Oeste, Centro y Portal Este)
+    // 1. Red de Caminos de Piedra Sagrada conectando los templos del Héroe
+    // Eje horizontal principal (conecta Templo Armadura, Altar Central y Portal Este a Valleverde)
     fillRect(ground, 6, 12, 28, 2, TILES.PATH);
-    // Ramal vertical Oeste (hacia Templo Armadura y Cloacas)
-    fillRect(ground, 6, 7, 2, 12, TILES.PATH);
-    // Ramal vertical Norte (hacia Templo Espada)
+    fillRect(ground, 6, 7, 2, 7, TILES.PATH);
     fillRect(ground, 17, 2, 2, 11, TILES.PATH);
-    // Ramal vertical Este (hacia Minas y Forja)
-    fillRect(ground, 28, 4, 2, 15, TILES.PATH);
-    // Plaza Central del Cruce
     fillRect(ground, 15, 10, 6, 5, TILES.COBBLE);
 
     // 2. Templo Occidental: Templo de la Armadura Binaria (c = 6.5, r = 8.5)
@@ -715,71 +825,7 @@ export class Tilemap {
       { x: 19.5 * 16, y: 3.5 * 16, radius: 46, intensity: 0.9, color: '#f59e0b' }
     );
 
-    // 4. Mazmorra 1: Cloacas del Legacy (Sudoeste: c = 6.5, r = 18.5 · Garbage Collector)
-    fillRect(ground, 4, 17, 6, 4, TILES.STONE_FLOOR);
-    setDeco(4, 18, TILES.WALL_INTERIOR, true);
-    setDeco(5, 18, TILES.WALL_INTERIOR, true);
-    setDeco(6, 18, TILES.DOOR, false);
-    setDeco(7, 18, TILES.WALL_INTERIOR, true);
-    setDeco(8, 18, TILES.WALL_INTERIOR, true);
-    setDeco(4, 19, TILES.LAMPPOST, true);
-    setDeco(8, 19, TILES.LAMPPOST, true);
-    setDeco(5, 19, TILES.SIGNPOST, true);
-    lightSources.push(
-      { x: 6.5 * 16, y: 18.5 * 16, radius: 52, intensity: 0.95, color: '#22c55e' },
-      { x: 4.5 * 16, y: 19.5 * 16, radius: 42, intensity: 0.85, color: '#22c55e' },
-      { x: 8.5 * 16, y: 19.5 * 16, radius: 42, intensity: 0.85, color: '#22c55e' }
-    );
-
-    // 5. Mazmorra 2: Minas de la Recursión (Noreste: c = 28.5, r = 4.5 · Stack Overflow)
-    fillRect(ground, 26, 3, 6, 4, TILES.STONE_FLOOR);
-    setDeco(26, 4, TILES.WALL_INTERIOR, true);
-    setDeco(27, 4, TILES.WALL_INTERIOR, true);
-    setDeco(28, 4, TILES.DOOR, false);
-    setDeco(29, 4, TILES.WALL_INTERIOR, true);
-    setDeco(30, 4, TILES.WALL_INTERIOR, true);
-    setDeco(26, 5, TILES.LAMPPOST, true);
-    setDeco(30, 5, TILES.LAMPPOST, true);
-    setDeco(27, 5, TILES.SIGNPOST, true);
-    lightSources.push(
-      { x: 28.5 * 16, y: 4.5 * 16, radius: 54, intensity: 0.95, color: '#06b6d4' },
-      { x: 26.5 * 16, y: 5.5 * 16, radius: 44, intensity: 0.85, color: '#06b6d4' },
-      { x: 30.5 * 16, y: 5.5 * 16, radius: 44, intensity: 0.85, color: '#06b6d4' }
-    );
-
-    // 6. Mazmorra 3: La Forja del Prototipo (Sureste: c = 28.5, r = 18.5 · Microondas)
-    fillRect(ground, 26, 17, 6, 4, TILES.STONE_FLOOR);
-    setDeco(26, 18, TILES.WALL_INTERIOR, true);
-    setDeco(27, 18, TILES.WALL_INTERIOR, true);
-    setDeco(28, 18, TILES.DOOR, false);
-    setDeco(29, 18, TILES.WALL_INTERIOR, true);
-    setDeco(30, 18, TILES.WALL_INTERIOR, true);
-    setDeco(26, 19, TILES.LAMPPOST, true);
-    setDeco(30, 19, TILES.LAMPPOST, true);
-    setDeco(27, 19, TILES.SIGNPOST, true);
-    lightSources.push(
-      { x: 28.5 * 16, y: 18.5 * 16, radius: 54, intensity: 0.95, color: '#f43f5e' },
-      { x: 26.5 * 16, y: 19.5 * 16, radius: 44, intensity: 0.85, color: '#f43f5e' },
-      { x: 30.5 * 16, y: 19.5 * 16, radius: 44, intensity: 0.85, color: '#f43f5e' }
-    );
-
-    // 7. Santuario Final: La Gran Puerta del Núcleo Cuántico (Sur Central: c = 17.5, r = 18.5 · Alex)
-    fillRect(ground, 14, 17, 8, 4, TILES.STONE_FLOOR);
-    setDeco(15, 18, TILES.PORTAL_GATE_CLOSED, true);
-    setDeco(16, 18, TILES.PORTAL_GATE_CLOSED, true);
-    setDeco(17, 18, TILES.DOOR, false);
-    setDeco(18, 18, TILES.PORTAL_GATE_CLOSED, true);
-    setDeco(19, 18, TILES.PORTAL_GATE_CLOSED, true);
-    setDeco(14, 18, TILES.LAMPPOST, true);
-    setDeco(20, 18, TILES.LAMPPOST, true);
-    setDeco(16, 17, TILES.SIGNPOST, true);
-    lightSources.push(
-      { x: 17.5 * 16, y: 18.5 * 16, radius: 64, intensity: 1.0, color: '#a855f7' },
-      { x: 14.5 * 16, y: 18.5 * 16, radius: 48, intensity: 0.9, color: '#a855f7' },
-      { x: 20.5 * 16, y: 18.5 * 16, radius: 48, intensity: 0.9, color: '#a855f7' }
-    );
-
-    // 8. Portal del Este (Retorno al Puente de la Aldea de Valleverde)
+    // 4. Portal del Este (Retorno al Puente de la Aldea de Valleverde)
     for (let r = 10; r <= 15; r++) {
       if (r !== 12 && r !== 13) {
         setDeco(33, r, TILES.FENCE_POST, true);
@@ -790,7 +836,7 @@ export class Tilemap {
     setDeco(32, 11, TILES.SIGNPOST, true);
     lightSources.push({ x: 33.5 * 16, y: 12.5 * 16, radius: 50, intensity: 0.9, color: '#38bdf8' });
 
-    // 9. Letreros Informativos con Lore y Guía
+    // 5. Letreros Informativos con Lore y Guía
     const signposts = [
       {
         c: 5,
@@ -798,8 +844,8 @@ export class Tilemap {
         shortName: 'Templo de la Armadura',
         title: '🛡️ Templo de la Armadura del Código Binario',
         lines: [
-          '«TEMPLO OCCIDENTAL · Santuario del Blindaje Metálico.»',
-          '«Consagra aquí tu Armadura Binaria resolviendo los interruptores de paridad lógica antes de adentrarte en las mazmorras.»'
+          '«TEMPLO OCCIDENTAL DEL VALLE · Santuario del Blindaje Metálico.»',
+          '«Consagra aquí tu Armadura Binaria resolviendo los interruptores de paridad lógica antes de encarar los peligros del exterior.»'
         ]
       },
       {
@@ -808,48 +854,8 @@ export class Tilemap {
         shortName: 'Templo de la Espada',
         title: '⚔️ Templo de la Espada de la Recursividad',
         lines: [
-          '«TEMPLO SEPTENTRIONAL · Altar Sagrado de la Recursión.»',
-          '«(Requiere Armadura Binaria). Supera las runas del paso recursivo para empuñar tu primera espada.»'
-        ]
-      },
-      {
-        c: 5,
-        r: 19,
-        shortName: 'Cloacas del Legacy',
-        title: '☣️ Mazmorra 1 · Cloacas del Legacy',
-        lines: [
-          '«MAZMORRA SUBTERRÁNEA · Dominio del Garbage Collector Furioso.»',
-          '«Custodia el Núcleo de Memoria Verde y la habilidad del Dash Asíncrono [Shift].»'
-        ]
-      },
-      {
-        c: 27,
-        r: 5,
-        shortName: 'Minas de la Recursión',
-        title: '💎 Mazmorra 2 · Minas de la Recursión',
-        lines: [
-          '«MAZMORRA CAVERNOSA · Caverna del Gran Abismo (Custodia al Stack Overflow).»',
-          '«Requiere Dash para franquear los abismos. Custodia el Núcleo Cian y Silicio para forjar la Espada Nivel 2.»'
-        ]
-      },
-      {
-        c: 27,
-        r: 19,
-        shortName: 'La Forja del Prototipo',
-        title: '🔥 Mazmorra 3 · La Forja del Prototipo',
-        lines: [
-          '«MAZMORRA TÉRMICA · Galería de Calderas (Custodia al Microondas Prototipo).»',
-          '«Requiere Blindaje Térmico de Brom. Custodia el Núcleo Carmesí para la Espada Overclockeada.»'
-        ]
-      },
-      {
-        c: 16,
-        r: 17,
-        shortName: 'Puerta del Núcleo Cuántico',
-        title: '🌌 La Gran Puerta del Núcleo Cuántico · Antesala Final',
-        lines: [
-          '«PORTAL DE ACCESO A LA CIUDADELA CUÁNTICA DE MISTER AI ALEX.»',
-          '«Bloqueado por un cortafuegos infranqueable hasta colocar los 3 Núcleos de Mazmorra en sus zócalos.»'
+          '«TEMPLO SEPTENTRIONAL DEL VALLE · Altar Sagrado de la Recursión.»',
+          '«(Requiere Armadura Binaria). Supera las runas del paso recursivo para empuñar la Espada de la Recursividad.»'
         ]
       },
       {
@@ -858,13 +864,13 @@ export class Tilemap {
         shortName: 'Camino a Valleverde',
         title: '🪧 Portal Este · Regreso a Valleverde',
         lines: [
-          '«← OESTE: El Valle de los Templos Sagrados y Mazmorras.»',
+          '«← OESTE: Valle de la Consagración (Santuarios de la Armadura y la Espada).»',
           '«→ ESTE: Puente sobre el Río Alba hacia el Pueblo de Valleverde (Zona Pacífica y Tiendas).»'
         ]
       }
     ];
 
-    // 10. Árboles y rocas perimetrales formando los senderos del escenario
+    // Árboles y rocas perimetrales
     const placeTree = (c, r) => {
       if (r >= 1 && r < rows && c >= 0 && c < cols) {
         setDeco(c, r - 1, TILES.TREE_TOP, true);
@@ -903,7 +909,411 @@ export class Tilemap {
     }
 
     this.scenes.first_stage = {
-      title: 'Valle de los Templos · Tierras Sagradas',
+      title: 'Valle de la Consagración (Este)',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      signposts
+    };
+  }
+
+  /**
+   * ZONA NORTE: Las Cumbres de la Recursión (Picos de Silicio, Nieve y Minas de la Recursión).
+   */
+  _buildNorthPeaksScene() {
+    const cols = 36;
+    const rows = 24;
+    const ground = this._createGrid(cols, rows, TILES.COBBLE);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if ((r * 13 + c * 7) % 3 === 0) {
+          ground[r][c] = TILES.STONE_FLOOR;
+        }
+      }
+    }
+
+    const fillRect = (layer, c0, r0, w, h, val) => {
+      for (let r = r0; r < r0 + h; r++) {
+        for (let c = c0; c < c0 + w; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) {
+            layer[r][c] = val;
+          }
+        }
+      }
+    };
+
+    const setDeco = (c, r, tileId, solid = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (solid) collision[r][c] = 1;
+      }
+    };
+
+    // Camino central norte-sur desde el sur (Valleverde) hasta la entrada de las minas
+    fillRect(ground, 16, 2, 4, 22, TILES.PATH);
+    fillRect(ground, 14, 2, 8, 4, TILES.STONE_FLOOR);
+
+    // Entrada a las Minas de la Recursión (c = 17.5, r = 3.5)
+    setDeco(14, 2, TILES.WALL_INTERIOR, true);
+    setDeco(15, 2, TILES.WALL_INTERIOR, true);
+    setDeco(16, 2, TILES.WALL_INTERIOR, true);
+    setDeco(17, 2, TILES.DOOR, false);
+    setDeco(18, 2, TILES.DOOR, false);
+    setDeco(19, 2, TILES.WALL_INTERIOR, true);
+    setDeco(20, 2, TILES.WALL_INTERIOR, true);
+    setDeco(21, 2, TILES.WALL_INTERIOR, true);
+
+    setDeco(15, 3, TILES.LAMPPOST, true);
+    setDeco(20, 3, TILES.LAMPPOST, true);
+    setDeco(16, 4, TILES.SIGNPOST, true);
+
+    // Luces de cristal cian de las cumbres
+    lightSources.push(
+      { x: 17.5 * 16, y: 3.5 * 16, radius: 64, intensity: 1.0, color: '#38bdf8' },
+      { x: 15.5 * 16, y: 4.5 * 16, radius: 48, intensity: 0.9, color: '#06b6d4' },
+      { x: 20.5 * 16, y: 4.5 * 16, radius: 48, intensity: 0.9, color: '#06b6d4' },
+      { x: 17.5 * 16, y: 14 * 16, radius: 40, intensity: 0.8, color: '#38bdf8' }
+    );
+
+    // Monolitos de silicio en los flancos
+    setDeco(10, 6, TILES.ANVIL, true);
+    setDeco(25, 6, TILES.ANVIL, true);
+    setDeco(8, 12, TILES.CRATE, true);
+    setDeco(27, 12, TILES.CRATE, true);
+
+    // Árboles perimetrales / rocas montañosas
+    const placeTree = (c, r) => {
+      if (r >= 1 && r < rows && c >= 0 && c < cols) {
+        setDeco(c, r - 1, TILES.TREE_TOP, true);
+        setDeco(c, r, TILES.TREE_TRUNK, true);
+      }
+    };
+
+    for (let c = 0; c < cols; c += 2) {
+      placeTree(c, 1);
+      if (c < 15 || c > 20) {
+        placeTree(c + 1, 23);
+      }
+    }
+    for (let r = 2; r < rows - 1; r += 2) {
+      placeTree(1, r);
+      placeTree(2, r + 1);
+      placeTree(33, r);
+      placeTree(34, r + 1);
+    }
+
+    const signposts = [
+      {
+        c: 16,
+        r: 4,
+        shortName: 'Minas de la Recursión',
+        title: '💎 Minas de la Recursión · Guardián del Stack Overflow',
+        lines: [
+          '«MINAS DE SILICIO · Morada del temible Guardián del Stack Overflow.»',
+          '«Supera el gran abismo con el Dash [Shift] y derrota al guardián para conseguir el Núcleo Cian y fragmentos de Silicio.»'
+        ]
+      },
+      {
+        c: 19,
+        r: 21,
+        shortName: 'Camino a Valleverde',
+        title: '🪧 Sendero Sur · Retorno a Valleverde',
+        lines: [
+          '«↓ SUR: Sendero montañoso que desciende hacia la pacífica Aldea de Valleverde.»',
+          '«↑ NORTE: Ascenso a las Minas de la Recursión.»'
+        ]
+      }
+    ];
+
+    for (const sp of signposts) {
+      setDeco(sp.c, sp.r, TILES.SIGNPOST, true);
+    }
+
+    this.scenes.north_peaks = {
+      title: 'Las Cumbres de la Recursión (Norte)',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      signposts
+    };
+  }
+
+  /**
+   * ZONA SUR: Las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).
+   */
+  _buildSouthSwampScene() {
+    const cols = 36;
+    const rows = 24;
+    const ground = this._createGrid(cols, rows, TILES.DIRT);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if ((r * 11 + c * 17) % 4 === 0) {
+          ground[r][c] = TILES.COBBLE;
+        }
+      }
+    }
+
+    const fillRect = (layer, c0, r0, w, h, val) => {
+      for (let r = r0; r < r0 + h; r++) {
+        for (let c = c0; c < c0 + w; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) {
+            layer[r][c] = val;
+          }
+        }
+      }
+    };
+
+    const setDeco = (c, r, tileId, solid = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (solid) collision[r][c] = 1;
+      }
+    };
+
+    // Camino central norte-sur desde el norte (Valleverde) y ramales a Suroeste y Sureste
+    fillRect(ground, 16, 0, 4, 12, TILES.PATH);
+    fillRect(ground, 8, 11, 20, 2, TILES.PATH);
+    fillRect(ground, 7, 12, 3, 6, TILES.PATH);
+    fillRect(ground, 25, 12, 3, 6, TILES.PATH);
+
+    // Charcas de líquido tóxico
+    for (let r = 6; r <= 8; r++) {
+      for (let c = 5; c <= 7; c++) {
+        ground[r][c] = TILES.WATER_1;
+        collision[r][c] = 1;
+      }
+      for (let c = 27; c <= 29; c++) {
+        ground[r][c] = TILES.WATER_1;
+        collision[r][c] = 1;
+      }
+    }
+
+    // 1. Entrada Suroeste: Cloacas del Legacy (c = 8.5, r = 14.5 · Garbage Collector)
+    fillRect(ground, 6, 13, 5, 4, TILES.STONE_FLOOR);
+    setDeco(6, 14, TILES.WALL_INTERIOR, true);
+    setDeco(7, 14, TILES.WALL_INTERIOR, true);
+    setDeco(8, 14, TILES.DOOR, false);
+    setDeco(9, 14, TILES.WALL_INTERIOR, true);
+    setDeco(10, 14, TILES.WALL_INTERIOR, true);
+    setDeco(6, 15, TILES.LAMPPOST, true);
+    setDeco(10, 15, TILES.LAMPPOST, true);
+    setDeco(7, 16, TILES.SIGNPOST, true);
+
+    lightSources.push(
+      { x: 8.5 * 16, y: 14.5 * 16, radius: 56, intensity: 1.0, color: '#22c55e' },
+      { x: 6.5 * 16, y: 15.5 * 16, radius: 44, intensity: 0.85, color: '#22c55e' },
+      { x: 10.5 * 16, y: 15.5 * 16, radius: 44, intensity: 0.85, color: '#22c55e' }
+    );
+
+    // 2. Entrada Sureste: La Forja del Prototipo (c = 26.5, r = 14.5 · Microondas)
+    fillRect(ground, 24, 13, 5, 4, TILES.STONE_FLOOR);
+    setDeco(24, 14, TILES.WALL_INTERIOR, true);
+    setDeco(25, 14, TILES.WALL_INTERIOR, true);
+    setDeco(26, 14, TILES.DOOR, false);
+    setDeco(27, 14, TILES.WALL_INTERIOR, true);
+    setDeco(28, 14, TILES.WALL_INTERIOR, true);
+    setDeco(24, 15, TILES.LAMPPOST, true);
+    setDeco(28, 15, TILES.LAMPPOST, true);
+    setDeco(25, 16, TILES.SIGNPOST, true);
+
+    lightSources.push(
+      { x: 26.5 * 16, y: 14.5 * 16, radius: 56, intensity: 1.0, color: '#f97316' },
+      { x: 24.5 * 16, y: 15.5 * 16, radius: 44, intensity: 0.85, color: '#f97316' },
+      { x: 28.5 * 16, y: 15.5 * 16, radius: 44, intensity: 0.85, color: '#f97316' }
+    );
+
+    // Perímetro arbolado / ciénaga
+    const placeTree = (c, r) => {
+      if (r >= 1 && r < rows && c >= 0 && c < cols) {
+        setDeco(c, r - 1, TILES.TREE_TOP, true);
+        setDeco(c, r, TILES.TREE_TRUNK, true);
+      }
+    };
+
+    for (let c = 0; c < cols; c += 2) {
+      if (c < 15 || c > 20) {
+        placeTree(c, 1);
+      }
+      placeTree(c + 1, 23);
+    }
+    for (let r = 2; r < rows - 1; r += 2) {
+      placeTree(1, r);
+      placeTree(2, r + 1);
+      placeTree(33, r);
+      placeTree(34, r + 1);
+    }
+
+    const signposts = [
+      {
+        c: 7,
+        r: 16,
+        shortName: 'Cloacas del Legacy',
+        title: '☣️ Cloacas del Legacy · Garbage Collector',
+        lines: [
+          '«DESAGÜE SUBTERRÁNEO · Dominio del Garbage Collector Furioso.»',
+          '«Purga al monstruo de memoria para conseguir el Núcleo Verde y el Dash Asíncrono [Shift].»'
+        ]
+      },
+      {
+        c: 25,
+        r: 16,
+        shortName: 'La Forja del Prototipo',
+        title: '🔥 La Forja del Prototipo · Microondas',
+        lines: [
+          '«CALDERAS TÉRMICAS · Dominio del Microondas Prototipo V0.1 Alpha.»',
+          '«Requiere Blindaje Térmico de Brom. Custodia el Núcleo Carmesí para la Espada Overclockeada.»'
+        ]
+      },
+      {
+        c: 19,
+        r: 3,
+        shortName: 'Camino a Valleverde',
+        title: '🪧 Sendero Norte · Retorno a Valleverde',
+        lines: [
+          '«↑ NORTE: Sendero principal de regreso a la seguridad de la Aldea de Valleverde.»',
+          '«↙ SUROESTE: Cloacas del Legacy. ↘ SURESTE: La Forja del Prototipo.»'
+        ]
+      }
+    ];
+
+    for (const sp of signposts) {
+      setDeco(sp.c, sp.r, TILES.SIGNPOST, true);
+    }
+
+    this.scenes.south_swamp = {
+      title: 'Las Marismas del Hardware Legacy (Sur)',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      signposts
+    };
+  }
+
+  /**
+   * ZONA OESTE: El Páramo Corrupto de Mister AI Alex (Gran Puerta del Núcleo Cuántico).
+   */
+  _buildWestWastesScene() {
+    const cols = 36;
+    const rows = 24;
+    const ground = this._createGrid(cols, rows, TILES.STONE_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if ((r * 7 + c * 19) % 3 === 0) {
+          ground[r][c] = TILES.COBBLE;
+        }
+      }
+    }
+
+    const fillRect = (layer, c0, r0, w, h, val) => {
+      for (let r = r0; r < r0 + h; r++) {
+        for (let c = c0; c < c0 + w; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) {
+            layer[r][c] = val;
+          }
+        }
+      }
+    };
+
+    const setDeco = (c, r, tileId, solid = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (solid) collision[r][c] = 1;
+      }
+    };
+
+    // Camino Este-Oeste desde el Este (Valleverde) hasta la Gran Puerta del Núcleo Cuántico
+    fillRect(ground, 8, 12, 28, 2, TILES.PATH);
+    fillRect(ground, 6, 10, 6, 6, TILES.STONE_FLOOR);
+
+    // Gran Puerta del Núcleo Cuántico (c = 8.5, r = 12.5)
+    setDeco(6, 11, TILES.WALL_INTERIOR, true);
+    setDeco(7, 11, TILES.WALL_INTERIOR, true);
+    setDeco(8, 11, TILES.PORTAL_GATE_OPEN, false);
+    setDeco(9, 11, TILES.PORTAL_GATE_OPEN, false);
+    setDeco(10, 11, TILES.WALL_INTERIOR, true);
+    setDeco(11, 11, TILES.WALL_INTERIOR, true);
+
+    setDeco(6, 12, TILES.LAMPPOST, true);
+    setDeco(11, 12, TILES.LAMPPOST, true);
+    setDeco(8, 14, TILES.SIGNPOST, true);
+
+    lightSources.push(
+      { x: 8.5 * 16, y: 12.5 * 16, radius: 70, intensity: 1.0, color: '#a855f7' },
+      { x: 6.5 * 16, y: 12.5 * 16, radius: 48, intensity: 0.9, color: '#ef4444' },
+      { x: 11.5 * 16, y: 12.5 * 16, radius: 48, intensity: 0.9, color: '#ef4444' }
+    );
+
+    // Columnas y escombros del páramo
+    setDeco(16, 8, TILES.ANVIL, true);
+    setDeco(22, 16, TILES.ANVIL, true);
+    setDeco(18, 16, TILES.CRATE, true);
+    setDeco(24, 8, TILES.CRATE, true);
+
+    // Árboles perimetrales oscuros
+    const placeTree = (c, r) => {
+      if (r >= 1 && r < rows && c >= 0 && c < cols) {
+        setDeco(c, r - 1, TILES.TREE_TOP, true);
+        setDeco(c, r, TILES.TREE_TRUNK, true);
+      }
+    };
+
+    for (let c = 0; c < cols; c += 2) {
+      placeTree(c, 1);
+      placeTree(c + 1, 23);
+    }
+    for (let r = 2; r < rows - 1; r += 2) {
+      placeTree(1, r);
+      placeTree(2, r + 1);
+      if (r < 11 || r > 14) {
+        placeTree(34, r);
+        placeTree(35, r + 1);
+      }
+    }
+
+    const signposts = [
+      {
+        c: 8,
+        r: 14,
+        shortName: 'Gran Puerta del Núcleo',
+        title: '🌌 Gran Puerta del Núcleo Cuántico · Antesala a la Ciudadela',
+        lines: [
+          '«PORTAL DE ACCESO A LA CIUDADELA CUÁNTICA DE MISTER AI ALEX.»',
+          '«Solo quien coloque los 3 Núcleos de Mazmorra (Verde, Cian y Carmesí) franqueará el cortafuegos hacia El Gran Ojal.»'
+        ]
+      },
+      {
+        c: 32,
+        r: 11,
+        shortName: 'Camino a Valleverde',
+        title: '🪧 Frontera Este · Retorno a Valleverde',
+        lines: [
+          '«→ ESTE: Camino protegido hacia la Aldea de Valleverde.»',
+          '«← OESTE: La Gran Puerta del Núcleo Cuántico y la Ciudadela Final de AI Alex.»'
+        ]
+      }
+    ];
+
+    for (const sp of signposts) {
+      setDeco(sp.c, sp.r, TILES.SIGNPOST, true);
+    }
+
+    this.scenes.west_wastes = {
+      title: 'Páramo Corrupto de Mister AI Alex (Oeste)',
       cols,
       rows,
       layers: { ground, decoration, collision },
@@ -981,8 +1391,8 @@ export class Tilemap {
       collision[r][27] = 1;
     }
 
-    // Camino Norte-Sur y ramales a puertas de las 5 viviendas
-    fillRect(ground, 17, 4, 2, 18, TILES.PATH);
+    // Camino Norte-Sur (extendiéndose de borde a borde para conectar Cumbres Norte y Marismas Sur)
+    fillRect(ground, 17, 0, 2, 24, TILES.PATH);
     fillRect(ground, 13, 9, 9, 7, TILES.COBBLE);
     fillRect(ground, 8, 7, 2, 5, TILES.PATH);
     fillRect(ground, 15, 7, 2, 2, TILES.PATH);
@@ -1141,21 +1551,21 @@ export class Tilemap {
       {
         c: 4,
         r: 11,
-        shortName: 'Camino Oeste',
-        title: '🪧 Camino Oeste · Hacia las Ruinas del Despertar',
+        shortName: 'Frontera Oeste',
+        title: '🪧 Frontera Oeste · Páramo de Mister AI Alex',
         lines: [
-          '«← OESTE: Camino a las Ruinas del Despertar (Escenario 1) y el Santuario Sur.»',
-          '«¡PRECAUCIÓN! Más allá de los límites protegidos de Valleverde acechan bugs, sombras y esbirros de AI Alex. Asegúrate de estar preparado antes de partir.»'
+          '«← OESTE: Camino al Páramo Corrupto de Mister AI Alex y la Gran Puerta del Núcleo Cuántico.»',
+          '«¡PRECAUCIÓN! Más allá de los límites protegidos de Valleverde acechan drones y anomalías corruptas. Requieres equipo completo.»'
         ]
       },
       {
         c: 26,
         r: 11,
-        shortName: 'Camino Este (Puente)',
+        shortName: 'Puente Este',
         title: '🪧 Camino Este · Puente sobre el Río Alba',
         lines: [
-          '«→ ESTE: Puente de Valleverde sobre el Río Alba.»',
-          '«Conduce al Valle de los Templos Sagrados: donde se ocultan los santuarios de la Armadura Binaria, la Espada de la Recursividad y todas las Mazmorras ancestrales.»',
+          '«→ ESTE: Puente hacia el Valle de la Consagración.»',
+          '«Conduce a los Santuarios Sagrados de la Armadura Binaria y la Espada de la Recursividad.»',
           '«(Nota del Cronista: Valleverde es una aldea pacífica de descanso. No hay monstruos ni peligros dentro del pueblo).»'
         ]
       },
@@ -1177,22 +1587,20 @@ export class Tilemap {
         c: 16,
         r: 7,
         shortName: 'Cruce Norte',
-        title: '🪧 Cruce Norte de Valleverde',
+        title: '🪧 Cruce Norte de Valleverde · Cumbres de la Recursión',
         lines: [
-          '«← Casa del Sabio Aurelio (Cronista y Archivero).»',
-          '«↑ Observatorio de Orion (Astrólogo IA).»',
-          '«→ Herrería de Brom (Maestro Forjador).»'
+          '«↑ NORTE: Ascenso a las Cumbres de la Recursión (Picos de Silicio y Minas de la Recursión).»',
+          '«← Casa del Sabio Aurelio. → Herrería de Brom.»'
         ]
       },
       {
         c: 18,
         r: 17,
         shortName: 'Cruce Sur',
-        title: '🪧 Cruce Sur de Valleverde',
+        title: '🪧 Cruce Sur de Valleverde · Marismas del Hardware Legacy',
         lines: [
-          '«← Cabaña de Lyra (Alquimista y Herbolaria).»',
-          '«→ Cuartel de la Guardia del Binario y Calabozo Municipal.»',
-          '«↓ Sur: Jardines de la Aldea y Prado de Flores.»'
+          '«↓ SUR: Descenso a las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).»',
+          '«← Cabaña de Lyra. → Cuartel de Kael.»'
         ]
       },
       {
@@ -1931,9 +2339,9 @@ export class Tilemap {
       exitDoor: {
         worldX: 11.5 * 16,
         worldY: 16.5 * 16,
-        returnX: 6.5 * 16,
-        returnY: 19 * 16,
-        returnScene: 'first_stage'
+        returnX: 8.5 * 16,
+        returnY: 16.5 * 16,
+        returnScene: 'south_swamp'
       }
     };
   }
@@ -2173,9 +2581,9 @@ export class Tilemap {
       exitDoor: {
         worldX: 11.5 * 16,
         worldY: 16.5 * 16,
-        returnX: 28.5 * 16,
+        returnX: 17.5 * 16,
         returnY: 5.5 * 16,
-        returnScene: 'first_stage'
+        returnScene: 'north_peaks'
       }
     };
   }
@@ -2324,9 +2732,9 @@ export class Tilemap {
       exitDoor: {
         worldX: 11.5 * 16,
         worldY: 16.5 * 16,
-        returnX: 28.5 * 16,
-        returnY: 19 * 16,
-        returnScene: 'first_stage'
+        returnX: 26.5 * 16,
+        returnY: 16.5 * 16,
+        returnScene: 'south_swamp'
       }
     };
   }
@@ -2560,9 +2968,9 @@ export class Tilemap {
       exitDoor: {
         worldX: 11.5 * 16,
         worldY: 16.5 * 16,
-        returnX: 17.5 * 16,
-        returnY: 17.5 * 16,
-        returnScene: 'first_stage'
+        returnX: 8.5 * 16,
+        returnY: 14.5 * 16,
+        returnScene: 'west_wastes'
       }
     };
   }
@@ -2828,8 +3236,6 @@ export class Tilemap {
         }
       }
     }
-
-    this.renderBossAndDungeonIndicators(ctx, camera, enemies, player);
   }
 
   /**
@@ -2848,177 +3254,11 @@ export class Tilemap {
   }
 
   /**
-   * Renderiza la trampilla pixel-art de la Alcantarilla en Valleverde y las indicaciones
-   * flotantes de todos los Bosses y Templos principales para guiar visualmente al jugador.
+   * Las indicaciones flotantes intrusivas se han eliminado de la pantalla principal
+   * para preservar la inmersión visual. Toda la orientación cartográfica reside en el Mapa [M].
    */
   renderBossAndDungeonIndicators(ctx, camera, enemies = [], player = null) {
-    const camX = camera.renderX;
-    const camY = camera.renderY;
-    const t = performance.now() * 0.003;
-
-    const isBossDead = (bossId) => {
-      if (!Array.isArray(enemies)) return false;
-      const b = enemies.find((e) => e.id === bossId);
-      return Boolean(b && b.dead);
-    };
-
-    const drawFloatingMarker = (worldX, worldY, label, subLabel, borderColor, textColor, pulseArrow = true) => {
-      const sx = Math.round(worldX - camX);
-      const sy = Math.round(worldY - camY + Math.sin(t * 2.2) * 1.8);
-      if (sx < -90 || sx > camera.viewportWidth + 90 || sy < -40 || sy > camera.viewportHeight + 40) {
-        return;
-      }
-      SpeechBubble.renderFloatingBadge(ctx, sx, sy, label, subLabel, borderColor, textColor, pulseArrow);
-    };
-
-    if (this.currentSceneId === 'overworld') {
-      // 1. DIBUJAR ALCANTARILLA / TRAMPILLA SUBTERRÁNEA EN (12..13, 20)
-      const gx = Math.round(12 * this.tileSize - camX);
-      const gy = Math.round(20 * this.tileSize - camY);
-      const garbageCollectorDead = isBossDead('boss_garbage_collector');
-
-      ctx.save();
-      // Brocal de piedra oscura (24x16 px centrado en 12.5, 20.5)
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(gx + 4, gy + 1, 24, 15);
-      ctx.strokeStyle = '#64748b';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(gx + 4.5, gy + 1.5, 23, 14);
-
-      // Foso abisal interior
-      ctx.fillStyle = '#020617';
-      ctx.fillRect(gx + 6, gy + 3, 20, 11);
-
-      // Escalera metálica descendente en el lado derecho de la alcantarilla
-      ctx.fillStyle = '#b45309';
-      ctx.fillRect(gx + 18, gy + 3, 1, 11);
-      ctx.fillRect(gx + 23, gy + 3, 1, 11);
-      ctx.fillStyle = '#f59e0b';
-      for (let ry = 5; ry <= 12; ry += 3) {
-        ctx.fillRect(gx + 19, gy + ry, 4, 1);
-      }
-
-      // Barrotes de hierro forjado en la mitad izquierda
-      ctx.fillStyle = '#475569';
-      for (let bx = 8; bx <= 15; bx += 3) {
-        ctx.fillRect(gx + bx, gy + 3, 1, 11);
-      }
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillRect(gx + 6, gy + 8, 11, 1);
-
-      // Vapores verdes de Memory Leak emanando si el Garbage Collector sigue activo
-      if (!garbageCollectorDead) {
-        const fumeAlpha = 0.35 + Math.sin(t * 2.5) * 0.2;
-        ctx.fillStyle = `rgba(34, 197, 94, ${fumeAlpha.toFixed(2)})`;
-        const fy1 = Math.round((t * 8) % 10);
-        const fy2 = Math.round(((t * 8) + 5) % 10);
-        ctx.fillRect(gx + 9, gy + 8 - fy1, 3, 3);
-        ctx.fillRect(gx + 15, gy + 9 - fy2, 2, 2);
-      }
-      ctx.restore();
-
-      // Indicador flotante sobre la Alcantarilla (Garbage Collector)
-      drawFloatingMarker(
-        12.5 * this.tileSize,
-        19.6 * this.tileSize,
-        garbageCollectorDead ? '✓ ALCANTARILLA (GARBAGE COLLECTOR PURGADO)' : '💀 ALCANTARILLAS: GARBAGE COLLECTOR [E]',
-        garbageCollectorDead ? 'Habilidad: Dash Asíncrono' : 'El Garbage Collector Furioso',
-        garbageCollectorDead ? '#22c55e' : '#ef4444',
-        garbageCollectorDead ? '#86efac' : '#fca5a5'
-      );
-
-      // Indicador sobre La Forja del Prototipo (Calderas Noreste)
-      const microwaveDead = isBossDead('boss_prototype_microwave');
-      drawFloatingMarker(
-        34.5 * this.tileSize,
-        4.4 * this.tileSize,
-        microwaveDead ? '✓ LA FORJA DEL PROTOTIPO (PURGADA)' : '🔥 LA FORJA DEL PROTOTIPO (NIVEL 1) [E]',
-        'Galería de Calderas Térmicas',
-        microwaveDead ? '#22c55e' : '#f97316',
-        microwaveDead ? '#86efac' : '#fdba74'
-      );
-
-      // Portal del Este hacia el Santuario de las Tierras Corruptas (Templos)
-      const hasArmor = Boolean(player && player.hasArmor);
-      const hasSword = Boolean(player && player.hasSword);
-      const bothEquipped = hasArmor && hasSword;
-      drawFloatingMarker(
-        34.5 * this.tileSize,
-        11.5 * this.tileSize,
-        bothEquipped ? '✓ PORTAL A TIERRAS CORRUPTAS' : '⚡ PORTAL AL SANTUARIO CORRUPTO [E]',
-        'Pruebas Sagradas: Armadura y Espada',
-        bothEquipped ? '#22c55e' : '#a855f7',
-        bothEquipped ? '#86efac' : '#d8b4fe'
-      );
-
-      // Gran Puerta del Núcleo Cuántico (Sureste)
-      const gatesOpen = player?.gatesUnlocked === 3;
-      drawFloatingMarker(
-        34.5 * this.tileSize,
-        18.4 * this.tileSize,
-        gatesOpen ? '👑 PUERTA DEL NÚCLEO (3/3 NÚCLEOS) [E]' : '🔒 GRAN PUERTA DEL NÚCLEO CUÁNTICO [E]',
-        gatesOpen ? 'Acceso libre a la Ciudadela de AI Alex' : 'Requiere los 3 Núcleos de Mazmorra',
-        gatesOpen ? '#22c55e' : '#ef4444',
-        gatesOpen ? '#86efac' : '#fca5a5'
-      );
-    } else if (this.currentSceneId === 'first_stage') {
-      const hasArmor = Boolean(player && player.hasArmor);
-      const hasSword = Boolean(player && player.hasSword);
-      const stackOverflowDead = isBossDead('boss_stack_overflow');
-
-      // 1. Templo de la Armadura Binaria (Oeste)
-      drawFloatingMarker(
-        6.5 * this.tileSize,
-        6.3 * this.tileSize,
-        hasArmor ? '✓ TEMPLO ARMADURA BINARIA (SUPERADO)' : '🛡️ TEMPLO DE LA ARMADURA BINARIA [E]',
-        hasArmor ? 'Armadura Binaria equipada' : 'Prueba de Paridad (Entrada Libre)',
-        hasArmor ? '#22c55e' : '#38bdf8',
-        hasArmor ? '#86efac' : '#7dd3fc'
-      );
-
-      // 2. Templo de la Espada de la Recursividad (Norte)
-      drawFloatingMarker(
-        17.5 * this.tileSize,
-        1.6 * this.tileSize,
-        stackOverflowDead && hasSword ? '✓ TEMPLO ESPADA (DESPEJADO)' : '⚔️ TEMPLO DE LA ESPADA DE LA RECURSIVIDAD [E]',
-        hasSword ? 'Espada de la Recursividad empuñada' : (hasArmor ? '¡Acceso Desbloqueado! Resuelve la Recursión' : '🔒 Requiere Armadura Binaria previa'),
-        hasSword ? '#22c55e' : (hasArmor ? '#f59e0b' : '#ef4444'),
-        hasSword ? '#86efac' : (hasArmor ? '#fde047' : '#fca5a5')
-      );
-
-      // 3. Portal Este de retorno a Valleverde
-      drawFloatingMarker(
-        33 * this.tileSize,
-        11.5 * this.tileSize,
-        '◀ REGRESAR A VALLEVERDE [E]',
-        'Villaverde (Zona Segura)',
-        '#38bdf8',
-        '#bae6fd'
-      );
-    } else if (this.currentSceneId === 'sword_temple') {
-      const stackOverflowDead = isBossDead('boss_stack_overflow');
-      if (!stackOverflowDead) {
-        drawFloatingMarker(
-          11.5 * this.tileSize,
-          1.3 * this.tileSize,
-          this.swordPuzzle?.portalOpen ? '💀 GUARDIÁN DEL STACK OVERFLOW (ACTIVO)' : '🔒 PORTAL SELLADO DEL ABISMO',
-          this.swordPuzzle?.portalOpen ? '¡Derrota al jefe en la arena!' : 'Descifra el paso recursivo en las runas',
-          '#a855f7',
-          '#e9d5ff'
-        );
-      }
-    } else if (this.currentSceneId === 'ai_fortress_gate') {
-      const microwaveDead = isBossDead('boss_prototype_microwave');
-      const finalDead = isBossDead('boss_final_ai_alex');
-      drawFloatingMarker(
-        11.5 * this.tileSize,
-        1.3 * this.tileSize,
-        finalDead ? '✓ CIUDADELA DE AI ALEX LIBERADA' : '👑 BATALLA FINAL: CIUDADELA DE AI ALEX [E]',
-        microwaveDead ? 'Cruza el portal norte hacia El Gran Ojal' : '¡Cuidado: Microondas Prototipo en sala!',
-        '#ef4444',
-        '#fde047'
-      );
-    }
+    // No-op: textos flotantes eliminados por diseño limpio y atmosférico.
   }
 
   // =========================================================================

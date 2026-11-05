@@ -38,7 +38,10 @@ const BLOCK_MESSAGES = {
 };
 
 const DESTINATION_TITLES = {
-  first_stage: 'Tierras Corruptas · Santuario de las Pruebas Oscuras',
+  first_stage: 'Valle de la Consagración (Santuarios Sagrados del Este)',
+  north_peaks: 'Las Cumbres de la Recursión (Picos de Silicio)',
+  south_swamp: 'Las Marismas del Hardware Legacy (Ciénaga Tóxica)',
+  west_wastes: 'Páramo Corrupto de Mister AI Alex',
   armor_temple: 'Templo de la Armadura del Código Binario',
   sword_temple: 'Templo de la Espada de la Recursividad',
   sewers_dungeon: 'Cloacas del Legacy · Fosa de la Memoria (Garbage Collector)',
@@ -63,7 +66,10 @@ export function getDoorBlock(targetScene, player) {
   const fullyEquipped = player.hasArmor && player.hasSword;
   switch (targetScene) {
     case 'first_stage':
-      // El Santuario de las Tierras Corruptas está abierto para forjar y superar las pruebas
+    case 'north_peaks':
+    case 'south_swamp':
+    case 'west_wastes':
+      // Las regiones exteriores cardinales permiten libre exploración
       return null;
     case 'armor_temple':
       // La prueba de la armadura es el primer paso libre

@@ -45,6 +45,7 @@ import { QuestLog } from '../src/core/QuestLog.js';
 import { QuestLogView } from '../src/ui/QuestLogView.js';
 import { CharacterStats } from '../src/ui/CharacterStats.js';
 import { InputHandler } from '../src/core/InputHandler.js';
+import { WorldMap } from '../src/ui/WorldMap.js';
 
 let passed = 0;
 const failures = [];
@@ -1317,11 +1318,30 @@ test('Robotización Gradual Lenta y Zona de Templos Sagrados Desacoplada de Vall
   // 2. Transición entre Valleverde y Tierras Corruptas
   const tm = new Tilemap(null, 16);
   tm.loadScene('overworld');
-  // Puente este (col 34.5, row 12.5) -> first_stage
-  const fakePlayerAtBridge = { centerX: 34.5 * 16, centerY: 12.5 * 16 };
-  const bridgeDoor = tm.findNearbyDoor(fakePlayerAtBridge);
-  assert.ok(bridgeDoor, 'Debe haber puerta/portal en el puente este de Valleverde');
-  assert.equal(bridgeDoor.targetScene, 'first_stage', 'El portal este debe conducir a first_stage (Tierras Corruptas)');
+  // 2. Transiciones cardinales desde Valleverde (Centro del mundo)
+  // Este -> first_stage (Valle de la Consagración / Templos del Héroe)
+  const fakePlayerAtEast = { centerX: 33 * 16, centerY: 12.5 * 16 };
+  const eastDoor = tm.findNearbyDoor(fakePlayerAtEast);
+  assert.ok(eastDoor, 'Debe haber puerta/portal en el este de Valleverde');
+  assert.equal(eastDoor.targetScene, 'first_stage', 'El portal este debe conducir a first_stage');
+
+  // Oeste -> west_wastes (Páramo de AI Alex)
+  const fakePlayerAtWest = { centerX: 0.5 * 16, centerY: 12.5 * 16 };
+  const westDoor = tm.findNearbyDoor(fakePlayerAtWest);
+  assert.ok(westDoor, 'Debe haber camino en el oeste de Valleverde');
+  assert.equal(westDoor.targetScene, 'west_wastes', 'La salida oeste debe conducir a west_wastes');
+
+  // Norte -> north_peaks (Cumbres de la Recursión)
+  const fakePlayerAtNorth = { centerX: 17.5 * 16, centerY: 0.5 * 16 };
+  const northDoor = tm.findNearbyDoor(fakePlayerAtNorth);
+  assert.ok(northDoor, 'Debe haber camino en el norte de Valleverde');
+  assert.equal(northDoor.targetScene, 'north_peaks', 'La salida norte debe conducir a north_peaks');
+
+  // Sur -> south_swamp (Marismas del Hardware Legacy)
+  const fakePlayerAtSouth = { centerX: 17.5 * 16, centerY: 23 * 16 };
+  const southDoor = tm.findNearbyDoor(fakePlayerAtSouth);
+  assert.ok(southDoor, 'Debe haber camino en el sur de Valleverde');
+  assert.equal(southDoor.targetScene, 'south_swamp', 'La salida sur debe conducir a south_swamp');
 
   // No debe haber puertas directas a templos o mazmorras en overworld (Valleverde es solo pueblo pacífico)
   for (let r = 0; r < tm.rows; r++) {
@@ -1338,30 +1358,37 @@ test('Robotización Gradual Lenta y Zona de Templos Sagrados Desacoplada de Vall
     }
   }
 
-  // 3. En first_stage (Valle de los Templos), todos los templos y mazmorras están presentes
+  // 3. Distribución Cardinal de Templos y Mazmorras
+  // ESTE: first_stage alberga los santuarios de equipo del héroe (Armadura y Espada)
   tm.loadScene('first_stage');
   const doorArmor = tm.findNearbyDoor({ centerX: 6.5 * 16, centerY: 8.5 * 16 });
-  assert.ok(doorArmor, 'Templo de la Armadura presente');
+  assert.ok(doorArmor, 'Templo de la Armadura presente en Valle Este');
   assert.equal(doorArmor.targetScene, 'armor_temple');
 
   const doorSword = tm.findNearbyDoor({ centerX: 17.5 * 16, centerY: 2.5 * 16 });
-  assert.ok(doorSword, 'Templo de la Espada presente');
+  assert.ok(doorSword, 'Templo de la Espada presente en Valle Este');
   assert.equal(doorSword.targetScene, 'sword_temple');
 
-  const doorSewers = tm.findNearbyDoor({ centerX: 6.5 * 16, centerY: 18.5 * 16 });
-  assert.ok(doorSewers, 'Mazmorra de Cloacas presente en Valle de los Templos');
-  assert.equal(doorSewers.targetScene, 'sewers_entry');
-
-  const doorMines = tm.findNearbyDoor({ centerX: 28.5 * 16, centerY: 4.5 * 16 });
-  assert.ok(doorMines, 'Mazmorra de Minas presente en Valle de los Templos');
+  // NORTE: north_peaks alberga las Minas de la Recursión (Stack Overflow)
+  tm.loadScene('north_peaks');
+  const doorMines = tm.findNearbyDoor({ centerX: 17.5 * 16, centerY: 3.5 * 16 });
+  assert.ok(doorMines, 'Minas de la Recursión presentes en Cumbres Norte');
   assert.equal(doorMines.targetScene, 'mines_entry');
 
-  const doorForge = tm.findNearbyDoor({ centerX: 28.5 * 16, centerY: 18.5 * 16 });
-  assert.ok(doorForge, 'Mazmorra de Forja presente en Valle de los Templos');
+  // SUR: south_swamp alberga las Cloacas (Garbage Collector) y La Forja (Microondas)
+  tm.loadScene('south_swamp');
+  const doorSewers = tm.findNearbyDoor({ centerX: 8.5 * 16, centerY: 14.5 * 16 });
+  assert.ok(doorSewers, 'Cloacas del Legacy presentes en Marismas Sur');
+  assert.equal(doorSewers.targetScene, 'sewers_entry');
+
+  const doorForge = tm.findNearbyDoor({ centerX: 26.5 * 16, centerY: 14.5 * 16 });
+  assert.ok(doorForge, 'La Forja del Prototipo presente en Marismas Sur');
   assert.equal(doorForge.targetScene, 'forge_entry');
 
-  const doorQuantum = tm.findNearbyDoor({ centerX: 17.5 * 16, centerY: 18.5 * 16 });
-  assert.ok(doorQuantum, 'Puerta del Núcleo presente en Valle de los Templos');
+  // OESTE: west_wastes alberga la Gran Puerta del Núcleo Cuántico
+  tm.loadScene('west_wastes');
+  const doorQuantum = tm.findNearbyDoor({ centerX: 8.5 * 16, centerY: 12.5 * 16 });
+  assert.ok(doorQuantum, 'Gran Puerta del Núcleo presente en Páramo Oeste');
   assert.equal(doorQuantum.targetScene, 'quantum_gate');
 
   // Acceso a sword_temple según armadura
@@ -1400,6 +1427,47 @@ test('Mapeo de Ratón para Ataque (Clic Izquierdo) y Ataque Cargado', () => {
   input._onKeyDown({ code: 'KeyF', preventDefault() {} });
   assert.equal(input.consumeAttack(), true);
   assert.equal(input.lastAttackSource, 'keyboard');
+});
+
+test('Cartografía Dinámica y Progresión estilo Zelda (WorldMap.js) y Eliminación de Badges Flotantes', () => {
+  const map = new WorldMap();
+
+  // 1. Resolución de zonas cardinales
+  assert.equal(map._resolvePlayerLocation('overworld').zone, 'center');
+  assert.equal(map._resolvePlayerLocation('player_house').zone, 'center');
+  assert.equal(map._resolvePlayerLocation('first_stage').zone, 'east');
+  assert.equal(map._resolvePlayerLocation('armor_temple').zone, 'east');
+  assert.equal(map._resolvePlayerLocation('sword_temple').zone, 'east');
+  assert.equal(map._resolvePlayerLocation('north_peaks').zone, 'north');
+  assert.equal(map._resolvePlayerLocation('mines_entry').zone, 'north');
+  assert.equal(map._resolvePlayerLocation('south_swamp').zone, 'south');
+  assert.equal(map._resolvePlayerLocation('sewers_dungeon').zone, 'south');
+  assert.equal(map._resolvePlayerLocation('forge_entry').zone, 'south');
+  assert.equal(map._resolvePlayerLocation('west_wastes').zone, 'west');
+  assert.equal(map._resolvePlayerLocation('quantum_gate').zone, 'west');
+  assert.equal(map._resolvePlayerLocation('ai_citadel').zone, 'west');
+
+  // 2. Progreso de Núcleos y Reliquias
+  const dummyPlayer = {
+    hasArmor: true,
+    hasSword: true,
+    swordLevel: 2,
+    armorLevel: 1,
+    dungeonCores: { gc: true, stack: true, microwave: false }
+  };
+  const status = map._computeProgressStatus(dummyPlayer, []);
+  assert.equal(status.coresCount, 2);
+  assert.equal(status.gcDefeated, true);
+  assert.equal(status.stackDefeated, true);
+  assert.equal(status.microwaveDefeated, false);
+  assert.equal(status.swordLevel, 2);
+  assert.equal(status.armorLevel, 1);
+
+  // 3. Tilemap no produce textos flotantes invasivos en overhead
+  const tm = new Tilemap(null, 16);
+  assert.doesNotThrow(() => {
+    tm.renderBossAndDungeonIndicators({}, { renderX: 0, renderY: 0, viewportWidth: 320, viewportHeight: 180 }, [], dummyPlayer);
+  }, 'renderBossAndDungeonIndicators debe ejecutarse de forma limpia y neutralizada');
 });
 
 await Promise.all(asyncQueue);
