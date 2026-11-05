@@ -64,11 +64,16 @@ export class NPC extends Entity {
     this.isSleeping = false;
     this.jobAnimTimer = Math.random() * 5.0;
 
-    // Bocadillos ambientales discretos
+    // Bocadillos ambientales discretos con anclaje al punto de emisión en el mundo
     this.ambientCooldown = 4 + Math.random() * 9;
     this.ambientBubbleText = '';
     this.ambientBubbleTimer = 0;
+    this.ambientBubbleWorldX = null;
+    this.ambientBubbleWorldY = null;
     this.promptBobTimer = Math.random() * 6;
+
+    // Cooldown para evitar bloqueos permanentes si el jugador permanece cerca
+    this.politePauseCooldown = 0;
   }
 
   canInteract(player) {
@@ -102,12 +107,18 @@ export class NPC extends Entity {
     if (text) {
       this.ambientBubbleText = text;
       this.ambientBubbleTimer = 3.0;
+      this.ambientBubbleWorldX = this.centerX;
+      this.ambientBubbleWorldY = this.y;
     }
   }
 
   update(dt, tilemap, obstacles, isTalking = false, player = null) {
     this.promptBobTimer += dt * 4.5;
     this.jobAnimTimer += dt;
+
+    if (this.politePauseCooldown > 0) {
+      this.politePauseCooldown = Math.max(0, this.politePauseCooldown - dt);
+    }
 
     if (this.ambientBubbleTimer > 0) {
       this.ambientBubbleTimer = Math.max(0, this.ambientBubbleTimer - dt);
@@ -213,12 +224,16 @@ export class NPC extends Entity {
       const ny = dy / dist;
 
       // Si el jugador se interpone a muy corta distancia en su camino, el NPC hace una breve pausa cortés
+      // pero no se queda congelado infinitamente si el jugador permanece ahí.
       if (player && this.distanceTo(player) <= 18) {
-        this.isMoving = false;
-        this.faceEntity(player);
-        this.waitTimer = 1.1 + Math.random() * 0.9;
-        super.update(dt);
-        return;
+        if (this.politePauseCooldown <= 0) {
+          this.isMoving = false;
+          this.faceEntity(player);
+          this.waitTimer = 0.8 + Math.random() * 0.4;
+          this.politePauseCooldown = 3.2;
+          super.update(dt);
+          return;
+        }
       }
 
       const stepX = nx * this.speed * dt;
@@ -375,12 +390,15 @@ export class NPC extends Entity {
    */
   renderSpeechBubble(ctx, camera) {
     if (this.isSleeping) return;
-    const sx = Math.round(this.x - camera.renderX);
-    const sy = Math.round(this.y - camera.renderY);
-
     if (this.ambientBubbleTimer > 0 && this.ambientBubbleText) {
+      const worldX = typeof this.ambientBubbleWorldX === 'number' ? this.ambientBubbleWorldX : this.centerX;
+      const worldY = typeof this.ambientBubbleWorldY === 'number' ? this.ambientBubbleWorldY : this.y;
+      const sx = Math.round(worldX - camera.renderX);
+      const sy = Math.round(worldY - camera.renderY);
       renderNPCBarkBubble(ctx, sx, sy, this.ambientBubbleText, this.ambientBubbleTimer, 3.0);
     } else if (this.currentActivityIcon && !this.isMoving) {
+      const sx = Math.round(this.centerX - camera.renderX);
+      const sy = Math.round(this.y - camera.renderY);
       const bob = Math.round(Math.sin(this.promptBobTimer) * 1.2);
       renderActivityIcon(ctx, sx, sy, this.currentActivityIcon, bob);
     }

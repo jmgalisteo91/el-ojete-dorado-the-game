@@ -31,6 +31,7 @@ import handleLeaderboard from '../api/leaderboard.js';
 import handleSave from '../api/save.js';
 import { Tilemap } from '../src/world/Tilemap.js';
 import { DialogueBox } from '../src/ui/DialogueBox.js';
+import { CollisionSystem } from '../src/physics/CollisionSystem.js';
 import { NPC, getBromForgeChoices } from '../src/entities/NPC.js';
 import { TILES } from '../src/graphics/SpriteSheetGenerator.js';
 import { DayNightCycle } from '../src/world/DayNightCycle.js';
@@ -434,6 +435,116 @@ test('renderActionPromptBubble es resiliente si action.target es undefined (pane
     SpeechBubble.renderActionPromptBubble(ctx, monolithAction, camera, 0, player);
   });
   assert.ok(ctx.calls.some((c) => c.includes('fillText(Monolito')));
+});
+
+test('renderNPCBarkBubble se descarta fuera de pantalla y no persigue al jugador forzando (4, 12)', () => {
+  const ctxFar = makeMockCtx();
+  SpeechBubble.renderNPCBarkBubble(ctxFar, -200, 90, 'Texto lejano fuera de vista', 2.0, 3.0);
+  assert.equal(ctxFar.calls.length, 0, 'No debe renderizar nada si sx < -140');
+
+  const ctxNear = makeMockCtx();
+  SpeechBubble.renderNPCBarkBubble(ctxNear, -60, 90, 'Texto que no debe clavarse en x=4', 2.0, 3.0);
+  assert.ok(ctxNear.calls.length > 0);
+  // Verificamos que el cuerpo no esté forzado artificialmente a la coordenada x=4 o x=2
+  const fillCalls = ctxNear.calls.filter((c) => c.startsWith('fillText'));
+  assert.ok(fillCalls.length > 0);
+  // Las coordenadas de texto deben reflejar la posición relativa negativa, no quedar fijadas en x=52 (4 + bubbleW/2)
+  for (const fc of fillCalls) {
+    const match = fc.match(/fillText\([^,]+,(-?\d+(?:\.\d+)?),/);
+    if (match) {
+      const drawnX = parseFloat(match[1]);
+      assert.ok(drawnX < 0, `drawnX ${drawnX} debería estar fuera de pantalla a la izquierda`);
+    }
+  }
+});
+
+test('NPC triggerAmbientBark almacena coordenadas de emisión y renderSpeechBubble ancla al mundo', () => {
+  const npc = new NPC({
+    name: 'Aldeano Test',
+    x: 100,
+    y: 120,
+    ambientPhrases: ['¡Saludos desde la plaza!']
+  });
+
+  npc.triggerAmbientBark();
+  assert.equal(npc.ambientBubbleText, '¡Saludos desde la plaza!');
+  assert.equal(npc.ambientBubbleWorldX, npc.centerX);
+  assert.equal(npc.ambientBubbleWorldY, npc.y);
+
+  // Tras un instante (animación completada)
+  npc.ambientBubbleTimer = 2.5;
+
+  // Si el NPC camina a otra posición durante los 3 segundos
+  npc.x = 220;
+  npc.y = 180;
+
+  const mockCtx = makeMockCtx();
+  const camera = { renderX: 100, renderY: 100 };
+  npc.renderSpeechBubble(mockCtx, camera);
+
+  // El texto debe dibujarse cerca de worldX - camera.renderX = 108 - 100 = 8 (bx ajustado ~56), NO de 220 - 100 = 120
+  const fillCalls = mockCtx.calls.filter((c) => c.startsWith('fillText'));
+  assert.ok(fillCalls.length > 0);
+  const match = fillCalls[0].match(/fillText\([^,]+,(-?\d+(?:\.\d+)?),/);
+  assert.ok(match, 'Debe haber un fillText con coordenadas');
+  const drawnX = parseFloat(match[1]);
+  assert.ok(drawnX <= 60, `El bocadillo debe estar cerca de x=56, obtenido: ${drawnX}`);
+});
+
+test('CollisionSystem: el jugador en contacto con un NPC no queda atascado contra muros y puede escapar', () => {
+  const solidMap = makeMap([
+    '######',
+    '#....#',
+    '#....#',
+    '######'
+  ]);
+
+  const p = makePlayer(2 * 16, 2 * 16);
+  const npc = new NPC({
+    name: 'Guardia Bloqueo',
+    x: 3 * 16,
+    y: 2 * 16,
+    behavior: 'static'
+  });
+
+  const obstacles = [npc];
+
+  // El jugador empuja hacia el NPC (derecha)
+  const moveResRight = CollisionSystem.moveWithCollisions(p, 2, 0, solidMap, obstacles);
+  // No debe teleportarse ni romper los límites
+  assert.ok(p.x >= 2 * 16 && p.x <= 3 * 16);
+
+  // El jugador debe poder escapar libremente hacia la izquierda
+  const prevX = p.x;
+  const moveResLeft = CollisionSystem.moveWithCollisions(p, -2, 0, solidMap, obstacles);
+  assert.equal(moveResLeft.blockedX, false);
+  assert.ok(p.x < prevX, 'El jugador debe poder moverse hacia la izquierda sin quedar atascado');
+});
+
+test('NPC: pausa cortés al cruzarse con el jugador respeta politePauseCooldown y no congela la IA', () => {
+  const p = makePlayer(100, 100);
+  const npc = new NPC({
+    name: 'Patrullero Ágil',
+    x: 106,
+    y: 100,
+    behavior: 'patrol',
+    patrolPoints: [{ x: 80, y: 100 }, { x: 140, y: 100 }]
+  });
+
+  // Limpiamos el waitTimer inicial de spawn
+  npc.waitTimer = 0;
+
+  // Primer contacto a distancia <= 18: pausa cortés
+  npc.update(0.016, null, [p, npc], false, p);
+  assert.ok(npc.politePauseCooldown > 0);
+  assert.ok(npc.waitTimer > 0);
+
+  // Consumimos el waitTimer
+  npc.waitTimer = 0;
+
+  // Siguiente frame: aunque el jugador siga a distancia <= 18, politePauseCooldown > 0 impide reiniciar el waitTimer
+  npc.update(0.016, null, [p, npc], false, p);
+  assert.equal(npc.waitTimer, 0, 'No debe reiniciar el waitTimer mientras politePauseCooldown esté activo');
 });
 
 test('Reliquia Divina de El Microondas Little se encuentra en cofre dentro de elder_house', () => {

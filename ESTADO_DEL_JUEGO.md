@@ -1,6 +1,6 @@
 # 📜 ESTADO DEL JUEGO · EL OJETE DORADO: THE GAME
 > **Documento Vivo de Estado, Arquitectura, Progresión y Hoja de Ruta Futura**  
-> **Versión Actual:** v3.8 (Motor de Audio Polifónico 3 Buses / 4 Canales, Capa WORLD_HUD_OVERLAY, Menú de Pausa Modal 240×150)  
+> **Versión Actual:** v3.8.1 (Física de Desbloqueo de NPCs, Empuje Suave, Anclaje Universal de Bocadillos en Mundo)  
 > **Última Actualización:** 5 de Noviembre de 2026  
 
 ---
@@ -11,9 +11,11 @@
 * **Renderizado:** HTML5 Canvas 2D nativo a resolución interna fija de **320 × 180 px** (relación 16:9 con reescalado `image-rendering: pixelated`).
 * **Gráficos 2.5D:** [`RenderPipeline.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/graphics/RenderPipeline.js) con ordenación Y-Sorted por plano `y + height`, props de profundidad, sombras pseudo-3D dinámicas proyectadas según la posición del sol ([`DayNightCycle.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/world/DayNightCycle.js)) y **Capa 4 `WORLD_HUD_OVERLAY`** que renderiza globos de diálogo, barks de NPCs e indicadores de acción por encima de tejados, niebla y oscuridad nocturna.
 * **Audio Polifónico:** Motor sintetizador chiptune nativo de 4 canales y 3 buses de ganancia (`masterGainNode`, `musicGainNode`, `sfxGainNode`) con crossfade de 1.5s y calibrador de efectos ([`AudioManager.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/audio/AudioManager.js)), extendido con compatibilidad por [`AmbientMusic.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/audio/AmbientMusic.js).
+* **Física y Colisiones Suaves:** [`CollisionSystem.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/physics/CollisionSystem.js) con resolución de penetración multi-eje, separación inteligente contra muros, empuje elástico (nudge) de NPCs para no quedar atascado en puertas ni pasillos y deslizamiento natural en esquinas (corner sliding).
+* **Bocadillos Anclados al Mundo:** [`SpeechBubble.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/ui/SpeechBubble.js) y [`NPC.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/entities/NPC.js) fijan los barks ambientales a las coordenadas de invocación en el supramundo; las frases permanecen en su lugar sin perseguir al jugador en la pantalla.
 * **Persistencia:** Arquitectura híbrida síncrona en `localStorage` (0 ms de latencia) + sincronización en segundo plano con **Vercel KV Serverless** ([`CloudStorage.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/services/CloudStorage.js)).
 * **Empaquetado y Distribución:** [`build-portable.mjs`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/build-portable.mjs) genera un único archivo HTML autocontenido [`el-ojete-dorado-the-game.html`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/el-ojete-dorado-the-game.html) (1.2 MB, 100% offline y ejecutable en cualquier navegador).
-* **Batería de Pruebas:** 69 pruebas automatizadas sin entorno DOM vía `node tests/regression.mjs`.
+* **Batería de Pruebas:** 73 pruebas automatizadas sin entorno DOM vía `node tests/regression.mjs`.
 
 ---
 

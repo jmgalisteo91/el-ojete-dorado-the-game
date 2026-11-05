@@ -615,9 +615,9 @@ export class Player extends Entity {
       return;
     }
 
-    // Autodesbloqueo preventivo: si el jugador quedó solapado con una baldosa sólida,
+    // Autodesbloqueo preventivo: si el jugador quedó solapado con una baldosa sólida o un NPC,
     // desplazarlo inmediatamente a la celda libre más cercana para que nunca quede pillado.
-    this._ensureUnstuck(tilemap);
+    this._ensureUnstuck(tilemap, obstacles);
 
     // Ejecución de Dash Asíncrono
     if (input && typeof input.consumeDash === 'function' && input.consumeDash()) {
@@ -723,28 +723,35 @@ export class Player extends Entity {
    * Comprueba si el hitbox actual del jugador colisiona con el tilemap sólido y,
    * en caso afirmativo, lo reposiciona suavemente en la coordenada libre más cercana.
    */
-  _ensureUnstuck(tilemap) {
-    if (!tilemap) return;
-    if (typeof tilemap.isSolidAtTile !== 'function') return;
-    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(this.x, this.y), tilemap)) {
-      return;
-    }
-
-    const dirs = [
-      [0, 1], [0, -1], [1, 0], [-1, 0],
-      [1, 1], [-1, 1], [1, -1], [-1, -1]
-    ];
-    for (let dist = 2; dist <= 48; dist += 2) {
-      for (const [dx, dy] of dirs) {
-        const candX = this.x + dx * dist;
-        const candY = this.y + dy * dist;
-        const candBox = this.getBoundingBoxAt(candX, candY);
-        if (!CollisionSystem.collidesWithMap(candBox, tilemap)) {
-          this.x = candX;
-          this.y = candY;
-          return;
+  _ensureUnstuck(tilemap, obstacles = []) {
+    // 1. Separación de obstáculos de mapa
+    if (tilemap && typeof tilemap.isSolidAtTile === 'function') {
+      if (CollisionSystem.collidesWithMap(this.getBoundingBoxAt(this.x, this.y), tilemap)) {
+        const dirs = [
+          [0, 1], [0, -1], [1, 0], [-1, 0],
+          [1, 1], [-1, 1], [1, -1], [-1, -1]
+        ];
+        for (let dist = 2; dist <= 48; dist += 2) {
+          let resolved = false;
+          for (const [dx, dy] of dirs) {
+            const candX = this.x + dx * dist;
+            const candY = this.y + dy * dist;
+            const candBox = this.getBoundingBoxAt(candX, candY);
+            if (!CollisionSystem.collidesWithMap(candBox, tilemap)) {
+              this.x = candX;
+              this.y = candY;
+              resolved = true;
+              break;
+            }
+          }
+          if (resolved) break;
         }
       }
+    }
+
+    // 2. Separación de entidades dinámicas (NPCs, animales)
+    if (Array.isArray(obstacles) && obstacles.length > 0) {
+      CollisionSystem.resolveEntitySeparation(this, obstacles, tilemap);
     }
   }
 

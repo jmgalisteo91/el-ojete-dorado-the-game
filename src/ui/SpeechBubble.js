@@ -242,22 +242,35 @@ export class SpeechBubble {
     const bubbleH = 14;
     const bubbleW = paddingX * 2 + keyCapW + (key ? gap : 0) + titleW + subW;
 
-    const bx = Math.max(
-      4,
-      Math.min(camera.viewportWidth - bubbleW - 4, Math.round(screenX - bubbleW / 2))
-    );
-    const by = Math.max(12, screenY - bubbleH - 7 + bob);
+    const vw = camera?.viewportWidth || 320;
+    const vh = camera?.viewportHeight || 180;
+
+    // Culling si el anclaje está completamente fuera de pantalla
+    if (screenX < -bubbleW - 20 || screenX > vw + 20 || screenY < -bubbleH - 20 || screenY > vh + 20) {
+      ctx.restore();
+      return;
+    }
+
+    let bx = Math.round(screenX - bubbleW / 2);
+    if (screenX >= 0 && screenX <= vw) {
+      bx = Math.max(4, Math.min(vw - bubbleW - 4, bx));
+    }
+    let by = Math.round(screenY - bubbleH - 7 + bob);
+    if (screenY >= 0 && screenY <= vh) {
+      by = Math.max(12, by);
+    }
     const tailTipY = Math.min(screenY - 1, by + bubbleH + 4);
+    const tailAnchorX = Math.max(bx + 6, Math.min(bx + bubbleW - 6, screenX));
 
     // Sombra proyectada del bocadillo
     ctx.save();
     ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    drawSpeechBalloonPath(ctx, bx + 1, by + 1.5, bubbleW, bubbleH, 4, screenX + 1, tailTipY + 1.5, 6);
+    drawSpeechBalloonPath(ctx, bx + 1, by + 1.5, bubbleW, bubbleH, 4, tailAnchorX + 1, tailTipY + 1.5, 6);
     ctx.fill();
     ctx.restore();
 
     // Cuerpo y rabillo del bocadillo contiguo
-    drawSpeechBalloonPath(ctx, bx, by, bubbleW, bubbleH, 4, screenX, tailTipY, 6);
+    drawSpeechBalloonPath(ctx, bx, by, bubbleW, bubbleH, 4, tailAnchorX, tailTipY, 6);
     ctx.fillStyle = themeBg;
     ctx.fill();
     ctx.strokeStyle = themeBorder;
@@ -316,9 +329,15 @@ export class SpeechBubble {
   /**
    * Renderiza el auténtico bocadillo de cómic ("Speech Balloon") para los diálogos
    * ambientales que emiten los NPCs mientras deambulan por la villa.
+   * Se ancla a las coordenadas del mundo donde se emitió para que no persiga al jugador.
    */
   static renderNPCBarkBubble(ctx, sx, sy, text, timer, maxTimer = 3.0) {
     if (!text || timer <= 0) return;
+
+    // Culling preventivo si el anclaje está completamente fuera de la pantalla
+    if (sx < -140 || sx > 320 + 140 || sy < -80 || sy > 180 + 80) {
+      return;
+    }
 
     ctx.save();
     ctx.font = `600 6.5px ${GAME_FONT_UI}`;
@@ -365,24 +384,32 @@ export class SpeechBubble {
     const bubbleW = Math.ceil(maxMeasuredW) + paddingX * 2;
     const bubbleH = lines.length * lineHeight + paddingY * 2 - 2;
 
-    const bx = Math.max(4, Math.min(320 - bubbleW - 4, Math.round(sx - bubbleW / 2)));
-    const by = Math.max(12, sy - bubbleH - 7);
+    // El bocadillo se ancla a sx, sy. Solo ajustamos levemente a los bordes si sx está visible en pantalla
+    let bx = Math.round(sx - bubbleW / 2);
+    if (sx >= 0 && sx <= 320) {
+      bx = Math.max(2, Math.min(320 - bubbleW - 2, bx));
+    }
+    let by = Math.round(sy - bubbleH - 7);
+    if (sy >= 0 && sy <= 180) {
+      by = Math.max(4, by);
+    }
     const tailTipY = Math.min(sy - 1, by + bubbleH + 4);
+    const anchorX = Math.max(bx + 6, Math.min(bx + bubbleW - 6, sx));
 
     // Transformación de escala centrada en el rabillo
-    ctx.translate(screenSafeAnchorX(sx), tailTipY);
+    ctx.translate(anchorX, tailTipY);
     ctx.scale(scale, scale);
-    ctx.translate(-screenSafeAnchorX(sx), -tailTipY);
+    ctx.translate(-anchorX, -tailTipY);
 
     // Sombra del bocadillo
     ctx.save();
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-    drawSpeechBalloonPath(ctx, bx + 1, by + 1.5, bubbleW, bubbleH, 4, sx + 1, tailTipY + 1.5, 6);
+    drawSpeechBalloonPath(ctx, bx + 1, by + 1.5, bubbleW, bubbleH, 4, anchorX + 1, tailTipY + 1.5, 6);
     ctx.fill();
     ctx.restore();
 
     // Fondo blanco nítido estilo cómic moderno
-    drawSpeechBalloonPath(ctx, bx, by, bubbleW, bubbleH, 4, sx, tailTipY, 6);
+    drawSpeechBalloonPath(ctx, bx, by, bubbleW, bubbleH, 4, anchorX, tailTipY, 6);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
     ctx.strokeStyle = '#0f172a';
@@ -406,6 +433,7 @@ export class SpeechBubble {
    */
   static renderActivityIcon(ctx, sx, sy, icon, bob = 0) {
     if (!icon) return;
+    if (sx < -30 || sx > 350 || sy < -30 || sy > 210) return;
     const bubbleW = 12;
     const bubbleH = 11;
     const bx = Math.round(sx - bubbleW / 2);
@@ -527,8 +555,8 @@ export class SpeechBubble {
   }
 }
 
-function screenSafeAnchorX(sx) {
-  return Math.max(10, Math.min(310, sx));
+export function screenSafeAnchorX(sx) {
+  return sx;
 }
 
 export function renderActionPromptBubble(ctx, action, camera, timer = 0, fallbackEntity = null) {
@@ -550,4 +578,3 @@ export function renderActivityIcon(ctx, sx, sy, icon, bob = 0) {
 export function renderCombatBanner(ctx, text, x, y, color = '#fde047') {
   return SpeechBubble.renderCombatBanner(ctx, text, x, y, color);
 }
-
