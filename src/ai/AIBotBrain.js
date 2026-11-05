@@ -344,11 +344,11 @@ export class AIBotBrain {
       if (!ctx.hasSword) {
         return [
           'Ya llevas la Armadura del Alba, pero aún no puedes dañar a los esbirros de Mister AI Alex.',
-          'Sube al Altar Sagrado del Norte para conseguir la [Espada del Alba]. Luego podrás atacar con [ESPACIO] o [F].'
+          'Sube al Altar Sagrado del Norte para conseguir la [Espada del Alba]. Luego podrás atacar con [Clic Izq], [ESPACIO] o [F].'
         ];
       }
       return [
-        '¡Ya portas tanto la Armadura como la Espada del Alba! Ataca con [ESPACIO] o [F] a los esbirros.',
+        '¡Ya portas tanto la Armadura como la Espada del Alba! Ataca con [Clic Izq / ESPACIO / F] a los esbirros.',
         'Con ambas reliquias el Portal del Este hacia Valleverde queda abierto para continuar la aventura.'
       ];
     }
@@ -406,7 +406,7 @@ export class AIBotBrain {
     return [
       `He consultado los astros sobre tu duda ("${message}").`,
       ctx.hasSword
-        ? 'Empuña con orgullo tu Espada del Alba [ESPACIO/F] y avanza hacia el Portal del Este.'
+        ? 'Empuña con orgullo tu Espada del Alba [Clic Izq / ESPACIO / F] y avanza hacia el Portal del Este.'
         : 'Recuerda que debes conseguir la Espada del Alba en el Altar Norte para hacer frente a las sombras.'
     ];
   }

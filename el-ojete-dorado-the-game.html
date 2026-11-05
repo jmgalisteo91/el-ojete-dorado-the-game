@@ -886,18 +886,26 @@ class InputHandler {
     this.pointerX = -1;
     this.pointerY = -1;
     this.pointerJustClicked = false;
+    this.pointerAttackJustPressed = false;
+    this.isPointerDown = false;
+    this.lastAttackSource = null;
 
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
     this._onBlur = this._onBlur.bind(this);
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerDown = this._onPointerDown.bind(this);
+    this._onPointerUp = this._onPointerUp.bind(this);
 
-    window.addEventListener('keydown', this._onKeyDown, { passive: false });
-    window.addEventListener('keyup', this._onKeyUp);
-    window.addEventListener('blur', this._onBlur);
-    window.addEventListener('pointermove', this._onPointerMove);
-    window.addEventListener('pointerdown', this._onPointerDown);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', this._onKeyDown, { passive: false });
+      window.addEventListener('keyup', this._onKeyUp);
+      window.addEventListener('blur', this._onBlur);
+      window.addEventListener('pointermove', this._onPointerMove);
+      window.addEventListener('pointerdown', this._onPointerDown);
+      window.addEventListener('pointerup', this._onPointerUp);
+      window.addEventListener('pointercancel', this._onPointerUp);
+    }
   }
 
   _notifyFirstInteraction() {
@@ -910,8 +918,9 @@ class InputHandler {
   }
 
   _updateCanvasCoords(event) {
-    const el = this.canvas || document.getElementById('game-canvas');
-    if (!el) return;
+    if (!event) return;
+    const el = this.canvas || (typeof document !== 'undefined' ? document.getElementById('game-canvas') : null);
+    if (!el || typeof el.getBoundingClientRect !== 'function') return;
     const rect = el.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     this.pointerX = ((event.clientX - rect.left) / rect.width) * 320;
@@ -919,27 +928,28 @@ class InputHandler {
   }
 
   _isDOMModalBlocking() {
+    if (typeof document === 'undefined') return false;
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
       return true;
     }
-    const chatModal = typeof document !== 'undefined' ? document.getElementById('ai-chat-modal') : null;
+    const chatModal = document.getElementById('ai-chat-modal');
     if (chatModal && !chatModal.classList.contains('hidden')) {
       return true;
     }
-    const scoreModal = typeof document !== 'undefined' ? document.getElementById('score-submission-modal') : null;
+    const scoreModal = document.getElementById('score-submission-modal');
     if (scoreModal && !scoreModal.classList.contains('hidden')) {
       return true;
     }
-    const exitModal = typeof document !== 'undefined' ? document.getElementById('exit-confirm-modal') : null;
+    const exitModal = document.getElementById('exit-confirm-modal');
     if (exitModal && !exitModal.classList.contains('hidden')) {
       return true;
     }
-    const cloudSaveModal = typeof document !== 'undefined' ? document.getElementById('cloud-save-modal') : null;
+    const cloudSaveModal = document.getElementById('cloud-save-modal');
     if (cloudSaveModal && !cloudSaveModal.classList.contains('hidden')) {
       return true;
     }
-    const cloudLoadModal = typeof document !== 'undefined' ? document.getElementById('cloud-load-modal') : null;
+    const cloudLoadModal = document.getElementById('cloud-load-modal');
     if (cloudLoadModal && !cloudLoadModal.classList.contains('hidden')) {
       return true;
     }
@@ -954,7 +964,17 @@ class InputHandler {
     this._notifyFirstInteraction();
     if (this._isDOMModalBlocking()) return;
     this._updateCanvasCoords(event);
-    this.pointerJustClicked = true;
+    if (!event || event.button === 0 || event.button === undefined) {
+      this.pointerJustClicked = true;
+      this.pointerAttackJustPressed = true;
+      this.isPointerDown = true;
+    }
+  }
+
+  _onPointerUp(event) {
+    if (!event || event.button === 0 || event.button === undefined) {
+      this.isPointerDown = false;
+    }
   }
 
   _onKeyDown(event) {
@@ -965,8 +985,8 @@ class InputHandler {
       return;
     }
 
-    const code = event.code;
-    const key = event.key;
+    const code = event?.code || '';
+    const key = event?.key || '';
 
     // Lista de códigos de teclas de juego
     const gameCodes = [
@@ -981,8 +1001,8 @@ class InputHandler {
       code === 'Space' ||
       key === ' ' ||
       key === 'Spacebar' ||
-      code.startsWith('Arrow') ||
-      key.startsWith('Arrow') ||
+      (typeof code === 'string' && code.startsWith('Arrow')) ||
+      (typeof key === 'string' && key.startsWith('Arrow')) ||
       code === 'Tab' ||
       key === 'Tab' ||
       code === 'PageUp' ||
@@ -1006,6 +1026,8 @@ class InputHandler {
     this.keysDown.clear();
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
+    this.pointerAttackJustPressed = false;
+    this.isPointerDown = false;
   }
 
   getMovementVector() {
@@ -1038,7 +1060,7 @@ class InputHandler {
   }
 
   consumeAttack() {
-    const attacked =
+    const keyAttacked =
       this.keysJustPressed.has('KeyF') ||
       this.keysJustPressed.has('KeyJ') ||
       this.keysJustPressed.has('KeyK') ||
@@ -1047,7 +1069,19 @@ class InputHandler {
     this.keysJustPressed.delete('KeyJ');
     this.keysJustPressed.delete('KeyK');
     this.keysJustPressed.delete('Space');
-    return attacked;
+
+    const pointerAttacked = this.pointerAttackJustPressed;
+    this.pointerAttackJustPressed = false;
+
+    if (pointerAttacked) {
+      this.lastAttackSource = 'pointer';
+      return true;
+    }
+    if (keyAttacked) {
+      this.lastAttackSource = 'keyboard';
+      return true;
+    }
+    return false;
   }
 
   isAttackHeld() {
@@ -1055,7 +1089,8 @@ class InputHandler {
       this.keysDown.has('Space') ||
       this.keysDown.has('KeyF') ||
       this.keysDown.has('KeyJ') ||
-      this.keysDown.has('KeyK')
+      this.keysDown.has('KeyK') ||
+      this.isPointerDown
     );
   }
 
@@ -1077,6 +1112,7 @@ class InputHandler {
   consumePointerClick() {
     if (this.pointerJustClicked) {
       this.pointerJustClicked = false;
+      this.pointerAttackJustPressed = false;
       return { x: this.pointerX, y: this.pointerY };
     }
     return null;
@@ -1125,6 +1161,7 @@ class InputHandler {
   endFrame() {
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
+    this.pointerAttackJustPressed = false;
   }
 }
 
@@ -17046,7 +17083,7 @@ class MainMenuAndScenes {
       {
         sceneType: 'sword_triumph',
         chapter: '★ PRIMERA ARMA · LA ESPADA DE LA RECURSIVIDAD ★',
-        text: 'Pulsa [F] o [Espacio] para encadenar ataques continuamente sin temor a provocar un StackOverflowError.'
+        text: 'Usa [Clic Izq], [Espacio] o [F] para encadenar ataques continuamente sin temor a provocar un StackOverflowError.'
       }
     ];
   }
@@ -17850,9 +17887,9 @@ class MainMenuAndScenes {
 
     // 3. Combate y Habilidades de Jefes
     drawCategoryBox(col2X, winY + 18, col2W, 88, '⚔️ COMBATE Y HABILIDADES', '#f43f5e', [
-      { label: 'Atacar con Espada:', keys: '[Espacio] / [F]', keyColor: '#ffd885' },
+      { label: 'Atacar con Espada:', keys: 'Clic Izq / Espacio', keyColor: '#ffd885' },
       { label: 'Dash Asíncrono:', keys: 'Shift + Dir', keyColor: '#10b981', note: '*(0.2s invuln. · Garbage Collector)*' },
-      { label: 'Corte en Cascada (x3):', keys: 'Espacio 1s', keyColor: '#38bdf8', note: '*(Tajo radial 360° · Guardián Stack)*' },
+      { label: 'Corte en Cascada (x3):', keys: 'Mantener Clic / Espacio', keyColor: '#38bdf8', note: '*(Tajo radial 360° · Guardián Stack)*' },
       { label: 'Barrera de Tipado:', keys: '[Q]', keyColor: '#f59e0b', note: '*(Escudo anti-balas · Microondas)*' },
       { label: 'Ranura Rápida:', keys: '[R] / [1]', keyColor: '#38bdf8', note: '*(Consumible directo)*' }
     ]);
@@ -21734,11 +21771,11 @@ class AIBotBrain {
       if (!ctx.hasSword) {
         return [
           'Ya llevas la Armadura del Alba, pero aún no puedes dañar a los esbirros de Mister AI Alex.',
-          'Sube al Altar Sagrado del Norte para conseguir la [Espada del Alba]. Luego podrás atacar con [ESPACIO] o [F].'
+          'Sube al Altar Sagrado del Norte para conseguir la [Espada del Alba]. Luego podrás atacar con [Clic Izq], [ESPACIO] o [F].'
         ];
       }
       return [
-        '¡Ya portas tanto la Armadura como la Espada del Alba! Ataca con [ESPACIO] o [F] a los esbirros.',
+        '¡Ya portas tanto la Armadura como la Espada del Alba! Ataca con [Clic Izq / ESPACIO / F] a los esbirros.',
         'Con ambas reliquias el Portal del Este hacia Valleverde queda abierto para continuar la aventura.'
       ];
     }
@@ -21796,7 +21833,7 @@ class AIBotBrain {
     return [
       `He consultado los astros sobre tu duda ("${message}").`,
       ctx.hasSword
-        ? 'Empuña con orgullo tu Espada del Alba [ESPACIO/F] y avanza hacia el Portal del Este.'
+        ? 'Empuña con orgullo tu Espada del Alba [Clic Izq / ESPACIO / F] y avanza hacia el Portal del Este.'
         : 'Recuerda que debes conseguir la Espada del Alba en el Altar Norte para hacer frente a las sombras.'
     ];
   }
@@ -25945,7 +25982,7 @@ class RPGGame {
 
           const statusIntro =
             this.player.hasArmor && this.player.hasSword
-              ? '«¡Lo has logrado! Ya vistes la Armadura del Alba y empuñas la Espada del Alba. ¡Derrota a los esbirros con [ESPACIO] o [F] y cruza el Portal del Este!»'
+              ? '«¡Lo has logrado! Ya vistes la Armadura del Alba y empuñas la Espada del Alba. ¡Derrota a los esbirros con [Clic Izq / Espacio / F] y cruza el Portal del Este!»'
               : !this.player.hasArmor
                 ? '«¡Hijo mío, ten cuidado! Aún estás INDEFENSO (cualquier golpe te dejará a 0 de vida). Esquiva a los centinelas hacia el Oeste para conseguir tu Armadura.»'
                 : '«¡Ya llevas puesta la Armadura del Alba! Ahora sube al Altar del Norte para conseguir tu primera arma: la Espada del Alba.»';
@@ -28385,6 +28422,9 @@ class RPGGame {
       const handled = this.dialogueBox.handlePointerClick(this.input.pointerX, this.input.pointerY);
       if (handled) {
         this.input.pointerJustClicked = false;
+        if ('pointerAttackJustPressed' in this.input) {
+          this.input.pointerAttackJustPressed = false;
+        }
       }
     }
 
@@ -28397,8 +28437,26 @@ class RPGGame {
       }
     }
 
-    // Ataque con la Espada del Alba ([Espacio], [F], [J], [K])
+    // Ataque con la Espada del Alba ([Clic Izquierdo], [Espacio], [F], [J], [K])
     if (!this.dialogueBox.active && this.input.consumeAttack()) {
+      if (
+        this.input.lastAttackSource === 'pointer' &&
+        this.camera &&
+        this.input.pointerX >= 0 &&
+        this.input.pointerY >= 0
+      ) {
+        const screenPx = this.player.centerX - this.camera.renderX;
+        const screenPy = this.player.centerY - this.camera.renderY;
+        const dx = this.input.pointerX - screenPx;
+        const dy = this.input.pointerY - screenPy;
+        if (Math.hypot(dx, dy) >= 4) {
+          if (Math.abs(dx) > Math.abs(dy)) {
+            this.player.direction = dx > 0 ? 'right' : 'left';
+          } else {
+            this.player.direction = dy > 0 ? 'down' : 'up';
+          }
+        }
+      }
       if (this.player.tryAttack()) {
         this.music.playSwordSlash();
       }

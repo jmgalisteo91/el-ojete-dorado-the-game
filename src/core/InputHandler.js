@@ -16,18 +16,26 @@ export class InputHandler {
     this.pointerX = -1;
     this.pointerY = -1;
     this.pointerJustClicked = false;
+    this.pointerAttackJustPressed = false;
+    this.isPointerDown = false;
+    this.lastAttackSource = null;
 
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
     this._onBlur = this._onBlur.bind(this);
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerDown = this._onPointerDown.bind(this);
+    this._onPointerUp = this._onPointerUp.bind(this);
 
-    window.addEventListener('keydown', this._onKeyDown, { passive: false });
-    window.addEventListener('keyup', this._onKeyUp);
-    window.addEventListener('blur', this._onBlur);
-    window.addEventListener('pointermove', this._onPointerMove);
-    window.addEventListener('pointerdown', this._onPointerDown);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', this._onKeyDown, { passive: false });
+      window.addEventListener('keyup', this._onKeyUp);
+      window.addEventListener('blur', this._onBlur);
+      window.addEventListener('pointermove', this._onPointerMove);
+      window.addEventListener('pointerdown', this._onPointerDown);
+      window.addEventListener('pointerup', this._onPointerUp);
+      window.addEventListener('pointercancel', this._onPointerUp);
+    }
   }
 
   _notifyFirstInteraction() {
@@ -40,8 +48,9 @@ export class InputHandler {
   }
 
   _updateCanvasCoords(event) {
-    const el = this.canvas || document.getElementById('game-canvas');
-    if (!el) return;
+    if (!event) return;
+    const el = this.canvas || (typeof document !== 'undefined' ? document.getElementById('game-canvas') : null);
+    if (!el || typeof el.getBoundingClientRect !== 'function') return;
     const rect = el.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     this.pointerX = ((event.clientX - rect.left) / rect.width) * 320;
@@ -49,27 +58,28 @@ export class InputHandler {
   }
 
   _isDOMModalBlocking() {
+    if (typeof document === 'undefined') return false;
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
       return true;
     }
-    const chatModal = typeof document !== 'undefined' ? document.getElementById('ai-chat-modal') : null;
+    const chatModal = document.getElementById('ai-chat-modal');
     if (chatModal && !chatModal.classList.contains('hidden')) {
       return true;
     }
-    const scoreModal = typeof document !== 'undefined' ? document.getElementById('score-submission-modal') : null;
+    const scoreModal = document.getElementById('score-submission-modal');
     if (scoreModal && !scoreModal.classList.contains('hidden')) {
       return true;
     }
-    const exitModal = typeof document !== 'undefined' ? document.getElementById('exit-confirm-modal') : null;
+    const exitModal = document.getElementById('exit-confirm-modal');
     if (exitModal && !exitModal.classList.contains('hidden')) {
       return true;
     }
-    const cloudSaveModal = typeof document !== 'undefined' ? document.getElementById('cloud-save-modal') : null;
+    const cloudSaveModal = document.getElementById('cloud-save-modal');
     if (cloudSaveModal && !cloudSaveModal.classList.contains('hidden')) {
       return true;
     }
-    const cloudLoadModal = typeof document !== 'undefined' ? document.getElementById('cloud-load-modal') : null;
+    const cloudLoadModal = document.getElementById('cloud-load-modal');
     if (cloudLoadModal && !cloudLoadModal.classList.contains('hidden')) {
       return true;
     }
@@ -84,7 +94,17 @@ export class InputHandler {
     this._notifyFirstInteraction();
     if (this._isDOMModalBlocking()) return;
     this._updateCanvasCoords(event);
-    this.pointerJustClicked = true;
+    if (!event || event.button === 0 || event.button === undefined) {
+      this.pointerJustClicked = true;
+      this.pointerAttackJustPressed = true;
+      this.isPointerDown = true;
+    }
+  }
+
+  _onPointerUp(event) {
+    if (!event || event.button === 0 || event.button === undefined) {
+      this.isPointerDown = false;
+    }
   }
 
   _onKeyDown(event) {
@@ -95,8 +115,8 @@ export class InputHandler {
       return;
     }
 
-    const code = event.code;
-    const key = event.key;
+    const code = event?.code || '';
+    const key = event?.key || '';
 
     // Lista de códigos de teclas de juego
     const gameCodes = [
@@ -111,8 +131,8 @@ export class InputHandler {
       code === 'Space' ||
       key === ' ' ||
       key === 'Spacebar' ||
-      code.startsWith('Arrow') ||
-      key.startsWith('Arrow') ||
+      (typeof code === 'string' && code.startsWith('Arrow')) ||
+      (typeof key === 'string' && key.startsWith('Arrow')) ||
       code === 'Tab' ||
       key === 'Tab' ||
       code === 'PageUp' ||
@@ -136,6 +156,8 @@ export class InputHandler {
     this.keysDown.clear();
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
+    this.pointerAttackJustPressed = false;
+    this.isPointerDown = false;
   }
 
   getMovementVector() {
@@ -168,7 +190,7 @@ export class InputHandler {
   }
 
   consumeAttack() {
-    const attacked =
+    const keyAttacked =
       this.keysJustPressed.has('KeyF') ||
       this.keysJustPressed.has('KeyJ') ||
       this.keysJustPressed.has('KeyK') ||
@@ -177,7 +199,19 @@ export class InputHandler {
     this.keysJustPressed.delete('KeyJ');
     this.keysJustPressed.delete('KeyK');
     this.keysJustPressed.delete('Space');
-    return attacked;
+
+    const pointerAttacked = this.pointerAttackJustPressed;
+    this.pointerAttackJustPressed = false;
+
+    if (pointerAttacked) {
+      this.lastAttackSource = 'pointer';
+      return true;
+    }
+    if (keyAttacked) {
+      this.lastAttackSource = 'keyboard';
+      return true;
+    }
+    return false;
   }
 
   isAttackHeld() {
@@ -185,7 +219,8 @@ export class InputHandler {
       this.keysDown.has('Space') ||
       this.keysDown.has('KeyF') ||
       this.keysDown.has('KeyJ') ||
-      this.keysDown.has('KeyK')
+      this.keysDown.has('KeyK') ||
+      this.isPointerDown
     );
   }
 
@@ -207,6 +242,7 @@ export class InputHandler {
   consumePointerClick() {
     if (this.pointerJustClicked) {
       this.pointerJustClicked = false;
+      this.pointerAttackJustPressed = false;
       return { x: this.pointerX, y: this.pointerY };
     }
     return null;
@@ -255,6 +291,7 @@ export class InputHandler {
   endFrame() {
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
+    this.pointerAttackJustPressed = false;
   }
 }
 

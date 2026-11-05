@@ -558,7 +558,7 @@ export class MainMenuAndScenes {
       {
         sceneType: 'sword_triumph',
         chapter: '★ PRIMERA ARMA · LA ESPADA DE LA RECURSIVIDAD ★',
-        text: 'Pulsa [F] o [Espacio] para encadenar ataques continuamente sin temor a provocar un StackOverflowError.'
+        text: 'Usa [Clic Izq], [Espacio] o [F] para encadenar ataques continuamente sin temor a provocar un StackOverflowError.'
       }
     ];
   }
@@ -1362,9 +1362,9 @@ export class MainMenuAndScenes {
 
     // 3. Combate y Habilidades de Jefes
     drawCategoryBox(col2X, winY + 18, col2W, 88, '⚔️ COMBATE Y HABILIDADES', '#f43f5e', [
-      { label: 'Atacar con Espada:', keys: '[Espacio] / [F]', keyColor: '#ffd885' },
+      { label: 'Atacar con Espada:', keys: 'Clic Izq / Espacio', keyColor: '#ffd885' },
       { label: 'Dash Asíncrono:', keys: 'Shift + Dir', keyColor: '#10b981', note: '*(0.2s invuln. · Garbage Collector)*' },
-      { label: 'Corte en Cascada (x3):', keys: 'Espacio 1s', keyColor: '#38bdf8', note: '*(Tajo radial 360° · Guardián Stack)*' },
+      { label: 'Corte en Cascada (x3):', keys: 'Mantener Clic / Espacio', keyColor: '#38bdf8', note: '*(Tajo radial 360° · Guardián Stack)*' },
       { label: 'Barrera de Tipado:', keys: '[Q]', keyColor: '#f59e0b', note: '*(Escudo anti-balas · Microondas)*' },
       { label: 'Ranura Rápida:', keys: '[R] / [1]', keyColor: '#38bdf8', note: '*(Consumible directo)*' }
     ]);

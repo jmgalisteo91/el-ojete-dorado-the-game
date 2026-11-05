@@ -2906,7 +2906,7 @@ export class RPGGame {
 
           const statusIntro =
             this.player.hasArmor && this.player.hasSword
-              ? '«¡Lo has logrado! Ya vistes la Armadura del Alba y empuñas la Espada del Alba. ¡Derrota a los esbirros con [ESPACIO] o [F] y cruza el Portal del Este!»'
+              ? '«¡Lo has logrado! Ya vistes la Armadura del Alba y empuñas la Espada del Alba. ¡Derrota a los esbirros con [Clic Izq / Espacio / F] y cruza el Portal del Este!»'
               : !this.player.hasArmor
                 ? '«¡Hijo mío, ten cuidado! Aún estás INDEFENSO (cualquier golpe te dejará a 0 de vida). Esquiva a los centinelas hacia el Oeste para conseguir tu Armadura.»'
                 : '«¡Ya llevas puesta la Armadura del Alba! Ahora sube al Altar del Norte para conseguir tu primera arma: la Espada del Alba.»';
@@ -5346,6 +5346,9 @@ export class RPGGame {
       const handled = this.dialogueBox.handlePointerClick(this.input.pointerX, this.input.pointerY);
       if (handled) {
         this.input.pointerJustClicked = false;
+        if ('pointerAttackJustPressed' in this.input) {
+          this.input.pointerAttackJustPressed = false;
+        }
       }
     }
 
@@ -5358,8 +5361,26 @@ export class RPGGame {
       }
     }
 
-    // Ataque con la Espada del Alba ([Espacio], [F], [J], [K])
+    // Ataque con la Espada del Alba ([Clic Izquierdo], [Espacio], [F], [J], [K])
     if (!this.dialogueBox.active && this.input.consumeAttack()) {
+      if (
+        this.input.lastAttackSource === 'pointer' &&
+        this.camera &&
+        this.input.pointerX >= 0 &&
+        this.input.pointerY >= 0
+      ) {
+        const screenPx = this.player.centerX - this.camera.renderX;
+        const screenPy = this.player.centerY - this.camera.renderY;
+        const dx = this.input.pointerX - screenPx;
+        const dy = this.input.pointerY - screenPy;
+        if (Math.hypot(dx, dy) >= 4) {
+          if (Math.abs(dx) > Math.abs(dy)) {
+            this.player.direction = dx > 0 ? 'right' : 'left';
+          } else {
+            this.player.direction = dy > 0 ? 'down' : 'up';
+          }
+        }
+      }
       if (this.player.tryAttack()) {
         this.music.playSwordSlash();
       }
