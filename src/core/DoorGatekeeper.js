@@ -59,24 +59,79 @@ const DESTINATION_TITLES = {
 const BOSS_ARENAS = new Set(['sewers_dungeon', 'ai_fortress_gate', 'ai_citadel']);
 const TEMPLES = new Set(['armor_temple', 'sword_temple']);
 
+export const ZONE_LEVEL_REQUIREMENTS = {
+  first_stage: 2,
+  north_peaks: 4,
+  south_swamp: 6,
+  west_wastes: 8,
+  ai_citadel: 10
+};
+
 /**
  * Devuelve { title, lines } si el jugador NO puede cruzar la puerta, o null si el paso está permitido.
  */
 export function getDoorBlock(targetScene, player) {
-  const fullyEquipped = player.hasArmor && player.hasSword;
+  const pLevel = player?.level ?? 1;
+  const fullyEquipped = Boolean(player?.hasArmor && player?.hasSword);
+
+  // 1. Gating por Nivel de Programador y Centinelas Guardianes
+  if (targetScene === 'first_stage' && pLevel < 2) {
+    return {
+      title: '🛡️ [GUARDIA KAEL: NIVEL 2 REQUERIDO]',
+      lines: [
+        '¡Alto ahí, novato! Más allá del puente oriental yacen las Tierras Corruptas y los Templos Sagrados.',
+        'El éter salvaje y los drones de Alex desgarrarán tu código si no alcanzas al menos el NIVEL 2.',
+        'Entrena derrotando anomalías menores en Valleverde antes de cruzar el puente.'
+      ]
+    };
+  }
+
+  if (targetScene === 'north_peaks' && pLevel < 4) {
+    return {
+      title: '❄️ [GUARDIA BOREAS: NIVEL 4 REQUERIDO]',
+      lines: [
+        '¡Detente! Las Cumbres de la Recursión sufren una ventisca algorítmica de "Memory Freeze".',
+        'Solo guerreros con un hilo de ejecución optimizado de NIVEL 4 pueden resistir la congelación del stack.',
+        'Consagra tu equipo en los Templos del Este y sube de nivel antes de ascender a los picos.'
+      ]
+    };
+  }
+
+  if (targetScene === 'south_swamp' && pLevel < 6) {
+    return {
+      title: '☣️ [GUARDIA VULCANO: NIVEL 6 REQUERIDO]',
+      lines: [
+        '¡Zona bajo estricta cuarentena militar! Las Marismas del Hardware Legacy hierven con fugas de ácido residual y el calor infernal de la Forja.',
+        'Necesitas temple y resistencia de NIVEL 6 para no fundir tus circuitos en el fango.',
+        'Conquista las Cumbres de la Recursión antes de descender al pantano.'
+      ]
+    };
+  }
+
+  if (targetScene === 'west_wastes' && pLevel < 8) {
+    return {
+      title: '⚡ [COMANDANTE VAEL: NIVEL 8 REQUERIDO]',
+      lines: [
+        '¡Paso terminantemente restringido! Al oeste se extiende el Páramo de Mister AI Alex.',
+        'Sus cortafuegos cuánticos desintegran en nanosegundos a cualquier entidad con nivel inferior a NIVEL 8.',
+        'Purga las mazmorras y forja tu equipo completo antes de encarar la frontera occidental.'
+      ]
+    };
+  }
+
   switch (targetScene) {
     case 'first_stage':
     case 'north_peaks':
     case 'south_swamp':
     case 'west_wastes':
-      // Las regiones exteriores cardinales permiten libre exploración
+      // Las regiones exteriores cardinales permiten libre exploración si cumplen el nivel requerido
       return null;
     case 'armor_temple':
       // La prueba de la armadura es el primer paso libre
       return null;
     case 'sword_temple':
       // Se requiere portar la armadura para resistir la presión psíquica de la recursión
-      return player.hasArmor ? null : BLOCK_MESSAGES.sword_temple;
+      return player?.hasArmor ? null : BLOCK_MESSAGES.sword_temple;
     case 'sewers_entry':
     case 'sewers_puzzle':
     case 'sewers_dungeon':
@@ -90,12 +145,21 @@ export function getDoorBlock(targetScene, player) {
       return fullyEquipped ? null : BLOCK_MESSAGES.fortress;
     case 'ai_citadel': {
       if (!fullyEquipped) return BLOCK_MESSAGES.fortress;
-      if (player.gatesUnlocked !== undefined && player.gatesUnlocked < 3) {
+      if (player?.gatesUnlocked !== undefined && player.gatesUnlocked < 3) {
         return {
           title: '🔒 [PUERTA DEL NÚCLEO SELLADA]',
           lines: [
             'El cortafuegos hiperdimensional de la Ciudadela Cuántica está activo.',
             'Debes colocar los 3 Núcleos de Mazmorra (Garbage Collector, Stack Overflow y Microondas) en la Puerta del Núcleo para desbloquear el acceso.'
+          ]
+        };
+      }
+      if (player?.level !== undefined && player.level < 10) {
+        return {
+          title: '⚡ [MAINFRAME CUÁNTICO: NIVEL 10 REQUERIDO]',
+          lines: [
+            'La densidad del flujo de datos del Mainframe de AI Alex sobrecargará cualquier núcleo inferior a NIVEL 10.',
+            'Derrota a todos los guardianes regionales y maximiza tu nivel de compilación antes de la batalla final.'
           ]
         };
       }

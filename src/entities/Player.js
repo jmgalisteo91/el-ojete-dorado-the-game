@@ -5,6 +5,21 @@ import { SKILL_DEFS } from '../core/SkillCatalog.js?v=7';
 const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
 
 /**
+ * Umbrales acumulados de Experiencia (XP) para subir de Nivel (1 al 10).
+ * Nivel 1: Inicio (0 XP)
+ * Nivel 2: 50 XP (Habilita el Puente Oriental / Valle de la Consagración)
+ * Nivel 3: 120 XP
+ * Nivel 4: 220 XP (Habilita las Cumbres de la Recursión · Picos de Silicio)
+ * Nivel 5: 350 XP
+ * Nivel 6: 520 XP (Habilita las Marismas del Hardware Legacy · Cloacas y Forja)
+ * Nivel 7: 720 XP
+ * Nivel 8: 980 XP (Habilita el Páramo Corrupto de Mister AI Alex)
+ * Nivel 9: 1300 XP
+ * Nivel 10: 1700 XP (Nivel Máximo · Habilita el asalto al Mainframe de la Ciudadela Cuántica)
+ */
+export const LEVEL_XP_THRESHOLDS = [0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700];
+
+/**
  * Entidad controlada por el jugador.
  * En el Primer Escenario empieza indefenso (sin armadura ni espada: cualquier ataque reduce su vida a 0).
  * Al conseguir la Armadura del Alba resiste ataques, y con la Espada del Alba puede atacar con [F] / [Espacio].
@@ -86,12 +101,56 @@ export class Player extends Entity {
     this.parryFlashTimer = 0;
     this.lastParryCount = 0;
 
-    // Progresión
+    // Progresión y Niveles de Programador (Nivel 1 a 10)
+    this.level = 1;
+    this.xp = 0;
     this.skillPoints = 0;
     this.killCount = 0;
+    this.level = 1;
+    this.xp = 0;
     this.skills = { vigor: false, filo: false, reflejo: false, log: false };
     this.thrownLogs = [];
     this.logCooldown = 0;
+  }
+
+  /** Devuelve el umbral de XP necesario para ascender al siguiente nivel. */
+  getNextLevelXp() {
+    if (this.level >= 10) return LEVEL_XP_THRESHOLDS[9];
+    return LEVEL_XP_THRESHOLDS[this.level];
+  }
+
+  /** Devuelve el umbral base de XP del nivel actual. */
+  getCurrentLevelBaseXp() {
+    return LEVEL_XP_THRESHOLDS[this.level - 1] || 0;
+  }
+
+  /** Devuelve el porcentaje de avance (0 a 100) en el nivel actual. */
+  getXpProgressPercent() {
+    if (this.level >= 10) return 100;
+    const base = this.getCurrentLevelBaseXp();
+    const target = this.getNextLevelXp();
+    const range = Math.max(1, target - base);
+    const progress = Math.max(0, Math.min(range, this.xp - base));
+    return Math.round((progress / range) * 100);
+  }
+
+  /** Concede experiencia y gestiona la subida de nivel del programador. */
+  gainXp(amount) {
+    if (this.level >= 10) {
+      this.level = 10;
+      this.xp = Math.max(this.xp, LEVEL_XP_THRESHOLDS[9] || 1700);
+      return { leveledUp: false, oldLevel: 10, newLevel: 10 };
+    }
+    const oldLevel = this.level;
+    this.xp = Math.max(0, (this.xp || 0) + Math.max(0, amount));
+    let leveledUp = false;
+    while (this.level < 10 && this.xp >= LEVEL_XP_THRESHOLDS[this.level]) {
+      this.level += 1;
+      this.hp = this.effectiveMaxHp;
+      this.stamina = this.effectiveMaxStamina;
+      leveledUp = true;
+    }
+    return { leveledUp, oldLevel, newLevel: this.level };
   }
 
   get effectiveMaxStamina() {
@@ -122,7 +181,7 @@ export class Player extends Entity {
     return Math.round(dmg * 10) / 10;
   }
 
-  /** Concede puntos de habilidad por derrotar enemigos. Devuelve los puntos ganados. */
+  /** Concede puntos de habilidad y XP por derrotar enemigos. Devuelve los puntos ganados. */
   awardKill(isBoss = false) {
     this.killCount += 1;
     let gained = 0;
@@ -132,6 +191,8 @@ export class Player extends Entity {
       gained = 1;
     }
     this.skillPoints += gained;
+    const xpAmount = isBoss ? 200 : 25;
+    this.gainXp(xpAmount);
     return gained;
   }
 
@@ -209,6 +270,10 @@ export class Player extends Entity {
     return true;
   }
 
+  reset() {
+    this.unequipAllForNewGame();
+  }
+
   unequipAllForNewGame() {
     this.hasArmor = false;
     this.armorPoints = 0;
@@ -242,6 +307,8 @@ export class Player extends Entity {
     this.parryTimer = 0;
     this.skillPoints = 0;
     this.killCount = 0;
+    this.level = 1;
+    this.xp = 0;
     this.skills = { vigor: false, filo: false, reflejo: false, log: false };
     this.thrownLogs = [];
     this.animator = this.unarmoredAnimator;

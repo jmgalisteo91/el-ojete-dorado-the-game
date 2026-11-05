@@ -796,24 +796,79 @@ const DESTINATION_TITLES = {
 const BOSS_ARENAS = new Set(['sewers_dungeon', 'ai_fortress_gate', 'ai_citadel']);
 const TEMPLES = new Set(['armor_temple', 'sword_temple']);
 
+const ZONE_LEVEL_REQUIREMENTS = {
+  first_stage: 2,
+  north_peaks: 4,
+  south_swamp: 6,
+  west_wastes: 8,
+  ai_citadel: 10
+};
+
 /**
  * Devuelve { title, lines } si el jugador NO puede cruzar la puerta, o null si el paso está permitido.
  */
 function getDoorBlock(targetScene, player) {
-  const fullyEquipped = player.hasArmor && player.hasSword;
+  const pLevel = player?.level ?? 1;
+  const fullyEquipped = Boolean(player?.hasArmor && player?.hasSword);
+
+  // 1. Gating por Nivel de Programador y Centinelas Guardianes
+  if (targetScene === 'first_stage' && pLevel < 2) {
+    return {
+      title: '🛡️ [GUARDIA KAEL: NIVEL 2 REQUERIDO]',
+      lines: [
+        '¡Alto ahí, novato! Más allá del puente oriental yacen las Tierras Corruptas y los Templos Sagrados.',
+        'El éter salvaje y los drones de Alex desgarrarán tu código si no alcanzas al menos el NIVEL 2.',
+        'Entrena derrotando anomalías menores en Valleverde antes de cruzar el puente.'
+      ]
+    };
+  }
+
+  if (targetScene === 'north_peaks' && pLevel < 4) {
+    return {
+      title: '❄️ [GUARDIA BOREAS: NIVEL 4 REQUERIDO]',
+      lines: [
+        '¡Detente! Las Cumbres de la Recursión sufren una ventisca algorítmica de "Memory Freeze".',
+        'Solo guerreros con un hilo de ejecución optimizado de NIVEL 4 pueden resistir la congelación del stack.',
+        'Consagra tu equipo en los Templos del Este y sube de nivel antes de ascender a los picos.'
+      ]
+    };
+  }
+
+  if (targetScene === 'south_swamp' && pLevel < 6) {
+    return {
+      title: '☣️ [GUARDIA VULCANO: NIVEL 6 REQUERIDO]',
+      lines: [
+        '¡Zona bajo estricta cuarentena militar! Las Marismas del Hardware Legacy hierven con fugas de ácido residual y el calor infernal de la Forja.',
+        'Necesitas temple y resistencia de NIVEL 6 para no fundir tus circuitos en el fango.',
+        'Conquista las Cumbres de la Recursión antes de descender al pantano.'
+      ]
+    };
+  }
+
+  if (targetScene === 'west_wastes' && pLevel < 8) {
+    return {
+      title: '⚡ [COMANDANTE VAEL: NIVEL 8 REQUERIDO]',
+      lines: [
+        '¡Paso terminantemente restringido! Al oeste se extiende el Páramo de Mister AI Alex.',
+        'Sus cortafuegos cuánticos desintegran en nanosegundos a cualquier entidad con nivel inferior a NIVEL 8.',
+        'Purga las mazmorras y forja tu equipo completo antes de encarar la frontera occidental.'
+      ]
+    };
+  }
+
   switch (targetScene) {
     case 'first_stage':
     case 'north_peaks':
     case 'south_swamp':
     case 'west_wastes':
-      // Las regiones exteriores cardinales permiten libre exploración
+      // Las regiones exteriores cardinales permiten libre exploración si cumplen el nivel requerido
       return null;
     case 'armor_temple':
       // La prueba de la armadura es el primer paso libre
       return null;
     case 'sword_temple':
       // Se requiere portar la armadura para resistir la presión psíquica de la recursión
-      return player.hasArmor ? null : BLOCK_MESSAGES.sword_temple;
+      return player?.hasArmor ? null : BLOCK_MESSAGES.sword_temple;
     case 'sewers_entry':
     case 'sewers_puzzle':
     case 'sewers_dungeon':
@@ -827,12 +882,21 @@ function getDoorBlock(targetScene, player) {
       return fullyEquipped ? null : BLOCK_MESSAGES.fortress;
     case 'ai_citadel': {
       if (!fullyEquipped) return BLOCK_MESSAGES.fortress;
-      if (player.gatesUnlocked !== undefined && player.gatesUnlocked < 3) {
+      if (player?.gatesUnlocked !== undefined && player.gatesUnlocked < 3) {
         return {
           title: '🔒 [PUERTA DEL NÚCLEO SELLADA]',
           lines: [
             'El cortafuegos hiperdimensional de la Ciudadela Cuántica está activo.',
             'Debes colocar los 3 Núcleos de Mazmorra (Garbage Collector, Stack Overflow y Microondas) en la Puerta del Núcleo para desbloquear el acceso.'
+          ]
+        };
+      }
+      if (player?.level !== undefined && player.level < 10) {
+        return {
+          title: '⚡ [MAINFRAME CUÁNTICO: NIVEL 10 REQUERIDO]',
+          lines: [
+            'La densidad del flujo de datos del Mainframe de AI Alex sobrecargará cualquier núcleo inferior a NIVEL 10.',
+            'Derrota a todos los guardianes regionales y maximiza tu nivel de compilación antes de la batalla final.'
           ]
         };
       }
@@ -2486,6 +2550,13 @@ class CloudStorage {
       ? Math.max(1, Math.min(2, Math.floor(Number(src.armorLevel))))
       : (playerHasArmor ? 1 : 1);
 
+    const level = Number.isFinite(Number(src.level))
+      ? Math.max(1, Math.min(10, Math.floor(Number(src.level))))
+      : 1;
+    const xp = Number.isFinite(Number(src.xp))
+      ? Math.max(0, Math.floor(Number(src.xp)))
+      : 0;
+
     const rawCores = (src.dungeonCores && typeof src.dungeonCores === 'object') ? src.dungeonCores : {};
     const dungeonCores = {
       gc: Boolean(src.dungeonCore_gc ?? rawCores.gc ?? false),
@@ -2512,6 +2583,8 @@ class CloudStorage {
       playerHasArmor,
       swordLevel,
       armorLevel,
+      level,
+      xp,
       dungeonCores,
       gatesUnlocked,
       dungeonCore_gc: dungeonCores.gc,
@@ -8819,6 +8892,21 @@ class Entity {
 const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
 
 /**
+ * Umbrales acumulados de Experiencia (XP) para subir de Nivel (1 al 10).
+ * Nivel 1: Inicio (0 XP)
+ * Nivel 2: 50 XP (Habilita el Puente Oriental / Valle de la Consagración)
+ * Nivel 3: 120 XP
+ * Nivel 4: 220 XP (Habilita las Cumbres de la Recursión · Picos de Silicio)
+ * Nivel 5: 350 XP
+ * Nivel 6: 520 XP (Habilita las Marismas del Hardware Legacy · Cloacas y Forja)
+ * Nivel 7: 720 XP
+ * Nivel 8: 980 XP (Habilita el Páramo Corrupto de Mister AI Alex)
+ * Nivel 9: 1300 XP
+ * Nivel 10: 1700 XP (Nivel Máximo · Habilita el asalto al Mainframe de la Ciudadela Cuántica)
+ */
+const LEVEL_XP_THRESHOLDS = [0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700];
+
+/**
  * Entidad controlada por el jugador.
  * En el Primer Escenario empieza indefenso (sin armadura ni espada: cualquier ataque reduce su vida a 0).
  * Al conseguir la Armadura del Alba resiste ataques, y con la Espada del Alba puede atacar con [F] / [Espacio].
@@ -8900,12 +8988,56 @@ class Player extends Entity {
     this.parryFlashTimer = 0;
     this.lastParryCount = 0;
 
-    // Progresión
+    // Progresión y Niveles de Programador (Nivel 1 a 10)
+    this.level = 1;
+    this.xp = 0;
     this.skillPoints = 0;
     this.killCount = 0;
+    this.level = 1;
+    this.xp = 0;
     this.skills = { vigor: false, filo: false, reflejo: false, log: false };
     this.thrownLogs = [];
     this.logCooldown = 0;
+  }
+
+  /** Devuelve el umbral de XP necesario para ascender al siguiente nivel. */
+  getNextLevelXp() {
+    if (this.level >= 10) return LEVEL_XP_THRESHOLDS[9];
+    return LEVEL_XP_THRESHOLDS[this.level];
+  }
+
+  /** Devuelve el umbral base de XP del nivel actual. */
+  getCurrentLevelBaseXp() {
+    return LEVEL_XP_THRESHOLDS[this.level - 1] || 0;
+  }
+
+  /** Devuelve el porcentaje de avance (0 a 100) en el nivel actual. */
+  getXpProgressPercent() {
+    if (this.level >= 10) return 100;
+    const base = this.getCurrentLevelBaseXp();
+    const target = this.getNextLevelXp();
+    const range = Math.max(1, target - base);
+    const progress = Math.max(0, Math.min(range, this.xp - base));
+    return Math.round((progress / range) * 100);
+  }
+
+  /** Concede experiencia y gestiona la subida de nivel del programador. */
+  gainXp(amount) {
+    if (this.level >= 10) {
+      this.level = 10;
+      this.xp = Math.max(this.xp, LEVEL_XP_THRESHOLDS[9] || 1700);
+      return { leveledUp: false, oldLevel: 10, newLevel: 10 };
+    }
+    const oldLevel = this.level;
+    this.xp = Math.max(0, (this.xp || 0) + Math.max(0, amount));
+    let leveledUp = false;
+    while (this.level < 10 && this.xp >= LEVEL_XP_THRESHOLDS[this.level]) {
+      this.level += 1;
+      this.hp = this.effectiveMaxHp;
+      this.stamina = this.effectiveMaxStamina;
+      leveledUp = true;
+    }
+    return { leveledUp, oldLevel, newLevel: this.level };
   }
 
   get effectiveMaxStamina() {
@@ -8936,7 +9068,7 @@ class Player extends Entity {
     return Math.round(dmg * 10) / 10;
   }
 
-  /** Concede puntos de habilidad por derrotar enemigos. Devuelve los puntos ganados. */
+  /** Concede puntos de habilidad y XP por derrotar enemigos. Devuelve los puntos ganados. */
   awardKill(isBoss = false) {
     this.killCount += 1;
     let gained = 0;
@@ -8946,6 +9078,8 @@ class Player extends Entity {
       gained = 1;
     }
     this.skillPoints += gained;
+    const xpAmount = isBoss ? 200 : 25;
+    this.gainXp(xpAmount);
     return gained;
   }
 
@@ -9023,6 +9157,10 @@ class Player extends Entity {
     return true;
   }
 
+  reset() {
+    this.unequipAllForNewGame();
+  }
+
   unequipAllForNewGame() {
     this.hasArmor = false;
     this.armorPoints = 0;
@@ -9056,6 +9194,8 @@ class Player extends Entity {
     this.parryTimer = 0;
     this.skillPoints = 0;
     this.killCount = 0;
+    this.level = 1;
+    this.xp = 0;
     this.skills = { vigor: false, filo: false, reflejo: false, log: false };
     this.thrownLogs = [];
     this.animator = this.unarmoredAnimator;
@@ -14614,14 +14754,21 @@ class CharacterStats {
     ctx.fillText(UILayout.fitText(ctx, this.getDevTitle(player), leftW - 45), leftRect.x + 41, leftRect.y + 24);
 
     const coinsVal = player ? (player.coins ?? 0) : 0;
+    const playerLvl = player ? (player.level || 1) : 1;
+    const playerXp = player ? (player.xp || 0) : 0;
+    const nextXp = player && typeof player.getNextLevelXp === 'function' ? player.getNextLevelXp() : 50;
     ctx.font = `bold 4.2px ${UI_FONT}`;
     ctx.fillStyle = UI_COLORS.emerald;
-    ctx.fillText(`◈ Saldo: ${coinsVal} Bytes`, leftRect.x + 41, leftRect.y + 33);
+    ctx.fillText(`◈ Saldo: ${coinsVal} Bytes`, leftRect.x + 41, leftRect.y + 32);
 
-    // 2. Barras de progreso compactas (Salud, Blindaje, Robotización, Ataque)
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.fillText(`★ Nivel: ${playerLvl}/10 (${playerXp}/${nextXp} XP)`, leftRect.x + 41, leftRect.y + 40);
+
+    // 2. Barras de progreso compactas (Salud, Blindaje, Robotización, Experiencia, Ataque)
     const barX = leftRect.x + 5;
     const barW = leftRect.w - 10;
-    let by = leftRect.y + 50;
+    let by = leftRect.y + 47;
+    const barSpacing = 14;
 
     const hpCur = player ? Math.max(0, player.hp) : 6;
     const hpMax = player ? (player.maxHp || 6) : 6;
@@ -14636,7 +14783,7 @@ class CharacterStats {
       label: 'SALUD VITAL',
       valueText: `${hpCur.toFixed(1).replace('.0', '')}/${hpMax} ♥`
     });
-    by += 16;
+    by += barSpacing;
 
     const hasArmor = Boolean(player && player.hasArmor);
     const armorPts = player ? (player.armorPoints ?? 0) : 0;
@@ -14652,7 +14799,7 @@ class CharacterStats {
       label: 'BLINDAJE BINARIO',
       valueText: hasArmor ? `${armorPts}/${maxArmorPts} 🛡️` : 'SIN CORAZA'
     });
-    by += 16;
+    by += barSpacing;
 
     const robotVal = player ? Math.round(player.robotizationLevel || 0) : 0;
     const robotColor = robotVal > 80
@@ -14669,7 +14816,24 @@ class CharacterStats {
       label: 'ROBOTIZACIÓN IA',
       valueText: `${robotVal}% 🤖`
     });
-    by += 16;
+    by += barSpacing;
+
+    const baseXp = player && typeof player.getCurrentLevelBaseXp === 'function' ? player.getCurrentLevelBaseXp() : 0;
+    const xpRange = Math.max(1, nextXp - baseXp);
+    const xpProgress = playerLvl >= 10 ? xpRange : Math.max(0, Math.min(xpRange, playerXp - baseXp));
+    const xpPct = player && typeof player.getXpProgressPercent === 'function' ? player.getXpProgressPercent() : 0;
+    UILayout.drawBar(ctx, {
+      x: barX,
+      y: by,
+      w: barW,
+      h: 5,
+      value: xpProgress,
+      max: xpRange,
+      color: UI_COLORS.gold,
+      label: 'EXP. PROGRAMADOR',
+      valueText: playerLvl >= 10 ? 'NV 10 (MÁX) ★' : `NV ${playerLvl} (${xpPct}%)`
+    });
+    by += barSpacing;
 
     const hasSword = Boolean(player && player.hasSword);
     const atkPower = hasSword ? (robotVal > 50 ? 70 : 100) : 25;
@@ -23628,6 +23792,7 @@ class RPGGame {
     this.abyssalPointerSpawn = null;
     this.abyssalPortalOrigin = null;
     this.activeAbyssalPortal = null;
+    this.transitionCooldown = 0;
 
     // Control de eventos y debouncing de los Puzles en los Templos Binarios
     this.activeArmorSwitchTile = null;
@@ -23879,6 +24044,7 @@ class RPGGame {
     this.abyssalPointerSpawn = null;
     this.abyssalPortalOrigin = null;
     this.activeAbyssalPortal = null;
+    this.transitionCooldown = 0;
 
     this.camera.snapTo(this.player);
   }
@@ -23909,6 +24075,8 @@ class RPGGame {
       playerHasSword: this.player.hasSword,
       swordLevel: this.player.swordLevel || 1,
       armorLevel: this.player.armorLevel || 1,
+      level: this.player.level || 1,
+      xp: this.player.xp || 0,
       dungeonCores: {
         gc: !!(this.player.dungeonCores && this.player.dungeonCores.gc),
         stack: !!(this.player.dungeonCores && this.player.dungeonCores.stack),
@@ -24433,6 +24601,8 @@ class RPGGame {
       );
       this.player.swordLevel = Math.max(1, Math.min(3, Number(data.swordLevel) || 1));
       this.player.armorLevel = Math.max(1, Math.min(2, Number(data.armorLevel) || 1));
+      this.player.level = Math.max(1, Math.min(10, Math.floor(Number(data.level) || 1)));
+      this.player.xp = Math.max(0, Math.floor(Number(data.xp) || 0));
       if (data.dungeonCores && typeof data.dungeonCores === 'object') {
         this.player.dungeonCores = {
           gc: Boolean(data.dungeonCores.gc),
@@ -25659,7 +25829,9 @@ class RPGGame {
           });
 
           const statusLine = this.tilemap.bridgeForceUnlocked
-            ? '¡Saludos, héroe! Tienes autorización oficial del Sabio Aurelio. El puente del este está abierto para acceder a las Pruebas Sagradas.'
+            ? ((this.player.level || 1) < 2
+                ? '⚠️ ¡Alto ahí, recluta! Aunque el puente tenga permiso, necesitas alcanzar al menos el NIVEL 2 para resistir el éter salvaje del este. Entrena derrotando anomalías en Valleverde antes de cruzar.'
+                : '¡Saludos, héroe! Tienes autorización oficial y Nivel 2+. El puente del este está abierto para acceder a las Pruebas Sagradas.')
             : '¡Alto, programador! El puente del este está CLAUSURADO por orden del Gran Sabio Aurelio debido a las amenazas de AI Alex. Consulta a Aurelio en su casa.';
 
           return {
@@ -25717,10 +25889,15 @@ class RPGGame {
           ];
           return {
             lines: this.tilemap.bridgeForceUnlocked
-              ? [
-                  '¡Paso expedito! El puente está abierto para ti por orden del Sabio Aurelio.',
-                  'Al otro lado te aguardan las Pruebas Sagradas. ¡Ten cuidado con los bugs nocturnos si cruzas de noche!'
-                ]
+              ? ((this.player.level || 1) < 2
+                  ? [
+                      '⚠️ ¡Cuidado, recluta! El puente del este está físicamente abierto, pero la guardia tiene orden de no dejar pasar a nadie por debajo del NIVEL 2.',
+                      '¡Derrota algunos bugs menores en Valleverde para subir al Nivel 2 y cruzar con garantías!'
+                    ]
+                  : [
+                      '¡Paso expedito! Cuentas con Nivel 2+ y el puente está abierto por orden del Sabio Aurelio.',
+                      'Al otro lado te aguardan las Pruebas Sagradas. ¡Ten cuidado con los bugs nocturnos si cruzas de noche!'
+                    ])
               : [
                   '¡Alto ahí! El puente del este permanece precintado por orden del Gran Sabio Aurelio.',
                   'Las tierras del este son peligrosas por la corrupción de AI Alex. Consulta al Sabio en su casa para más detalles.'
@@ -26462,6 +26639,155 @@ class RPGGame {
                 onSelect: () => this.dialogueBox.close()
               }
             ]
+          };
+        }
+      }),
+      new NPC({
+        name: 'Guardia Boreas · Centinela de las Cumbres',
+        jobTitle: 'Centinela Septentrional',
+        homeSceneId: 'overworld',
+        x: 16 * 16,
+        y: 2 * 16,
+        speed: 24,
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
+        behavior: 'patrol',
+        patrolPoints: [
+          { x: 16 * 16, y: 2 * 16, dir: 'down', waitMin: 2.5, waitMax: 4.5 },
+          { x: 19 * 16, y: 2 * 16, dir: 'left', waitMin: 2.5, waitMax: 4.5 }
+        ],
+        ambientPhrases: [
+          'El viento del norte congela los bucles...',
+          'Las Cumbres de la Recursión exigen agilidad y nivel.',
+          'Cuidado con la caída en los abismos de silicio.'
+        ],
+        getDialogues: () => {
+          const boreasChoices = [
+            {
+              label: '¿Qué peligros acechan en las Cumbres del Norte?',
+              onSelect: () => {
+                this.dialogueBox.showMessage('Guardia Boreas · Centinela de las Cumbres', [
+                  'Abismos que exigen el Dash Asíncrono, anomalías de bucle y el Guardián del Stack Overflow en las profundidades de la mina.',
+                  'Asegúrate de forjar tu Espada de Silicio antes de internarte en la caverna.'
+                ], boreasChoices);
+              }
+            },
+            {
+              label: 'Entendido, guardia',
+              onSelect: () => this.dialogueBox.close()
+            }
+          ];
+          const hasLevel = (this.player.level || 1) >= 4;
+          return {
+            lines: hasLevel
+              ? [
+                  '¡Saludos, montañero! Tus registros están optimizados (Nivel 4+).',
+                  'Tienes autorización para adentrarte en Las Cumbres de la Recursión al norte. ¡No resbales en los abismos!'
+                ]
+              : [
+                  '¡Detente! El paso norte a Las Cumbres de la Recursión está restringido.',
+                  'Una ventisca algorítmica de "Memory Freeze" azota la cordillera. Solo un programador de NIVEL 4 puede sobrevivir al frío del stack.'
+                ],
+            choices: boreasChoices
+          };
+        }
+      }),
+      new NPC({
+        name: 'Guardia Vulcano · Centinela de las Marismas',
+        jobTitle: 'Centinela Meridional',
+        homeSceneId: 'overworld',
+        x: 16 * 16,
+        y: 21 * 16,
+        speed: 24,
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
+        behavior: 'patrol',
+        patrolPoints: [
+          { x: 16 * 16, y: 21 * 16, dir: 'up', waitMin: 2.5, waitMax: 4.5 },
+          { x: 19 * 16, y: 21 * 16, dir: 'right', waitMin: 2.5, waitMax: 4.5 }
+        ],
+        ambientPhrases: [
+          'El fango de las cloacas hierve con leaks de memoria...',
+          'El calor de la Forja llega hasta este sector.',
+          'Cuarentena militar activa en el paso sur.'
+        ],
+        getDialogues: () => {
+          const vulcanoChoices = [
+            {
+              label: '¿Por qué hay cuarentena en el sector sur?',
+              onSelect: () => {
+                this.dialogueBox.showMessage('Guardia Vulcano · Centinela de las Marismas', [
+                  'Las Marismas del Hardware Legacy albergan las Cloacas donde acecha el Garbage Collector Furioso y la Forja del Prototipo.',
+                  'El fango es corrosivo y las calderas de la Forja alcanzan temperaturas extremas.',
+                  'Necesitas el Blindaje Térmico de Brom para sobrevivir en el interior de la Forja.'
+                ], vulcanoChoices);
+              }
+            },
+            {
+              label: 'Entendido, volveré cuando esté listo',
+              onSelect: () => this.dialogueBox.close()
+            }
+          ];
+          const hasLevel = (this.player.level || 1) >= 6;
+          return {
+            lines: hasLevel
+              ? [
+                  '¡Paso autorizado, veterano! Cuentas con Nivel 6 y temple contrastado.',
+                  'El acceso sur hacia Las Marismas del Hardware Legacy está abierto. ¡Cuidado con el ácido y el vapor ardiente!'
+                ]
+              : [
+                  '¡Zona bajo cuarentena militar! El paso sur hacia Las Marismas del Hardware Legacy está precintado.',
+                  'Las emanaciones tóxicas y el calor de la Forja desintegrarán tus circuitos si no posees al menos NIVEL 6.'
+                ],
+            choices: vulcanoChoices
+          };
+        }
+      }),
+      new NPC({
+        name: 'Comandante Vael · Paladín de la Frontera',
+        jobTitle: 'Paladín y Custodio de la Frontera Occidental',
+        homeSceneId: 'overworld',
+        x: 3 * 16,
+        y: 11 * 16,
+        speed: 24,
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
+        behavior: 'patrol',
+        patrolPoints: [
+          { x: 3 * 16, y: 11 * 16, dir: 'down', waitMin: 2.5, waitMax: 4.5 },
+          { x: 3 * 16, y: 14 * 16, dir: 'up', waitMin: 2.5, waitMax: 4.5 }
+        ],
+        ambientPhrases: [
+          'Las anomalías de Alex se concentran al oeste...',
+          'No cederemos la frontera de Valleverde.',
+          'Solo los más veteranos pueden encarar el Páramo.'
+        ],
+        getDialogues: () => {
+          const vaelChoices = [
+            {
+              label: '¿Qué amenaza acecha más allá de la frontera oeste?',
+              onSelect: () => {
+                this.dialogueBox.showMessage('Comandante Vael · Paladín de la Frontera', [
+                  'El Páramo Corrupto de Mister AI Alex. Drones de asalto, terreno electromagnético y la Gran Puerta del Núcleo Cuántico.',
+                  'Para franquear la Puerta Cuántica deberás haber derrotado a los 3 jefes de mazmorra y colocar sus Núcleos.',
+                  'Y para encarar a Alex en su Mainframe necesitarás alcanzar el Nivel 10.'
+                ], vaelChoices);
+              }
+            },
+            {
+              label: 'Defenderé el Reino, Comandante',
+              onSelect: () => this.dialogueBox.close()
+            }
+          ];
+          const hasLevel = (this.player.level || 1) >= 8;
+          return {
+            lines: hasLevel
+              ? [
+                  '¡Honor a ti, paladín! Posees Nivel 8 y un poder recursivo legendario.',
+                  'La frontera oeste hacia el Páramo de Mister AI Alex está abierta para ti. ¡Haz morder el polvo a la IA corrupta!'
+                ]
+              : [
+                  '¡Paso terminantemente vedado! Al oeste se extiende el Páramo de Mister AI Alex.',
+                  'Sus cortafuegos cuánticos desintegran en nanosegundos a cualquier mortal menor a NIVEL 8. No permitiré que perezcas en vano.'
+                ],
+            choices: vaelChoices
           };
         }
       })
@@ -27899,8 +28225,16 @@ class RPGGame {
         const block = getDoorBlock(door.targetScene, this.player);
         if (block) {
           if (this.music) this.music.playDoorLockedSound();
-          if (door.targetScene === 'first_stage' && this.tilemap.currentSceneId === 'overworld') {
-            this.player.x = Math.max(this.player.x, 2.5 * this.tilemap.tileSize);
+          if (door.targetScene === 'first_stage') {
+            this.player.x = Math.min(this.player.x, 31 * this.tilemap.tileSize);
+          } else if (door.targetScene === 'west_wastes') {
+            this.player.x = Math.max(this.player.x, 3.5 * this.tilemap.tileSize);
+          } else if (door.targetScene === 'north_peaks') {
+            this.player.y = Math.max(this.player.y, 2.5 * this.tilemap.tileSize);
+          } else if (door.targetScene === 'south_swamp') {
+            this.player.y = Math.min(this.player.y, 21 * this.tilemap.tileSize);
+          } else if (door.targetScene === 'ai_citadel') {
+            this.player.y = Math.max(this.player.y, 3.5 * this.tilemap.tileSize);
           }
           this.dialogueBox.showMessage(block.title, block.lines);
           return;
@@ -27929,52 +28263,16 @@ class RPGGame {
           return;
         }
 
-        const { title: destTitle, description: destDescription } = getDoorDestinationInfo(door.targetScene);
-        const inFirstStage = this.tilemap.currentSceneId === 'first_stage';
-
-        this.dialogueBox.showMessage(`Acceso: ${destTitle}`, [
-          `Estás ante el umbral de [${destTitle}].`,
-          destDescription,
-          '¿Deseas franquear el acceso y continuar?'
-        ], [
-          {
-            label: '★ Sí, franquear el umbral',
-            onSelect: () => {
-              this.dialogueBox.close();
-              if (door.targetScene === 'first_stage' && !this.seenAIWarning) {
-                this.seenAIWarning = true;
-                this.animeCutscenes.playCutscene(SCENE_AI_ALEX_WARNING, () => {
-                  this._executeStageTransition(door);
-                });
-              } else {
-                this._executeStageTransition(door);
-              }
-            }
-          },
-          ...(inFirstStage ? [
-            {
-              label: 'Regresar a la seguridad de Valleverde',
-              onSelect: () => {
-                this.dialogueBox.close();
-                this._executeStageTransition({
-                  type: 'stage_transition',
-                  targetScene: 'overworld',
-                  spawnX: 3.5 * this.tilemap.tileSize,
-                  spawnY: 12.5 * this.tilemap.tileSize
-                });
-              }
-            }
-          ] : []),
-          {
-            label: 'No, permanecer aquí',
-            onSelect: () => {
-              this.dialogueBox.close();
-              if (door.targetScene === 'first_stage' && this.tilemap.currentSceneId === 'overworld') {
-                this.player.x = Math.max(this.player.x, 2.5 * this.tilemap.tileSize);
-              }
-            }
-          }
-        ]);
+        // Transición directa y fluida estilo Zelda: sin modales de confirmación redundantes
+        this.dialogueBox.close();
+        if (door.targetScene === 'first_stage' && !this.seenAIWarning) {
+          this.seenAIWarning = true;
+          this.animeCutscenes.playCutscene(SCENE_AI_ALEX_WARNING, () => {
+            this._executeStageTransition(door);
+          });
+        } else {
+          this._executeStageTransition(door);
+        }
         return;
       }
 
@@ -28175,6 +28473,7 @@ class RPGGame {
   }
 
   _executeStageTransition(door) {
+    this.transitionCooldown = 0.5;
     if (this.music) {
       if (door.targetScene === 'condemned_realms' || this.tilemap.currentSceneId === 'condemned_realms') {
         if (typeof this.music.playAbyssalPortalSound === 'function') {
@@ -28958,20 +29257,38 @@ class RPGGame {
     // Daño ambiental por calor extremo en la Forja si falta el Blindaje Térmico
     this._checkEnvironmentalHazards(dt);
 
-    // Detección automática al caminar hacia la salida oeste de Valleverde a otras zonas
+    if (this.transitionCooldown > 0) {
+      this.transitionCooldown -= dt;
+    }
+
+    // Detección automática al caminar hacia los límites de escena y caminos cardinales (estilo Zelda)
     if (
       (!this.animeCutscenes || !this.animeCutscenes.isActive) &&
-      this.tilemap.currentSceneId === 'overworld' &&
       !this.dialogueBox.active &&
       !this.inventory.isOpen &&
       !this.characterStats.isOpen &&
-      this.player.x <= 1.8 * this.tilemap.tileSize &&
-      this.player.y >= 10.5 * this.tilemap.tileSize &&
-      this.player.y <= 14.5 * this.tilemap.tileSize
+      this.transitionCooldown <= 0
     ) {
-      const door = this.tilemap.findNearbyDoor(this.player);
-      if (door && door.type === 'stage_transition') {
-        this._executeInteraction({ kind: 'door', target: door });
+      if (this.tilemap.currentSceneId === 'overworld') {
+        const atWest = this.player.x <= 1.5 * this.tilemap.tileSize && this.player.y >= 10.5 * this.tilemap.tileSize && this.player.y <= 14.5 * this.tilemap.tileSize;
+        const atEast = this.player.x >= 32.5 * this.tilemap.tileSize && this.player.y >= 11 * this.tilemap.tileSize && this.player.y <= 14 * this.tilemap.tileSize;
+        const atNorth = this.player.y <= 1.2 * this.tilemap.tileSize && this.player.x >= 15.5 * this.tilemap.tileSize && this.player.x <= 19.5 * this.tilemap.tileSize;
+        const atSouth = this.player.y >= 22.5 * this.tilemap.tileSize && this.player.x >= 15.5 * this.tilemap.tileSize && this.player.x <= 19.5 * this.tilemap.tileSize;
+
+        if (atWest || atEast || atNorth || atSouth) {
+          const door = this.tilemap.findNearbyDoor(this.player);
+          if (door && door.type === 'stage_transition') {
+            this._executeInteraction({ kind: 'door', target: door });
+          }
+        }
+      } else if (['first_stage', 'north_peaks', 'south_swamp', 'west_wastes'].includes(this.tilemap.currentSceneId)) {
+        const door = this.tilemap.findNearbyDoor(this.player);
+        if (door && door.type === 'stage_transition' && door.targetScene === 'overworld') {
+          const dist = Math.hypot(this.player.centerX - door.worldX, this.player.centerY - door.worldY);
+          if (dist <= 20) {
+            this._executeInteraction({ kind: 'door', target: door });
+          }
+        }
       }
     }
 
@@ -29019,11 +29336,19 @@ class RPGGame {
         aiContext
       );
 
-      // Puntos de habilidad por enemigos derrotados
+      // Puntos de habilidad y experiencia por enemigos derrotados
       if (enemy.dead && !enemy.xpGranted) {
         enemy.xpGranted = true;
+        const prevLevel = this.player.level;
         const gained = this.player.awardKill(Boolean(enemy.isBoss));
-        if (gained > 0 && this.menuSystem) {
+        if (this.player.level > prevLevel) {
+          if (this.music && typeof this.music.playFanfare === 'function') {
+            this.music.playFanfare();
+          }
+          if (this.menuSystem) {
+            this.menuSystem.showNotice(`🎉 ¡SUBIDA DE NIVEL! ★ NIVEL ${this.player.level} ★ (Salud y Energía al 100%)`, 4.0);
+          }
+        } else if (gained > 0 && this.menuSystem) {
           this.menuSystem.showNotice(`⭐ +${gained} punto${gained > 1 ? 's' : ''} de habilidad [C → Habilidades]`, 3);
         }
       }

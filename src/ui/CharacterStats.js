@@ -243,14 +243,21 @@ export class CharacterStats {
     ctx.fillText(UILayout.fitText(ctx, this.getDevTitle(player), leftW - 45), leftRect.x + 41, leftRect.y + 24);
 
     const coinsVal = player ? (player.coins ?? 0) : 0;
+    const playerLvl = player ? (player.level || 1) : 1;
+    const playerXp = player ? (player.xp || 0) : 0;
+    const nextXp = player && typeof player.getNextLevelXp === 'function' ? player.getNextLevelXp() : 50;
     ctx.font = `bold 4.2px ${UI_FONT}`;
     ctx.fillStyle = UI_COLORS.emerald;
-    ctx.fillText(`◈ Saldo: ${coinsVal} Bytes`, leftRect.x + 41, leftRect.y + 33);
+    ctx.fillText(`◈ Saldo: ${coinsVal} Bytes`, leftRect.x + 41, leftRect.y + 32);
 
-    // 2. Barras de progreso compactas (Salud, Blindaje, Robotización, Ataque)
+    ctx.fillStyle = UI_COLORS.gold;
+    ctx.fillText(`★ Nivel: ${playerLvl}/10 (${playerXp}/${nextXp} XP)`, leftRect.x + 41, leftRect.y + 40);
+
+    // 2. Barras de progreso compactas (Salud, Blindaje, Robotización, Experiencia, Ataque)
     const barX = leftRect.x + 5;
     const barW = leftRect.w - 10;
-    let by = leftRect.y + 50;
+    let by = leftRect.y + 47;
+    const barSpacing = 14;
 
     const hpCur = player ? Math.max(0, player.hp) : 6;
     const hpMax = player ? (player.maxHp || 6) : 6;
@@ -265,7 +272,7 @@ export class CharacterStats {
       label: 'SALUD VITAL',
       valueText: `${hpCur.toFixed(1).replace('.0', '')}/${hpMax} ♥`
     });
-    by += 16;
+    by += barSpacing;
 
     const hasArmor = Boolean(player && player.hasArmor);
     const armorPts = player ? (player.armorPoints ?? 0) : 0;
@@ -281,7 +288,7 @@ export class CharacterStats {
       label: 'BLINDAJE BINARIO',
       valueText: hasArmor ? `${armorPts}/${maxArmorPts} 🛡️` : 'SIN CORAZA'
     });
-    by += 16;
+    by += barSpacing;
 
     const robotVal = player ? Math.round(player.robotizationLevel || 0) : 0;
     const robotColor = robotVal > 80
@@ -298,7 +305,24 @@ export class CharacterStats {
       label: 'ROBOTIZACIÓN IA',
       valueText: `${robotVal}% 🤖`
     });
-    by += 16;
+    by += barSpacing;
+
+    const baseXp = player && typeof player.getCurrentLevelBaseXp === 'function' ? player.getCurrentLevelBaseXp() : 0;
+    const xpRange = Math.max(1, nextXp - baseXp);
+    const xpProgress = playerLvl >= 10 ? xpRange : Math.max(0, Math.min(xpRange, playerXp - baseXp));
+    const xpPct = player && typeof player.getXpProgressPercent === 'function' ? player.getXpProgressPercent() : 0;
+    UILayout.drawBar(ctx, {
+      x: barX,
+      y: by,
+      w: barW,
+      h: 5,
+      value: xpProgress,
+      max: xpRange,
+      color: UI_COLORS.gold,
+      label: 'EXP. PROGRAMADOR',
+      valueText: playerLvl >= 10 ? 'NV 10 (MÁX) ★' : `NV ${playerLvl} (${xpPct}%)`
+    });
+    by += barSpacing;
 
     const hasSword = Boolean(player && player.hasSword);
     const atkPower = hasSword ? (robotVal > 50 ? 70 : 100) : 25;

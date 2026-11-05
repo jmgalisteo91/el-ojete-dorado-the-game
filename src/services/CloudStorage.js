@@ -105,6 +105,13 @@ export class CloudStorage {
       ? Math.max(1, Math.min(2, Math.floor(Number(src.armorLevel))))
       : (playerHasArmor ? 1 : 1);
 
+    const level = Number.isFinite(Number(src.level))
+      ? Math.max(1, Math.min(10, Math.floor(Number(src.level))))
+      : 1;
+    const xp = Number.isFinite(Number(src.xp))
+      ? Math.max(0, Math.floor(Number(src.xp)))
+      : 0;
+
     const rawCores = (src.dungeonCores && typeof src.dungeonCores === 'object') ? src.dungeonCores : {};
     const dungeonCores = {
       gc: Boolean(src.dungeonCore_gc ?? rawCores.gc ?? false),
@@ -131,6 +138,8 @@ export class CloudStorage {
       playerHasArmor,
       swordLevel,
       armorLevel,
+      level,
+      xp,
       dungeonCores,
       gatesUnlocked,
       dungeonCore_gc: dungeonCores.gc,

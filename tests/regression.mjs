@@ -1139,10 +1139,17 @@ test('DoorGatekeeper: Acceso a la Ciudadela Cuántica bloqueado hasta colocar lo
   block = getDoorBlock('ai_citadel', player);
   assert.ok(block, 'Debe seguir bloqueada con 2 núcleos');
 
-  // 3. Con los 3 núcleos colocados (Garbage Collector, Stack Overflow, Microondas)
+  // 3. Con los 3 núcleos colocados pero nivel inferior a 10: bloqueado por sobrecarga del Mainframe
   player.gatesUnlocked = 3;
+  player.level = 8;
   block = getDoorBlock('ai_citadel', player);
-  assert.equal(block, null, 'Paso permitido al tener gatesUnlocked === 3 y equipo completo');
+  assert.ok(block, 'Debe requerir Nivel 10 para asaltar el Mainframe');
+  assert.match(block.title, /NIVEL 10 REQUERIDO/);
+
+  // 4. Con Nivel 10 y los 3 núcleos colocados (Garbage Collector, Stack Overflow, Microondas): paso permitido
+  player.level = 10;
+  block = getDoorBlock('ai_citadel', player);
+  assert.equal(block, null, 'Paso permitido al tener gatesUnlocked === 3 y Nivel 10');
 });
 
 test('Tilemap: Reestructuración de Mazmorras en 3 niveles y Ciudadela con tileset Mainframe exclusivo', () => {
@@ -1468,6 +1475,89 @@ test('Cartografía Dinámica y Progresión estilo Zelda (WorldMap.js) y Eliminac
   assert.doesNotThrow(() => {
     tm.renderBossAndDungeonIndicators({}, { renderX: 0, renderY: 0, viewportWidth: 320, viewportHeight: 180 }, [], dummyPlayer);
   }, 'renderBossAndDungeonIndicators debe ejecutarse de forma limpia y neutralizada');
+});
+
+test('Sistema de Niveles (1-10), Experiencia, Centinelas Guardianes y Desbloqueo Fluido de Zonas', () => {
+  const p = new Player({ x: 0, y: 0 });
+  assert.equal(p.level, 1, 'Inicia a Nivel 1');
+  assert.equal(p.xp, 0, 'Inicia con 0 XP');
+  assert.equal(p.getNextLevelXp(), 50, 'Nivel 2 requiere 50 XP');
+  assert.equal(p.getCurrentLevelBaseXp(), 0);
+  assert.equal(p.getXpProgressPercent(), 0);
+
+  // 1. Ganancia de XP y Subida a Nivel 2
+  p.gainXp(25);
+  assert.equal(p.level, 1);
+  assert.equal(p.xp, 25);
+  assert.equal(p.getXpProgressPercent(), 50);
+
+  const resLvl2 = p.gainXp(25);
+  assert.equal(resLvl2.leveledUp, true);
+  assert.equal(p.level, 2, 'Sube a Nivel 2 tras acumular 50 XP');
+  assert.equal(p.getNextLevelXp(), 120);
+
+  // 2. Subida progresiva de niveles por experiencia y combates
+  p.gainXp(170); // 50 + 170 = 220 XP (alcanza Nivel 4)
+  assert.equal(p.level, 4, 'Alcanza Nivel 4 a 220 XP');
+
+  // Subir hasta Nivel 10 (Nivel Máximo)
+  p.gainXp(2000);
+  assert.equal(p.level, 10, 'El nivel máximo debe ser 10');
+  assert.equal(p.getXpProgressPercent(), 100);
+
+  // Reset del jugador restaura Nivel 1 y 0 XP
+  p.reset();
+  assert.equal(p.level, 1);
+  assert.equal(p.xp, 0);
+
+  // 3. Control de Centinelas y Gating por Nivel en Puertas
+  // Nivel 1: Todas las regiones exteriores bloqueadas por sus respectivos centinelas
+  const pLvl1 = { level: 1, hasArmor: false, hasSword: false };
+  const blockEast = getDoorBlock('first_stage', pLvl1);
+  assert.ok(blockEast);
+  assert.match(blockEast.title, /GUARDIA KAEL: NIVEL 2 REQUERIDO/);
+
+  const blockNorth = getDoorBlock('north_peaks', pLvl1);
+  assert.ok(blockNorth);
+  assert.match(blockNorth.title, /GUARDIA BOREAS: NIVEL 4 REQUERIDO/);
+
+  const blockSouth = getDoorBlock('south_swamp', pLvl1);
+  assert.ok(blockSouth);
+  assert.match(blockSouth.title, /GUARDIA VULCANO: NIVEL 6 REQUERIDO/);
+
+  const blockWest = getDoorBlock('west_wastes', pLvl1);
+  assert.ok(blockWest);
+  assert.match(blockWest.title, /COMANDANTE VAEL: NIVEL 8 REQUERIDO/);
+
+  // Nivel 2: Paso permitido a Tierras del Este
+  assert.equal(getDoorBlock('first_stage', { level: 2 }), null);
+
+  // Nivel 4: Paso permitido a Cumbres del Norte
+  assert.equal(getDoorBlock('north_peaks', { level: 4 }), null);
+
+  // Nivel 6: Paso permitido a Marismas del Sur
+  assert.equal(getDoorBlock('south_swamp', { level: 6 }), null);
+
+  // Nivel 8: Paso permitido al Páramo de Alex
+  assert.equal(getDoorBlock('west_wastes', { level: 8 }), null);
+
+  // Nivel 10 + 3 Núcleos: Paso permitido a la Ciudadela Cuántica
+  const pLvl9Citadel = { level: 9, gatesUnlocked: 3, hasArmor: true, hasSword: true };
+  const blockCitadelLvl9 = getDoorBlock('ai_citadel', pLvl9Citadel);
+  assert.ok(blockCitadelLvl9);
+  assert.match(blockCitadelLvl9.title, /NIVEL 10 REQUERIDO/);
+
+  const pLvl10Citadel = { level: 10, gatesUnlocked: 3, hasArmor: true, hasSword: true };
+  assert.equal(getDoorBlock('ai_citadel', pLvl10Citadel), null, 'Acceso concedido al Mainframe a Nivel 10');
+
+  // 4. Sanitización y Persistencia en CloudStorage
+  const cleanSave = CloudStorage.sanitizeSaveData({ level: 7, xp: 820 });
+  assert.equal(cleanSave.level, 7);
+  assert.equal(cleanSave.xp, 820);
+
+  const clampedSave = CloudStorage.sanitizeSaveData({ level: 50, xp: -100 });
+  assert.equal(clampedSave.level, 10);
+  assert.equal(clampedSave.xp, 0);
 });
 
 await Promise.all(asyncQueue);
