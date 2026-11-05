@@ -36,7 +36,7 @@ import { NPC, getBromForgeChoices } from '../src/entities/NPC.js';
 import { TILES } from '../src/graphics/SpriteSheetGenerator.js';
 import { DayNightCycle } from '../src/world/DayNightCycle.js';
 import { RenderPipeline } from '../src/graphics/RenderPipeline.js';
-import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT } from '../src/ui/UILayout.js';
+import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT, GAME_VERSION } from '../src/ui/UILayout.js';
 import { CloudStorage } from '../src/services/CloudStorage.js';
 import { LeaderboardView } from '../src/ui/LeaderboardView.js';
 import { AudioManager } from '../src/audio/AudioManager.js';
@@ -1862,6 +1862,90 @@ test('Entrenamiento en Valleverde, Combate Desarmado, Huellas Protegidas de Casa
   assert.ok(herbSign, 'Letrero de Invernadero de Lyra presente');
   const trainingSign = signposts.find((s) => s.shortName.includes('Entrenamiento'));
   assert.ok(trainingSign, 'Letrero del Campo de Entrenamiento presente');
+});
+
+test('Desbloqueo de Menú de Audio y Opciones sin Bloqueo de Estado y Versión Oficial Dinámica (v3.8.2)', () => {
+  // 1. Verificación de Versión Oficial Centralizada
+  assert.equal(GAME_VERSION, 'v3.8.2', 'La versión centralizada debe ser v3.8.2');
+
+  const fakeMusic = {
+    setMode: () => {},
+    playMenuSelect: () => {},
+    playMenuMove: () => {},
+    getMasterVolume: () => 1.0,
+    getMusicVolume: () => 0.8,
+    getSfxVolume: () => 1.0,
+    isMasterMuted: () => false,
+    isMusicMuted: () => false,
+    isSfxMuted: () => false
+  };
+
+  const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {});
+
+  // 2. Transición Pausa -> Ajustes y Sonido -> Volver (vía opción Volver)
+  menu.openPauseMenu();
+  assert.equal(menu.state, 'pause');
+  const pauseItems = menu._getCurrentMenuItems();
+  assert.equal(pauseItems[3].label, 'Ajustes y Sonido');
+  pauseItems[3].action();
+  assert.equal(menu.state, 'options', 'Debe entrar al menú de opciones desde pausa');
+  assert.equal(menu.previousStateBeforeOptions, 'pause');
+
+  const optionItems = menu._getCurrentMenuItems();
+  const backItem = optionItems.find((it) => it.label === 'Volver');
+  assert.ok(backItem, 'Debe existir la opción Volver');
+  backItem.action();
+  assert.equal(menu.state, 'pause', 'Volver desde opciones debe regresar al menú de pausa');
+  assert.equal(menu.selectedIndex, 3, 'El cursor debe colocarse sobre Ajustes y Sonido');
+
+  // 3. Cadena Pausa -> Opciones -> Controles -> Cerrar Controles -> Volver Opciones (sin bucle infinito)
+  menu.openOptionsScreen('pause');
+  assert.equal(menu.state, 'options');
+  menu.openControlsScreen('options');
+  assert.equal(menu.state, 'controls');
+  menu.closeControlsScreen();
+  assert.equal(menu.state, 'options', 'Cerrar controles debe devolver a opciones');
+  assert.equal(menu.previousStateBeforeOptions, 'pause', 'El estado previo a opciones debe seguir siendo pause intacto');
+  menu.closeOptionsScreen();
+  assert.equal(menu.state, 'pause', 'Cerrar opciones no debe quedar en bucle infinito');
+
+  // 4. Retorno con tecla Escape desde Ajustes y Sonido
+  menu.openOptionsScreen('pause');
+  const mockInput = {
+    pointerX: -1,
+    pointerY: -1,
+    consumeKey: (k) => k === 'Escape',
+    consumeMenuDirection: () => null,
+    consumeInteraction: () => false,
+    consumePointerClick: () => null
+  };
+  menu.update(0.016, mockInput);
+  assert.equal(menu.state, 'pause', 'Pulsar Escape en opciones debe regresar a pausa');
+
+  // 5. Opciones desde Pantalla de Título -> Volver a Título
+  menu.openTitleScreen();
+  menu.openOptionsScreen('title');
+  assert.equal(menu.state, 'options');
+  menu.closeOptionsScreen();
+  assert.equal(menu.state, 'title', 'Volver desde opciones abiertas en título debe regresar a título');
+
+  // 6. Botón de Cierre Superior Derecho del Modal [✕ Volver]
+  const closeBtn = menu._getModalCloseButtonBounds(true);
+  assert.ok(closeBtn, 'Debe existir hitbox para el botón de cierre');
+  assert.ok(closeBtn.x > 200, 'El botón debe ubicarse a la derecha');
+  assert.ok(closeBtn.w >= 40 && closeBtn.h >= 10, 'Dimensiones clickeables cómodas');
+
+  menu.openOptionsScreen('pause');
+  const mockClickInput = {
+    pointerX: closeBtn.x + 5,
+    pointerY: closeBtn.y + 5,
+    consumeKey: () => false,
+    consumeMenuDirection: () => null,
+    consumeInteraction: () => false,
+    consumePointerClick: () => ({ x: closeBtn.x + 5, y: closeBtn.y + 5 })
+  };
+  menu.update(0.016, mockClickInput);
+  assert.equal(menu.state, 'pause', 'Hacer clic sobre el botón ✕ Volver debe cerrar el menú de opciones');
 });
 
 await Promise.all(asyncQueue);

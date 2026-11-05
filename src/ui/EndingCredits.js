@@ -1,4 +1,5 @@
 import { calculateGameScore } from '../core/ScoreSystem.js?v=7';
+import { GAME_VERSION } from './UILayout.js?v=7';
 
 /**
  * Submódulo de Créditos Finales y Expediente de Compilación (EndingCredits.js)
@@ -65,7 +66,7 @@ export class EndingCredits {
     return [
       { type: 'spacer', height: 20 },
       { type: 'title', text: 'EL OJETE DORADO: THE GAME' },
-      { type: 'subtitle', text: '— VERSIÓN MAESTRA v3.5 —' },
+      { type: 'subtitle', text: `— VERSIÓN MAESTRA ${GAME_VERSION} —` },
       { type: 'spacer', height: 16 },
 
       { type: 'emblem', text: 'GOLDEN_ANUS_EMBLEM' },

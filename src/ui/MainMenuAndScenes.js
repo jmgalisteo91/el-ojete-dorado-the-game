@@ -4,6 +4,7 @@ import { EndingCredits } from './EndingCredits.js?v=7';
 import { GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=7';
 import { getLocalLeaderboard, fetchGlobalLeaderboard } from '../core/ScoreSystem.js?v=7';
 import { LeaderboardView } from './LeaderboardView.js?v=7';
+import { UILayout, GAME_VERSION } from './UILayout.js?v=7';
 
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art
@@ -24,6 +25,11 @@ export class MainMenuAndScenes {
     // Estados: 'title' | 'options' | 'cutscene' | 'exit_screen' | 'pause' | 'none'
     this.state = 'title';
     this.previousState = 'title';
+    this.previousStateBeforeOptions = 'title';
+    this.previousStateBeforeControls = 'title';
+    this.previousStateBeforeLeaderboard = 'title';
+    this._lastPointerX = -1;
+    this._lastPointerY = -1;
 
     this.selectedIndex = 0;
     this.noticeText = '';
@@ -180,9 +186,25 @@ export class MainMenuAndScenes {
     this.noticeTimer = duration;
   }
 
+  openOptionsScreen(returnState = 'title') {
+    this.previousStateBeforeOptions = returnState === 'pause' ? 'pause' : 'title';
+    this.previousState = this.previousStateBeforeOptions;
+    this.state = 'options';
+    this.selectedIndex = 0;
+    this.noticeText = '';
+    this.music.playMenuSelect();
+  }
+
+  closeOptionsScreen() {
+    this.music.playMenuMove();
+    const returnTo = this.previousStateBeforeOptions === 'pause' ? 'pause' : 'title';
+    this.state = returnTo;
+    this.previousState = returnTo;
+    this.selectedIndex = returnTo === 'pause' ? 3 : 4;
+  }
+
   openControlsScreen(returnState = 'title') {
     this.previousStateBeforeControls = returnState;
-    this.previousState = returnState;
     this.state = 'controls';
     this.selectedIndex = 0;
     this.music.playMenuSelect();
@@ -195,7 +217,6 @@ export class MainMenuAndScenes {
 
   openLeaderboardScreen(returnState = 'title') {
     this.previousStateBeforeLeaderboard = returnState;
-    this.previousState = returnState;
     this.state = 'leaderboard';
     this.leaderboardScroll = 0;
     this.leaderboardTab = 'global';
@@ -332,6 +353,7 @@ export class MainMenuAndScenes {
   }
 
   _ensureExitModals() {
+    if (typeof document === 'undefined') return { confirmModal: null, farewellModal: null };
     // 1. Modal de Confirmación
     let confirmModal = document.getElementById('exit-confirm-modal');
     if (!confirmModal) {
@@ -426,6 +448,7 @@ export class MainMenuAndScenes {
   }
 
   _showExitConfirmModal() {
+    if (typeof document === 'undefined') return;
     this._ensureExitModals();
     const modal = document.getElementById('exit-confirm-modal');
     if (modal) modal.classList.remove('hidden');
@@ -434,11 +457,13 @@ export class MainMenuAndScenes {
   }
 
   _hideExitConfirmModal() {
+    if (typeof document === 'undefined') return;
     const modal = document.getElementById('exit-confirm-modal');
     if (modal) modal.classList.add('hidden');
   }
 
   _showExitFarewellModal() {
+    if (typeof document === 'undefined') return;
     this._ensureExitModals();
     this._hideExitConfirmModal();
     const modal = document.getElementById('exit-farewell-modal');
@@ -447,11 +472,13 @@ export class MainMenuAndScenes {
   }
 
   _hideExitFarewellModal() {
+    if (typeof document === 'undefined') return;
     const modal = document.getElementById('exit-farewell-modal');
     if (modal) modal.classList.add('hidden');
   }
 
   _updateExitCountdownDisplay(seconds) {
+    if (typeof document === 'undefined') return;
     const secEl = document.getElementById('exit-farewell-countdown-sec');
     if (secEl) {
       secEl.textContent = String(seconds);
@@ -459,6 +486,7 @@ export class MainMenuAndScenes {
   }
 
   _onExitCountdownComplete() {
+    if (typeof document === 'undefined') return;
     const textEl = document.getElementById('exit-farewell-countdown-text');
     if (textEl) {
       textEl.innerHTML = '¡Tiempo completado! Cerrando ventana...';
@@ -651,10 +679,7 @@ export class MainMenuAndScenes {
         {
           label: 'Opciones',
           action: () => {
-            this.music.playMenuSelect();
-            this.previousState = 'title';
-            this.state = 'options';
-            this.selectedIndex = 0;
+            this.openOptionsScreen('title');
           }
         },
         {
@@ -691,10 +716,7 @@ export class MainMenuAndScenes {
         {
           label: 'Ajustes y Sonido',
           action: () => {
-            this.music.playMenuSelect();
-            this.previousState = 'pause';
-            this.state = 'options';
-            this.selectedIndex = 0;
+            this.openOptionsScreen('pause');
           }
         },
         {
@@ -843,9 +865,7 @@ export class MainMenuAndScenes {
         {
           label: 'Volver',
           action: () => {
-            this.music.playMenuMove();
-            this.state = this.previousState || 'title';
-            this.selectedIndex = this.state === 'pause' ? 3 : 0;
+            this.closeOptionsScreen();
           }
         }
       ];
@@ -871,6 +891,10 @@ export class MainMenuAndScenes {
     this.animTime += dt;
     if (this.noticeTimer > 0) {
       this.noticeTimer = Math.max(0, this.noticeTimer - dt);
+    }
+    if (input) {
+      this._lastPointerX = input.pointerX;
+      this._lastPointerY = input.pointerY;
     }
 
     // Actualización del fundido suave (Fade to Black / Fade in)
@@ -1131,9 +1155,7 @@ export class MainMenuAndScenes {
         return;
       }
       if (this.state === 'options' || this.state === 'pause_sound') {
-        this.state = this.previousState || 'title';
-        this.selectedIndex = this.state === 'pause' ? 3 : 0;
-        this.music.playMenuMove();
+        this.closeOptionsScreen();
         return;
       }
       if (this.state === 'pause') {
@@ -1142,7 +1164,14 @@ export class MainMenuAndScenes {
       }
     }
 
-    // Soporte de ratón / puntero sobre los botones del menú
+    // Soporte de ratón / puntero sobre los botones del menú y botón de cierre modal
+    const isPauseModal =
+      this.state === 'pause' ||
+      this.state === 'pause_cloud' ||
+      this.state === 'options' ||
+      this.state === 'pause_sound';
+    const closeBtn = isPauseModal ? this._getModalCloseButtonBounds(isPauseModal) : null;
+
     const menuBounds = this._getMenuHitboxes(items.length);
     if (input.pointerX >= 0 && input.pointerY >= 0) {
       for (let i = 0; i < menuBounds.length; i++) {
@@ -1163,6 +1192,25 @@ export class MainMenuAndScenes {
 
     const click = input.consumePointerClick();
     if (click) {
+      if (
+        closeBtn &&
+        click.x >= closeBtn.x &&
+        click.x <= closeBtn.x + closeBtn.w &&
+        click.y >= closeBtn.y &&
+        click.y <= closeBtn.y + closeBtn.h
+      ) {
+        if (this.state === 'options' || this.state === 'pause_sound') {
+          this.closeOptionsScreen();
+        } else if (this.state === 'pause_cloud') {
+          this.state = 'pause';
+          this.selectedIndex = 1;
+          this.music.playMenuMove();
+        } else if (this.state === 'pause') {
+          this.closePauseMenu();
+        }
+        return;
+      }
+
       for (let i = 0; i < menuBounds.length; i++) {
         const b = menuBounds[i];
         if (
@@ -1207,6 +1255,19 @@ export class MainMenuAndScenes {
     } else {
       this.state = 'none';
     }
+  }
+
+  _getModalCloseButtonBounds(isPauseModal = true) {
+    const winW = isPauseModal ? 240 : 216;
+    const winH = isPauseModal ? 150 : 128;
+    const winX = Math.round((this.viewportWidth - winW) / 2);
+    const winY = Math.round((this.viewportHeight - winH) / 2);
+    return {
+      x: winX + winW - 56,
+      y: winY + 4,
+      w: 50,
+      h: 13
+    };
   }
 
   _getMenuHitboxes(count) {
@@ -1326,7 +1387,7 @@ export class MainMenuAndScenes {
 
     if (
       this.state === 'title' ||
-      (this.state === 'options' && this.previousState === 'title') ||
+      ((this.state === 'options' || this.state === 'pause_sound') && this.previousStateBeforeOptions === 'title') ||
       (this.state === 'confirm_exit' && this.previousStateBeforeExit === 'title')
     ) {
       this._renderTitleBackdropPixelArt(ctx);
@@ -1341,8 +1402,10 @@ export class MainMenuAndScenes {
       this._renderMenuList(ctx, this._getCurrentMenuItems(), true);
     } else if (this.state === 'pause') {
       this._renderModalPanel(ctx, 'PAUSA · EL OJETE DORADO', this._getCurrentMenuItems());
-    } else if (this.state === 'options') {
-      this._renderModalPanel(ctx, 'OPCIONES DE JUEGO', this._getCurrentMenuItems());
+    } else if (this.state === 'options' || this.state === 'pause_sound') {
+      this._renderModalPanel(ctx, 'AJUSTES Y SONIDO', this._getCurrentMenuItems());
+    } else if (this.state === 'pause_cloud') {
+      this._renderModalPanel(ctx, 'GUARDADO Y NUBE · VERCEL', this._getCurrentMenuItems());
     } else if (this.state === 'confirm_exit') {
       this._renderModalPanel(ctx, '¿ABANDONAR LA AVENTURA?', this._getCurrentMenuItems());
     }
@@ -1840,9 +1903,9 @@ export class MainMenuAndScenes {
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillText('v3.5', this.viewportWidth - 5, this.viewportHeight - 3);
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('v3.5', this.viewportWidth - 6, this.viewportHeight - 4);
+    ctx.fillText(GAME_VERSION, this.viewportWidth - 5, this.viewportHeight - 3);
+    ctx.fillStyle = '#ffd885';
+    ctx.fillText(GAME_VERSION, this.viewportWidth - 6, this.viewportHeight - 4);
     ctx.restore();
   }
 
@@ -1915,11 +1978,30 @@ export class MainMenuAndScenes {
     ctx.textBaseline = 'top';
     ctx.fillText(title, Math.round(this.viewportWidth / 2), winY + 8);
 
-    // Indicador sutil [Esc] Volver en la esquina superior derecha
-    ctx.font = '5.5px monospace';
-    ctx.fillStyle = '#9aa5b8';
+    // Botón superior derecho interactivo [✕ Volver]
+    const closeBtn = this._getModalCloseButtonBounds(isPauseModal);
+    const mx = this._lastPointerX ?? -1;
+    const my = this._lastPointerY ?? -1;
+    const isHoverClose = mx >= closeBtn.x && mx <= closeBtn.x + closeBtn.w && my >= closeBtn.y && my <= closeBtn.y + closeBtn.h;
+
+    ctx.save();
+    ctx.font = 'bold 5.5px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText('[Esc] Volver', winX + winW - 8, winY + 9);
+    ctx.textBaseline = 'top';
+    if (isHoverClose) {
+      ctx.fillStyle = '#ffd885';
+      ctx.fillRect(closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h);
+      ctx.fillStyle = '#121624';
+      ctx.fillText('✕ Volver [Esc]', winX + winW - 8, winY + 7);
+    } else {
+      ctx.fillStyle = '#2d3b55';
+      ctx.fillRect(closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h);
+      ctx.fillStyle = '#192136';
+      ctx.fillRect(closeBtn.x + 1, closeBtn.y + 1, closeBtn.w - 2, closeBtn.h - 2);
+      ctx.fillStyle = '#9aa5b8';
+      ctx.fillText('✕ Volver [Esc]', winX + winW - 8, winY + 7);
+    }
+    ctx.restore();
 
     this._renderMenuList(ctx, items, false);
 

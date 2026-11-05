@@ -12,6 +12,8 @@
  *                      supere el ancho) y paginación en diapositivas.
  */
 
+export const GAME_VERSION = 'v3.8.2';
+
 export const LOGICAL_WIDTH = 320;
 export const LOGICAL_HEIGHT = 180;
 export const SAFE_WIDTH = 308;
