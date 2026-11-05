@@ -1,0 +1,36 @@
+build-portable.mjs
+  h_e1bbc662b18209 85,88-89
+el-ojete-dorado-the-game.html
+  h_e1bbc662b18209 5189,5197,5205,10442,10447,10484,10505,10549,10652,14650,15462,20466,20551,26328,27800,27903,28739
+src/ai/EnemyBrain.js
+  h_e1bbc662b18209 109,114,151,172,216,319
+src/entities/NPC.js
+  h_e1bbc662b18209 3
+src/entities/NPCs.js
+  h_e1bbc662b18209 1,3
+src/entities/bosses/FinalBossAlex.js
+  h_e1bbc662b18209 2
+src/main.js
+  h_e1bbc662b18209 39,52,56,3313,4785,4888,5724
+src/ui/AnimeCutsceneManager.js
+  h_e1bbc662b18209 390,475
+src/ui/MainMenuAndScenes.js
+  h_e1bbc662b18209 4
+src/ui/WorldMap.js
+  h_e1bbc662b18209 104,916
+src/world/Tilemap.js
+  h_e1bbc662b18209 2,210,218,226
+tests/regression.mjs
+  h_e1bbc662b18209 11,28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9f7ef9fda2be4a89fe0d2bf37d935dac42d96f35",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
