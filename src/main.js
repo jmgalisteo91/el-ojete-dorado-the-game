@@ -3185,41 +3185,41 @@ export class RPGGame {
         ]
       }),
 
-      // ==================== ENEMIGOS NOCTURNOS (AL ESTE DEL PUENTE Y EN ESCENARIOS EXTERIORES) ====================
+      // ==================== ENEMIGOS NOCTURNOS (EN EL VALLE DE LOS TEMPLOS) ====================
       new Enemy({
         id: 'night_bug_east_1',
         name: 'Bug de Memoria Nocturno',
-        x: 33 * 16,
-        y: 9 * 16,
-        sceneId: 'overworld',
+        x: 23 * 16,
+        y: 11 * 16,
+        sceneId: 'first_stage',
         nightOnly: true,
         speed: 35,
         maxHp: 2,
         aggroRange: 56,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
-          { x: 33 * 16, y: 8 * 16 },
-          { x: 36 * 16, y: 8 * 16 },
-          { x: 36 * 16, y: 11 * 16 },
-          { x: 33 * 16, y: 11 * 16 }
+          { x: 21 * 16, y: 11 * 16 },
+          { x: 25 * 16, y: 11 * 16 },
+          { x: 25 * 16, y: 13 * 16 },
+          { x: 21 * 16, y: 13 * 16 }
         ]
       }),
       new Enemy({
         id: 'night_bug_east_2',
         name: 'Dron Cazador de Nocturnidad',
-        x: 34 * 16,
-        y: 16 * 16,
-        sceneId: 'overworld',
+        x: 18 * 16,
+        y: 8 * 16,
+        sceneId: 'first_stage',
         nightOnly: true,
         speed: 38,
         maxHp: 3,
         aggroRange: 60,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
         patrolPoints: [
-          { x: 33 * 16, y: 15 * 16 },
-          { x: 36 * 16, y: 15 * 16 },
-          { x: 36 * 16, y: 18 * 16 },
-          { x: 33 * 16, y: 18 * 16 }
+          { x: 17 * 16, y: 8 * 16 },
+          { x: 20 * 16, y: 8 * 16 },
+          { x: 20 * 16, y: 10 * 16 },
+          { x: 17 * 16, y: 10 * 16 }
         ]
       }),
       new Enemy({

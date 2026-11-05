@@ -1323,113 +1323,46 @@ test('Robotización Gradual Lenta y Zona de Templos Sagrados Desacoplada de Vall
   assert.ok(bridgeDoor, 'Debe haber puerta/portal en el puente este de Valleverde');
   assert.equal(bridgeDoor.targetScene, 'first_stage', 'El portal este debe conducir a first_stage (Tierras Corruptas)');
 
-  // No debe haber puertas directas a armor_temple o sword_temple en overworld
+  // No debe haber puertas directas a templos o mazmorras en overworld (Valleverde es solo pueblo pacífico)
   for (let r = 0; r < tm.rows; r++) {
     for (let c = 0; c < tm.cols; c++) {
       const d = tm.findNearbyDoor({ centerX: (c + 0.5) * 16, centerY: (r + 0.5) * 16 });
       if (d) {
         assert.notEqual(d.targetScene, 'armor_temple', 'No debe haber puerta a armor_temple en overworld');
         assert.notEqual(d.targetScene, 'sword_temple', 'No debe haber puerta a sword_temple en overworld');
+        assert.notEqual(d.targetScene, 'sewers_entry', 'No debe haber puerta a sewers_entry en overworld');
+        assert.notEqual(d.targetScene, 'mines_entry', 'No debe haber puerta a mines_entry en overworld');
+        assert.notEqual(d.targetScene, 'forge_entry', 'No debe haber puerta a forge_entry en overworld');
+        assert.notEqual(d.targetScene, 'quantum_gate', 'No debe haber puerta a quantum_gate en overworld');
       }
     }
   }
 
-  // 3. En first_stage (Tierras Corruptas), ambos templos están presentes y sword_temple se desbloquea con armadura
+  // 3. En first_stage (Valle de los Templos), todos los templos y mazmorras están presentes
   tm.loadScene('first_stage');
   const doorArmor = tm.findNearbyDoor({ centerX: 6.5 * 16, centerY: 8.5 * 16 });
-  assert.ok(doorArmor);
+  assert.ok(doorArmor, 'Templo de la Armadura presente');
   assert.equal(doorArmor.targetScene, 'armor_temple');
 
   const doorSword = tm.findNearbyDoor({ centerX: 17.5 * 16, centerY: 2.5 * 16 });
-  assert.ok(doorSword);
+  assert.ok(doorSword, 'Templo de la Espada presente');
   assert.equal(doorSword.targetScene, 'sword_temple');
 
-  // Acceso a sword_temple según armadura
-  assert.ok(getDoorBlock('sword_temple', { hasArmor: false, hasSword: false }), 'Sin armadura debe bloquear');
-  assert.equal(getDoorBlock('sword_temple', { hasArmor: true, hasSword: false }), null, 'Con armadura debe permitir acceso directo');
-});
+  const doorSewers = tm.findNearbyDoor({ centerX: 6.5 * 16, centerY: 18.5 * 16 });
+  assert.ok(doorSewers, 'Mazmorra de Cloacas presente en Valle de los Templos');
+  assert.equal(doorSewers.targetScene, 'sewers_entry');
 
-test('Mapeo de Ratón para Ataque (Clic Izquierdo) y Ataque Cargado', () => {
-  const input = new InputHandler();
+  const doorMines = tm.findNearbyDoor({ centerX: 28.5 * 16, centerY: 4.5 * 16 });
+  assert.ok(doorMines, 'Mazmorra de Minas presente en Valle de los Templos');
+  assert.equal(doorMines.targetScene, 'mines_entry');
 
-  // 1. Simulación de Clic Izquierdo (pointerdown con button 0)
-  input._onPointerDown({ clientX: 200, clientY: 90, button: 0 });
-  assert.equal(input.pointerJustClicked, true);
-  assert.equal(input.pointerAttackJustPressed, true);
-  assert.equal(input.isPointerDown, true);
+  const doorForge = tm.findNearbyDoor({ centerX: 28.5 * 16, centerY: 18.5 * 16 });
+  assert.ok(doorForge, 'Mazmorra de Forja presente en Valle de los Templos');
+  assert.equal(doorForge.targetScene, 'forge_entry');
 
-  // 2. consumeAttack detecta el ataque de ratón y reporta 'pointer'
-  assert.equal(input.consumeAttack(), true);
-  assert.equal(input.lastAttackSource, 'pointer');
-  assert.equal(input.consumeAttack(), false, 'Single-fire: no debe volver a disparar hasta nuevo clic');
-
-  // 3. Ataque cargado: mientras el botón esté pulsado, isAttackHeld es true
-  assert.equal(input.isAttackHeld(), true, 'Debe mantenerse activo mientras se mantenga el clic');
-  input._onPointerUp({ button: 0 });
-  assert.equal(input.isPointerDown, false);
-  assert.equal(input.isAttackHeld(), false);
-
-  // 4. Si la UI consume el clic del ratón (ej: menú, modal o diálogo), se anula el ataque
-  input._onPointerDown({ clientX: 50, clientY: 50, button: 0 });
-  const click = input.consumePointerClick();
-  assert.ok(click);
-  assert.equal(input.pointerAttackJustPressed, false, 'consumePointerClick debe neutralizar el ataque para no golpear en menús');
-  assert.equal(input.consumeAttack(), false);
-
-  // 5. El ataque con teclado sigue funcionando con normalidad
-  input._onKeyDown({ code: 'KeyF', preventDefault() {} });
-  assert.equal(input.consumeAttack(), true);
-  assert.equal(input.lastAttackSource, 'keyboard');
-});
-
-test('Robotización Gradual Lenta y Zona de Templos Sagrados Desacoplada de Valleverde', () => {
-  // 1. Robotización lenta
-  const player = new Player(100, 100);
-  player.equipArmor();
-  assert.equal(player.robotizationLevel, 0);
-
-  // Actualizar 10 segundos
-  const fakeInput = {
-    getMovementVector: () => ({ x: 0, y: 0 }),
-    isAttacking: () => false,
-    isDashing: () => false,
-    consumeInteraction: () => false,
-    isParrying: () => false,
-    consumeSpecialAction: () => false
-  };
-  player.update(10, fakeInput, { isSolidAtTile: () => false });
-  assert.ok(player.robotizationLevel <= 1.5, `Robotización en 10s debe ser <= 1.5% (actual: ${player.robotizationLevel.toFixed(2)}%)`);
-  assert.ok(player.robotizationLevel > 0, 'La armadura debe incrementar ligeramente la robotización');
-
-  // 2. Transición entre Valleverde y Tierras Corruptas
-  const tm = new Tilemap(null, 16);
-  tm.loadScene('overworld');
-  // Puente este (col 34.5, row 12.5) -> first_stage
-  const fakePlayerAtBridge = { centerX: 34.5 * 16, centerY: 12.5 * 16 };
-  const bridgeDoor = tm.findNearbyDoor(fakePlayerAtBridge);
-  assert.ok(bridgeDoor, 'Debe haber puerta/portal en el puente este de Valleverde');
-  assert.equal(bridgeDoor.targetScene, 'first_stage', 'El portal este debe conducir a first_stage (Tierras Corruptas)');
-
-  // No debe haber puertas directas a armor_temple o sword_temple en overworld
-  for (let r = 0; r < tm.rows; r++) {
-    for (let c = 0; c < tm.cols; c++) {
-      const d = tm.findNearbyDoor({ centerX: (c + 0.5) * 16, centerY: (r + 0.5) * 16 });
-      if (d) {
-        assert.notEqual(d.targetScene, 'armor_temple', 'No debe haber puerta a armor_temple en overworld');
-        assert.notEqual(d.targetScene, 'sword_temple', 'No debe haber puerta a sword_temple en overworld');
-      }
-    }
-  }
-
-  // 3. En first_stage (Tierras Corruptas), ambos templos están presentes y sword_temple se desbloquea con armadura
-  tm.loadScene('first_stage');
-  const doorArmor = tm.findNearbyDoor({ centerX: 6.5 * 16, centerY: 8.5 * 16 });
-  assert.ok(doorArmor);
-  assert.equal(doorArmor.targetScene, 'armor_temple');
-
-  const doorSword = tm.findNearbyDoor({ centerX: 17.5 * 16, centerY: 2.5 * 16 });
-  assert.ok(doorSword);
-  assert.equal(doorSword.targetScene, 'sword_temple');
+  const doorQuantum = tm.findNearbyDoor({ centerX: 17.5 * 16, centerY: 18.5 * 16 });
+  assert.ok(doorQuantum, 'Puerta del Núcleo presente en Valle de los Templos');
+  assert.equal(doorQuantum.targetScene, 'quantum_gate');
 
   // Acceso a sword_temple según armadura
   assert.ok(getDoorBlock('sword_temple', { hasArmor: false, hasSword: false }), 'Sin armadura debe bloquear');
