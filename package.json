@@ -1,10 +1,11 @@
 {
   "name": "el-ojete-dorado-the-game",
-  "version": "3.5.1",
+  "version": "3.8.0",
   "description": "El Ojete Dorado: The Game - Aventura RPG Pixel Art 2D",
   "type": "module",
   "scripts": {
     "start": "python3 server.py",
+    "test": "node tests/regression.mjs",
     "build:portable": "node build-portable.mjs"
   },
   "keywords": [

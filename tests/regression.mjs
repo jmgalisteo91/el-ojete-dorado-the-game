@@ -38,6 +38,8 @@ import { RenderPipeline } from '../src/graphics/RenderPipeline.js';
 import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT } from '../src/ui/UILayout.js';
 import { CloudStorage } from '../src/services/CloudStorage.js';
 import { LeaderboardView } from '../src/ui/LeaderboardView.js';
+import { AudioManager } from '../src/audio/AudioManager.js';
+import { AmbientMusic } from '../src/audio/AmbientMusic.js';
 import { MainMenuAndScenes } from '../src/ui/MainMenuAndScenes.js';
 import { SCENE_AI_ALEX_WARNING, SCENE_ENDING_VICTORY } from '../src/assets/VillainDialogues.js';
 import { Inventory } from '../src/ui/Inventory.js';
@@ -1261,7 +1263,13 @@ test('Menú de Pausa Depurado y Cinemática de Mister AI Alex sin Truncamiento',
     playMenuSelect: () => {},
     playMenuMove: () => {},
     playFanfare: () => {},
-    setMode: () => {}
+    setMode: () => {},
+    getMasterVolume: () => 1.0,
+    getMusicVolume: () => 0.8,
+    getSfxVolume: () => 1.0,
+    isMasterMuted: () => false,
+    isMusicMuted: () => false,
+    isSfxMuted: () => false
   };
   const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {});
   menu.openPauseMenu();
@@ -1272,19 +1280,32 @@ test('Menú de Pausa Depurado y Cinemática de Mister AI Alex sin Truncamiento',
     pauseItems.map(it => it.label),
     [
       'Continuar Aventura',
-      'Guardar Partida',
-      'Controles',
-      'Opciones',
-      'Guardar y Salir al Título'
+      'Guardar / Nube',
+      'Salón de la Fama [Récords]',
+      'Ajustes y Sonido',
+      'Guardar y Salir al Menú Principal'
     ],
-    'Las opciones de pausa deben ser las esenciales sin saturación ni redundancia'
+    'Las opciones de pausa deben ser las 5 esenciales sin saturación ni redundancia'
   );
 
-  // Verificación de hitboxes: no debe desbordar la ventana modal (128px de alto) ni el pie
+  // Verificación de hitboxes: contenedor centrado de 240x150 px sin desbordar el marco
   const hitboxes = menu._getMenuHitboxes(pauseItems.length);
   assert.equal(hitboxes.length, 5);
   const lastBox = hitboxes[hitboxes.length - 1];
-  assert.ok(lastBox.y + lastBox.h <= 135, 'El último botón no debe colisionar con el pie de página a 144px');
+  assert.ok(lastBox.y + lastBox.h <= 165, 'El último botón no debe colisionar con el marco inferior de 165px');
+
+  // Submenú de Guardar / Nube
+  pauseItems[1].action();
+  assert.equal(menu.state, 'pause_cloud');
+  const cloudItems = menu._getCurrentMenuItems();
+  assert.equal(cloudItems.length, 4, 'El submenú de Guardar / Nube debe tener 4 opciones limpias');
+
+  // Submenú de Ajustes y Sonido
+  menu.openPauseMenu();
+  pauseItems[3].action();
+  assert.equal(menu.state, 'options');
+  const soundItems = menu._getCurrentMenuItems();
+  assert.equal(soundItems.length, 5, 'El submenú de Ajustes y Sonido debe tener 5 opciones con sliders');
 
   // Verificación de cinemática de entrada: 8 diapositivas bien distribuidas
   menu.startAnimeIntroCutscene();
@@ -1300,6 +1321,114 @@ test('Menú de Pausa Depurado y Cinemática de Mister AI Alex sin Truncamiento',
   }
   for (const s of SCENE_ENDING_VICTORY) {
     assert.ok(s.dialogue.length < 155, 'Cada frase del final debe caber limpia en la caja sin cortes');
+  }
+});
+
+test('AudioManager: Grafo de 3 buses, 4 canales, calibrador SFX y persistencia de ajustes', () => {
+  const destination = { id: 'destination' };
+  class MockGainNode {
+    constructor() {
+      this.gain = {
+        value: 1,
+        cancelScheduledValues: () => {},
+        setValueAtTime: (v) => { this.gain.value = v; },
+        linearRampToValueAtTime: (v) => { this.gain.value = v; },
+        exponentialRampToValueAtTime: (v) => { this.gain.value = v; }
+      };
+      this.connectedTo = null;
+    }
+    connect(dest) {
+      this.connectedTo = dest;
+    }
+    disconnect() {
+      this.connectedTo = null;
+    }
+  }
+
+  class MockAudioContext {
+    constructor() {
+      this.currentTime = 0;
+      this.state = 'running';
+      this.destination = destination;
+      this.sampleRate = 44100;
+    }
+    createGain() { return new MockGainNode(); }
+    createOscillator() {
+      return {
+        type: 'sine',
+        frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+        connect: () => {},
+        start: () => {},
+        stop: () => {},
+        disconnect: () => {}
+      };
+    }
+    createBiquadFilter() {
+      return {
+        type: 'lowpass',
+        frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+        Q: { setValueAtTime: () => {} },
+        connect: () => {},
+        disconnect: () => {}
+      };
+    }
+    createBuffer(channels, length, rate) {
+      return {
+        getChannelData: () => new Float32Array(length)
+      };
+    }
+    createBufferSource() {
+      return {
+        buffer: null,
+        connect: () => {},
+        start: () => {},
+        stop: () => {},
+        disconnect: () => {}
+      };
+    }
+  }
+
+  const audio = new AudioManager();
+  audio.ctx = new MockAudioContext();
+  audio.masterGainNode = audio.ctx.createGain();
+  audio.masterGainNode.connect(audio.ctx.destination);
+  audio.musicGainNode = audio.ctx.createGain();
+  audio.musicGainNode.connect(audio.masterGainNode);
+  audio.sfxGainNode = audio.ctx.createGain();
+  audio.sfxGainNode.connect(audio.masterGainNode);
+
+  // Verificación de los 3 buses
+  assert.equal(audio.masterGainNode.connectedTo, destination);
+  assert.equal(audio.musicGainNode.connectedTo, audio.masterGainNode);
+  assert.equal(audio.sfxGainNode.connectedTo, audio.masterGainNode);
+
+  // Verificación de controles de ganancia y clamping
+  audio.setMasterVolume(0.5);
+  assert.equal(audio.getMasterVolume(), 0.5);
+  audio.setMusicVolume(0.7);
+  assert.equal(audio.getMusicVolume(), 0.7);
+  audio.setSfxVolume(1.5); // Clamped a 1.0
+  assert.equal(audio.getSfxVolume(), 1.0);
+
+  // Verificación de mute toggles
+  audio.toggleMasterMute();
+  assert.equal(audio.isMasterMuted(), true);
+  audio.toggleMasterMute();
+  assert.equal(audio.isMasterMuted(), false);
+
+  // Verificación de calibrador playTestBeep sin excepciones
+  assert.doesNotThrow(() => audio.playTestBeep());
+
+  // Verificación de herencia y compatibilidad con AmbientMusic
+  const ambient = new AmbientMusic();
+  assert.ok(ambient instanceof AudioManager);
+
+  // Verificación de patrones polifónicos de 4 canales
+  assert.ok(audio.villagePattern.length >= 16);
+  assert.ok(audio.dungeonPattern.length >= 16);
+  assert.ok(audio.combatPattern.length >= 16);
+  for (const step of audio.villagePattern) {
+    assert.ok('melody' in step && 'harmony' in step && 'bass' in step && 'drum' in step);
   }
 });
 

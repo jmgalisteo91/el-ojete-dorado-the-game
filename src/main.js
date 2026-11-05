@@ -6050,22 +6050,32 @@ export class RPGGame {
           gctx.fillStyle = '#ffffff';
           gctx.fillRect(cx - 1, cy - 2, 1, 1);
         }
+      },
+      onWorldHudOverlay: (overlayCtx) => {
+        // Capa 4: WORLD_HUD_OVERLAY
+        // Bocadillos de NPCs, globos flotantes y prompts de interacción [E]
+        // Se dibujan por encima de tejados, árboles y la máscara de iluminación
+        for (const n of npcs) {
+          if (n && typeof n.renderSpeechBubble === 'function') {
+            n.renderSpeechBubble(overlayCtx, this.camera);
+          }
+        }
+
+        if (
+          !this.dialogueBox.active &&
+          !this.inventory.isOpen &&
+          !this.characterStats.isOpen &&
+          (!this.questLogView || !this.questLogView.isOpen) &&
+          !this.aiChatOpen &&
+          !this.menuSystem.isBlockingGameplay()
+        ) {
+          const action = this._findBestInteraction();
+          if (action) {
+            this._renderActionPrompt(overlayCtx, action);
+          }
+        }
       }
     });
-
-    if (
-      !this.dialogueBox.active &&
-      !this.inventory.isOpen &&
-      !this.characterStats.isOpen &&
-      (!this.questLogView || !this.questLogView.isOpen) &&
-      !this.aiChatOpen &&
-      !this.menuSystem.isBlockingGameplay()
-    ) {
-      const action = this._findBestInteraction();
-      if (action) {
-        this._renderActionPrompt(ctx, action);
-      }
-    }
 
     this._renderHUD(ctx);
     if (this.debugMode) {

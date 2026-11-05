@@ -367,12 +367,20 @@ export class NPC extends Entity {
         ctx.restore();
       }
     }
+  }
 
-    // Bocadillo ambiental de vida cotidiana
+  /**
+   * Renderiza los bocadillos de diálogo y actividad en la capa superior WORLD_HUD_OVERLAY.
+   * Se ejecuta después del ordenamiento Y-sorted, estructuras altas y ciclo día/noche.
+   */
+  renderSpeechBubble(ctx, camera) {
+    if (this.isSleeping) return;
+    const sx = Math.round(this.x - camera.renderX);
+    const sy = Math.round(this.y - camera.renderY);
+
     if (this.ambientBubbleTimer > 0 && this.ambientBubbleText) {
       renderNPCBarkBubble(ctx, sx, sy, this.ambientBubbleText, this.ambientBubbleTimer, 3.0);
     } else if (this.currentActivityIcon && !this.isMoving) {
-      // Pequeño bocadillo de actividad cuando está descansando en su puesto
       const bob = Math.round(Math.sin(this.promptBobTimer) * 1.2);
       renderActivityIcon(ctx, sx, sy, this.currentActivityIcon, bob);
     }

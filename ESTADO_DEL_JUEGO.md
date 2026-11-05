@@ -1,6 +1,6 @@
 # 📜 ESTADO DEL JUEGO · EL OJETE DORADO: THE GAME
 > **Documento Vivo de Estado, Arquitectura, Progresión y Hoja de Ruta Futura**  
-> **Versión Actual:** v3.7 (Metroidvania Cardinal, Sistema de Niveles 1-10, Centinelas con Lore y Cartografía Zelda)  
+> **Versión Actual:** v3.8 (Motor de Audio Polifónico 3 Buses / 4 Canales, Capa WORLD_HUD_OVERLAY, Menú de Pausa Modal 240×150)  
 > **Última Actualización:** 5 de Noviembre de 2026  
 
 ---
@@ -9,11 +9,11 @@
 
 * **Motor:** JavaScript Vanilla (ES Modules estándar, sin frameworks externos ni dependencias npm en cliente).
 * **Renderizado:** HTML5 Canvas 2D nativo a resolución interna fija de **320 × 180 px** (relación 16:9 con reescalado `image-rendering: pixelated`).
-* **Gráficos 2.5D:** [`RenderPipeline.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/graphics/RenderPipeline.js) con ordenación Y-Sorted por plano `y + height`, props de profundidad y sombras pseudo-3D dinámicas proyectadas según la posición del sol ([`DayNightCycle.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/world/DayNightCycle.js)).
-* **Audio:** Sintetizador chiptune procedural con Web Audio API pura ([`AmbientMusic.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/audio/AmbientMusic.js)), sin archivos `.mp3`/`.wav` externos.
+* **Gráficos 2.5D:** [`RenderPipeline.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/graphics/RenderPipeline.js) con ordenación Y-Sorted por plano `y + height`, props de profundidad, sombras pseudo-3D dinámicas proyectadas según la posición del sol ([`DayNightCycle.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/world/DayNightCycle.js)) y **Capa 4 `WORLD_HUD_OVERLAY`** que renderiza globos de diálogo, barks de NPCs e indicadores de acción por encima de tejados, niebla y oscuridad nocturna.
+* **Audio Polifónico:** Motor sintetizador chiptune nativo de 4 canales y 3 buses de ganancia (`masterGainNode`, `musicGainNode`, `sfxGainNode`) con crossfade de 1.5s y calibrador de efectos ([`AudioManager.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/audio/AudioManager.js)), extendido con compatibilidad por [`AmbientMusic.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/audio/AmbientMusic.js).
 * **Persistencia:** Arquitectura híbrida síncrona en `localStorage` (0 ms de latencia) + sincronización en segundo plano con **Vercel KV Serverless** ([`CloudStorage.js`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/src/services/CloudStorage.js)).
 * **Empaquetado y Distribución:** [`build-portable.mjs`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/build-portable.mjs) genera un único archivo HTML autocontenido [`el-ojete-dorado-the-game.html`](file:///Users/jose.peralta/Documents/El%20ojete%20dorado%20-%20the%20game/el-ojete-dorado-the-game.html) (1.2 MB, 100% offline y ejecutable en cualquier navegador).
-* **Batería de Pruebas:** 68 pruebas automatizadas sin entorno DOM vía `node tests/regression.mjs`.
+* **Batería de Pruebas:** 69 pruebas automatizadas sin entorno DOM vía `node tests/regression.mjs`.
 
 ---
 
@@ -124,7 +124,7 @@ El proyecto dispone de un arnés de regresión completo sin dependencias:
 ```bash
 # Ejecutar suite de pruebas:
 node tests/regression.mjs
-# Estado actual: 68 pruebas OK, 0 fallos
+# Estado actual: 69 pruebas OK, 0 fallos
 
 # Compilar ejecutable autónomo para distribución:
 node build-portable.mjs

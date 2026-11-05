@@ -48,6 +48,7 @@ const MODULE_ORDER = [
   'src/world/DayNightCycle.js',
   'src/graphics/RenderPipeline.js',
   'src/ai/AIBotBrain.js',
+  'src/audio/AudioManager.js',
   'src/audio/AmbientMusic.js',
   'src/main.js'
 ];

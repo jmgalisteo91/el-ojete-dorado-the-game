@@ -118,6 +118,13 @@ export class RenderPipeline {
     }
 
     this._renderVignette(ctx, isInterior);
+
+    // ── CAPA 4 · WORLD_HUD_OVERLAY (Bocadillos, globos flotantes y prompts de acción) ──
+    // Se dibuja DESPUÉS de las entidades Y-Sorted, DESPUÉS de estructuras altas (tejados/árboles)
+    // y DESPUÉS de la iluminación/noche para garantizar 100% nitidez y legibilidad sin sombras.
+    if (typeof frame.onWorldHudOverlay === 'function') {
+      frame.onWorldHudOverlay(ctx);
+    }
   }
 
   // ===========================================================================

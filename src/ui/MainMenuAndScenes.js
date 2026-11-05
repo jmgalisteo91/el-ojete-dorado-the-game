@@ -673,23 +673,23 @@ export class MainMenuAndScenes {
           action: () => this.closePauseMenu()
         },
         {
-          label: 'Guardar Partida',
-          action: () => {
-            this.music.playFanfare();
-            if (this.callbacks.onSaveGame) {
-              this.callbacks.onSaveGame({ manual: true });
-            }
-          }
-        },
-        {
-          label: 'Controles',
+          label: 'Guardar / Nube',
           action: () => {
             this.music.playMenuSelect();
-            this.openControlsScreen('pause');
+            this.previousState = 'pause';
+            this.state = 'pause_cloud';
+            this.selectedIndex = 0;
           }
         },
         {
-          label: 'Opciones',
+          label: 'Salón de la Fama [Récords]',
+          action: () => {
+            this.music.playMenuSelect();
+            this.openLeaderboardScreen('pause');
+          }
+        },
+        {
+          label: 'Ajustes y Sonido',
           action: () => {
             this.music.playMenuSelect();
             this.previousState = 'pause';
@@ -698,13 +698,56 @@ export class MainMenuAndScenes {
           }
         },
         {
-          label: 'Guardar y Salir al Título',
+          label: 'Guardar y Salir al Menú Principal',
           action: () => {
             if (this.callbacks.onSaveGame) {
               this.callbacks.onSaveGame();
             }
             this.music.playMenuSelect();
             this.openTitleScreen();
+          }
+        }
+      ];
+    }
+
+    if (this.state === 'pause_cloud') {
+      const saveInfo = this.callbacks.getSaveSummary ? this.callbacks.getSaveSummary() : null;
+      const slotCode = saveInfo?.cloudCode || 'SLOT-1';
+      return [
+        {
+          label: 'Guardar Partida [Nube + Respaldo]',
+          action: () => {
+            this.music.playFanfare();
+            if (this.callbacks.onSaveGame) {
+              this.callbacks.onSaveGame({ manual: true, cloud: true });
+            }
+            this.showNotice('✓ Partida sincronizada en la nube');
+          }
+        },
+        {
+          label: `Ver Código en la Nube [${slotCode}]`,
+          action: () => {
+            this.music.playMenuSelect();
+            this.showNotice(`Código de Ranura: ${slotCode}`);
+          }
+        },
+        {
+          label: 'Cargar de la Nube (con Código)',
+          action: () => {
+            this.music.playMenuSelect();
+            if (this.callbacks.onLoadGame) {
+              this.callbacks.onLoadGame();
+            } else {
+              this.showNotice('Carga remota iniciada...');
+            }
+          }
+        },
+        {
+          label: 'Volver',
+          action: () => {
+            this.music.playMenuSelect();
+            this.state = 'pause';
+            this.selectedIndex = 1;
           }
         }
       ];
@@ -739,52 +782,62 @@ export class MainMenuAndScenes {
       ];
     }
 
-    if (this.state === 'options') {
-      const volPct = this.options.volumeSteps * 25;
-      const speedLabels = {
-        normal: 'Normal',
-        fast: 'Rápida',
-        instant: 'Instantánea'
-      };
-      const isFullscreen = Boolean(document.fullscreenElement);
+    if (this.state === 'options' || this.state === 'pause_sound') {
+      const masterVol = typeof this.music.getMasterVolume === 'function' ? this.music.getMasterVolume() : 1.0;
+      const musicVol = typeof this.music.getMusicVolume === 'function' ? this.music.getMusicVolume() : 0.8;
+      const sfxVol = typeof this.music.getSfxVolume === 'function' ? this.music.getSfxVolume() : 1.0;
+      const masterMuted = typeof this.music.isMasterMuted === 'function' ? this.music.isMasterMuted() : false;
+      const musicMuted = typeof this.music.isMusicMuted === 'function' ? this.music.isMusicMuted() : false;
+      const sfxMuted = typeof this.music.isSfxMuted === 'function' ? this.music.isSfxMuted() : false;
 
       return [
         {
-          label: `Sonido: ${this.options.muted ? 'Silenciado' : 'Activado'}`,
+          label: `Volumen General: [◄ ${Math.round(masterVol * 100)}% ►]${masterMuted ? ' (MUTE)' : ''}`,
+          onAdjust: (dir) => {
+            const next = Math.max(0, Math.min(1, Math.round((masterVol + dir * 0.1) * 10) / 10));
+            if (typeof this.music.setMasterVolume === 'function') this.music.setMasterVolume(next);
+            this.music.playMenuMove();
+          },
           action: () => {
-            this.options.muted = !this.options.muted;
-            this.saveOptions();
+            if (typeof this.music.toggleMasterMute === 'function') this.music.toggleMasterMute();
             this.music.playMenuSelect();
           }
         },
         {
-          label: `Volumen: ${volPct}%`,
+          label: `Música (BGM): [◄ ${Math.round(musicVol * 100)}% ►]${musicMuted ? ' (MUTE)' : ''}`,
+          onAdjust: (dir) => {
+            const next = Math.max(0, Math.min(1, Math.round((musicVol + dir * 0.1) * 10) / 10));
+            if (typeof this.music.setMusicVolume === 'function') this.music.setMusicVolume(next);
+            this.music.playMenuMove();
+          },
           action: () => {
-            this.options.volumeSteps = (this.options.volumeSteps % 4) + 1;
-            this.options.muted = false;
-            this.saveOptions();
+            if (typeof this.music.toggleMusicMute === 'function') this.music.toggleMusicMute();
             this.music.playMenuSelect();
           }
         },
         {
-          label: `Velocidad Texto: ${speedLabels[this.options.textSpeed] || 'Normal'}`,
-          action: () => {
-            const order = ['normal', 'fast', 'instant'];
-            const idx = order.indexOf(this.options.textSpeed);
-            this.options.textSpeed = order[(idx + 1) % order.length];
-            this.saveOptions();
-            this.music.playMenuSelect();
-          }
-        },
-        {
-          label: `Pantalla Completa: ${isFullscreen ? 'Sí' : 'No'}`,
-          action: () => {
-            this.music.playMenuSelect();
-            if (!document.fullscreenElement) {
-              document.documentElement.requestFullscreen?.().catch(() => {});
+          label: `Efectos (SFX): [◄ ${Math.round(sfxVol * 100)}% ►]${sfxMuted ? ' (MUTE)' : ''}`,
+          onAdjust: (dir) => {
+            const next = Math.max(0, Math.min(1, Math.round((sfxVol + dir * 0.1) * 10) / 10));
+            if (typeof this.music.setSfxVolume === 'function') {
+              this.music.setSfxVolume(next);
+              if (typeof this.music.playTestBeep === 'function') this.music.playTestBeep();
             } else {
-              document.exitFullscreen?.().catch(() => {});
+              this.music.playMenuMove();
             }
+          },
+          action: () => {
+            if (typeof this.music.toggleSfxMute === 'function') {
+              this.music.toggleSfxMute();
+              if (typeof this.music.playTestBeep === 'function') this.music.playTestBeep();
+            }
+          }
+        },
+        {
+          label: 'Controles / Guía de Teclas',
+          action: () => {
+            this.music.playMenuSelect();
+            this.openControlsScreen(this.state);
           }
         },
         {
@@ -792,7 +845,7 @@ export class MainMenuAndScenes {
           action: () => {
             this.music.playMenuMove();
             this.state = this.previousState || 'title';
-            this.selectedIndex = 0;
+            this.selectedIndex = this.state === 'pause' ? 3 : 0;
           }
         }
       ];
@@ -1056,7 +1109,13 @@ export class MainMenuAndScenes {
     if (items.length === 0) return;
 
     const dir = input.consumeMenuDirection();
-    if (dir === 'up' || dir === 'left') {
+    const currentItem = items[this.selectedIndex];
+
+    if (dir === 'left' && currentItem && typeof currentItem.onAdjust === 'function') {
+      currentItem.onAdjust(-1);
+    } else if (dir === 'right' && currentItem && typeof currentItem.onAdjust === 'function') {
+      currentItem.onAdjust(1);
+    } else if (dir === 'up' || dir === 'left') {
       this.selectedIndex = (this.selectedIndex + items.length - 1) % items.length;
       this.music.playMenuMove();
     } else if (dir === 'down' || dir === 'right') {
@@ -1065,9 +1124,15 @@ export class MainMenuAndScenes {
     }
 
     if (input.consumeKey('Escape')) {
-      if (this.state === 'options') {
+      if (this.state === 'pause_cloud') {
+        this.state = 'pause';
+        this.selectedIndex = 1;
+        this.music.playMenuMove();
+        return;
+      }
+      if (this.state === 'options' || this.state === 'pause_sound') {
         this.state = this.previousState || 'title';
-        this.selectedIndex = 0;
+        this.selectedIndex = this.state === 'pause' ? 3 : 0;
         this.music.playMenuMove();
         return;
       }
@@ -1107,7 +1172,20 @@ export class MainMenuAndScenes {
           click.y <= b.y + b.h
         ) {
           this.selectedIndex = i;
-          items[i].action();
+          const targetItem = items[i];
+          if (targetItem) {
+            if (typeof targetItem.onAdjust === 'function') {
+              if (click.x < b.x + b.w * 0.38) {
+                targetItem.onAdjust(-1);
+              } else if (click.x > b.x + b.w * 0.62) {
+                targetItem.onAdjust(1);
+              } else if (targetItem.action) {
+                targetItem.action();
+              }
+            } else if (targetItem.action) {
+              targetItem.action();
+            }
+          }
           return;
         }
       }
@@ -1134,6 +1212,35 @@ export class MainMenuAndScenes {
   _getMenuHitboxes(count) {
     const isTitle = this.state === 'title';
     const isGameOver = this.state === 'game_over';
+    const isPauseModal =
+      this.state === 'pause' ||
+      this.state === 'pause_cloud' ||
+      this.state === 'options' ||
+      this.state === 'pause_sound';
+
+    if (isPauseModal) {
+      const boxW = 208;
+      const itemH = 17;
+      const gap = 3;
+      const totalH = count * itemH + (count - 1) * gap;
+      const winH = 150;
+      const winY = Math.round((this.viewportHeight - winH) / 2);
+      const startX = Math.round((this.viewportWidth - boxW) / 2);
+      // Centrado verticalmente dentro de la ventana modal de 150px
+      const startY = winY + 24 + Math.round((winH - 32 - totalH) / 2);
+
+      const boxes = [];
+      for (let i = 0; i < count; i++) {
+        boxes.push({
+          x: startX,
+          y: startY + i * (itemH + gap),
+          w: boxW,
+          h: itemH
+        });
+      }
+      return boxes;
+    }
+
     const boxW = isTitle ? 168 : isGameOver ? 204 : 184;
     const itemH = isTitle ? (count > 5 ? 12 : 14) : isGameOver ? 15 : (count > 5 ? 13 : 15);
     const startX = Math.round((this.viewportWidth - boxW) / 2);
@@ -1777,10 +1884,15 @@ export class MainMenuAndScenes {
   }
 
   _renderModalPanel(ctx, title, items) {
-    const count = items.length;
-    const itemH = count > 5 ? 13 : 15;
-    const winW = 216;
-    const winH = count > 5 ? Math.min(160, count * itemH + 46) : 128;
+    const isPauseModal =
+      this.state === 'pause' ||
+      this.state === 'pause_cloud' ||
+      this.state === 'options' ||
+      this.state === 'pause_sound';
+
+    // Dimensiones estrictas de 240x150 px para los paneles de pausa y ajustes
+    const winW = isPauseModal ? 240 : 216;
+    const winH = isPauseModal ? 150 : (items.length > 5 ? Math.min(160, items.length * 13 + 46) : 128);
     const winX = Math.round((this.viewportWidth - winW) / 2);
     const winY = Math.round((this.viewportHeight - winH) / 2);
 
@@ -1792,21 +1904,36 @@ export class MainMenuAndScenes {
     ctx.fillStyle = '#192136';
     ctx.fillRect(winX + 3, winY + 3, winW - 6, winH - 6);
 
+    // Marco interior decorativo
+    ctx.strokeStyle = '#2d3b55';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(winX + 4.5, winY + 4.5, winW - 9, winH - 9);
+
     ctx.font = 'bold 8px monospace';
     ctx.fillStyle = '#ffd885';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(title, Math.round(this.viewportWidth / 2), winY + 9);
+    ctx.fillText(title, Math.round(this.viewportWidth / 2), winY + 8);
+
+    // Indicador sutil [Esc] Volver en la esquina superior derecha
+    ctx.font = '5.5px monospace';
+    ctx.fillStyle = '#9aa5b8';
+    ctx.textAlign = 'right';
+    ctx.fillText('[Esc] Volver', winX + winW - 8, winY + 9);
 
     this._renderMenuList(ctx, items, false);
 
-    ctx.font = '5.5px monospace';
-    ctx.fillStyle = '#9aa5b8';
-    ctx.fillText(
-      '[W/S] Mover · [E / Enter / Clic] Seleccionar · [Esc] Volver',
-      Math.round(this.viewportWidth / 2),
-      winY + winH - 10
-    );
+    // Si NO es un modal de pausa ni opciones, renderizar la ayuda de pie de página
+    if (!isPauseModal) {
+      ctx.font = '5.5px monospace';
+      ctx.fillStyle = '#9aa5b8';
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        '[W/S] Mover · [E / Enter / Clic] Seleccionar · [Esc] Volver',
+        Math.round(this.viewportWidth / 2),
+        winY + winH - 10
+      );
+    }
     ctx.restore();
   }
 
@@ -1913,11 +2040,11 @@ export class MainMenuAndScenes {
     ctx.fillStyle = '#080a12';
     ctx.fillRect(0, 0, W, H);
 
-    // Marco de la ventana de ilustración Pixel Art (272 x 96)
-    const artX = 24;
-    const artY = 16;
-    const artW = W - 48;
-    const artH = 96;
+    // Marco de la ventana de ilustración Pixel Art (276 x 88)
+    const artX = 22;
+    const artY = 14;
+    const artW = W - 44;
+    const artH = 88;
 
     ctx.save();
     ctx.beginPath();
@@ -1960,7 +2087,7 @@ export class MainMenuAndScenes {
     ctx.fillStyle = '#ffd166';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(slide.chapter, artX, 5);
+    ctx.fillText(slide.chapter, artX, 4);
 
     ctx.font = '6px monospace';
     ctx.fillStyle = '#9aa5b8';
@@ -1968,14 +2095,14 @@ export class MainMenuAndScenes {
     ctx.fillText(
       `Escena ${this.cutsceneIndex + 1}/${this.cutsceneSlides.length} · [Esc] Saltar`,
       artX + artW,
-      6
+      5
     );
 
-    // Cuadro de texto narrativo inferior
+    // Cuadro de texto narrativo inferior (288 x 64)
     const boxX = 16;
-    const boxY = 118;
+    const boxY = 106;
     const boxW = W - 32;
-    const boxH = 54;
+    const boxH = 64;
 
     ctx.fillStyle = '#121624';
     ctx.fillRect(boxX, boxY, boxW, boxH);
@@ -1988,20 +2115,22 @@ export class MainMenuAndScenes {
     ctx.font = '7px monospace';
     ctx.fillStyle = '#f0f4f8';
     ctx.textAlign = 'left';
-    const lines = this._wrapText(ctx, visibleStr, boxW - 18);
-    const lineSpacing = 10.5;
+    ctx.textBaseline = 'top';
+    const lines = this._wrapText(ctx, visibleStr, boxW - 20);
+    const lineSpacing = 11;
     lines.forEach((line, idx) => {
-      ctx.fillText(line, boxX + 9, boxY + 8 + idx * lineSpacing);
+      ctx.fillText(line, boxX + 8, boxY + 7 + idx * lineSpacing);
     });
 
     ctx.font = '6px monospace';
     ctx.fillStyle = '#ffd885';
     ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
     const promptLabel =
       this.cutsceneCharPos >= slide.text.length
         ? '[E / Enter / Clic] Continuar ▶'
         : '[E] Completar texto...';
-    ctx.fillText(promptLabel, boxX + boxW - 8, boxY + boxH - 8);
+    ctx.fillText(promptLabel, boxX + boxW - 8, boxY + boxH - 5);
 
     ctx.restore();
   }
