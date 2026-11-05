@@ -8,7 +8,7 @@ import { Enemy } from '../src/entities/Enemy.js';
 import { Player } from '../src/entities/Player.js';
 import { getDoorBlock, getDoorDestinationInfo } from '../src/core/DoorGatekeeper.js';
 import { AI_STATE, inferArchetype } from '../src/ai/EnemyBrain.js';
-import { SpeechBubble, drawSpeechBalloonPath, drawRoundedRect } from '../src/ui/SpeechBubble.js';
+import { SpeechBubble, drawSpeechBalloonPath } from '../src/ui/SpeechBubble.js';
 import { GarbageCollectorBoss } from '../src/entities/bosses/GarbageCollectorBoss.js';
 import { StackOverflowBoss } from '../src/entities/bosses/StackOverflowBoss.js';
 import { PrototypeMicrowaveBoss } from '../src/entities/bosses/PrototypeMicrowaveBoss.js';
@@ -20,18 +20,12 @@ import {
   saveLocalScore,
   submitGlobalScore,
   fetchGlobalLeaderboard,
-  uploadGameToCloud,
-  downloadGameFromCloud,
   getLocalSaveContainer,
   saveLocalFallback,
   markLocalFallbackSynced,
-  getSavedCloudCode,
-  setSavedCloudCode,
   syncPendingSaveToCloud,
-  CLOUD_SAVE_CODE_KEY,
   SAVE_STORAGE_KEY,
-  DEFAULT_LEADERBOARD,
-  LOCAL_LEADERBOARD_KEY
+  DEFAULT_LEADERBOARD
 } from '../src/core/ScoreSystem.js';
 import handleLeaderboard from '../api/leaderboard.js';
 import handleSave from '../api/save.js';

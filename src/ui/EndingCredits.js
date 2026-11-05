@@ -22,7 +22,6 @@ export class EndingCredits {
 
     this.scrollY = this.h + 10;
     this.baseScrollSpeed = 22; // px / seg
-    this.isFastForward = false;
     this.timeAccumulator = 0;
     this.canExit = false;
 

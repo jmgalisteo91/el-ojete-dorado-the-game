@@ -363,7 +363,6 @@ export class StackOverflowBoss extends Boss {
     const sy = this.y - camera.renderY;
     const cx = sx + this.width / 2;
     const cy = sy + this.height / 2;
-    const now = performance.now() / 1000;
 
     ctx.save();
 

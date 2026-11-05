@@ -16,9 +16,7 @@
 
 import {
   CUTSCENE_IMAGES,
-  CutsceneImages,
   renderFallbackToContext,
-  createCutsceneFallbackImage,
   getCutsceneImage
 } from '../assets/CutsceneImages.js?v=7';
 import {
@@ -389,7 +387,7 @@ export class AnimeCutsceneManager {
     this._renderLetterboxBars(ctx, W, H);
 
     // 3. Caja de Diálogo Retro (Typewriter Visual Novel Box)
-    this._renderVisualNovelBox(ctx, slide, t, W, H);
+    this._renderVisualNovelBox(ctx, slide, t, W);
 
     // 4. Destello de pantalla (Flash)
     if (this.flashAlpha > 0) {
@@ -474,7 +472,7 @@ export class AnimeCutsceneManager {
     ctx.restore();
   }
 
-  _renderVisualNovelBox(ctx, slide, t, W, H) {
+  _renderVisualNovelBox(ctx, slide, t, W) {
     const boxX = 12;
     const boxY = 112;
     const boxW = W - 24;

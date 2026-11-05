@@ -1,5 +1,5 @@
 import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=7';
-import { SpeechBubble, renderFloatingBadge } from '../ui/SpeechBubble.js?v=7';
+import { SpeechBubble } from '../ui/SpeechBubble.js?v=7';
 
 /**
  * Tiles de la CAPA 2 (estructuras elevadas) del pipeline 2.5D: se dibujan siempre por encima
@@ -29,8 +29,6 @@ export class Tilemap {
     // Estado del puente de Valleverde y del portal del Primer Escenario
     this.bridgeOpen = false;
     this.bridgeForceUnlocked = false;
-    this.bridgeOpenHour = 7;   // 07:00 AM
-    this.bridgeCloseHour = 20; // 20:00 PM
     this.firstStageGateOpen = false;
 
     this.currentSceneId = 'overworld';
@@ -114,9 +112,6 @@ export class Tilemap {
     };
 
     // Estado de Puzles y Progresión de Mazmorras (v3.6+)
-    this.sewerPuzzle = { valveOpen: false };
-    this.minesPuzzle = { siliconMined: false, barrierBroken: false };
-    this.forgePuzzle = { valveLeft: false, valveRight: false, gateOpen: false };
     this.quantumGate = { coresPlaced: { gc: false, stack: false, microwave: false } };
 
     this._buildFirstStageScene();
@@ -157,7 +152,6 @@ export class Tilemap {
     this.height = scene.rows * this.tileSize;
     this.layers = scene.layers;
     this.lightSources = scene.lightSources;
-    this.sceneTitle = scene.title;
 
     // Luces de ventanas (se encienden al anochecer): se calculan una vez por escena y se cachean
     if (!scene.windowLights) {
@@ -213,7 +207,7 @@ export class Tilemap {
     }
   }
 
-  update(dt, currentHour = 12) {
+  update(dt) {
     this.animTimer += dt;
     this.waterClock += dt;
     if (this.animTimer >= 0.45) {
@@ -221,7 +215,7 @@ export class Tilemap {
       this.animFrame = (this.animFrame + 1) % 2;
     }
 
-    this._updateBridgeSchedule(currentHour);
+    this._updateBridgeSchedule();
   }
 
   /**
@@ -229,7 +223,7 @@ export class Tilemap {
    * El puente permanece clausurado por orden del Sabio Aurelio hasta que se desbloquea
    * con la autorización / Pase del Puente. Una vez desbloqueado, permanece abierto permanentemente.
    */
-  _updateBridgeSchedule(currentHour) {
+  _updateBridgeSchedule() {
     const shouldBeOpen = !!this.bridgeForceUnlocked;
 
     if (this.bridgeOpen !== shouldBeOpen) {

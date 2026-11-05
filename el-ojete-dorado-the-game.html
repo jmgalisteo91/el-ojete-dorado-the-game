@@ -4433,7 +4433,6 @@ class SpriteAnimator {
  */
 
 const GAME_FONT_UI = '"Outfit", "Plus Jakarta Sans", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
-const GAME_FONT_MONO = '"SF Mono", "Consolas", "Monaco", "Courier New", monospace';
 
 /**
  * Traza un rectángulo con esquinas redondeadas en el contexto Canvas 2D.
@@ -5009,8 +5008,6 @@ class Tilemap {
     // Estado del puente de Valleverde y del portal del Primer Escenario
     this.bridgeOpen = false;
     this.bridgeForceUnlocked = false;
-    this.bridgeOpenHour = 7;   // 07:00 AM
-    this.bridgeCloseHour = 20; // 20:00 PM
     this.firstStageGateOpen = false;
 
     this.currentSceneId = 'overworld';
@@ -5094,9 +5091,6 @@ class Tilemap {
     };
 
     // Estado de Puzles y Progresión de Mazmorras (v3.6+)
-    this.sewerPuzzle = { valveOpen: false };
-    this.minesPuzzle = { siliconMined: false, barrierBroken: false };
-    this.forgePuzzle = { valveLeft: false, valveRight: false, gateOpen: false };
     this.quantumGate = { coresPlaced: { gc: false, stack: false, microwave: false } };
 
     this._buildFirstStageScene();
@@ -5137,7 +5131,6 @@ class Tilemap {
     this.height = scene.rows * this.tileSize;
     this.layers = scene.layers;
     this.lightSources = scene.lightSources;
-    this.sceneTitle = scene.title;
 
     // Luces de ventanas (se encienden al anochecer): se calculan una vez por escena y se cachean
     if (!scene.windowLights) {
@@ -5193,7 +5186,7 @@ class Tilemap {
     }
   }
 
-  update(dt, currentHour = 12) {
+  update(dt) {
     this.animTimer += dt;
     this.waterClock += dt;
     if (this.animTimer >= 0.45) {
@@ -5201,7 +5194,7 @@ class Tilemap {
       this.animFrame = (this.animFrame + 1) % 2;
     }
 
-    this._updateBridgeSchedule(currentHour);
+    this._updateBridgeSchedule();
   }
 
   /**
@@ -5209,7 +5202,7 @@ class Tilemap {
    * El puente permanece clausurado por orden del Sabio Aurelio hasta que se desbloquea
    * con la autorización / Pase del Puente. Una vez desbloqueado, permanece abierto permanentemente.
    */
-  _updateBridgeSchedule(currentHour) {
+  _updateBridgeSchedule() {
     const shouldBeOpen = !!this.bridgeForceUnlocked;
 
     if (this.bridgeOpen !== shouldBeOpen) {
@@ -8468,7 +8461,6 @@ class Player extends Entity {
     this.hasLanternEquipped = false;
     this.coins = 25;
     this.robotizationLevel = 0;
-    this.robotizationTimer = 0;
 
     // Sistema de Forja y Progresión de Equipo (v3.6+)
     // Espada: 1=Base madera/hierro, 2=Silicio (+50% daño y quiebra barreras de cristal), 3=Overclockeada (+100% daño y tajos de energía a salud máx)
@@ -9198,7 +9190,6 @@ class Player extends Entity {
     // 2. Aura de concentración de energía al cargar el Corte en Cascada
     if (this.chargeTimer > 0) {
       ctx.save();
-      const chargePct = Math.min(1.0, this.chargeTimer / 1.0);
       const isReady = this.chargeTimer >= 1.0;
       const now = performance.now() / 1000;
 
@@ -10448,12 +10439,12 @@ class EnemyBrain {
     const idle = { dirX: 0, dirY: 0, speedMul: 1 };
 
     // Acciones especiales en curso (bloquean la decisión de movimiento)
-    const actionResult = this._updateAction(dt, ctx, perception);
+    const actionResult = this._updateAction(dt, ctx);
     if (actionResult) return actionResult;
 
     switch (this.state) {
       case AI_STATE.PATROL: {
-        if (perception.sees) return this._onSpotted(ctx, perception);
+        if (perception.sees) return this._onSpotted(ctx);
         const wp = enemy.patrolPoints[enemy.currentWaypointIndex];
         const dir = this._steerTo(wp.x + enemy.width / 2, wp.y + enemy.height / 2, dt, ctx, 3);
         if (!dir) {
@@ -10490,7 +10481,7 @@ class EnemyBrain {
       }
 
       case AI_STATE.SEARCH: {
-        if (perception.sees) return this._onSpotted(ctx, perception);
+        if (perception.sees) return this._onSpotted(ctx);
         const target = this.lastKnown || { x: enemy.spawnX + enemy.width / 2, y: enemy.spawnY + enemy.height / 2 };
         const dir = this._steerTo(target.x, target.y, dt, ctx, 6);
         if (dir) return { dirX: dir.x, dirY: dir.y, speedMul: 1 };
@@ -10511,7 +10502,7 @@ class EnemyBrain {
       }
 
       case AI_STATE.RETURN: {
-        if (perception.sees) return this._onSpotted(ctx, perception);
+        if (perception.sees) return this._onSpotted(ctx);
         let nearest = 0;
         let bestDist = Infinity;
         enemy.patrolPoints.forEach((p, i) => {
@@ -10555,7 +10546,7 @@ class EnemyBrain {
     return { dist, sees, hears };
   }
 
-  _onSpotted(ctx, perception) {
+  _onSpotted(ctx) {
     const { player } = ctx;
     this.lastKnown = { x: player.centerX, y: player.centerY };
     this.setState(AI_STATE.ALERT);
@@ -10658,7 +10649,7 @@ class EnemyBrain {
 
   // ------------------------------------------------------------------ acciones especiales
 
-  _updateAction(dt, ctx, perception) {
+  _updateAction(dt, ctx) {
     if (this.action === 'none') return null;
     const { enemy } = this;
     const { player, tilemap } = ctx;
@@ -12199,7 +12190,6 @@ class StackOverflowBoss extends Boss {
     const sy = this.y - camera.renderY;
     const cx = sx + this.width / 2;
     const cy = sy + this.height / 2;
-    const now = performance.now() / 1000;
 
     ctx.save();
 
@@ -12616,7 +12606,6 @@ class FinalBossAlex extends Boss {
     this.hitCountInPhase = 0;
     this.isOverclocked = false;
     this.roomFrozen = false;
-    this.victoryTriggered = false;
 
     // Efectos visuales de reloj cuántico del microondas
     this.microwaveTimerSec = 3;
@@ -14658,7 +14647,7 @@ class WorldMap {
     this._drawPlayerLocation(ctx, mapX, mapY, currentSceneId, t);
 
     // 9. Encabezado superior y leyenda inferior limpia
-    this._drawHeaderAndFooter(ctx, W, H, currentSceneId);
+    this._drawHeaderAndFooter(ctx, W, H);
 
     ctx.restore();
   }
@@ -15470,7 +15459,7 @@ class WorldMap {
   /**
    * Dibuja el encabezado superior con [Esc] Cerrar y la barra inferior de ubicación sin textos redundantes.
    */
-  _drawHeaderAndFooter(ctx, W, H, currentSceneId) {
+  _drawHeaderAndFooter(ctx, W, H) {
     const cx = W / 2;
     const locationName = this._lastLocationName || 'Aldea de Valleverde';
 
@@ -16151,7 +16140,6 @@ class EndingCredits {
 
     this.scrollY = this.h + 10;
     this.baseScrollSpeed = 22; // px / seg
-    this.isFastForward = false;
     this.timeAccumulator = 0;
     this.canExit = false;
 
@@ -20475,7 +20463,7 @@ class AnimeCutsceneManager {
     this._renderLetterboxBars(ctx, W, H);
 
     // 3. Caja de Diálogo Retro (Typewriter Visual Novel Box)
-    this._renderVisualNovelBox(ctx, slide, t, W, H);
+    this._renderVisualNovelBox(ctx, slide, t, W);
 
     // 4. Destello de pantalla (Flash)
     if (this.flashAlpha > 0) {
@@ -20560,7 +20548,7 @@ class AnimeCutsceneManager {
     ctx.restore();
   }
 
-  _renderVisualNovelBox(ctx, slide, t, W, H) {
+  _renderVisualNovelBox(ctx, slide, t, W) {
     const boxX = 12;
     const boxY = 112;
     const boxW = W - 24;
@@ -21338,7 +21326,6 @@ class RenderPipeline {
 
     const tex = this._fogTexture;
     const vw = this.viewportWidth;
-    const vh = this.viewportHeight;
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
@@ -23141,7 +23128,6 @@ class RPGGame {
     this.questLogView = new QuestLogView(this.questLog, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
     this.dayNight = new DayNightCycle(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, 720);
     this.renderPipeline = new RenderPipeline(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
-    this.leaderboardView = new LeaderboardView(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
 
     this.jailRemainingSeconds = 0;
     this.jailerAngerCount = 0;
@@ -26339,7 +26325,7 @@ class RPGGame {
    * Cuando el jugador entra en la casa de un NPC, el dueño aparece dentro y si no tiene
    * permiso le pregunta qué hace en su casa y quién le ha dado permiso.
    */
-  _handleHouseOwnerConfrontation(sceneId, returnDoor) {
+  _handleHouseOwnerConfrontation(sceneId) {
     const isDay = this.dayNight.timeOfDayHours >= 6 && this.dayNight.timeOfDayHours < 22;
     const ownerNPC = this.npcs.find((n) => n.homeSceneId === sceneId);
     if (!ownerNPC) return;
@@ -27811,10 +27797,7 @@ class RPGGame {
     );
 
     if (door.type === 'enter') {
-      const doorMeta = this.tilemap.houseDoors.find(
-        (d) => d.sceneId === door.targetScene
-      );
-      this._handleHouseOwnerConfrontation(door.targetScene, doorMeta || door);
+      this._handleHouseOwnerConfrontation(door.targetScene);
     } else {
       this._saveGameToStorage();
     }
@@ -27907,13 +27890,6 @@ class RPGGame {
     }
   }
 
-  _formatPlayTime(sec) {
-    const total = Math.max(0, Math.floor(sec || 0));
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${m} min ${s < 10 ? '0' : ''}${s} s`;
-  }
-
   _computePlayerFinalTitle() {
     const hasAll = Boolean(this.player.hasDash && this.player.hasChargedAttack && this.player.hasBarrier);
     const j = this.totalJailVisits || 0;
@@ -27924,7 +27900,7 @@ class RPGGame {
     return 'Junior Dev Superviviente del Despido';
   }
 
-  _triggerVictorySequence(boss) {
+  _triggerVictorySequence() {
     // 1. Congelar la sala y detener música de combate
     if (this.music && typeof this.music.stopBossMusic === 'function') {
       this.music.stopBossMusic(false);
@@ -28760,7 +28736,7 @@ class RPGGame {
       ) {
         enemy.victoryCutsceneTriggered = true;
         this.gameCompleted = true;
-        this._triggerVictorySequence(enemy);
+        this._triggerVictorySequence();
       }
     }
     for (const item of items) {

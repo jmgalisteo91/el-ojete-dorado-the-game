@@ -7,7 +7,6 @@
  */
 
 export const GAME_FONT_UI = '"Outfit", "Plus Jakarta Sans", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
-export const GAME_FONT_MONO = '"SF Mono", "Consolas", "Monaco", "Courier New", monospace';
 
 /**
  * Traza un rectángulo con esquinas redondeadas en el contexto Canvas 2D.

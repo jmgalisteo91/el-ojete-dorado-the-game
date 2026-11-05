@@ -106,12 +106,12 @@ export class EnemyBrain {
     const idle = { dirX: 0, dirY: 0, speedMul: 1 };
 
     // Acciones especiales en curso (bloquean la decisión de movimiento)
-    const actionResult = this._updateAction(dt, ctx, perception);
+    const actionResult = this._updateAction(dt, ctx);
     if (actionResult) return actionResult;
 
     switch (this.state) {
       case AI_STATE.PATROL: {
-        if (perception.sees) return this._onSpotted(ctx, perception);
+        if (perception.sees) return this._onSpotted(ctx);
         const wp = enemy.patrolPoints[enemy.currentWaypointIndex];
         const dir = this._steerTo(wp.x + enemy.width / 2, wp.y + enemy.height / 2, dt, ctx, 3);
         if (!dir) {
@@ -148,7 +148,7 @@ export class EnemyBrain {
       }
 
       case AI_STATE.SEARCH: {
-        if (perception.sees) return this._onSpotted(ctx, perception);
+        if (perception.sees) return this._onSpotted(ctx);
         const target = this.lastKnown || { x: enemy.spawnX + enemy.width / 2, y: enemy.spawnY + enemy.height / 2 };
         const dir = this._steerTo(target.x, target.y, dt, ctx, 6);
         if (dir) return { dirX: dir.x, dirY: dir.y, speedMul: 1 };
@@ -169,7 +169,7 @@ export class EnemyBrain {
       }
 
       case AI_STATE.RETURN: {
-        if (perception.sees) return this._onSpotted(ctx, perception);
+        if (perception.sees) return this._onSpotted(ctx);
         let nearest = 0;
         let bestDist = Infinity;
         enemy.patrolPoints.forEach((p, i) => {
@@ -213,7 +213,7 @@ export class EnemyBrain {
     return { dist, sees, hears };
   }
 
-  _onSpotted(ctx, perception) {
+  _onSpotted(ctx) {
     const { player } = ctx;
     this.lastKnown = { x: player.centerX, y: player.centerY };
     this.setState(AI_STATE.ALERT);
@@ -316,7 +316,7 @@ export class EnemyBrain {
 
   // ------------------------------------------------------------------ acciones especiales
 
-  _updateAction(dt, ctx, perception) {
+  _updateAction(dt, ctx) {
     if (this.action === 'none') return null;
     const { enemy } = this;
     const { player, tilemap } = ctx;

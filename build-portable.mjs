@@ -82,10 +82,11 @@ function validateEsmCrossModuleReferences() {
 
   for (const relPath of MODULE_ORDER) {
     const raw = fs.readFileSync(path.join(__dirname, relPath), 'utf8');
+    const codeWithoutImports = raw.replace(/^\s*import\s+[^;]+;?/gm, '');
     for (const [className, ownerPath] of exportedClasses.entries()) {
       if (ownerPath === relPath) continue;
-      const usageRegex = new RegExp(`\\b${className}\\s*\\.\\s*\\w+|\\bnew\\s+${className}\\b`);
-      if (usageRegex.test(raw)) {
+      const usageRegex = new RegExp(`\\b${className}\\s*\\.\\s*[a-zA-Z_$][a-zA-Z0-9_$]*|\\bnew\\s+${className}\\b`);
+      if (usageRegex.test(codeWithoutImports)) {
         const importRegex = new RegExp(`import\\s*\\{[^}]*\\b${className}\\b[^}]*\\}\\s*from`);
         if (!importRegex.test(raw)) {
           throw new Error(

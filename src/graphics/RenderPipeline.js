@@ -205,7 +205,6 @@ export class RenderPipeline {
 
     const tex = this._fogTexture;
     const vw = this.viewportWidth;
-    const vh = this.viewportHeight;
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;

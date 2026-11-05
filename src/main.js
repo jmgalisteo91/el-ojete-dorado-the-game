@@ -29,7 +29,6 @@ import { QuestLogView } from './ui/QuestLogView.js?v=7';
 import { MainMenuAndScenes } from './ui/MainMenuAndScenes.js?v=7';
 import {
   calculateGameScore,
-  saveLocalScore,
   submitGlobalScore,
   uploadGameToCloud,
   downloadGameFromCloud,
@@ -37,10 +36,7 @@ import {
   saveLocalFallback,
   markLocalFallbackSynced,
   getSavedCloudCode,
-  setSavedCloudCode,
-  syncPendingSaveToCloud,
-  CLOUD_SAVE_CODE_KEY,
-  SAVE_STORAGE_KEY
+  setSavedCloudCode
 } from './core/ScoreSystem.js?v=7';
 import {
   AnimeCutsceneManager,
@@ -48,21 +44,16 @@ import {
   SCENE_AI_ALEX_WARNING,
   SCENE_AI_ALEX_PREBATTLE,
   SCENE_DEUS_PURIFICATION,
-  SCENE_VICTORY_CREDITS,
   SCENE_ENDING_VICTORY,
-  SCENE_INTRO_GARBAGE_COLLECTOR,
-  SCENE_INTRO_STACK_OVERFLOW,
-  SCENE_INTRO_PROTOTYPE_MICROWAVE,
   getBossIntroCutscene
 } from './ui/AnimeCutsceneManager.js?v=7';
 import { DayNightCycle } from './world/DayNightCycle.js?v=7';
 import { RenderPipeline } from './graphics/RenderPipeline.js?v=7';
-import { UILayout, UI_COLORS, UI_FONT } from './ui/UILayout.js?v=7';
+import { UILayout, UI_FONT } from './ui/UILayout.js?v=7';
 import { CloudStorage } from './services/CloudStorage.js?v=7';
-import { LeaderboardView } from './ui/LeaderboardView.js?v=7';
 import { AIBotBrain } from './ai/AIBotBrain.js?v=7';
 import { AmbientMusic } from './audio/AmbientMusic.js?v=7';
-import { SpeechBubble, renderActionPromptBubble } from './ui/SpeechBubble.js?v=7';
+import { SpeechBubble } from './ui/SpeechBubble.js?v=7';
 
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
@@ -122,7 +113,6 @@ export class RPGGame {
     this.questLogView = new QuestLogView(this.questLog, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
     this.dayNight = new DayNightCycle(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, 720);
     this.renderPipeline = new RenderPipeline(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
-    this.leaderboardView = new LeaderboardView(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
 
     this.jailRemainingSeconds = 0;
     this.jailerAngerCount = 0;
@@ -3320,7 +3310,7 @@ export class RPGGame {
    * Cuando el jugador entra en la casa de un NPC, el dueño aparece dentro y si no tiene
    * permiso le pregunta qué hace en su casa y quién le ha dado permiso.
    */
-  _handleHouseOwnerConfrontation(sceneId, returnDoor) {
+  _handleHouseOwnerConfrontation(sceneId) {
     const isDay = this.dayNight.timeOfDayHours >= 6 && this.dayNight.timeOfDayHours < 22;
     const ownerNPC = this.npcs.find((n) => n.homeSceneId === sceneId);
     if (!ownerNPC) return;
@@ -4792,10 +4782,7 @@ export class RPGGame {
     );
 
     if (door.type === 'enter') {
-      const doorMeta = this.tilemap.houseDoors.find(
-        (d) => d.sceneId === door.targetScene
-      );
-      this._handleHouseOwnerConfrontation(door.targetScene, doorMeta || door);
+      this._handleHouseOwnerConfrontation(door.targetScene);
     } else {
       this._saveGameToStorage();
     }
@@ -4888,13 +4875,6 @@ export class RPGGame {
     }
   }
 
-  _formatPlayTime(sec) {
-    const total = Math.max(0, Math.floor(sec || 0));
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${m} min ${s < 10 ? '0' : ''}${s} s`;
-  }
-
   _computePlayerFinalTitle() {
     const hasAll = Boolean(this.player.hasDash && this.player.hasChargedAttack && this.player.hasBarrier);
     const j = this.totalJailVisits || 0;
@@ -4905,7 +4885,7 @@ export class RPGGame {
     return 'Junior Dev Superviviente del Despido';
   }
 
-  _triggerVictorySequence(boss) {
+  _triggerVictorySequence() {
     // 1. Congelar la sala y detener música de combate
     if (this.music && typeof this.music.stopBossMusic === 'function') {
       this.music.stopBossMusic(false);
@@ -5741,7 +5721,7 @@ export class RPGGame {
       ) {
         enemy.victoryCutsceneTriggered = true;
         this.gameCompleted = true;
-        this._triggerVictorySequence(enemy);
+        this._triggerVictorySequence();
       }
     }
     for (const item of items) {

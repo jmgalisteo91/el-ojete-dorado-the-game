@@ -101,7 +101,7 @@ export class WorldMap {
     this._drawPlayerLocation(ctx, mapX, mapY, currentSceneId, t);
 
     // 9. Encabezado superior y leyenda inferior limpia
-    this._drawHeaderAndFooter(ctx, W, H, currentSceneId);
+    this._drawHeaderAndFooter(ctx, W, H);
 
     ctx.restore();
   }
@@ -913,7 +913,7 @@ export class WorldMap {
   /**
    * Dibuja el encabezado superior con [Esc] Cerrar y la barra inferior de ubicación sin textos redundantes.
    */
-  _drawHeaderAndFooter(ctx, W, H, currentSceneId) {
+  _drawHeaderAndFooter(ctx, W, H) {
     const cx = W / 2;
     const locationName = this._lastLocationName || 'Aldea de Valleverde';
 

@@ -33,7 +33,6 @@ export class Player extends Entity {
     this.hasLanternEquipped = false;
     this.coins = 25;
     this.robotizationLevel = 0;
-    this.robotizationTimer = 0;
 
     // Sistema de Forja y Progresión de Equipo (v3.6+)
     // Espada: 1=Base madera/hierro, 2=Silicio (+50% daño y quiebra barreras de cristal), 3=Overclockeada (+100% daño y tajos de energía a salud máx)
@@ -763,7 +762,6 @@ export class Player extends Entity {
     // 2. Aura de concentración de energía al cargar el Corte en Cascada
     if (this.chargeTimer > 0) {
       ctx.save();
-      const chargePct = Math.min(1.0, this.chargeTimer / 1.0);
       const isReady = this.chargeTimer >= 1.0;
       const now = performance.now() / 1000;
 

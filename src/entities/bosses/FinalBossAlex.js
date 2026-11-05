@@ -1,6 +1,5 @@
 import { Boss } from './Boss.js?v=7';
-import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
-import { BATTLE_BARK_PHASES, getRandomBattleBark } from '../../assets/VillainDialogues.js?v=7';
+import { getRandomBattleBark } from '../../assets/VillainDialogues.js?v=7';
 
 /**
  * Boss Final: "Mister AI Alex"
@@ -48,7 +47,6 @@ export class FinalBossAlex extends Boss {
     this.hitCountInPhase = 0;
     this.isOverclocked = false;
     this.roomFrozen = false;
-    this.victoryTriggered = false;
 
     // Efectos visuales de reloj cuántico del microondas
     this.microwaveTimerSec = 3;
