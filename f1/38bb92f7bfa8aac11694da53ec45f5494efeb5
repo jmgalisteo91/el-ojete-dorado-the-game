@@ -1,0 +1,18 @@
+src/main.js
+  h_e1bbc662b18209 5042-5048,6531-6548
+src/world/DungeonGenerator.js
+  h_e1bbc662b18209 1-349
+src/world/Tilemap.js
+  h_e1bbc662b18209 1049,1099,3306-3324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f138bb92f7bfa8aac11694da53ec45f5494efeb5",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
