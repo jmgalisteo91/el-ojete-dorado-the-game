@@ -1,4 +1,4 @@
-import { getDoorBlock, getDoorDestinationInfo } from './core/DoorGatekeeper.js?v=7';
+import { getDoorBlock, getDoorDestinationInfo, pushBackPlayer } from './core/DoorGatekeeper.js?v=7';
 import { GameLoop } from './core/GameLoop.js?v=7';
 import { InputHandler } from './core/InputHandler.js?v=7';
 import { Camera2D } from './core/Camera2D.js?v=7';
@@ -3722,6 +3722,59 @@ export class RPGGame {
         tilesetSheet,
         isChest: true
       }),
+      // ==================== COFRES DE MAZMORRA - RECOMPENSAS FINALES ====================
+      // Estos cofres se encuentran al final de cada mazmorra y otorgan los Núcleos
+      // de Mazmorra necesarios para la Puerta Cuántica, además de habilidades y materiales.
+
+      new WorldItem({
+        id: 'chest_nucleo_stack',
+        name: 'Cofre del Núcleo Stack Overflow',
+        description: 'Cofre del Guardián del Stack Overflow. Contiene el Núcleo Stack y desbloquea la habilidad Corte en Cascada.',
+        iconIndex: ITEM_ICONS.DUNGEON_CORE_STACK,
+        x: 11 * 16,
+        y: 4 * 16,
+        sceneId: 'sword_temple',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
+      }),
+      new WorldItem({
+        id: 'chest_nucleo_gc',
+        name: 'Cofre del Núcleo Garbage Collector',
+        description: 'Cofre del Garbage Collector Furioso. Contiene el Núcleo GC y desbloquea la habilidad Dash Asíncrono.',
+        iconIndex: ITEM_ICONS.DUNGEON_CORE_GC,
+        x: 8 * 16,
+        y: 14 * 16,
+        sceneId: 'sewers_dungeon',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
+      }),
+      new WorldItem({
+        id: 'chest_nucleo_microwave',
+        name: 'Cofre del Núcleo Microondas Prototipo',
+        description: 'Cofre del Microondas Prototipo. Contiene el Núcleo Microondas y desbloquea la habilidad Barrera TypeScript.',
+        iconIndex: ITEM_ICONS.DUNGEON_CORE_MICROWAVE,
+        x: 12 * 16,
+        y: 8 * 16,
+        sceneId: 'ai_fortress_gate',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
+      }),
+      new WorldItem({
+        id: 'chest_magnetron',
+        name: 'Cofre del Magnetrón Cuántico',
+        description: 'Cofre oculto en La Forja. Contiene el Magnetrón necesario para forjar la Espada Overclockeada (Nivel 3) con Brom.',
+        iconIndex: ITEM_ICONS.MICROWAVE_MAGNETRON,
+        x: 20 * 16,
+        y: 8 * 16,
+        sceneId: 'forge_entry',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
+      }),
+
       new WorldItem({
         id: 'silicon_flower_1',
         name: 'Flor de Silicio',
@@ -4574,6 +4627,79 @@ export class RPGGame {
               '¡Empúñala y úsala con supremo cuidado! Las fuerzas cuánticas son inmensas y exigen la máxima templanza en tu misión hacia El Ojete Dorado.»'
             ]);
           });
+        } else if (item.id === 'chest_nucleo_stack') {
+          // ==================== COFRE: NÚCLEO STACK ====================
+          this.player.dungeonCores.stack = true;
+          this.player.hasChargedAttack = true;
+          if (this.player.gatesUnlocked < 3) this.player.gatesUnlocked += 1;
+          this.inventory.addItem({
+            id: 'nucleo_stack',
+            name: 'Núcleo Stack Overflow',
+            description: 'Núcleo de energía del Guardián del Stack Overflow. Requerido para la Puerta Cuántica.',
+            iconIndex: ITEM_ICONS.DUNGEON_CORE_STACK,
+            qty: 1
+          });
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Núcleo Stack', [
+            'Has abierto el cofre y encontrado el [Núcleo Stack Overflow].',
+            '• Habilidad desbloqueada: [Corte en Cascada (Caso Base)]',
+            '• Núcleo de mazmorra añadido al altar de la Puerta Cuántica.',
+            `• Núcleos colocados: ${this.player.gatesUnlocked}/3`
+          ]);
+        } else if (item.id === 'chest_nucleo_gc') {
+          // ==================== COFRE: NÚCLEO GC ====================
+          this.player.dungeonCores.gc = true;
+          this.player.hasDash = true;
+          if (this.player.gatesUnlocked < 3) this.player.gatesUnlocked += 1;
+          this.inventory.addItem({
+            id: 'nucleo_gc',
+            name: 'Núcleo Garbage Collector',
+            description: 'Núcleo de energía del Garbage Collector Furioso. Requerido para la Puerta Cuántica.',
+            iconIndex: ITEM_ICONS.DUNGEON_CORE_GC,
+            qty: 1
+          });
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Núcleo GC', [
+            'Has abierto el cofre y encontrado el [Núcleo Garbage Collector].',
+            '• Habilidad desbloqueada: [Dash Asíncrono]',
+            '• Núcleo de mazmorra añadido al altar de la Puerta Cuántica.',
+            `• Núcleos colocados: ${this.player.gatesUnlocked}/3`
+          ]);
+        } else if (item.id === 'chest_nucleo_microwave') {
+          // ==================== COFRE: NÚCLEO MICROWAVE ====================
+          this.player.dungeonCores.microwave = true;
+          this.player.hasBarrier = true;
+          if (this.player.gatesUnlocked < 3) this.player.gatesUnlocked += 1;
+          this.inventory.addItem({
+            id: 'nucleo_microwave',
+            name: 'Núcleo Microondas Prototipo',
+            description: 'Núcleo de energía del Microondas Prototipo. Requerido para la Puerta Cuántica.',
+            iconIndex: ITEM_ICONS.DUNGEON_CORE_MICROWAVE,
+            qty: 1
+          });
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Núcleo Microondas', [
+            'Has abierto el cofre y encontrado el [Núcleo Microondas Prototipo].',
+            '• Habilidad desbloqueada: [Barrera TypeScript]',
+            '• Núcleo de mazmorra añadido al altar de la Puerta Cuántica.',
+            `• Núcleos colocados: ${this.player.gatesUnlocked}/3`
+          ]);
+        } else if (item.id === 'chest_magnetron') {
+          // ==================== COFRE: MAGNETRÓN ====================
+          this.inventory.addItem({
+            id: 'magnetron',
+            name: 'Magnetrón Cuántico',
+            description: 'Componente para forjar la Espada Overclockeada (Nivel 3). Entregárselo al Herrero Brom.',
+            iconIndex: ITEM_ICONS.MICROWAVE_MAGNETRON,
+            qty: 1
+          });
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Magnetrón', [
+            'Has abierto el cofre y encontrado el [Magnetrón Cuántico].',
+            '• Componente esencial para la Espada Tier 3 (Overclockeada).',
+            '• Llévaselo al Herrero Brom en Valleverde para forjar tu espada al nivel máximo.',
+            '• Con el Magnetrón y suficiente silicio, Brom podrá mejorar tu espada.'
+          ]);
         } else {
           this.dialogueBox.showMessage(item.isChest ? '📦 ¡Cofre Abierto!' : 'Objeto Obtenido', [
             item.isChest
@@ -4642,17 +4768,8 @@ export class RPGGame {
         const block = getDoorBlock(door.targetScene, this.player);
         if (block) {
           if (this.music) this.music.playDoorLockedSound();
-          if (door.targetScene === 'first_stage') {
-            this.player.x = Math.min(this.player.x, 31 * this.tilemap.tileSize);
-          } else if (door.targetScene === 'west_wastes') {
-            this.player.x = Math.max(this.player.x, 3.5 * this.tilemap.tileSize);
-          } else if (door.targetScene === 'north_peaks') {
-            this.player.y = Math.max(this.player.y, 2.5 * this.tilemap.tileSize);
-          } else if (door.targetScene === 'south_swamp') {
-            this.player.y = Math.min(this.player.y, 21 * this.tilemap.tileSize);
-          } else if (door.targetScene === 'ai_citadel') {
-            this.player.y = Math.max(this.player.y, 3.5 * this.tilemap.tileSize);
-          }
+          // Empujar al jugador exactamente 1 tile hacia atrás (opuesto al intento de cruce)
+          pushBackPlayer(this.player, this.player.direction || 'down');
           this.dialogueBox.showMessage(block.title, block.lines);
           return;
         }

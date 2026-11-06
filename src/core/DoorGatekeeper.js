@@ -174,3 +174,37 @@ export function getDoorDestinationInfo(targetScene) {
       : 'Más allá de los límites protegidos de Valleverde acechan bugs salvajes y la corrupción de Mister AI Alex.';
   return { title, description };
 }
+
+/**
+ * Empuja al jugador exactamente 1 tile (16px) hacia atrás cuando un centinela
+ * bloquea el paso por nivel insuficiente. La colisión del mapa evita atravesar paredes.
+ * @param {Object} player - Entidad del jugador con x, y, direction, knockbackTimer, etc.
+ * @param {string} [direction='down'] - Dirección hacia la que se empuja (opuesto al movimiento intentado)
+ * @returns {boolean} true si se realizó el empujón
+ */
+export function pushBackPlayer(player, direction = 'down') {
+  if (!player) return false;
+
+  const tileSize = 16;
+  const pushDistance = tileSize; // 1 tile exactamente
+
+  const offsets = {
+    up:    { dx: 0,  dy: -pushDistance },
+    down:  { dx: 0,  dy:  pushDistance },
+    left:  { dx: -pushDistance, dy: 0 },
+    right: { dx:  pushDistance, dy: 0 }
+  };
+
+  const offset = offsets[direction] || offsets.down;
+
+  // Aplicar empujón de 1 tile
+  player.x += offset.dx;
+  player.y += offset.dy;
+
+  // Temporizador de knockback para evitar bucles de colisión inmediata
+  player.knockbackTimer = 0.5;
+  player.knockbackVx = offset.dx * 2;
+  player.knockbackVy = offset.dy * 2;
+
+  return true;
+}

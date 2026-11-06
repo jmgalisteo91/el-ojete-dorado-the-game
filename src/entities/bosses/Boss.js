@@ -159,6 +159,28 @@ export class Boss extends Enemy {
       player[this.rewardAbility] = true;
     }
 
+    // Otorgar el Núcleo de Mazmorra correspondiente según el jefe derrotado
+    if (player) {
+      switch (this.id) {
+        case 'boss_stack_overflow':
+          player.dungeonCores.stack = true;
+          break;
+        case 'boss_garbage_collector':
+          player.dungeonCores.gc = true;
+          break;
+        case 'boss_prototype_microwave':
+          player.dungeonCores.microwave = true;
+          break;
+      }
+      // Recalcular gatesUnlocked basado en los núcleos obtenidos
+      const coresCount = [
+        player.dungeonCores.gc,
+        player.dungeonCores.stack,
+        player.dungeonCores.microwave
+      ].filter(Boolean).length;
+      player.gatesUnlocked = coresCount;
+    }
+
     // Partículas de explosión del jefe
     this.deathParticles = Array.from({ length: 32 }, (_, i) => {
       const angle = (i / 32) * Math.PI * 2;
