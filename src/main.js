@@ -4184,10 +4184,29 @@ export class RPGGame {
     this._saveGameToStorage();
   }
 
-  _getQuickSlotConsumable() {
+  _getQuickSlotConsumable(quickKey) {
     if (!this.inventory || !Array.isArray(this.inventory.items)) return null;
-    const validIds = ['potion_armor', 'potion', 'coffee', 'bread', 'fish', 'apple', 'berry_pie', 'ointment', 'spring_water', 'hotfix'];
-    return this.inventory.items.find((it) => validIds.includes(it.id) && (it.qty || 1) > 0) || null;
+    
+    // Mapear tecla a índice de consumible rápido (R=0, 1=1, 2=2, 3=3, 4=4, 5=5)
+    const keyToIndex = {
+      'KeyR': 0,
+      'Digit1': 0,
+      'Digit2': 1,
+      'Digit3': 2,
+      'Digit4': 3,
+      'Digit5': 4
+    };
+    
+    const index = keyToIndex[quickKey];
+    if (index === undefined) return null;
+    
+    // Ítems de consumible rápido en orden: [0]=poción armor, [1]=poción, [2]=café, [3]=pan, [4]=trucha
+    const quickSlotIds = ['potion_armor', 'potion', 'coffee', 'bread', 'fish'];
+    const id = quickSlotIds[index];
+    
+    // Buscar el ítem en el inventario por ID y verificar que tenga cantidad
+    const item = this.inventory.items.find((it) => it && it.id === id && (it.qty || 1) > 0);
+    return item || null;
   }
 
   _useQuickSlotConsumable() {
@@ -5409,16 +5428,22 @@ export class RPGGame {
       return;
     }
 
-    // Ranura Rápida de Consumibles [R] o [1]
+    // Ranura Rápida de Consumibles [R] o [1-5]
+    const quickKey = this.input.consumeKey('KeyR') ||
+      this.input.consumeKey('Digit1') ||
+      this.input.consumeKey('Digit2') ||
+      this.input.consumeKey('Digit3') ||
+      this.input.consumeKey('Digit4') ||
+      this.input.consumeKey('Digit5');
     if (
       !this.dialogueBox.active &&
       this.menuSystem.state === 'none' &&
       !this.inventory.isOpen &&
       !this.characterStats.isOpen &&
       (!this.questLogView || !this.questLogView.isOpen) &&
-      (this.input.consumeKey('KeyR') || this.input.consumeKey('Digit1'))
+      quickKey
     ) {
-      this._useQuickSlotConsumable();
+      this._useQuickSlotConsumable(quickKey);
     }
 
     // Apertura independiente de la Mochila (Tecla 'I' o Tab, salvo cuando la Ficha 'C' usa Tab para cambiar de pestaña)

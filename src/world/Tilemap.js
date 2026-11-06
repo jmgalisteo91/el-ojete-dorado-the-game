@@ -800,7 +800,7 @@ export class Tilemap {
     setDeco(8, 8, TILES.WALL_INTERIOR, true);
     setDeco(4, 9, TILES.LAMPPOST, true);
     setDeco(8, 9, TILES.LAMPPOST, true);
-    setDeco(5, 10, TILES.SIGNPOST, true);
+    setDeco(5, 10, TILES.SIGNPOST, false);
     lightSources.push(
       { x: 6.5 * 16, y: 8.5 * 16, radius: 56, intensity: 1.0, color: '#38bdf8' },
       { x: 4.5 * 16, y: 9.5 * 16, radius: 44, intensity: 0.85, color: '#38bdf8' },
