@@ -20,8 +20,8 @@ export const INITIAL_QUESTS = [
     title: 'Fuga en las Cloacas',
     category: 'MAIN',
     status: 'ACTIVE',
-    description: 'Una anomalía de memoria corrupta y punteros huérfanos acecha en el subsuelo del mercado de Valleverde.',
-    currentStep: 'Desciende a las alcantarillas de Valleverde y erradica al Garbage Collector Furioso.',
+    description: 'Una anomalía de memoria corrupta y punteros huérfanos acecha en las Cloacas del Legacy, bajo las Marismas del Sur.',
+    currentStep: 'Viaja al sur hasta las Marismas del Hardware Legacy (Nivel 6), desciende a las Cloacas y erradica al Garbage Collector Furioso.',
     reward: 'Habilidad: Dash Asíncrono (0.2s invulnerabilidad)'
   },
   {
@@ -47,7 +47,7 @@ export const INITIAL_QUESTS = [
     title: 'El Búnker Alpha',
     category: 'MAIN',
     status: 'ACTIVE',
-    description: 'En el Laboratorio Alpha al oeste de Valleverde se custodia el Prototipo del Microondas Cuántico.',
+    description: 'En La Forja del Prototipo, al sureste de las Marismas del Hardware Legacy, se custodia el Prototipo del Microondas Cuántico.',
     currentStep: 'Infiltra el Umbral de la Fortaleza y destruye el Prototipo del Microondas de AI Alex.',
     reward: 'Habilidad: Barrera TypeScript (Escudo anti-proyectiles)'
   },
@@ -65,8 +65,8 @@ export const INITIAL_QUESTS = [
     title: 'El Puntero al Abismo',
     category: 'SIDE',
     status: 'ACTIVE',
-    description: 'Un cofre arcano oculto en las Ruinas del Despertar (fuera de Valleverde) guarda el Puntero Abisal reutilizable.',
-    currentStep: 'Explora las Ruinas del Despertar al oeste de Valleverde, abre el cofre del Puntero Abisal (Null Pointer) e invoca tu Portal Abisal.',
+    description: 'Un cofre arcano oculto en el Valle de la Consagración (al este de Valleverde) guarda el Puntero Abisal reutilizable.',
+    currentStep: 'Explora el Valle de la Consagración al este de Valleverde, abre el cofre del Puntero Abisal (Null Pointer) e invoca tu Portal Abisal.',
     reward: 'Portal Abisal Permanente y Absolución del Dios Supremo'
   },
   {

@@ -5,14 +5,16 @@
 import assert from 'node:assert/strict';
 import { findPath, hasLineOfSight } from '../src/ai/Pathfinding.js';
 import { Enemy } from '../src/entities/Enemy.js';
-import { Player } from '../src/entities/Player.js';
-import { getDoorBlock, getDoorDestinationInfo } from '../src/core/DoorGatekeeper.js';
+import { Player, LEVEL_XP_THRESHOLDS, XP_REWARDS } from '../src/entities/Player.js';
+import { getDoorBlock, getDoorDestinationInfo, ZONE_LEVEL_REQUIREMENTS } from '../src/core/DoorGatekeeper.js';
 import { AI_STATE, inferArchetype } from '../src/ai/EnemyBrain.js';
 import { SpeechBubble, drawSpeechBalloonPath } from '../src/ui/SpeechBubble.js';
 import { GarbageCollectorBoss } from '../src/entities/bosses/GarbageCollectorBoss.js';
 import { StackOverflowBoss } from '../src/entities/bosses/StackOverflowBoss.js';
 import { PrototypeMicrowaveBoss } from '../src/entities/bosses/PrototypeMicrowaveBoss.js';
 import { FinalBossAlex } from '../src/entities/bosses/FinalBossAlex.js';
+import { Boss } from '../src/entities/bosses/Boss.js';
+import { RPGGame } from '../src/main.js';
 import {
   calculateGameScore,
   formatPlayTime,
@@ -29,7 +31,7 @@ import {
 } from '../src/core/ScoreSystem.js';
 import handleLeaderboard from '../api/leaderboard.js';
 import handleSave from '../api/save.js';
-import { Tilemap } from '../src/world/Tilemap.js';
+import { Tilemap, CHASM_COLLISION } from '../src/world/Tilemap.js';
 import { DialogueBox } from '../src/ui/DialogueBox.js';
 import { CollisionSystem } from '../src/physics/CollisionSystem.js';
 import { NPC, getBromForgeChoices } from '../src/entities/NPC.js';
@@ -43,7 +45,7 @@ import { AudioManager } from '../src/audio/AudioManager.js';
 import { AmbientMusic } from '../src/audio/AmbientMusic.js';
 import { MainMenuAndScenes } from '../src/ui/MainMenuAndScenes.js';
 import { SCENE_AI_ALEX_WARNING, SCENE_ENDING_VICTORY } from '../src/assets/VillainDialogues.js';
-import { Inventory } from '../src/ui/Inventory.js';
+import { Inventory, normalizeItemId } from '../src/ui/Inventory.js';
 import { QuestLog } from '../src/core/QuestLog.js';
 import { QuestLogView } from '../src/ui/QuestLogView.js';
 import { CharacterStats } from '../src/ui/CharacterStats.js';
@@ -1972,6 +1974,235 @@ test('Tilemap: Inicialización e integridad de Las Marismas del Hardware Legacy 
   const forgeDoor = tm.findNearbyDoor(fakePlayerForge);
   assert.ok(forgeDoor, 'Debe existir puerta a La Forja');
   assert.equal(forgeDoor.targetScene, 'forge_entry');
+});
+
+console.log('Correcciones de la Revisión Técnica (Progresión Terminable)');
+
+function makeFakeGame() {
+  const game = Object.create(RPGGame.prototype);
+  game.assets = { charactersSheet: null };
+  return game;
+}
+
+function makeFakeMusic() {
+  return {
+    setMode: () => {},
+    playMenuSelect: () => {},
+    playMenuMove: () => {},
+    getMasterVolume: () => 1.0,
+    getMusicVolume: () => 0.8,
+    getSfxVolume: () => 1.0,
+    isMasterMuted: () => false,
+    isMusicMuted: () => false,
+    isSfxMuted: () => false
+  };
+}
+
+test('C1: una pasada por todo el contenido alcanza el nivel exigido por cada centinela y por la Ciudadela', () => {
+  const enemies = makeFakeGame()._createFirstStageEnemies();
+  const xpOf = (e) => (e.isBoss ? XP_REWARDS.boss : (e.xpReward ?? XP_REWARDS.enemy));
+  const dayXpIn = (scenes) => enemies
+    .filter((e) => !e.isBoss && !e.nightOnly && scenes.includes(e.sceneId))
+    .reduce((sum, e) => sum + xpOf(e), 0);
+  const bossXp = (...ids) => ids.reduce((sum, id) => sum + xpOf(enemies.find((e) => e.id === id)), 0);
+  const xpForLevel = (lvl) => LEVEL_XP_THRESHOLDS[lvl - 1];
+
+  const afterEast = dayXpIn(['first_stage', 'sword_temple']) + bossXp('boss_stack_overflow');
+  assert.ok(afterEast >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.north_peaks), `Este: ${afterEast} XP`);
+  const afterNorth = afterEast + dayXpIn(['north_peaks']);
+  assert.ok(afterNorth >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.south_swamp), `Norte: ${afterNorth} XP`);
+  const afterSouth = afterNorth + dayXpIn(['south_swamp']) + bossXp('boss_garbage_collector', 'boss_prototype_microwave');
+  assert.ok(afterSouth >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.west_wastes), `Sur: ${afterSouth} XP`);
+  const afterWest = afterSouth + dayXpIn(['west_wastes']);
+  assert.ok(afterWest >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.ai_citadel), `Oeste: ${afterWest} XP`);
+});
+
+test('C1: las patrullas regionales nacen en suelo transitable y reaparecen limpias al volver a la región', () => {
+  const enemies = makeFakeGame()._createFirstStageEnemies();
+  const patrols = enemies.filter((e) => e.respawnOnEnter);
+  assert.equal(new Set(patrols.map((e) => e.sceneId)).size, 3, 'Norte, Sur y Oeste tienen patrullas');
+  const tm = new Tilemap(null, 16);
+  for (const e of patrols) {
+    tm.loadScene(e.sceneId);
+    for (const pt of e.patrolPoints) {
+      assert.equal(CollisionSystem.collidesWithMap(e.getBoundingBoxAt(pt.x, pt.y), tm), false, `${e.id} en sólido`);
+    }
+  }
+  const drone = patrols[0];
+  Object.assign(drone, { dead: true, hp: 0, xpGranted: true, coinsDropped: true, lootDropped: true });
+  drone.reset();
+  assert.equal(drone.dead, false);
+  assert.equal(drone.hp, drone.maxHp);
+  assert.equal(drone.xpGranted, false);
+  assert.equal(drone.coinsDropped, false);
+});
+
+test('C2: el mapa del mundo vuelve al estado del que se abrió y los avisos avanzan durante el juego', () => {
+  const menu = new MainMenuAndScenes(320, 180, {}, makeFakeMusic(), {});
+  menu.state = 'none';
+  menu.openWorldMap('overworld');
+  menu.closeWorldMap();
+  assert.equal(menu.state, 'none');
+
+  menu.openPauseMenu();
+  menu.openWorldMap('overworld');
+  assert.equal(menu.state, 'world_map');
+  menu.closeWorldMap();
+  assert.equal(menu.state, 'pause', 'Abierto desde pausa, debe volver a pausa');
+
+  menu.showNotice('¡SUBIDA DE NIVEL!', 1.0);
+  menu.updateNotice(0.6);
+  assert.ok(menu.noticeTimer > 0);
+  menu.updateNotice(0.6);
+  assert.equal(menu.noticeTimer, 0);
+});
+
+test('C3: los materiales recogidos se apilan con su tipo canónico y Brom los acepta', () => {
+  assert.equal(normalizeItemId('silicon_ore_1730000000000_0'), 'silicon_ore');
+  assert.equal(normalizeItemId('silicon_ore_crystal_3_4_1730000000000'), 'silicon_ore');
+  assert.equal(normalizeItemId('magnetron'), 'microwave_magnetron');
+  assert.equal(normalizeItemId('microwave_magnetron_1730000000000'), 'microwave_magnetron');
+  assert.equal(normalizeItemId('nucleo_gc'), 'dungeon_core_gc');
+  assert.equal(normalizeItemId('bread_dropped_1730000000000'), 'bread');
+  assert.equal(normalizeItemId('golden_apple'), 'golden_apple');
+
+  const inv = new Inventory(null, 320, 180);
+  inv.addItem({ id: 'silicon_ore_1730000000000_0', name: 'Mineral de Silicio', qty: 1 });
+  inv.addItem({ id: 'silicon_ore_crystal_3_4_1730000000000', name: 'Mineral de Silicio', qty: 1 });
+  assert.equal(inv.getItemCount('silicon_ore'), 2);
+  assert.equal(inv.items.length, 1);
+
+  const player = new Player({ x: 0, y: 0 });
+  player.equipArmor();
+  player.equipSword();
+  player.coins = 300;
+  const game = { player, inventory: inv, dialogueBox: { showMessage: () => {}, close: () => {} }, questLog: new QuestLog(), housePermissions: {} };
+  getBromForgeChoices(game).find((c) => c.label.includes('Espada de Silicio')).onSelect();
+  assert.equal(player.swordLevel, 2);
+
+  inv.addItem({ id: 'magnetron', name: 'Magnetrón Cuántico', qty: 1 });
+  getBromForgeChoices(game).find((c) => c.label.includes('Overclockeada')).onSelect();
+  assert.equal(player.swordLevel, 3, 'El magnetrón del cofre también sirve para la forja');
+
+  inv.setItems([
+    { id: 'chest_nucleo_gc', qty: 1 },
+    { id: 'silicon_ore_1_0', qty: 1 },
+    { id: 'silicon_ore_2_1', qty: 2 },
+    { id: 'bread' }
+  ]);
+  assert.deepEqual(inv.items.map((it) => [it.id, it.qty]), [['silicon_ore', 3], ['bread', 1]]);
+});
+
+test('A1: el acceso a la Ciudadela depende solo de los núcleos engarzados', () => {
+  const player = new Player({ x: 0, y: 0 });
+  const stack = new StackOverflowBoss({ x: 0, y: 0, sceneId: 'sword_temple' });
+  stack.triggerBossDefeat(player, null);
+  assert.equal(player.dungeonCores.stack, true);
+  assert.equal(player.gatesUnlocked, 0, 'Vencer al jefe no abre zócalos por sí solo');
+
+  const game = makeFakeGame();
+  game.player = { gatesUnlocked: 7 };
+  game.tilemap = { quantumGate: { coresPlaced: { gc: true, stack: false, microwave: true } } };
+  game._syncGatesUnlocked();
+  assert.equal(game.player.gatesUnlocked, 2);
+  game.tilemap.quantumGate.coresPlaced.stack = true;
+  game._syncGatesUnlocked();
+  assert.equal(game.player.gatesUnlocked, 3);
+});
+
+test('A2: el abismo de las Minas es sólido a pie y se cruza con el Dash Asíncrono', () => {
+  const tm = new Tilemap(null, 16);
+  tm.loadScene('mines_entry');
+  assert.equal(tm.layers.collision[8][11], CHASM_COLLISION);
+  assert.equal(tm.isSolidAtTile(11, 8), true);
+
+  const walkDown = { ...stubInput, getMovementVector: () => ({ x: 0, y: 1 }) };
+  const walker = makePlayer(11 * 16, 112);
+  for (let i = 0; i < 60; i++) walker.update(1 / 60, walkDown, tm, []);
+  assert.ok(walker.worldBoundingBox.y + walker.worldBoundingBox.height <= 8 * 16, 'A pie no cruza el abismo');
+
+  const dasher = makePlayer(11 * 16, 112);
+  dasher.hasDash = true;
+  let dashUsed = false;
+  const dashDown = { ...walkDown, consumeDash: () => (dashUsed ? false : (dashUsed = true)) };
+  for (let i = 0; i < 30; i++) dasher.update(1 / 60, dashDown, tm, []);
+  assert.ok(dasher.worldBoundingBox.y >= 10 * 16, `El Dash aterriza al otro lado (y=${dasher.y})`);
+  assert.equal(CollisionSystem.collidesWithMap(dasher.worldBoundingBox, tm), false);
+  assert.equal(tm.allowChasmCrossing, false);
+});
+
+test('A6/M1: los jefes no actúan en pausa y el cooldown de contacto se recupera', () => {
+  const gc = new GarbageCollectorBoss({ x: 64, y: 64, sceneId: 'sewers_dungeon' });
+  const player = makePlayer(80, 64);
+  gc.activeCombat = true;
+  const x0 = gc.x;
+  const y0 = gc.y;
+  for (let i = 0; i < 240; i++) gc.update(1 / 60, openMap, player, true, null);
+  assert.equal(gc.x, x0);
+  assert.equal(gc.y, y0);
+  assert.equal(gc.hazardPuddles.length, 0, 'No genera charcos durante un diálogo');
+
+  const boss = new Boss({ id: 'boss_test', name: 'Test', x: 32, y: 32, sceneId: 'test' });
+  boss.attackCooldown = 0.85;
+  boss.update(0.5, openMap, makePlayer(250, 150), false, null);
+  assert.ok(Math.abs(boss.attackCooldown - 0.35) < 1e-9);
+});
+
+test('A7: el teletransporte de Alex nunca le deja dentro de un servidor sólido', () => {
+  const tm = new Tilemap(null, 16);
+  tm.loadScene('ai_citadel');
+  const alex = new FinalBossAlex({ x: 11.5 * 16, y: 6.5 * 16 });
+  alex.arenaTilemap = tm;
+  for (let i = 0; i < 60; i++) {
+    alex._performQuantumTeleport();
+    assert.equal(CollisionSystem.collidesWithMap(alex.worldBoundingBox, tm), false, `Alex en sólido en (${alex.x}, ${alex.y})`);
+  }
+});
+
+test('A8: subir de nivel no resucita a un jugador abatido', () => {
+  const p = new Player({ x: 0, y: 0 });
+  p.hp = 0;
+  const res = p.gainXp(60);
+  assert.equal(res.leveledUp, true);
+  assert.equal(p.hp, 0);
+
+  const alive = new Player({ x: 0, y: 0 });
+  alive.hp = 1;
+  alive.gainXp(60);
+  assert.equal(alive.hp, alive.effectiveMaxHp, 'Vivo, la subida de nivel sí cura');
+});
+
+test('A9: el mapa del mundo dibuja dentro de la resolución lógica aunque el canvas físico sea 1280x720', () => {
+  const texts = [];
+  const target = {
+    canvas: { width: 1280, height: 720 },
+    measureText: (t) => ({ width: String(t).length * 4 }),
+    fillText: (t, x, y) => texts.push({ t, x, y }),
+    createLinearGradient: () => ({ addColorStop: () => {} }),
+    createRadialGradient: () => ({ addColorStop: () => {} })
+  };
+  const ctx = new Proxy(target, {
+    get: (obj, prop) => (prop in obj ? obj[prop] : () => {}),
+    set: (obj, prop, val) => { obj[prop] = val; return true; }
+  });
+  new WorldMap().render(ctx, 'overworld', new Player({ x: 0, y: 0 }), []);
+  assert.ok(texts.length > 0);
+  for (const { t, x, y } of texts) {
+    assert.ok(x <= 320 && y <= 180, `Texto fuera de pantalla: "${t}" en (${x}, ${y})`);
+  }
+});
+
+test('M14/M17: la vida se ajusta al máximo efectivo y el Dash no acorta la invulnerabilidad', () => {
+  const p = makePlayer(48, 48);
+  p.hp = 3;
+  p.robotizationLevel = 90;
+  p.update(1 / 60, stubInput, openMap, []);
+  assert.equal(p.hp, p.effectiveMaxHp);
+
+  p.hasDash = true;
+  p.invulnTimer = 1.1;
+  p.tryDash(null, null);
+  assert.equal(p.invulnTimer, 1.1);
 });
 
 await Promise.all(asyncQueue);

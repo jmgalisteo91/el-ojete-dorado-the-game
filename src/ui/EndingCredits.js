@@ -160,9 +160,9 @@ export class EndingCredits {
       this.canExit = true;
     }
 
-    // Scroll acelerado al mantener pulsado Espacio, Enter o Flecha Abajo
+    // Scroll acelerado al mantener pulsado S o Flecha Abajo (Espacio/Enter/Escape cierran los créditos)
     const isDownHeld = input && (
-      (typeof input.isKeyDown === 'function' && (input.isKeyDown('ArrowDown') || input.isKeyDown('KeyS') || input.isKeyDown('Space')))
+      (typeof input.isKeyDown === 'function' && (input.isKeyDown('ArrowDown') || input.isKeyDown('KeyS')))
     );
     const speedMult = isDownHeld ? 3.5 : 1.0;
 

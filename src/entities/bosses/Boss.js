@@ -172,13 +172,6 @@ export class Boss extends Enemy {
           player.dungeonCores.microwave = true;
           break;
       }
-      // Recalcular gatesUnlocked basado en los núcleos obtenidos
-      const coresCount = [
-        player.dungeonCores.gc,
-        player.dungeonCores.stack,
-        player.dungeonCores.microwave
-      ].filter(Boolean).length;
-      player.gatesUnlocked = coresCount;
     }
 
     // Partículas de explosión del jefe
@@ -262,6 +255,9 @@ export class Boss extends Enemy {
     }
     if (typeof this.stunTimer === 'number' && this.stunTimer > 0) {
       this.stunTimer = Math.max(0, this.stunTimer - dt);
+    }
+    if (this.attackCooldown > 0) {
+      this.attackCooldown = Math.max(0, this.attackCooldown - dt);
     }
 
     // Actualización de proyectiles genéricos

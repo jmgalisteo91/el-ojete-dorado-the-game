@@ -7,6 +7,9 @@ import { SpeechBubble } from '../ui/SpeechBubble.js?v=8';
  */
 const OVERHEAD_TILE_IDS = new Set([TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE]);
 
+/** Valor de la capa de colisión para abismos: sólidos salvo durante el Dash Asíncrono. */
+export const CHASM_COLLISION = 2;
+
 /**
  * Tilemap multicapa con soporte para:
  * - Primer Escenario: Las Ruinas del Despertar ('first_stage' 36x24 tiles) donde el jugador consigue su Armadura y primera Espada
@@ -113,6 +116,8 @@ export class Tilemap {
 
     // Estado de Puzles y Progresión de Mazmorras (v3.6+)
     this.quantumGate = { coresPlaced: { gc: false, stack: false, microwave: false } };
+    // Solo el Dash Asíncrono lo activa mientras dura el impulso (abismos = colisión CHASM_COLLISION)
+    this.allowChasmCrossing = false;
 
     this._buildFirstStageScene();
     this._buildNorthPeaksScene();
@@ -259,11 +264,35 @@ export class Tilemap {
     }
   }
 
+  /** Activa o retira la barrera de fuego (columnas 9-11, fila 5) del Templo de la Armadura. */
+  setArmorBarrier(active) {
+    const temple = this.scenes.armor_temple;
+    if (!temple || !temple.layers) return;
+    for (let c = 9; c <= 11; c++) {
+      temple.layers.collision[5][c] = active ? 1 : 0;
+      temple.layers.decoration[5][c] = active ? TILES.FIREPLACE : -1;
+    }
+  }
+
+  /** Abre o sella el portal norte (columnas 11-12, fila 1) del Templo de la Espada. */
+  setSwordPortal(open) {
+    const temple = this.scenes.sword_temple;
+    if (!temple || !temple.layers) return;
+    for (const c of [11, 12]) {
+      temple.layers.collision[1][c] = open ? 0 : 1;
+      temple.layers.decoration[1][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.PORTAL_GATE_CLOSED;
+    }
+  }
+
   isSolidAtTile(col, row) {
     if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) {
       return true;
     }
-    return this.layers.collision[row][col] === 1;
+    const value = this.layers.collision[row][col];
+    if (value === CHASM_COLLISION) {
+      return !this.allowChasmCrossing;
+    }
+    return value === 1;
   }
 
   /**
@@ -628,7 +657,7 @@ export class Tilemap {
           label: 'Adentrarse en el Páramo Corrupto de Mister AI Alex (Oeste)',
           worldX: westX,
           worldY: westY,
-          spawnX: 33 * this.tileSize,
+          spawnX: 31 * this.tileSize,
           spawnY: 12.5 * this.tileSize
         };
       }
@@ -644,7 +673,7 @@ export class Tilemap {
           worldX: northX,
           worldY: northY,
           spawnX: 17.5 * this.tileSize,
-          spawnY: 21.5 * this.tileSize
+          spawnY: 19.5 * this.tileSize
         };
       }
 
@@ -2829,8 +2858,8 @@ export class Tilemap {
     // EL GRAN ABISMO (filas 8 y 9): intransitable a pie, exige Dash Asíncrono para cruzar
     fillRect(ground, 2, 8, cols - 4, 2, TILES.MINE_CHASM);
     for (let c = 2; c < cols - 2; c++) {
-      collision[8][c] = 1;
-      collision[9][c] = 1;
+      collision[8][c] = CHASM_COLLISION;
+      collision[9][c] = CHASM_COLLISION;
     }
 
     // Veta de Silicio Puro en el rincón noreste
@@ -3597,15 +3626,7 @@ export class Tilemap {
     if (isConditionMet && !this.armorPuzzle.solved) {
       this.armorPuzzle.solved = true;
       this.armorPuzzle.barrierActive = false;
-
-      // Retirar la barrera de fuego en la capa de colisión y decoración del templo
-      const temple = this.scenes.armor_temple;
-      if (temple && temple.layers) {
-        for (let c = 9; c <= 11; c++) {
-          temple.layers.collision[5][c] = 0;
-          temple.layers.decoration[5][c] = -1;
-        }
-      }
+      this.setArmorBarrier(false);
       return { solved: true, justSolved: true, conditionResult: true, activeCount };
     }
 
@@ -3750,15 +3771,7 @@ export class Tilemap {
       if (this.swordPuzzle.stack.length === this.swordPuzzle.correctOrder.length) {
         this.swordPuzzle.solved = true;
         this.swordPuzzle.portalOpen = true;
-
-        // Abrir el portal en la pared norte del templo
-        const temple = this.scenes.sword_temple;
-        if (temple && temple.layers) {
-          temple.layers.decoration[1][11] = TILES.PORTAL_GATE_OPEN;
-          temple.layers.decoration[1][12] = TILES.PORTAL_GATE_OPEN;
-          temple.layers.collision[1][11] = 0;
-          temple.layers.collision[1][12] = 0;
-        }
+        this.setSwordPortal(true);
 
         return { success: true, finished: true, stack: [...this.swordPuzzle.stack] };
       }

@@ -19,6 +19,8 @@ const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
  */
 export const LEVEL_XP_THRESHOLDS = [0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700];
 
+export const XP_REWARDS = { enemy: 25, boss: 300 };
+
 /**
  * Entidad controlada por el jugador.
  * En el Primer Escenario empieza indefenso (sin armadura ni espada: cualquier ataque reduce su vida a 0).
@@ -70,6 +72,9 @@ export class Player extends Entity {
     this.dashVx = 0;
     this.dashVy = 0;
     this.dashGhosts = [];
+    this.dashSafeX = 0;
+    this.dashSafeY = 0;
+    this.dashOverrun = 0;
 
     this.chargeTimer = 0;
     this.spinAttackTimer = 0;
@@ -106,8 +111,6 @@ export class Player extends Entity {
     this.xp = 0;
     this.skillPoints = 0;
     this.killCount = 0;
-    this.level = 1;
-    this.xp = 0;
     this.skills = { vigor: false, filo: false, reflejo: false, log: false };
     this.thrownLogs = [];
     this.logCooldown = 0;
@@ -146,8 +149,11 @@ export class Player extends Entity {
     let leveledUp = false;
     while (this.level < 10 && this.xp >= LEVEL_XP_THRESHOLDS[this.level]) {
       this.level += 1;
-      this.hp = this.effectiveMaxHp;
-      this.stamina = this.effectiveMaxStamina;
+      // Un jugador ya abatido en este mismo tick no debe resucitar por la subida de nivel
+      if (this.hp > 0) {
+        this.hp = this.effectiveMaxHp;
+        this.stamina = this.effectiveMaxStamina;
+      }
       leveledUp = true;
     }
     return { leveledUp, oldLevel, newLevel: this.level };
@@ -184,7 +190,7 @@ export class Player extends Entity {
   }
 
   /** Concede puntos de habilidad y XP por derrotar enemigos. Devuelve los puntos ganados. */
-  awardKill(isBoss = false) {
+  awardKill(isBoss = false, xpOverride = null) {
     this.killCount += 1;
     let gained = 0;
     if (isBoss) {
@@ -193,7 +199,7 @@ export class Player extends Entity {
       gained = 1;
     }
     this.skillPoints += gained;
-    const xpAmount = isBoss ? 200 : 25;
+    const xpAmount = Number.isFinite(xpOverride) ? xpOverride : (isBoss ? XP_REWARDS.boss : XP_REWARDS.enemy);
     this.gainXp(xpAmount);
     return gained;
   }
@@ -325,7 +331,7 @@ export class Player extends Entity {
 
   purifyBrokenHeartCurse() {
     this.hasBrokenHeartCurse = false;
-    this.hp = this.maxHp;
+    this.hp = this.effectiveMaxHp;
   }
 
   cureRobotization() {
@@ -422,7 +428,11 @@ export class Player extends Entity {
 
     this.dashTimer = 0.18;
     this.dashCooldown = 0.85;
-    this.invulnTimer = 0.22; // 0.2s invulnerabilidad
+    this.dashSafeX = this.x;
+    this.dashSafeY = this.y;
+    this.dashOverrun = 0;
+    // No acortar una invulnerabilidad más larga ya activa (p. ej. tras recibir daño)
+    this.invulnTimer = Math.max(this.invulnTimer, 0.22);
     const dashSpeed = 210;
     this.dashVx = move.x * dashSpeed;
     this.dashVy = move.y * dashSpeed;
@@ -580,6 +590,9 @@ export class Player extends Entity {
     if (this.spinAttackTimer > 0) {
       this.spinAttackTimer = Math.max(0, this.spinAttackTimer - dt);
     }
+    if (this.hp > this.effectiveMaxHp) {
+      this.hp = this.effectiveMaxHp;
+    }
 
     // Stamina, combo y temporizadores de habilidades
     this.maxStamina = this.effectiveMaxStamina;
@@ -637,7 +650,10 @@ export class Player extends Entity {
 
     // Autodesbloqueo preventivo: si el jugador quedó solapado con una baldosa sólida o un NPC,
     // desplazarlo inmediatamente a la celda libre más cercana para que nunca quede pillado.
-    this._ensureUnstuck(tilemap, obstacles);
+    // Durante el Dash se omite: el impulso puede estar sobrevolando un abismo legítimamente.
+    if (this.dashTimer <= 0) {
+      this._ensureUnstuck(tilemap, obstacles);
+    }
 
     // Ejecución de Dash Asíncrono
     if (input && typeof input.consumeDash === 'function' && input.consumeDash()) {
@@ -678,13 +694,19 @@ export class Player extends Entity {
         life: 0.16,
         maxLife: 0.16
       });
-      CollisionSystem.moveWithCollisions(
+      const canCrossChasm = Boolean(tilemap && 'allowChasmCrossing' in tilemap);
+      if (canCrossChasm) tilemap.allowChasmCrossing = true;
+      const { blockedX, blockedY } = CollisionSystem.moveWithCollisions(
         this,
         this.dashVx * dt,
         this.dashVy * dt,
         tilemap,
         obstacles
       );
+      if (canCrossChasm) {
+        tilemap.allowChasmCrossing = false;
+        this._resolveChasmLanding(dt, tilemap, blockedX || blockedY);
+      }
       super.update(dt);
       return;
     }
@@ -711,6 +733,26 @@ export class Player extends Entity {
     }
 
     super.update(dt);
+  }
+
+  /**
+   * Al terminar el Dash sobre un abismo, prolonga el impulso hasta aterrizar en suelo firme;
+   * si choca o el impulso se agota, regresa al punto de despegue.
+   */
+  _resolveChasmLanding(dt, tilemap, blocked) {
+    if (this.dashTimer > 0) return;
+    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(this.x, this.y), tilemap)) {
+      this.dashOverrun = 0;
+      return;
+    }
+    this.dashOverrun += dt;
+    if (blocked || this.dashOverrun > 0.3) {
+      this.x = this.dashSafeX;
+      this.y = this.dashSafeY;
+      this.dashOverrun = 0;
+    } else {
+      this.dashTimer = dt;
+    }
   }
 
   _updateThrownLogs(dt, tilemap) {

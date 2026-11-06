@@ -26,6 +26,8 @@ export class Enemy extends Entity {
     sceneId = 'first_stage',
     nightOnly = false,
     archetype = null,
+    xpReward = null,
+    respawnOnEnter = false,
     boundingBox = { offsetX: 3, offsetY: 6, width: 10, height: 8 }
   }) {
     super({
@@ -43,6 +45,8 @@ export class Enemy extends Entity {
     this.id = id;
     this.name = name;
     this.nightOnly = Boolean(nightOnly);
+    this.xpReward = Number.isFinite(xpReward) ? xpReward : null;
+    this.respawnOnEnter = Boolean(respawnOnEnter);
     this.spawnX = x;
     this.spawnY = y;
     this.maxHp = startHp;
@@ -74,6 +78,9 @@ export class Enemy extends Entity {
     this.y = this.spawnY;
     this.hp = this.maxHp;
     this.dead = false;
+    this.xpGranted = false;
+    this.coinsDropped = false;
+    this.lootDropped = false;
     this.hitFlashTimer = 0;
     this.knockbackTimer = 0;
     this.attackCooldown = 0;

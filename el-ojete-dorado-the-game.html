@@ -1142,15 +1142,23 @@ class InputHandler {
     return { x: dx, y: dy };
   }
 
-  consumeInteraction() {
+  consumeInteraction({ includeSpace = true } = {}) {
     const interacted =
       this.keysJustPressed.has('KeyE') ||
-      this.keysJustPressed.has('Space') ||
+      (includeSpace && this.keysJustPressed.has('Space')) ||
       this.keysJustPressed.has('Enter');
     this.keysJustPressed.delete('KeyE');
-    this.keysJustPressed.delete('Space');
+    if (includeSpace) this.keysJustPressed.delete('Space');
     this.keysJustPressed.delete('Enter');
     return interacted;
+  }
+
+  isKeyJustPressed(code) {
+    return this.keysJustPressed.has(code);
+  }
+
+  isKeyDown(code) {
+    return this.keysDown.has(code);
   }
 
   consumeAttack() {
@@ -1356,8 +1364,8 @@ const INITIAL_QUESTS = [
     title: 'Fuga en las Cloacas',
     category: 'MAIN',
     status: 'ACTIVE',
-    description: 'Una anomalía de memoria corrupta y punteros huérfanos acecha en el subsuelo del mercado de Valleverde.',
-    currentStep: 'Desciende a las alcantarillas de Valleverde y erradica al Garbage Collector Furioso.',
+    description: 'Una anomalía de memoria corrupta y punteros huérfanos acecha en las Cloacas del Legacy, bajo las Marismas del Sur.',
+    currentStep: 'Viaja al sur hasta las Marismas del Hardware Legacy (Nivel 6), desciende a las Cloacas y erradica al Garbage Collector Furioso.',
     reward: 'Habilidad: Dash Asíncrono (0.2s invulnerabilidad)'
   },
   {
@@ -1383,7 +1391,7 @@ const INITIAL_QUESTS = [
     title: 'El Búnker Alpha',
     category: 'MAIN',
     status: 'ACTIVE',
-    description: 'En el Laboratorio Alpha al oeste de Valleverde se custodia el Prototipo del Microondas Cuántico.',
+    description: 'En La Forja del Prototipo, al sureste de las Marismas del Hardware Legacy, se custodia el Prototipo del Microondas Cuántico.',
     currentStep: 'Infiltra el Umbral de la Fortaleza y destruye el Prototipo del Microondas de AI Alex.',
     reward: 'Habilidad: Barrera TypeScript (Escudo anti-proyectiles)'
   },
@@ -1401,8 +1409,8 @@ const INITIAL_QUESTS = [
     title: 'El Puntero al Abismo',
     category: 'SIDE',
     status: 'ACTIVE',
-    description: 'Un cofre arcano oculto en las Ruinas del Despertar (fuera de Valleverde) guarda el Puntero Abisal reutilizable.',
-    currentStep: 'Explora las Ruinas del Despertar al oeste de Valleverde, abre el cofre del Puntero Abisal (Null Pointer) e invoca tu Portal Abisal.',
+    description: 'Un cofre arcano oculto en el Valle de la Consagración (al este de Valleverde) guarda el Puntero Abisal reutilizable.',
+    currentStep: 'Explora el Valle de la Consagración al este de Valleverde, abre el cofre del Puntero Abisal (Null Pointer) e invoca tu Portal Abisal.',
     reward: 'Portal Abisal Permanente y Absolución del Dios Supremo'
   },
   {
@@ -2530,13 +2538,14 @@ class CloudStorage {
       ? src.housePermissions
       : {};
 
-    const hasPermission_elder = Boolean(src.hasPermission_elder ?? rawPerms.elder ?? false);
-    const hasPermission_blacksmith = Boolean(src.hasPermission_blacksmith ?? rawPerms.blacksmith ?? false);
-    const hasPermission_herbalist = Boolean(src.hasPermission_herbalist ?? rawPerms.herbalist ?? false);
-    const hasPermission_guard = Boolean(src.hasPermission_guard ?? rawPerms.guard ?? false);
-    const hasPermission_oracle = Boolean(src.hasPermission_oracle ?? rawPerms.oracle ?? false);
+    const hasPermission_elder = Boolean(src.hasPermission_elder ?? rawPerms.elder_house ?? rawPerms.elder ?? false);
+    const hasPermission_blacksmith = Boolean(src.hasPermission_blacksmith ?? rawPerms.blacksmith_house ?? rawPerms.blacksmith ?? false);
+    const hasPermission_herbalist = Boolean(src.hasPermission_herbalist ?? rawPerms.herbalist_house ?? rawPerms.herbalist ?? false);
+    const hasPermission_guard = Boolean(src.hasPermission_guard ?? rawPerms.guard_house ?? rawPerms.guard ?? false);
+    const hasPermission_oracle = Boolean(src.hasPermission_oracle ?? rawPerms.oracle_house ?? rawPerms.oracle ?? false);
 
     const housePermissions = {
+      ...rawPerms,
       elder: hasPermission_elder,
       blacksmith: hasPermission_blacksmith,
       herbalist: hasPermission_herbalist,
@@ -2595,7 +2604,7 @@ class CloudStorage {
     return {
       ...src,
       version: src.version || '3.6',
-      sceneId: typeof src.sceneId === 'string' && src.sceneId ? src.sceneId : 'village',
+      sceneId: typeof src.sceneId === 'string' && src.sceneId ? src.sceneId : 'overworld',
       playerX: Number.isFinite(Number(src.playerX)) ? Number(src.playerX) : 144,
       playerY: Number.isFinite(Number(src.playerY)) ? Number(src.playerY) : 108,
       health,
@@ -5162,6 +5171,9 @@ function renderCombatBanner(ctx, text, x, y, color = '#fde047') {
  */
 const OVERHEAD_TILE_IDS = new Set([TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE]);
 
+/** Valor de la capa de colisión para abismos: sólidos salvo durante el Dash Asíncrono. */
+const CHASM_COLLISION = 2;
+
 /**
  * Tilemap multicapa con soporte para:
  * - Primer Escenario: Las Ruinas del Despertar ('first_stage' 36x24 tiles) donde el jugador consigue su Armadura y primera Espada
@@ -5268,6 +5280,8 @@ class Tilemap {
 
     // Estado de Puzles y Progresión de Mazmorras (v3.6+)
     this.quantumGate = { coresPlaced: { gc: false, stack: false, microwave: false } };
+    // Solo el Dash Asíncrono lo activa mientras dura el impulso (abismos = colisión CHASM_COLLISION)
+    this.allowChasmCrossing = false;
 
     this._buildFirstStageScene();
     this._buildNorthPeaksScene();
@@ -5414,11 +5428,35 @@ class Tilemap {
     }
   }
 
+  /** Activa o retira la barrera de fuego (columnas 9-11, fila 5) del Templo de la Armadura. */
+  setArmorBarrier(active) {
+    const temple = this.scenes.armor_temple;
+    if (!temple || !temple.layers) return;
+    for (let c = 9; c <= 11; c++) {
+      temple.layers.collision[5][c] = active ? 1 : 0;
+      temple.layers.decoration[5][c] = active ? TILES.FIREPLACE : -1;
+    }
+  }
+
+  /** Abre o sella el portal norte (columnas 11-12, fila 1) del Templo de la Espada. */
+  setSwordPortal(open) {
+    const temple = this.scenes.sword_temple;
+    if (!temple || !temple.layers) return;
+    for (const c of [11, 12]) {
+      temple.layers.collision[1][c] = open ? 0 : 1;
+      temple.layers.decoration[1][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.PORTAL_GATE_CLOSED;
+    }
+  }
+
   isSolidAtTile(col, row) {
     if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) {
       return true;
     }
-    return this.layers.collision[row][col] === 1;
+    const value = this.layers.collision[row][col];
+    if (value === CHASM_COLLISION) {
+      return !this.allowChasmCrossing;
+    }
+    return value === 1;
   }
 
   /**
@@ -5783,7 +5821,7 @@ class Tilemap {
           label: 'Adentrarse en el Páramo Corrupto de Mister AI Alex (Oeste)',
           worldX: westX,
           worldY: westY,
-          spawnX: 33 * this.tileSize,
+          spawnX: 31 * this.tileSize,
           spawnY: 12.5 * this.tileSize
         };
       }
@@ -5799,7 +5837,7 @@ class Tilemap {
           worldX: northX,
           worldY: northY,
           spawnX: 17.5 * this.tileSize,
-          spawnY: 21.5 * this.tileSize
+          spawnY: 19.5 * this.tileSize
         };
       }
 
@@ -7984,8 +8022,8 @@ class Tilemap {
     // EL GRAN ABISMO (filas 8 y 9): intransitable a pie, exige Dash Asíncrono para cruzar
     fillRect(ground, 2, 8, cols - 4, 2, TILES.MINE_CHASM);
     for (let c = 2; c < cols - 2; c++) {
-      collision[8][c] = 1;
-      collision[9][c] = 1;
+      collision[8][c] = CHASM_COLLISION;
+      collision[9][c] = CHASM_COLLISION;
     }
 
     // Veta de Silicio Puro en el rincón noreste
@@ -8752,15 +8790,7 @@ class Tilemap {
     if (isConditionMet && !this.armorPuzzle.solved) {
       this.armorPuzzle.solved = true;
       this.armorPuzzle.barrierActive = false;
-
-      // Retirar la barrera de fuego en la capa de colisión y decoración del templo
-      const temple = this.scenes.armor_temple;
-      if (temple && temple.layers) {
-        for (let c = 9; c <= 11; c++) {
-          temple.layers.collision[5][c] = 0;
-          temple.layers.decoration[5][c] = -1;
-        }
-      }
+      this.setArmorBarrier(false);
       return { solved: true, justSolved: true, conditionResult: true, activeCount };
     }
 
@@ -8905,15 +8935,7 @@ class Tilemap {
       if (this.swordPuzzle.stack.length === this.swordPuzzle.correctOrder.length) {
         this.swordPuzzle.solved = true;
         this.swordPuzzle.portalOpen = true;
-
-        // Abrir el portal en la pared norte del templo
-        const temple = this.scenes.sword_temple;
-        if (temple && temple.layers) {
-          temple.layers.decoration[1][11] = TILES.PORTAL_GATE_OPEN;
-          temple.layers.decoration[1][12] = TILES.PORTAL_GATE_OPEN;
-          temple.layers.collision[1][11] = 0;
-          temple.layers.collision[1][12] = 0;
-        }
+        this.setSwordPortal(true);
 
         return { success: true, finished: true, stack: [...this.swordPuzzle.stack] };
       }
@@ -9451,6 +9473,8 @@ const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
  */
 const LEVEL_XP_THRESHOLDS = [0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700];
 
+const XP_REWARDS = { enemy: 25, boss: 300 };
+
 /**
  * Entidad controlada por el jugador.
  * En el Primer Escenario empieza indefenso (sin armadura ni espada: cualquier ataque reduce su vida a 0).
@@ -9502,6 +9526,9 @@ class Player extends Entity {
     this.dashVx = 0;
     this.dashVy = 0;
     this.dashGhosts = [];
+    this.dashSafeX = 0;
+    this.dashSafeY = 0;
+    this.dashOverrun = 0;
 
     this.chargeTimer = 0;
     this.spinAttackTimer = 0;
@@ -9538,8 +9565,6 @@ class Player extends Entity {
     this.xp = 0;
     this.skillPoints = 0;
     this.killCount = 0;
-    this.level = 1;
-    this.xp = 0;
     this.skills = { vigor: false, filo: false, reflejo: false, log: false };
     this.thrownLogs = [];
     this.logCooldown = 0;
@@ -9578,8 +9603,11 @@ class Player extends Entity {
     let leveledUp = false;
     while (this.level < 10 && this.xp >= LEVEL_XP_THRESHOLDS[this.level]) {
       this.level += 1;
-      this.hp = this.effectiveMaxHp;
-      this.stamina = this.effectiveMaxStamina;
+      // Un jugador ya abatido en este mismo tick no debe resucitar por la subida de nivel
+      if (this.hp > 0) {
+        this.hp = this.effectiveMaxHp;
+        this.stamina = this.effectiveMaxStamina;
+      }
       leveledUp = true;
     }
     return { leveledUp, oldLevel, newLevel: this.level };
@@ -9616,7 +9644,7 @@ class Player extends Entity {
   }
 
   /** Concede puntos de habilidad y XP por derrotar enemigos. Devuelve los puntos ganados. */
-  awardKill(isBoss = false) {
+  awardKill(isBoss = false, xpOverride = null) {
     this.killCount += 1;
     let gained = 0;
     if (isBoss) {
@@ -9625,7 +9653,7 @@ class Player extends Entity {
       gained = 1;
     }
     this.skillPoints += gained;
-    const xpAmount = isBoss ? 200 : 25;
+    const xpAmount = Number.isFinite(xpOverride) ? xpOverride : (isBoss ? XP_REWARDS.boss : XP_REWARDS.enemy);
     this.gainXp(xpAmount);
     return gained;
   }
@@ -9757,7 +9785,7 @@ class Player extends Entity {
 
   purifyBrokenHeartCurse() {
     this.hasBrokenHeartCurse = false;
-    this.hp = this.maxHp;
+    this.hp = this.effectiveMaxHp;
   }
 
   cureRobotization() {
@@ -9854,7 +9882,11 @@ class Player extends Entity {
 
     this.dashTimer = 0.18;
     this.dashCooldown = 0.85;
-    this.invulnTimer = 0.22; // 0.2s invulnerabilidad
+    this.dashSafeX = this.x;
+    this.dashSafeY = this.y;
+    this.dashOverrun = 0;
+    // No acortar una invulnerabilidad más larga ya activa (p. ej. tras recibir daño)
+    this.invulnTimer = Math.max(this.invulnTimer, 0.22);
     const dashSpeed = 210;
     this.dashVx = move.x * dashSpeed;
     this.dashVy = move.y * dashSpeed;
@@ -10012,6 +10044,9 @@ class Player extends Entity {
     if (this.spinAttackTimer > 0) {
       this.spinAttackTimer = Math.max(0, this.spinAttackTimer - dt);
     }
+    if (this.hp > this.effectiveMaxHp) {
+      this.hp = this.effectiveMaxHp;
+    }
 
     // Stamina, combo y temporizadores de habilidades
     this.maxStamina = this.effectiveMaxStamina;
@@ -10069,7 +10104,10 @@ class Player extends Entity {
 
     // Autodesbloqueo preventivo: si el jugador quedó solapado con una baldosa sólida o un NPC,
     // desplazarlo inmediatamente a la celda libre más cercana para que nunca quede pillado.
-    this._ensureUnstuck(tilemap, obstacles);
+    // Durante el Dash se omite: el impulso puede estar sobrevolando un abismo legítimamente.
+    if (this.dashTimer <= 0) {
+      this._ensureUnstuck(tilemap, obstacles);
+    }
 
     // Ejecución de Dash Asíncrono
     if (input && typeof input.consumeDash === 'function' && input.consumeDash()) {
@@ -10110,13 +10148,19 @@ class Player extends Entity {
         life: 0.16,
         maxLife: 0.16
       });
-      CollisionSystem.moveWithCollisions(
+      const canCrossChasm = Boolean(tilemap && 'allowChasmCrossing' in tilemap);
+      if (canCrossChasm) tilemap.allowChasmCrossing = true;
+      const { blockedX, blockedY } = CollisionSystem.moveWithCollisions(
         this,
         this.dashVx * dt,
         this.dashVy * dt,
         tilemap,
         obstacles
       );
+      if (canCrossChasm) {
+        tilemap.allowChasmCrossing = false;
+        this._resolveChasmLanding(dt, tilemap, blockedX || blockedY);
+      }
       super.update(dt);
       return;
     }
@@ -10143,6 +10187,26 @@ class Player extends Entity {
     }
 
     super.update(dt);
+  }
+
+  /**
+   * Al terminar el Dash sobre un abismo, prolonga el impulso hasta aterrizar en suelo firme;
+   * si choca o el impulso se agota, regresa al punto de despegue.
+   */
+  _resolveChasmLanding(dt, tilemap, blocked) {
+    if (this.dashTimer > 0) return;
+    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(this.x, this.y), tilemap)) {
+      this.dashOverrun = 0;
+      return;
+    }
+    this.dashOverrun += dt;
+    if (blocked || this.dashOverrun > 0.3) {
+      this.x = this.dashSafeX;
+      this.y = this.dashSafeY;
+      this.dashOverrun = 0;
+    } else {
+      this.dashTimer = dt;
+    }
   }
 
   _updateThrownLogs(dt, tilemap) {
@@ -11956,6 +12020,8 @@ class Enemy extends Entity {
     sceneId = 'first_stage',
     nightOnly = false,
     archetype = null,
+    xpReward = null,
+    respawnOnEnter = false,
     boundingBox = { offsetX: 3, offsetY: 6, width: 10, height: 8 }
   }) {
     super({
@@ -11973,6 +12039,8 @@ class Enemy extends Entity {
     this.id = id;
     this.name = name;
     this.nightOnly = Boolean(nightOnly);
+    this.xpReward = Number.isFinite(xpReward) ? xpReward : null;
+    this.respawnOnEnter = Boolean(respawnOnEnter);
     this.spawnX = x;
     this.spawnY = y;
     this.maxHp = startHp;
@@ -12004,6 +12072,9 @@ class Enemy extends Entity {
     this.y = this.spawnY;
     this.hp = this.maxHp;
     this.dead = false;
+    this.xpGranted = false;
+    this.coinsDropped = false;
+    this.lootDropped = false;
     this.hitFlashTimer = 0;
     this.knockbackTimer = 0;
     this.attackCooldown = 0;
@@ -12568,13 +12639,6 @@ class Boss extends Enemy {
           player.dungeonCores.microwave = true;
           break;
       }
-      // Recalcular gatesUnlocked basado en los núcleos obtenidos
-      const coresCount = [
-        player.dungeonCores.gc,
-        player.dungeonCores.stack,
-        player.dungeonCores.microwave
-      ].filter(Boolean).length;
-      player.gatesUnlocked = coresCount;
     }
 
     // Partículas de explosión del jefe
@@ -12658,6 +12722,9 @@ class Boss extends Enemy {
     }
     if (typeof this.stunTimer === 'number' && this.stunTimer > 0) {
       this.stunTimer = Math.max(0, this.stunTimer - dt);
+    }
+    if (this.attackCooldown > 0) {
+      this.attackCooldown = Math.max(0, this.attackCooldown - dt);
     }
 
     // Actualización de proyectiles genéricos
@@ -12821,6 +12888,7 @@ class GarbageCollectorBoss extends Boss {
     }
 
     super.update(dt, tilemap, player, paused, soundEngine);
+    if (paused || this.dead) return { hitPlayer: false };
 
     // 1. Mecánica: Memory Leak (Charcos de ácido corrosivo)
     this.acidTimer -= dt;
@@ -13153,6 +13221,7 @@ class StackOverflowBoss extends Boss {
 
     this._ensureUnstuck(tilemap);
     super.update(dt, tilemap, player, paused, soundEngine);
+    if (paused || this.dead) return { hitPlayer: false };
 
     // Actualización de clones recursivos
     for (let i = this.clones.length - 1; i >= 0; i--) {
@@ -13194,10 +13263,12 @@ class StackOverflowBoss extends Boss {
         // Chequeo si la espada o corte en cascada del jugador golpea al clon
         const sword = player.getSwordHitbox();
         const spin = player.getSpinHitbox();
-        if (spin && Math.hypot(c.x - spin.centerX, c.y - spin.centerY) <= spin.radius + 6) {
+        // Inmunidad breve tras un impacto: un mismo golpe no puede dañar en cada fotograma
+        const canBeHit = c.hitFlash <= 0;
+        if (canBeHit && spin && Math.hypot(c.x - spin.centerX, c.y - spin.centerY) <= spin.radius + 6) {
           c.hp -= spin.damage;
           c.hitFlash = 0.15;
-        } else if (sword && CollisionSystem.checkAABB(sword, { x: c.x - 6, y: c.y - 6, width: 12, height: 12 })) {
+        } else if (canBeHit && sword && CollisionSystem.checkAABB(sword, { x: c.x - 6, y: c.y - 6, width: 12, height: 12 })) {
           const dmg = typeof player.getSwordDamage === 'function' ? player.getSwordDamage() : 1;
           c.hp -= dmg;
           c.hitFlash = 0.15;
@@ -13557,6 +13628,7 @@ class PrototypeMicrowaveBoss extends Boss {
     }
 
     super.update(dt, tilemap, player, paused, soundEngine);
+    if (paused || this.dead) return { hitPlayer: false };
 
     // Estado aturdido tras romper los fusibles
     if (this.stunnedTimer > 0) {
@@ -13781,6 +13853,7 @@ class FinalBossAlex extends Boss {
     this.animTimer = 0;
     this.holograms = [];
     this.pendingBurstShots = [];
+    this.arenaTilemap = null;
     this.statusText = `💬 ${getRandomBattleBark('PHASE_1_START')}`;
   }
 
@@ -13842,20 +13915,27 @@ class FinalBossAlex extends Boss {
   }
 
   _performQuantumTeleport() {
+    // Puntos despejados de la arena (los servidores ocupan las casillas (5,5), (18,5), (5,12) y (18,12))
     const arenaSpots = [
-      { x: 5 * 16, y: 5 * 16 },
-      { x: 18 * 16, y: 5 * 16 },
-      { x: 6 * 16, y: 11 * 16 },
-      { x: 17 * 16, y: 11 * 16 },
+      { x: 7 * 16, y: 4 * 16 },
+      { x: 15 * 16, y: 4 * 16 },
+      { x: 7 * 16, y: 10 * 16 },
+      { x: 15 * 16, y: 10 * 16 },
       { x: 11.5 * 16, y: 7 * 16 }
     ];
-    const spot = arenaSpots[Math.floor(Math.random() * arenaSpots.length)];
+    const tilemap = this.arenaTilemap;
+    const freeSpots = tilemap
+      ? arenaSpots.filter((s) => !CollisionSystem.collidesWithMap(this.getBoundingBoxAt(s.x, s.y), tilemap))
+      : arenaSpots;
+    if (freeSpots.length === 0) return;
+    const spot = freeSpots[Math.floor(Math.random() * freeSpots.length)];
     this.x = spot.x;
     this.y = spot.y;
     this.hitFlashTimer = 0.3;
   }
 
   update(dt, tilemap, player, paused = false, soundEngine = null) {
+    if (tilemap) this.arenaTilemap = tilemap;
     if (this.dead) {
       return super.update(dt, tilemap, player, paused, soundEngine);
     }
@@ -14739,8 +14819,39 @@ const KEY_OR_QUEST_ITEM_IDS = new Set([
   'lantern',
   'silicon_flower',
   'drone_scrap',
-  'river_trout'
+  'river_trout',
+  'silicon_ore',
+  'microwave_magnetron',
+  'dungeon_core_gc',
+  'dungeon_core_stack',
+  'dungeon_core_microwave'
 ]);
+
+const ITEM_ID_ALIASES = {
+  magnetron: 'microwave_magnetron',
+  nucleo_gc: 'dungeon_core_gc',
+  nucleo_stack: 'dungeon_core_stack',
+  nucleo_microwave: 'dungeon_core_microwave'
+};
+
+// Tipos cuyas instancias en el mundo llevan sufijos únicos (p. ej. silicon_ore_<timestamp>_<i>)
+const STACKABLE_ITEM_TYPES = [
+  'silicon_flower',
+  'drone_scrap',
+  'silicon_ore',
+  'microwave_magnetron',
+  'dungeon_core_gc',
+  'dungeon_core_stack',
+  'dungeon_core_microwave'
+];
+
+/** Convierte un ID de instancia (WorldItem, objeto soltado o alias antiguo) en su tipo canónico de inventario. */
+function normalizeItemId(id) {
+  if (typeof id !== 'string') return id;
+  const base = id.replace(/_dropped_\d+$/, '');
+  const aliased = ITEM_ID_ALIASES[base] || base;
+  return STACKABLE_ITEM_TYPES.find((type) => aliased === type || aliased.startsWith(`${type}_`)) || aliased;
+}
 
 const CONSUMABLE_ITEM_IDS = new Set([
   'bread',
@@ -14784,19 +14895,20 @@ class Inventory {
    * Añade un objeto al inventario (acumulando cantidad si ya existe).
    * Los objetos clave de historia/misión nunca son bloqueados por límite de ranuras.
    */
-  addItem(itemData) {
+  addItem(itemData, { ignoreSlotLimit = false } = {}) {
     if (!itemData || !itemData.id) return false;
-    const existing = this.items.find((it) => it.id === itemData.id);
+    const id = normalizeItemId(itemData.id);
+    const existing = this.items.find((it) => it.id === id);
     if (existing) {
       existing.qty += itemData.qty || 1;
       return true;
     }
-    const isEssential = KEY_OR_QUEST_ITEM_IDS.has(itemData.id);
-    if (this.items.length >= this.maxSlots && !isEssential) {
+    const isEssential = KEY_OR_QUEST_ITEM_IDS.has(id);
+    if (this.items.length >= this.maxSlots && !isEssential && !ignoreSlotLimit) {
       return false;
     }
     this.items.push({
-      id: itemData.id,
+      id,
       name: itemData.name,
       description: itemData.description,
       iconIndex: itemData.iconIndex,
@@ -14805,17 +14917,33 @@ class Inventory {
     return true;
   }
 
+  /** Restaura el inventario guardado normalizando IDs antiguos y fusionando duplicados. */
+  setItems(savedItems) {
+    this.items = [];
+    this.selectedIndex = 0;
+    if (!Array.isArray(savedItems)) return;
+    for (const it of savedItems) {
+      if (!it || typeof it.id !== 'string' || it.id.startsWith('chest_')) continue;
+      const qty = it.qty === undefined ? 1 : Math.floor(Number(it.qty));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      this.addItem({ ...it, qty }, { ignoreSlotLimit: true });
+    }
+  }
+
   hasItem(itemId) {
-    return this.items.some((it) => it.id === itemId && it.qty > 0);
+    const id = normalizeItemId(itemId);
+    return this.items.some((it) => it.id === id && it.qty > 0);
   }
 
   getItemCount(itemId) {
-    const it = this.items.find((item) => item.id === itemId);
+    const id = normalizeItemId(itemId);
+    const it = this.items.find((item) => item.id === id);
     return it ? (it.qty || 1) : 0;
   }
 
   consumeItem(itemId, amount = 1) {
-    const idx = this.items.findIndex((it) => it.id === itemId);
+    const id = normalizeItemId(itemId);
+    const idx = this.items.findIndex((it) => it.id === id);
     if (idx === -1) return false;
     this.items[idx].qty -= amount;
     if (this.items[idx].qty <= 0) {
@@ -15772,8 +15900,9 @@ class WorldMap {
    * @param {Array|null} enemies
    */
   render(ctx, currentSceneId = 'overworld', player = null, enemies = null) {
-    const W = ctx.canvas.width;
-    const H = ctx.canvas.height;
+    // El contexto llega escalado x4 sobre un canvas físico de 1280x720: dibujar en coordenadas lógicas
+    const W = LOGICAL_WIDTH;
+    const H = LOGICAL_HEIGHT;
     const t = performance.now() * 0.001;
 
     // Lienzo interior del mapa (marco de 308x156)
@@ -15865,7 +15994,7 @@ class WorldMap {
       return { zone: 'north', x: 160, y: 26, title: 'Minas de la Recursión (Piso 1 · Caverna)', detail: 'Entrada del Gran Abismo' };
     }
     if (sceneId === 'mines_puzzle') {
-      return { zone: 'north', x: 172, y: 24, title: 'Minas de la Recursión (Sala de Runas)', detail: 'Cámara del Guardián Stack Overflow' };
+      return { zone: 'north', x: 172, y: 24, title: 'Minas de la Recursión (Sala de Runas)', detail: 'Portal al Templo de la Espada' };
     }
 
     // SUR: Marismas del Hardware Legacy
@@ -15941,6 +16070,7 @@ class WorldMap {
     const armorLevel = player?.armorLevel || (hasArmor ? 1 : 0);
 
     const coresCount = (gcDefeated ? 1 : 0) + (stackDefeated ? 1 : 0) + (microwaveDefeated ? 1 : 0);
+    const placedCount = Math.max(0, Math.min(3, Number(player?.gatesUnlocked) || 0));
 
     return {
       gcDefeated,
@@ -15951,7 +16081,8 @@ class WorldMap {
       hasSword,
       swordLevel,
       armorLevel,
-      coresCount
+      coresCount,
+      placedCount
     };
   }
 
@@ -16130,9 +16261,15 @@ class WorldMap {
     ctx.textAlign = 'center';
     ctx.fillText('ALTAR SACRO', rx + 47, ry + 43);
 
-    // Badge de estado de equipo
-    const equipLabel = status.hasArmor && status.hasSword ? '✓ Equipo Consagrado' : 'Pruebas del Héroe';
-    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, equipLabel, status.hasArmor && status.hasSword ? '#6ee7b7' : '#fde047');
+    // Badge de estado de equipo y del Guardián del Stack Overflow (vive en el Templo de la Espada)
+    const isEquipped = status.hasArmor && status.hasSword;
+    let equipLabel = 'Pruebas del Héroe';
+    let equipColor = '#fde047';
+    if (isEquipped) {
+      equipLabel = status.stackDefeated ? '✓ Equipo y Stack Purgado' : 'Templo Espada: Stack Overflow';
+      equipColor = status.stackDefeated ? '#6ee7b7' : '#7dd3fc';
+    }
+    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, equipLabel, equipColor);
   }
 
   /**
@@ -16176,7 +16313,7 @@ class WorldMap {
       this._drawMiniSkull(ctx, caveX + 10, caveY - 6, '#06b6d4', t);
     }
 
-    const bossText = status.stackDefeated ? '✓ Minas [Stack Overflow Purgado]' : 'Minas: Guardián Stack Overflow';
+    const bossText = status.stackDefeated ? '✓ Minas [Stack Overflow Purgado]' : 'Minas: Abismo (requiere Dash)';
     this._drawRegionBadge(ctx, caveX, ry + rh - 6, bossText, status.stackDefeated ? '#6ee7b7' : '#7dd3fc');
   }
 
@@ -16262,7 +16399,7 @@ class WorldMap {
     const gateY = ry + 32;
     ctx.fillStyle = '#0f0511';
     ctx.fillRect(gateX - 6, gateY - 8, 12, 16);
-    ctx.strokeStyle = status.coresCount >= 3 ? '#22c55e' : '#ef4444';
+    ctx.strokeStyle = status.placedCount >= 3 ? '#22c55e' : '#ef4444';
     ctx.lineWidth = 1;
     ctx.strokeRect(gateX - 5.5, gateY - 7.5, 11, 15);
 
@@ -16303,8 +16440,8 @@ class WorldMap {
       this._drawMiniSkull(ctx, citadelX + 11, citadelY - 6, '#ef4444', t, true);
     }
 
-    const citadelText = status.alexDefeated ? '✓ AI Alex Derrotado' : (status.coresCount >= 3 ? '¡Puerta Abierta! Entra' : 'Ciudadela: Mister AI Alex');
-    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, citadelText, status.alexDefeated ? '#6ee7b7' : (status.coresCount >= 3 ? '#fde047' : '#fca5a5'));
+    const citadelText = status.alexDefeated ? '✓ AI Alex Derrotado' : (status.placedCount >= 3 ? '¡Puerta Abierta! Entra' : 'Ciudadela: Mister AI Alex');
+    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, citadelText, status.alexDefeated ? '#6ee7b7' : (status.placedCount >= 3 ? '#fde047' : '#fca5a5'));
   }
 
   /**
@@ -16499,9 +16636,11 @@ class WorldMap {
     } else if (!status.hasSword) {
       questText = '🎯 Misión: Empuñar la Espada de la Recursividad en el Valle del Este.';
     } else if (status.coresCount < 3) {
-      questText = `🎯 Misión: Conseguir los 3 Núcleos de Mazmorra (${status.coresCount}/3) en Norte y Sur.`;
+      questText = `🎯 Misión: Conseguir los 3 Núcleos (${status.coresCount}/3): Templo de la Espada (Este) y Marismas (Sur).`;
+    } else if (status.placedCount < 3 && !status.alexDefeated) {
+      questText = `🎯 Misión: Engarza los Núcleos en la Gran Puerta del Oeste (${status.placedCount}/3).`;
     } else if (!status.alexDefeated) {
-      questText = '🎯 ¡FINAL! Abre la Gran Puerta del Núcleo en el Oeste y purga a Mister AI Alex.';
+      questText = '🎯 ¡FINAL! Cruza la Gran Puerta del Núcleo (Nivel 10) y purga a Mister AI Alex.';
     } else {
       questText = '🏆 ¡VICTORIA! El Reino del Gran Ojal ha sido liberado de Mister AI Alex.';
     }
@@ -17471,9 +17610,9 @@ class EndingCredits {
       this.canExit = true;
     }
 
-    // Scroll acelerado al mantener pulsado Espacio, Enter o Flecha Abajo
+    // Scroll acelerado al mantener pulsado S o Flecha Abajo (Espacio/Enter/Escape cierran los créditos)
     const isDownHeld = input && (
-      (typeof input.isKeyDown === 'function' && (input.isKeyDown('ArrowDown') || input.isKeyDown('KeyS') || input.isKeyDown('Space')))
+      (typeof input.isKeyDown === 'function' && (input.isKeyDown('ArrowDown') || input.isKeyDown('KeyS')))
     );
     const speedMult = isDownHeld ? 3.5 : 1.0;
 
@@ -17852,6 +17991,9 @@ class MainMenuAndScenes {
   }
 
   openWorldMap(currentSceneId = 'first_stage', context = null) {
+    if (this.state !== 'world_map') {
+      this.previousStateBeforeMap = this.state === 'pause' ? 'pause' : 'none';
+    }
     this.state = 'world_map';
     this.currentSceneId = currentSceneId;
     if (context) {
@@ -17861,8 +18003,16 @@ class MainMenuAndScenes {
   }
 
   closeWorldMap() {
-    this.state = 'none';
+    this.state = this.previousStateBeforeMap || 'none';
+    this.previousStateBeforeMap = 'none';
     this.music.playMenuMove();
+  }
+
+  /** Avanza el temporizador de avisos cuando el menú no se está actualizando (juego en curso). */
+  updateNotice(dt) {
+    if (this.noticeTimer > 0) {
+      this.noticeTimer = Math.max(0, this.noticeTimer - dt);
+    }
   }
 
   /**
@@ -19030,6 +19180,9 @@ class MainMenuAndScenes {
 
   render(ctx) {
     if (this.state === 'none') {
+      if (this.noticeTimer > 0 && this.noticeText) {
+        this._renderToastNotice(ctx, this.noticeText, 26);
+      }
       if (this.fadeAlpha > 0) {
         ctx.save();
         ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, Math.max(0, this.fadeAlpha))})`;
@@ -19722,13 +19875,12 @@ class MainMenuAndScenes {
     ctx.restore();
   }
 
-  _renderToastNotice(ctx, text) {
+  _renderToastNotice(ctx, text, ty = 84) {
     ctx.save();
     ctx.font = `600 6.5px ${GAME_FONT_UI}`;
     const tw = Math.ceil(ctx.measureText(text).width) + 16;
     const th = 14;
     const tx = Math.round((this.viewportWidth - tw) / 2);
-    const ty = 84;
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
     drawRoundedRect(ctx, tx + 1, ty + 1.5, tw, th, 4);
@@ -24406,6 +24558,12 @@ const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
 const RENDER_SCALE = 4; // Renderizado nativo HD 1280x720 (4x sobre base lógica 320x180)
 
+const CORE_CHEST_GUARDIANS = {
+  chest_nucleo_stack: 'boss_stack_overflow',
+  chest_nucleo_gc: 'boss_garbage_collector',
+  chest_nucleo_microwave: 'boss_prototype_microwave'
+};
+
 const ABYSSAL_POINTER_SPAWN_CANDIDATES = [
   { x: 29 * 16, y: 19 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Claro Sureste)' },
   { x: 5 * 16, y: 19 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Rincón Suroeste)' },
@@ -24718,11 +24876,7 @@ class RPGGame {
       this.tilemap.armorPuzzle.switches = { A: 0, B: 0, C: 0, D: 0 };
       this.tilemap.armorPuzzle.solved = false;
       this.tilemap.armorPuzzle.barrierActive = true;
-      const templeArmor = this.tilemap.scenes.armor_temple;
-      if (templeArmor && templeArmor.layers) {
-        templeArmor.layers.collision[5][10] = 1;
-        templeArmor.layers.decoration[5][10] = 8; // TILES.FIREPLACE
-      }
+      this.tilemap.setArmorBarrier(true);
     }
 
     // Reiniciar Puzle 2: Templo de la Espada
@@ -24730,13 +24884,7 @@ class RPGGame {
       this.tilemap.swordPuzzle.stack = [];
       this.tilemap.swordPuzzle.solved = false;
       this.tilemap.swordPuzzle.portalOpen = false;
-      const templeSword = this.tilemap.scenes.sword_temple;
-      if (templeSword && templeSword.layers) {
-        templeSword.layers.collision[1][11] = 1;
-        templeSword.layers.collision[1][12] = 1;
-        templeSword.layers.decoration[1][11] = 15; // TILES.PORTAL_GATE_CLOSED
-        templeSword.layers.decoration[1][12] = 15;
-      }
+      this.tilemap.setSwordPortal(false);
     }
 
     // Reiniciar Puzle 3: La Gran Puerta del Núcleo Cuántico
@@ -24764,6 +24912,10 @@ class RPGGame {
     this.gameCompleted = false;
     this.totalPlayTimeSeconds = 0;
     this.totalDeaths = 0;
+    this.totalJailVisits = 0;
+    this.deathsByScene = {};
+    this.sceneSurvivalTimer = 0;
+    this._deathRegistered = false;
     this.prebattleAlexCutscenePlayed = false;
     this.bossCutscenesSeen = {
       boss_garbage_collector: false,
@@ -24859,13 +25011,15 @@ class RPGGame {
       housePermissions: { ...this.housePermissions },
       inventoryItems: this.inventory.items.map((it) => ({ ...it })),
       bossCutscenesSeen: { ...this.bossCutscenesSeen },
+      prebattleAlexCutscenePlayed: Boolean(this.prebattleAlexCutscenePlayed),
+      gameCompleted: Boolean(this.gameCompleted),
       abyssalPointerSpawn: this.abyssalPointerSpawn ? { ...this.abyssalPointerSpawn } : null,
       abyssalPortalOrigin: this.abyssalPortalOrigin ? { ...this.abyssalPortalOrigin } : null,
       activeAbyssalPortal: this.activeAbyssalPortal ? { ...this.activeAbyssalPortal } : null,
       questLogData: this.questLog ? this.questLog.serialize() : null,
       achievementsData: this.achievementManager ? this.achievementManager.serialize() : null,
       collectedItemIds: this.worldItems.filter((w) => w.collected).map((w) => w.id),
-      defeatedEnemyIds: this.enemies.filter((e) => e.dead).map((e) => e.id)
+      defeatedEnemyIds: this.enemies.filter((e) => e.dead && !e.respawnOnEnter).map((e) => e.id)
     };
   }
 
@@ -25121,6 +25275,7 @@ class RPGGame {
       }, 60);
     }
 
+    let cancelled = false;
     const cleanup = () => {
       modal.classList.add('hidden');
       if (form) form.onsubmit = null;
@@ -25129,6 +25284,7 @@ class RPGGame {
 
     if (cancelBtn) {
       cancelBtn.onclick = () => {
+        cancelled = true;
         cleanup();
       };
     }
@@ -25145,16 +25301,16 @@ class RPGGame {
         }
 
         downloadGameFromCloud(code).then((res) => {
+          if (cancelled) return;
           if (res && res.ok && res.saveData) {
-            this.cloudSaveCode = code;
-            setSavedCloudCode(code);
-            saveLocalFallback(res.saveData, code, false);
-            this.hasPendingCloudSync = false;
-            this.cloudSyncStatus = 'synced';
-            this.lastCloudSyncTime = Date.now();
-
             const ok = this._loadGameData(res.saveData);
             if (ok) {
+              this.cloudSaveCode = code;
+              setSavedCloudCode(code);
+              saveLocalFallback(res.saveData, code, false);
+              this.hasPendingCloudSync = false;
+              this.cloudSyncStatus = 'synced';
+              this.lastCloudSyncTime = Date.now();
               if (this.menuSystem) {
                 this.menuSystem.state = 'none';
                 this.menuSystem.showNotice(`✓ Partida [${code}] cargada exitosamente de la nube.`, 4.0);
@@ -25226,7 +25382,8 @@ class RPGGame {
     if (!rawInput) return false;
     const raw = rawInput.savePayload || rawInput;
     const sanitized = CloudStorage.sanitizeSaveData(raw) || {};
-    const data = { ...sanitized, ...raw };
+    // Los valores saneados prevalecen sobre los originales (clamps de nivel, núcleos, blindaje...)
+    const data = { ...raw, ...sanitized };
     try {
       this._resetWorldToInitialState();
 
@@ -25268,20 +25425,12 @@ class RPGGame {
         if (data.armorPuzzle.solved) {
           this.tilemap.armorPuzzle.solved = true;
           this.tilemap.armorPuzzle.barrierActive = false;
-          const templeArmor = this.tilemap.scenes.armor_temple;
-          if (templeArmor && templeArmor.layers) {
-            templeArmor.layers.collision[5][10] = 0;
-            templeArmor.layers.decoration[5][10] = -1;
-          }
+          this.tilemap.setArmorBarrier(false);
         }
       } else if (data.binaryPuzzles?.armorSolved && this.tilemap?.armorPuzzle) {
         this.tilemap.armorPuzzle.solved = true;
         this.tilemap.armorPuzzle.barrierActive = false;
-        const templeArmor = this.tilemap.scenes.armor_temple;
-        if (templeArmor && templeArmor.layers) {
-          templeArmor.layers.collision[5][10] = 0;
-          templeArmor.layers.decoration[5][10] = -1;
-        }
+        this.tilemap.setArmorBarrier(false);
       }
 
       // Carga y sincronización del Puzle 2 (Templo de la Espada)
@@ -25289,13 +25438,7 @@ class RPGGame {
         if (data.swordPuzzle.solved) {
           this.tilemap.swordPuzzle.solved = true;
           this.tilemap.swordPuzzle.portalOpen = true;
-          const templeSword = this.tilemap.scenes.sword_temple;
-          if (templeSword && templeSword.layers) {
-            templeSword.layers.collision[1][11] = 0;
-            templeSword.layers.collision[1][12] = 0;
-            templeSword.layers.decoration[1][11] = 16; // TILES.PORTAL_GATE_OPEN
-            templeSword.layers.decoration[1][12] = 16;
-          }
+          this.tilemap.setSwordPortal(true);
         }
         if (Array.isArray(data.swordPuzzle.stack)) {
           this.tilemap.swordPuzzle.stack = [...data.swordPuzzle.stack];
@@ -25303,21 +25446,17 @@ class RPGGame {
       } else if (data.binaryPuzzles?.swordSolved && this.tilemap?.swordPuzzle) {
         this.tilemap.swordPuzzle.solved = true;
         this.tilemap.swordPuzzle.portalOpen = true;
-        const templeSword = this.tilemap.scenes.sword_temple;
-        if (templeSword && templeSword.layers) {
-          templeSword.layers.collision[1][11] = 0;
-          templeSword.layers.collision[1][12] = 0;
-          templeSword.layers.decoration[1][11] = 16;
-          templeSword.layers.decoration[1][12] = 16;
-        }
+        this.tilemap.setSwordPortal(true);
       }
 
-      const targetScene = data.sceneId || 'first_stage';
+      const hasValidScene = typeof data.sceneId === 'string' && Boolean(this.tilemap.scenes[data.sceneId]);
+      const targetScene = hasValidScene ? data.sceneId : 'overworld';
       this.tilemap.loadScene(targetScene);
       this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
 
-      this.player.x = typeof data.playerX === 'number' ? data.playerX : 17 * 16;
-      this.player.y = typeof data.playerY === 'number' ? data.playerY : 19 * 16;
+      const hasValidPos = hasValidScene && Number.isFinite(data.playerX) && Number.isFinite(data.playerY);
+      this.player.x = hasValidPos ? data.playerX : 14 * 16;
+      this.player.y = hasValidPos ? data.playerY : 12 * 16;
       this.player.direction = data.playerDir || 'down';
       this.player.speed = data.playerSpeed || 76;
       this.player.hasLanternEquipped = Boolean(data.hasLanternEquipped);
@@ -25347,11 +25486,14 @@ class RPGGame {
       }
       this.player.gatesUnlocked = Math.max(0, Math.min(3, Number(data.gatesUnlocked) || 0));
       if (data.quantumGate && this.tilemap.quantumGate && data.quantumGate.coresPlaced) {
+        const savedPlaced = data.quantumGate.coresPlaced;
         this.tilemap.quantumGate.coresPlaced = {
-          ...this.tilemap.quantumGate.coresPlaced,
-          ...data.quantumGate.coresPlaced
+          gc: Boolean(savedPlaced.gc),
+          stack: Boolean(savedPlaced.stack),
+          microwave: Boolean(savedPlaced.microwave)
         };
       }
+      this._syncGatesUnlocked();
       this.player.hasDash = Boolean(data.hasDash);
       this.player.hasChargedAttack = Boolean(data.hasChargedAttack);
       this.player.hasBarrier = Boolean(data.hasBarrier);
@@ -25365,22 +25507,22 @@ class RPGGame {
         log: Boolean(savedSkills.log)
       };
       this.player.stamina = this.player.effectiveMaxStamina;
-      if (typeof data.playerHp === 'number' && data.playerHp > 0) {
-        this.player.hp = data.playerHp;
-      } else {
-        this.player.hp = this.player.maxHp;
-      }
-      if (typeof data.playerCoins === 'number') {
-        this.player.coins = data.playerCoins;
-      }
       if (typeof data.robotizationLevel === 'number') {
-        this.player.robotizationLevel = data.robotizationLevel;
+        this.player.robotizationLevel = Math.max(0, Math.min(100, data.robotizationLevel));
+      }
+      if (typeof data.playerHp === 'number' && data.playerHp > 0) {
+        this.player.hp = Math.min(this.player.effectiveMaxHp, data.playerHp);
+      } else {
+        this.player.hp = this.player.effectiveMaxHp;
+      }
+      if (typeof data.playerCoins === 'number' && Number.isFinite(data.playerCoins)) {
+        this.player.coins = Math.max(0, Math.floor(data.playerCoins));
       }
       this.player.invulnerableTimer = 1.0;
       this.player.knockbackTimer = 0;
 
       if (Array.isArray(data.inventoryItems)) {
-        this.inventory.items = data.inventoryItems.map((it) => ({ ...it }));
+        this.inventory.setItems(data.inventoryItems);
       }
 
       if (data.bossCutscenesSeen) {
@@ -25432,13 +25574,17 @@ class RPGGame {
         }
       }
 
-      const defeatedSet = new Set(Array.isArray(data.defeatedEnemyIds) ? data.defeatedEnemyIds : []);
-      if (this.player.hasDash) defeatedSet.add('boss_garbage_collector');
-      if (this.player.hasChargedAttack) defeatedSet.add('boss_stack_overflow');
-      if (this.player.hasBarrier) defeatedSet.add('boss_prototype_microwave');
+      const hasDefeatedList = Array.isArray(data.defeatedEnemyIds);
+      const defeatedSet = new Set(hasDefeatedList ? data.defeatedEnemyIds : []);
+      // Solo las partidas antiguas sin lista de derrotas infieren los jefes vencidos a partir de las habilidades
+      if (!hasDefeatedList) {
+        if (this.player.hasDash) defeatedSet.add('boss_garbage_collector');
+        if (this.player.hasChargedAttack) defeatedSet.add('boss_stack_overflow');
+        if (this.player.hasBarrier) defeatedSet.add('boss_prototype_microwave');
+      }
 
       for (const en of this.enemies) {
-        if (defeatedSet.has(en.id)) {
+        if (defeatedSet.has(en.id) && !en.respawnOnEnter) {
           en.dead = true;
           en.defeated = true;
           en.hp = 0;
@@ -25446,11 +25592,18 @@ class RPGGame {
           en.defeatBannerTimer = 0;
           en.questCompletedTriggered = true;
           en.victoryCutsceneTriggered = true;
+          // Sus recompensas ya se concedieron antes de guardar: no volver a otorgarlas
+          en.xpGranted = true;
+          en.coinsDropped = true;
+          en.lootDropped = true;
           if (typeof en.resetCombatState === 'function') {
             en.resetCombatState();
           }
         }
       }
+
+      this.prebattleAlexCutscenePlayed = Boolean(data.prebattleAlexCutscenePlayed);
+      this.gameCompleted = Boolean(data.gameCompleted);
 
       if (targetScene === 'jail_cell' && !this.isJailedForever && this.jailRemainingSeconds <= 0) {
         this.jailRemainingSeconds = 120;
@@ -27523,6 +27676,43 @@ class RPGGame {
     ];
   }
 
+  _createRegionalPatrols(sheet) {
+    const regions = [
+      { prefix: 'peaks', sceneId: 'north_peaks', label: 'de las Cumbres', xp: 40, droneHp: 3, knightHp: 4, speed: 36,
+        spots: [[6, 9, 'drone'], [25, 9, 'drone'], [8, 16, 'knight'], [24, 16, 'knight']] },
+      { prefix: 'swamp', sceneId: 'south_swamp', label: 'de las Marismas', xp: 50, droneHp: 3, knightHp: 5, speed: 38,
+        spots: [[8, 4, 'drone'], [24, 4, 'drone'], [12, 18, 'knight'], [21, 18, 'knight']] },
+      { prefix: 'wastes', sceneId: 'west_wastes', label: 'del Páramo', xp: 60, droneHp: 4, knightHp: 6, speed: 40,
+        spots: [[8, 4, 'drone'], [25, 4, 'drone'], [12, 18, 'knight'], [25, 18, 'knight']] }
+    ];
+    const patrols = [];
+    for (const region of regions) {
+      region.spots.forEach(([col, row, kind], i) => {
+        const isDrone = kind === 'drone';
+        patrols.push(new Enemy({
+          id: `${kind}_${region.prefix}_${i + 1}`,
+          name: isDrone ? `Dron Corrupto ${region.label}` : `Caballero Corrupto ${region.label}`,
+          x: col * 16,
+          y: row * 16,
+          sceneId: region.sceneId,
+          speed: region.speed,
+          maxHp: isDrone ? region.droneHp : region.knightHp,
+          aggroRange: 60,
+          xpReward: region.xp,
+          respawnOnEnter: true,
+          animator: new SpriteAnimator(sheet, isDrone ? CHARACTER_TYPES.SHADOW_DRONE : CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
+          patrolPoints: [
+            { x: col * 16, y: row * 16 },
+            { x: (col + 3) * 16, y: row * 16 },
+            { x: (col + 3) * 16, y: (row + 1) * 16 },
+            { x: col * 16, y: (row + 1) * 16 }
+          ]
+        }));
+      });
+    }
+    return patrols;
+  }
+
   _createFirstStageEnemies() {
     const sheet = this.assets.charactersSheet;
 
@@ -27778,6 +27968,10 @@ class RPGGame {
           { x: 16 * 16, y: 15 * 16 }
         ]
       }),
+
+      // ==================== PATRULLAS REGIONALES (REAPARECEN AL VOLVER A ENTRAR EN LA REGIÓN) ====================
+      // Fuente de experiencia escalada por zona para alcanzar los niveles exigidos por los centinelas
+      ...this._createRegionalPatrols(sheet),
 
       // ==================== JEFES REGIONALES CON BANDA SONORA Y HABILIDADES ÚNICAS ====================
       // Jefe Regional: El Garbage Collector Furioso (Alcantarillas de Valleverde · 24 HP)
@@ -28162,11 +28356,15 @@ class RPGGame {
     this.loop.start();
   }
 
+  _isNightTime() {
+    return typeof this.dayNight?.isNight === 'function'
+      ? this.dayNight.isNight()
+      : Boolean(this.dayNight && (this.dayNight.timeOfDayHours >= 20 || this.dayNight.timeOfDayHours < 6));
+  }
+
   _getActiveSceneEntities() {
     const scene = this.tilemap.currentSceneId;
-    const isNight = typeof this.dayNight?.isNight === 'function'
-      ? this.dayNight.isNight()
-      : (this.dayNight && (this.dayNight.timeOfDayHours >= 20 || this.dayNight.timeOfDayHours < 6));
+    const isNight = this._isNightTime();
     const npcs = this.npcs.filter((n) => n.sceneId === scene);
     const animals = this.animals.filter((a) => a.sceneId === scene);
     // Los enemigos nocturnos solo aparecen de noche (en el pueblo los guardias del binario mantienen la seguridad)
@@ -28192,9 +28390,7 @@ class RPGGame {
   _findBestInteraction() {
     const { npcs, animals, items } = this._getActiveSceneEntities();
     const currentScene = this.tilemap.currentSceneId;
-    const isNight = typeof this.dayNight?.isNight === 'function'
-      ? this.dayNight.isNight()
-      : (this.dayNight && (this.dayNight.timeOfDayHours >= 20 || this.dayNight.timeOfDayHours < 6));
+    const isNight = this._isNightTime();
 
     // Puzle 1: Monolitos Crípticos en Templo de la Armadura
     if (currentScene === 'armor_temple' && this.tilemap.armorPuzzle?.monoliths) {
@@ -28335,13 +28531,13 @@ class RPGGame {
       const pRow = Math.floor(this.player.centerY / 16);
       if (pCol >= 25 && pCol <= 32) {
         let nearWater = false;
-        const ground = this.tilemap.scenes.overworld?.ground;
+        const ground = this.tilemap.scenes.overworld?.layers?.ground;
         if (ground) {
           for (let dr = -1; dr <= 1; dr++) {
             for (let dc = -1; dc <= 1; dc++) {
               const r = pRow + dr;
               const c = pCol + dc;
-              if (ground[r] && (ground[r][c] === 4 || ground[r][c] === 5)) { // WATER_1 o WATER_2
+              if (ground[r] && (ground[r][c] === TILES.WATER_1 || ground[r][c] === TILES.WATER_2)) {
                 nearWater = true;
                 break;
               }
@@ -28718,7 +28914,7 @@ class RPGGame {
         if (this.tilemap.quantumGate) {
           this.tilemap.quantumGate.coresPlaced[ped.id] = true;
         }
-        this.player.gatesUnlocked = (this.player.gatesUnlocked || 0) + 1;
+        this._syncGatesUnlocked();
 
         if (this.music && typeof this.music.playFanfare === 'function') {
           this.music.playFanfare();
@@ -28867,13 +29063,22 @@ class RPGGame {
         return;
       }
 
-      const invId = item.id.startsWith('silicon_flower')
-        ? 'silicon_flower'
-        : item.id.startsWith('drone_scrap')
-        ? 'drone_scrap'
-        : item.id;
+      const guardianBossId = CORE_CHEST_GUARDIANS[item.id];
+      const guardianBoss = guardianBossId ? this.enemies.find((e) => e.id === guardianBossId) : null;
+      if (guardianBoss && !guardianBoss.dead) {
+        if (this.music) this.music.playDoorLockedSound();
+        this.dialogueBox.showMessage('🔒 [COFRE SELLADO]', [
+          `El cofre está sellado por la energía de ${guardianBoss.name}.`,
+          'Derrota al guardián de esta sala para romper el sello y reclamar su núcleo.'
+        ]);
+        return;
+      }
 
-      const added = this.inventory.addItem({
+      // Los cofres de mazmorra entregan su contenido en su propio handler: el cofre no ocupa ranura
+      const isContainerChest = item.isChest && item.id.startsWith('chest_');
+      const invId = normalizeItemId(item.id);
+
+      const added = isContainerChest || this.inventory.addItem({
         id: invId,
         name: item.name,
         description: item.description,
@@ -28994,70 +29199,49 @@ class RPGGame {
           });
         } else if (item.id === 'chest_nucleo_stack') {
           // ==================== COFRE: NÚCLEO STACK ====================
-          this.player.dungeonCores.stack = true;
-          this.player.hasChargedAttack = true;
-          if (this.player.gatesUnlocked < 3) this.player.gatesUnlocked += 1;
-          this.inventory.addItem({
-            id: 'nucleo_stack',
-            name: 'Núcleo Stack Overflow',
+          this._openCoreChest({
+            coreKey: 'stack',
+            abilityKey: 'hasChargedAttack',
+            abilityName: 'Corte en Cascada (Caso Base)',
+            itemId: 'dungeon_core_stack',
+            itemName: 'Núcleo Stack Overflow',
             description: 'Núcleo de energía del Guardián del Stack Overflow. Requerido para la Puerta Cuántica.',
             iconIndex: ITEM_ICONS.DUNGEON_CORE_STACK,
-            qty: 1
+            title: '📦 ¡Cofre Abierto! · Núcleo Stack'
           });
-          this._saveGameToStorage();
-          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Núcleo Stack', [
-            'Has abierto el cofre y encontrado el [Núcleo Stack Overflow].',
-            '• Habilidad desbloqueada: [Corte en Cascada (Caso Base)]',
-            '• Núcleo de mazmorra añadido al altar de la Puerta Cuántica.',
-            `• Núcleos colocados: ${this.player.gatesUnlocked}/3`
-          ]);
         } else if (item.id === 'chest_nucleo_gc') {
           // ==================== COFRE: NÚCLEO GC ====================
-          this.player.dungeonCores.gc = true;
-          this.player.hasDash = true;
-          if (this.player.gatesUnlocked < 3) this.player.gatesUnlocked += 1;
-          this.inventory.addItem({
-            id: 'nucleo_gc',
-            name: 'Núcleo Garbage Collector',
+          this._openCoreChest({
+            coreKey: 'gc',
+            abilityKey: 'hasDash',
+            abilityName: 'Dash Asíncrono',
+            itemId: 'dungeon_core_gc',
+            itemName: 'Núcleo Garbage Collector',
             description: 'Núcleo de energía del Garbage Collector Furioso. Requerido para la Puerta Cuántica.',
             iconIndex: ITEM_ICONS.DUNGEON_CORE_GC,
-            qty: 1
+            title: '📦 ¡Cofre Abierto! · Núcleo GC'
           });
-          this._saveGameToStorage();
-          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Núcleo GC', [
-            'Has abierto el cofre y encontrado el [Núcleo Garbage Collector].',
-            '• Habilidad desbloqueada: [Dash Asíncrono]',
-            '• Núcleo de mazmorra añadido al altar de la Puerta Cuántica.',
-            `• Núcleos colocados: ${this.player.gatesUnlocked}/3`
-          ]);
         } else if (item.id === 'chest_nucleo_microwave') {
           // ==================== COFRE: NÚCLEO MICROWAVE ====================
-          this.player.dungeonCores.microwave = true;
-          this.player.hasBarrier = true;
-          if (this.player.gatesUnlocked < 3) this.player.gatesUnlocked += 1;
-          this.inventory.addItem({
-            id: 'nucleo_microwave',
-            name: 'Núcleo Microondas Prototipo',
+          this._openCoreChest({
+            coreKey: 'microwave',
+            abilityKey: 'hasBarrier',
+            abilityName: 'Barrera TypeScript',
+            itemId: 'dungeon_core_microwave',
+            itemName: 'Núcleo Microondas Prototipo',
             description: 'Núcleo de energía del Microondas Prototipo. Requerido para la Puerta Cuántica.',
             iconIndex: ITEM_ICONS.DUNGEON_CORE_MICROWAVE,
-            qty: 1
+            title: '📦 ¡Cofre Abierto! · Núcleo Microondas'
           });
-          this._saveGameToStorage();
-          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Núcleo Microondas', [
-            'Has abierto el cofre y encontrado el [Núcleo Microondas Prototipo].',
-            '• Habilidad desbloqueada: [Barrera TypeScript]',
-            '• Núcleo de mazmorra añadido al altar de la Puerta Cuántica.',
-            `• Núcleos colocados: ${this.player.gatesUnlocked}/3`
-          ]);
         } else if (item.id === 'chest_magnetron') {
           // ==================== COFRE: MAGNETRÓN ====================
           this.inventory.addItem({
-            id: 'magnetron',
+            id: 'microwave_magnetron',
             name: 'Magnetrón Cuántico',
             description: 'Componente para forjar la Espada Overclockeada (Nivel 3). Entregárselo al Herrero Brom.',
             iconIndex: ITEM_ICONS.MICROWAVE_MAGNETRON,
             qty: 1
-          });
+          }, { ignoreSlotLimit: true });
           this._saveGameToStorage();
           this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Magnetrón', [
             'Has abierto el cofre y encontrado el [Magnetrón Cuántico].',
@@ -29401,6 +29585,11 @@ class RPGGame {
       }
     }
     this.tilemap.loadScene(door.targetScene);
+    for (const en of this.enemies) {
+      if (en.respawnOnEnter && en.dead && en.sceneId === door.targetScene) {
+        en.reset();
+      }
+    }
     this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
     this.player.x = door.spawnX;
     this.player.y = door.spawnY;
@@ -29638,9 +29827,19 @@ class RPGGame {
       if (skipBtn) skipBtn.onclick = null;
     };
 
+    // Enviar y omitir pueden coincidir mientras la petición está en vuelo: cerrar una sola vez
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      if (typeof onDone === 'function') onDone();
+    };
+
     if (formEl) {
       formEl.onsubmit = (e) => {
         e.preventDefault();
+        formEl.onsubmit = (ev) => ev.preventDefault();
         const raw = inputEl ? inputEl.value : '';
         const sanitized = raw.trim().toUpperCase().replace(/[^A-Z0-9_\-\.]/g, '').slice(0, 12) || 'ANÓNIMO';
         try {
@@ -29653,19 +29852,14 @@ class RPGGame {
           score: record && record.score != null ? record.score : 0,
           playTimeSeconds: (record && record.playTimeSeconds) || 0,
           timeFormatted: (record && record.playTimeFormatted) || '00:00',
-          deaths: (record && record.deaths) || 0
-        }).finally(() => {
-          cleanup();
-          if (typeof onDone === 'function') onDone();
-        });
+          deaths: (record && record.deaths) || 0,
+          coins: (record && record.coins) || 0
+        }).finally(finish);
       };
     }
 
     if (skipBtn) {
-      skipBtn.onclick = () => {
-        cleanup();
-        if (typeof onDone === 'function') onDone();
-      };
+      skipBtn.onclick = finish;
     }
   }
 
@@ -29725,9 +29919,10 @@ class RPGGame {
     }
 
     if (this.input.consumeKey('KeyM')) {
+      const canToggleMap = this.menuSystem.state === 'none' || this.menuSystem.state === 'pause';
       if (this.menuSystem.state === 'world_map') {
         this.menuSystem.closeWorldMap();
-      } else if (!this.dialogueBox.active && !this.inventory.isOpen && !this.characterStats.isOpen && (!this.questLogView || !this.questLogView.isOpen)) {
+      } else if (canToggleMap && !this.dialogueBox.active && !this.inventory.isOpen && !this.characterStats.isOpen && (!this.questLogView || !this.questLogView.isOpen)) {
         if (this.questLogView) this.questLogView.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
           player: this.player,
@@ -29743,6 +29938,7 @@ class RPGGame {
       this.input.endFrame();
       return;
     }
+    this.menuSystem.updateNotice(dt);
 
     if (this.animeCutscenes && this.animeCutscenes.isActive) {
       this.animeCutscenes.update(dt, this.input);
@@ -29774,23 +29970,20 @@ class RPGGame {
       return;
     }
 
-    // Ranura Rápida de Consumibles [R] o [1-5]
-    let quickKey = null;
-    for (const k of ['KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5']) {
-      if (this.input.consumeKey(k)) {
-        quickKey = k;
-        break;
-      }
-    }
-    if (
+    // Ranura Rápida de Consumibles [1-5] (y [R] mientras no se haya aprendido el console.log arrojadizo)
+    const quickSlotReady =
       !this.dialogueBox.active &&
       this.menuSystem.state === 'none' &&
       !this.inventory.isOpen &&
       !this.characterStats.isOpen &&
-      (!this.questLogView || !this.questLogView.isOpen) &&
-      quickKey
-    ) {
-      this._useQuickSlotConsumable(quickKey);
+      (!this.questLogView || !this.questLogView.isOpen);
+    if (quickSlotReady) {
+      const quickKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'];
+      if (!this.player.skills?.log) quickKeys.unshift('KeyR');
+      const quickKey = quickKeys.find((k) => this.input.consumeKey(k));
+      if (quickKey) {
+        this._useQuickSlotConsumable(quickKey);
+      }
     }
 
     // Apertura independiente de la Mochila (Tecla 'I' o Tab, salvo cuando la Ficha 'C' usa Tab para cambiar de pestaña)
@@ -30000,11 +30193,18 @@ class RPGGame {
       }
     }
 
-    if (this.input.consumeInteraction()) {
-      if (this.dialogueBox.active) {
+    // [E]/[Enter] siempre interactúan; [Espacio] solo si hay diálogo o algo con lo que interactuar (si no, ataca)
+    const interactPressed = this.input.consumeInteraction({ includeSpace: false });
+    if (this.dialogueBox.active) {
+      if (interactPressed || this.input.consumeKey('Space')) {
         this.dialogueBox.advance();
-      } else {
-        const bestAction = this._findBestInteraction();
+      }
+    } else if (interactPressed) {
+      this._executeInteraction(this._findBestInteraction());
+    } else if (this.input.isKeyJustPressed('Space')) {
+      const bestAction = this._findBestInteraction();
+      if (bestAction) {
+        this.input.consumeKey('Space');
         this._executeInteraction(bestAction);
       }
     }
@@ -30241,7 +30441,7 @@ class RPGGame {
       if (enemy.dead && !enemy.xpGranted) {
         enemy.xpGranted = true;
         const prevLevel = this.player.level;
-        const gained = this.player.awardKill(Boolean(enemy.isBoss));
+        const gained = this.player.awardKill(Boolean(enemy.isBoss), enemy.xpReward);
         if (this.player.level > prevLevel) {
           if (this.music && typeof this.music.playFanfare === 'function') {
             this.music.playFanfare();
@@ -30267,20 +30467,17 @@ class RPGGame {
           if (this.player.dungeonCores) {
             this.player.dungeonCores.gc = true;
           }
-          this.worldItems.push(
-            new WorldItem({
-              id: `dungeon_core_gc_${Date.now()}`,
+          this._grantBossLoot([
+            {
+              id: 'dungeon_core_gc',
               name: 'Núcleo del Colector',
               description: 'Núcleo cuántico purgado de las Cloacas del Legacy. Clave para la Puerta del Núcleo.',
               iconIndex: ITEM_ICONS.DUNGEON_CORE_GC,
-              x: enemy.x,
-              y: enemy.y,
-              sceneId: enemy.sceneId,
-              itemsSheet: this.assets.itemsSheet
-            })
-          );
+              qty: 1
+            }
+          ]);
           if (this.menuSystem) {
-            this.menuSystem.showNotice('⚡ ¡El Garbage Collector soltó el [Núcleo del Colector]!', 3.5);
+            this.menuSystem.showNotice('⚡ ¡Has obtenido el [Núcleo del Colector]!', 3.5);
           }
         } else if (enemy.id === 'boss_stack_overflow') {
           if (this.questLog) {
@@ -30292,32 +30489,22 @@ class RPGGame {
           if (this.player.dungeonCores) {
             this.player.dungeonCores.stack = true;
           }
-          this.worldItems.push(
-            new WorldItem({
-              id: `dungeon_core_stack_${Date.now()}`,
+          this._grantBossLoot([
+            {
+              id: 'dungeon_core_stack',
               name: 'Núcleo del Stack',
               description: 'Núcleo cuántico de las Minas de la Recursión. Clave para la Puerta del Núcleo.',
               iconIndex: ITEM_ICONS.DUNGEON_CORE_STACK,
-              x: enemy.x,
-              y: enemy.y,
-              sceneId: enemy.sceneId,
-              itemsSheet: this.assets.itemsSheet
-            })
-          );
-          for (let i = 0; i < 3; i++) {
-            this.worldItems.push(
-              new WorldItem({
-                id: `silicon_ore_${Date.now()}_${i}`,
-                name: 'Mineral de Silicio',
-                description: 'Veta pura de silicio cristalino. Llévasela a Brom para forjar la Espada de Silicio (Nivel 2).',
-                iconIndex: ITEM_ICONS.SILICON_ORE,
-                x: enemy.x + (i - 1) * 16,
-                y: enemy.y + 12,
-                sceneId: enemy.sceneId,
-                itemsSheet: this.assets.itemsSheet
-              })
-            );
-          }
+              qty: 1
+            },
+            {
+              id: 'silicon_ore',
+              name: 'Mineral de Silicio',
+              description: 'Veta pura de silicio cristalino. Llévasela a Brom para forjar la Espada de Silicio (Nivel 2).',
+              iconIndex: ITEM_ICONS.SILICON_ORE,
+              qty: 3
+            }
+          ]);
           if (this.menuSystem) {
             this.menuSystem.showNotice('💎 ¡Has obtenido el [Núcleo del Stack] y 3x [Mineral de Silicio]!', 3.5);
           }
@@ -30331,30 +30518,22 @@ class RPGGame {
           if (this.player.dungeonCores) {
             this.player.dungeonCores.microwave = true;
           }
-          this.worldItems.push(
-            new WorldItem({
-              id: `dungeon_core_microwave_${Date.now()}`,
+          this._grantBossLoot([
+            {
+              id: 'dungeon_core_microwave',
               name: 'Núcleo del Microondas',
               description: 'Núcleo cuántico de la Forja del Prototipo. Clave para la Puerta del Núcleo.',
               iconIndex: ITEM_ICONS.DUNGEON_CORE_MICROWAVE,
-              x: enemy.x,
-              y: enemy.y,
-              sceneId: enemy.sceneId,
-              itemsSheet: this.assets.itemsSheet
-            })
-          );
-          this.worldItems.push(
-            new WorldItem({
-              id: `microwave_magnetron_${Date.now()}`,
+              qty: 1
+            },
+            {
+              id: 'microwave_magnetron',
               name: 'Magnetrón Cuántico',
               description: 'Emisor de microondas de alta frecuencia. Llévaselo a Brom para overclockear la Espada (Nivel 3).',
               iconIndex: ITEM_ICONS.MICROWAVE_MAGNETRON,
-              x: enemy.x + 16,
-              y: enemy.y,
-              sceneId: enemy.sceneId,
-              itemsSheet: this.assets.itemsSheet
-            })
-          );
+              qty: 1
+            }
+          ]);
           if (this.menuSystem) {
             this.menuSystem.showNotice('🔥 ¡Has obtenido el [Núcleo del Microondas] y el [Magnetrón Cuántico]!', 3.5);
           }
@@ -30416,6 +30595,7 @@ class RPGGame {
           enemy.hp = enemy.maxHp;
           enemy.xpGranted = false;
           enemy.lootDropped = false;
+          enemy.coinsDropped = false;
           enemy.trainingRespawnTimer = 0;
           const orig = enemy.patrolPoints?.[0];
           enemy.x = orig ? orig.x : 23 * 16;
@@ -30511,6 +30691,40 @@ class RPGGame {
     this.sceneSurvivalTimer = 0;
   }
 
+  /** Entrega el botín de un jefe directamente a la mochila y guarda para que no se pierda al recargar. */
+  _grantBossLoot(items) {
+    for (const item of items) {
+      this.inventory.addItem(item, { ignoreSlotLimit: true });
+    }
+    this._saveGameToStorage();
+  }
+
+  /** Única fuente de verdad del acceso a la Ciudadela: los núcleos realmente engarzados en la Puerta. */
+  _countPlacedCores() {
+    const placed = this.tilemap.quantumGate?.coresPlaced || {};
+    return ['gc', 'stack', 'microwave'].filter((k) => Boolean(placed[k])).length;
+  }
+
+  _syncGatesUnlocked() {
+    this.player.gatesUnlocked = this._countPlacedCores();
+  }
+
+  _openCoreChest({ coreKey, abilityKey, abilityName, itemId, itemName, description, iconIndex, title }) {
+    this.player.dungeonCores[coreKey] = true;
+    this.player[abilityKey] = true;
+    const alreadyPlaced = Boolean(this.tilemap.quantumGate?.coresPlaced?.[coreKey]);
+    if (!alreadyPlaced && !this.inventory.hasItem(itemId)) {
+      this.inventory.addItem({ id: itemId, name: itemName, description, iconIndex, qty: 1 }, { ignoreSlotLimit: true });
+    }
+    this._saveGameToStorage();
+    this.dialogueBox.showMessage(title, [
+      `Has abierto el cofre del guardián: [${itemName}].`,
+      `• Habilidad consagrada: [${abilityName}]`,
+      '• Engarza el núcleo en su zócalo de la Puerta Cuántica (Páramo Oeste).',
+      `• Núcleos colocados: ${this._countPlacedCores()}/3`
+    ]);
+  }
+
   render() {
     const ctx = this.ctx;
     ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
@@ -30562,8 +30776,9 @@ class RPGGame {
         }
 
         // Objetos recolectables y cofres
+        const isNight = this._isNightTime();
         for (const item of items) {
-          item.render(gctx, this.camera);
+          item.render(gctx, this.camera, isNight);
         }
 
         // Bytes (monedas físicas con brillo) en el suelo
@@ -31003,6 +31218,8 @@ class RPGGame {
     // 5. INFERIOR IZQUIERDA: Ranura rápida de consumible ([R] / [1]) de 16×16 px con contador flotante
     // =========================================================================
     const quickItem = this._getQuickSlotConsumable();
+    // [R] lanza el console.log una vez aprendido; la ranura queda en [1]
+    const quickLabel = this.player.skills?.log ? '[1]' : '[R]';
     const qsX = 6;
     const qsY = VIEWPORT_HEIGHT - 22;
     const qsW = 16;
@@ -31034,12 +31251,12 @@ class RPGGame {
 
       ctx.fillStyle = '#fde047';
       ctx.textAlign = 'left';
-      ctx.fillText(`[R]${qtyStr}`, qsX + qsW + 4, qsY + 8);
+      ctx.fillText(`${quickLabel}${qtyStr}`, qsX + qsW + 4, qsY + 8);
     } else {
       ctx.font = `bold 4.5px ${UI_FONT}`;
       ctx.fillStyle = '#64748b';
       ctx.textAlign = 'center';
-      ctx.fillText('[R]', qsX + 8, qsY + 8);
+      ctx.fillText(quickLabel, qsX + 8, qsY + 8);
     }
 
     ctx.restore();

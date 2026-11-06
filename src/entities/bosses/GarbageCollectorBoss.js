@@ -62,6 +62,7 @@ export class GarbageCollectorBoss extends Boss {
     }
 
     super.update(dt, tilemap, player, paused, soundEngine);
+    if (paused || this.dead) return { hitPlayer: false };
 
     // 1. Mecánica: Memory Leak (Charcos de ácido corrosivo)
     this.acidTimer -= dt;

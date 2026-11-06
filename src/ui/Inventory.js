@@ -17,8 +17,39 @@ const KEY_OR_QUEST_ITEM_IDS = new Set([
   'lantern',
   'silicon_flower',
   'drone_scrap',
-  'river_trout'
+  'river_trout',
+  'silicon_ore',
+  'microwave_magnetron',
+  'dungeon_core_gc',
+  'dungeon_core_stack',
+  'dungeon_core_microwave'
 ]);
+
+const ITEM_ID_ALIASES = {
+  magnetron: 'microwave_magnetron',
+  nucleo_gc: 'dungeon_core_gc',
+  nucleo_stack: 'dungeon_core_stack',
+  nucleo_microwave: 'dungeon_core_microwave'
+};
+
+// Tipos cuyas instancias en el mundo llevan sufijos únicos (p. ej. silicon_ore_<timestamp>_<i>)
+const STACKABLE_ITEM_TYPES = [
+  'silicon_flower',
+  'drone_scrap',
+  'silicon_ore',
+  'microwave_magnetron',
+  'dungeon_core_gc',
+  'dungeon_core_stack',
+  'dungeon_core_microwave'
+];
+
+/** Convierte un ID de instancia (WorldItem, objeto soltado o alias antiguo) en su tipo canónico de inventario. */
+export function normalizeItemId(id) {
+  if (typeof id !== 'string') return id;
+  const base = id.replace(/_dropped_\d+$/, '');
+  const aliased = ITEM_ID_ALIASES[base] || base;
+  return STACKABLE_ITEM_TYPES.find((type) => aliased === type || aliased.startsWith(`${type}_`)) || aliased;
+}
 
 const CONSUMABLE_ITEM_IDS = new Set([
   'bread',
@@ -62,19 +93,20 @@ export class Inventory {
    * Añade un objeto al inventario (acumulando cantidad si ya existe).
    * Los objetos clave de historia/misión nunca son bloqueados por límite de ranuras.
    */
-  addItem(itemData) {
+  addItem(itemData, { ignoreSlotLimit = false } = {}) {
     if (!itemData || !itemData.id) return false;
-    const existing = this.items.find((it) => it.id === itemData.id);
+    const id = normalizeItemId(itemData.id);
+    const existing = this.items.find((it) => it.id === id);
     if (existing) {
       existing.qty += itemData.qty || 1;
       return true;
     }
-    const isEssential = KEY_OR_QUEST_ITEM_IDS.has(itemData.id);
-    if (this.items.length >= this.maxSlots && !isEssential) {
+    const isEssential = KEY_OR_QUEST_ITEM_IDS.has(id);
+    if (this.items.length >= this.maxSlots && !isEssential && !ignoreSlotLimit) {
       return false;
     }
     this.items.push({
-      id: itemData.id,
+      id,
       name: itemData.name,
       description: itemData.description,
       iconIndex: itemData.iconIndex,
@@ -83,17 +115,33 @@ export class Inventory {
     return true;
   }
 
+  /** Restaura el inventario guardado normalizando IDs antiguos y fusionando duplicados. */
+  setItems(savedItems) {
+    this.items = [];
+    this.selectedIndex = 0;
+    if (!Array.isArray(savedItems)) return;
+    for (const it of savedItems) {
+      if (!it || typeof it.id !== 'string' || it.id.startsWith('chest_')) continue;
+      const qty = it.qty === undefined ? 1 : Math.floor(Number(it.qty));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      this.addItem({ ...it, qty }, { ignoreSlotLimit: true });
+    }
+  }
+
   hasItem(itemId) {
-    return this.items.some((it) => it.id === itemId && it.qty > 0);
+    const id = normalizeItemId(itemId);
+    return this.items.some((it) => it.id === id && it.qty > 0);
   }
 
   getItemCount(itemId) {
-    const it = this.items.find((item) => item.id === itemId);
+    const id = normalizeItemId(itemId);
+    const it = this.items.find((item) => item.id === id);
     return it ? (it.qty || 1) : 0;
   }
 
   consumeItem(itemId, amount = 1) {
-    const idx = this.items.findIndex((it) => it.id === itemId);
+    const id = normalizeItemId(itemId);
+    const idx = this.items.findIndex((it) => it.id === id);
     if (idx === -1) return false;
     this.items[idx].qty -= amount;
     if (this.items[idx].qty <= 0) {

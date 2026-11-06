@@ -149,6 +149,9 @@ export class MainMenuAndScenes {
   }
 
   openWorldMap(currentSceneId = 'first_stage', context = null) {
+    if (this.state !== 'world_map') {
+      this.previousStateBeforeMap = this.state === 'pause' ? 'pause' : 'none';
+    }
     this.state = 'world_map';
     this.currentSceneId = currentSceneId;
     if (context) {
@@ -158,8 +161,16 @@ export class MainMenuAndScenes {
   }
 
   closeWorldMap() {
-    this.state = 'none';
+    this.state = this.previousStateBeforeMap || 'none';
+    this.previousStateBeforeMap = 'none';
     this.music.playMenuMove();
+  }
+
+  /** Avanza el temporizador de avisos cuando el menú no se está actualizando (juego en curso). */
+  updateNotice(dt) {
+    if (this.noticeTimer > 0) {
+      this.noticeTimer = Math.max(0, this.noticeTimer - dt);
+    }
   }
 
   /**
@@ -1327,6 +1338,9 @@ export class MainMenuAndScenes {
 
   render(ctx) {
     if (this.state === 'none') {
+      if (this.noticeTimer > 0 && this.noticeText) {
+        this._renderToastNotice(ctx, this.noticeText, 26);
+      }
       if (this.fadeAlpha > 0) {
         ctx.save();
         ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, Math.max(0, this.fadeAlpha))})`;
@@ -2019,13 +2033,12 @@ export class MainMenuAndScenes {
     ctx.restore();
   }
 
-  _renderToastNotice(ctx, text) {
+  _renderToastNotice(ctx, text, ty = 84) {
     ctx.save();
     ctx.font = `600 6.5px ${GAME_FONT_UI}`;
     const tw = Math.ceil(ctx.measureText(text).width) + 16;
     const th = 14;
     const tx = Math.round((this.viewportWidth - tw) / 2);
-    const ty = 84;
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
     drawRoundedRect(ctx, tx + 1, ty + 1.5, tw, th, 4);

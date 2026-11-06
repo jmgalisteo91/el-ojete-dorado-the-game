@@ -16,7 +16,7 @@
  *   nivel de Armadura y Espada, y objetivo actual de la aventura.
  */
 
-import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
+import { UILayout, UI_COLORS, UI_FONT, LOGICAL_WIDTH, LOGICAL_HEIGHT } from './UILayout.js?v=8';
 
 export class WorldMap {
   constructor(menuSystem = null) {
@@ -33,8 +33,9 @@ export class WorldMap {
    * @param {Array|null} enemies
    */
   render(ctx, currentSceneId = 'overworld', player = null, enemies = null) {
-    const W = ctx.canvas.width;
-    const H = ctx.canvas.height;
+    // El contexto llega escalado x4 sobre un canvas físico de 1280x720: dibujar en coordenadas lógicas
+    const W = LOGICAL_WIDTH;
+    const H = LOGICAL_HEIGHT;
     const t = performance.now() * 0.001;
 
     // Lienzo interior del mapa (marco de 308x156)
@@ -126,7 +127,7 @@ export class WorldMap {
       return { zone: 'north', x: 160, y: 26, title: 'Minas de la Recursión (Piso 1 · Caverna)', detail: 'Entrada del Gran Abismo' };
     }
     if (sceneId === 'mines_puzzle') {
-      return { zone: 'north', x: 172, y: 24, title: 'Minas de la Recursión (Sala de Runas)', detail: 'Cámara del Guardián Stack Overflow' };
+      return { zone: 'north', x: 172, y: 24, title: 'Minas de la Recursión (Sala de Runas)', detail: 'Portal al Templo de la Espada' };
     }
 
     // SUR: Marismas del Hardware Legacy
@@ -202,6 +203,7 @@ export class WorldMap {
     const armorLevel = player?.armorLevel || (hasArmor ? 1 : 0);
 
     const coresCount = (gcDefeated ? 1 : 0) + (stackDefeated ? 1 : 0) + (microwaveDefeated ? 1 : 0);
+    const placedCount = Math.max(0, Math.min(3, Number(player?.gatesUnlocked) || 0));
 
     return {
       gcDefeated,
@@ -212,7 +214,8 @@ export class WorldMap {
       hasSword,
       swordLevel,
       armorLevel,
-      coresCount
+      coresCount,
+      placedCount
     };
   }
 
@@ -391,9 +394,15 @@ export class WorldMap {
     ctx.textAlign = 'center';
     ctx.fillText('ALTAR SACRO', rx + 47, ry + 43);
 
-    // Badge de estado de equipo
-    const equipLabel = status.hasArmor && status.hasSword ? '✓ Equipo Consagrado' : 'Pruebas del Héroe';
-    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, equipLabel, status.hasArmor && status.hasSword ? '#6ee7b7' : '#fde047');
+    // Badge de estado de equipo y del Guardián del Stack Overflow (vive en el Templo de la Espada)
+    const isEquipped = status.hasArmor && status.hasSword;
+    let equipLabel = 'Pruebas del Héroe';
+    let equipColor = '#fde047';
+    if (isEquipped) {
+      equipLabel = status.stackDefeated ? '✓ Equipo y Stack Purgado' : 'Templo Espada: Stack Overflow';
+      equipColor = status.stackDefeated ? '#6ee7b7' : '#7dd3fc';
+    }
+    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, equipLabel, equipColor);
   }
 
   /**
@@ -437,7 +446,7 @@ export class WorldMap {
       this._drawMiniSkull(ctx, caveX + 10, caveY - 6, '#06b6d4', t);
     }
 
-    const bossText = status.stackDefeated ? '✓ Minas [Stack Overflow Purgado]' : 'Minas: Guardián Stack Overflow';
+    const bossText = status.stackDefeated ? '✓ Minas [Stack Overflow Purgado]' : 'Minas: Abismo (requiere Dash)';
     this._drawRegionBadge(ctx, caveX, ry + rh - 6, bossText, status.stackDefeated ? '#6ee7b7' : '#7dd3fc');
   }
 
@@ -523,7 +532,7 @@ export class WorldMap {
     const gateY = ry + 32;
     ctx.fillStyle = '#0f0511';
     ctx.fillRect(gateX - 6, gateY - 8, 12, 16);
-    ctx.strokeStyle = status.coresCount >= 3 ? '#22c55e' : '#ef4444';
+    ctx.strokeStyle = status.placedCount >= 3 ? '#22c55e' : '#ef4444';
     ctx.lineWidth = 1;
     ctx.strokeRect(gateX - 5.5, gateY - 7.5, 11, 15);
 
@@ -564,8 +573,8 @@ export class WorldMap {
       this._drawMiniSkull(ctx, citadelX + 11, citadelY - 6, '#ef4444', t, true);
     }
 
-    const citadelText = status.alexDefeated ? '✓ AI Alex Derrotado' : (status.coresCount >= 3 ? '¡Puerta Abierta! Entra' : 'Ciudadela: Mister AI Alex');
-    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, citadelText, status.alexDefeated ? '#6ee7b7' : (status.coresCount >= 3 ? '#fde047' : '#fca5a5'));
+    const citadelText = status.alexDefeated ? '✓ AI Alex Derrotado' : (status.placedCount >= 3 ? '¡Puerta Abierta! Entra' : 'Ciudadela: Mister AI Alex');
+    this._drawRegionBadge(ctx, rx + rw / 2, ry + rh - 6, citadelText, status.alexDefeated ? '#6ee7b7' : (status.placedCount >= 3 ? '#fde047' : '#fca5a5'));
   }
 
   /**
@@ -760,9 +769,11 @@ export class WorldMap {
     } else if (!status.hasSword) {
       questText = '🎯 Misión: Empuñar la Espada de la Recursividad en el Valle del Este.';
     } else if (status.coresCount < 3) {
-      questText = `🎯 Misión: Conseguir los 3 Núcleos de Mazmorra (${status.coresCount}/3) en Norte y Sur.`;
+      questText = `🎯 Misión: Conseguir los 3 Núcleos (${status.coresCount}/3): Templo de la Espada (Este) y Marismas (Sur).`;
+    } else if (status.placedCount < 3 && !status.alexDefeated) {
+      questText = `🎯 Misión: Engarza los Núcleos en la Gran Puerta del Oeste (${status.placedCount}/3).`;
     } else if (!status.alexDefeated) {
-      questText = '🎯 ¡FINAL! Abre la Gran Puerta del Núcleo en el Oeste y purga a Mister AI Alex.';
+      questText = '🎯 ¡FINAL! Cruza la Gran Puerta del Núcleo (Nivel 10) y purga a Mister AI Alex.';
     } else {
       questText = '🏆 ¡VICTORIA! El Reino del Gran Ojal ha sido liberado de Mister AI Alex.';
     }

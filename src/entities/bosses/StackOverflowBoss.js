@@ -157,6 +157,7 @@ export class StackOverflowBoss extends Boss {
 
     this._ensureUnstuck(tilemap);
     super.update(dt, tilemap, player, paused, soundEngine);
+    if (paused || this.dead) return { hitPlayer: false };
 
     // Actualización de clones recursivos
     for (let i = this.clones.length - 1; i >= 0; i--) {
@@ -198,10 +199,12 @@ export class StackOverflowBoss extends Boss {
         // Chequeo si la espada o corte en cascada del jugador golpea al clon
         const sword = player.getSwordHitbox();
         const spin = player.getSpinHitbox();
-        if (spin && Math.hypot(c.x - spin.centerX, c.y - spin.centerY) <= spin.radius + 6) {
+        // Inmunidad breve tras un impacto: un mismo golpe no puede dañar en cada fotograma
+        const canBeHit = c.hitFlash <= 0;
+        if (canBeHit && spin && Math.hypot(c.x - spin.centerX, c.y - spin.centerY) <= spin.radius + 6) {
           c.hp -= spin.damage;
           c.hitFlash = 0.15;
-        } else if (sword && CollisionSystem.checkAABB(sword, { x: c.x - 6, y: c.y - 6, width: 12, height: 12 })) {
+        } else if (canBeHit && sword && CollisionSystem.checkAABB(sword, { x: c.x - 6, y: c.y - 6, width: 12, height: 12 })) {
           const dmg = typeof player.getSwordDamage === 'function' ? player.getSwordDamage() : 1;
           c.hp -= dmg;
           c.hitFlash = 0.15;

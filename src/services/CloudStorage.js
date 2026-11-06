@@ -61,13 +61,14 @@ export class CloudStorage {
       ? src.housePermissions
       : {};
 
-    const hasPermission_elder = Boolean(src.hasPermission_elder ?? rawPerms.elder ?? false);
-    const hasPermission_blacksmith = Boolean(src.hasPermission_blacksmith ?? rawPerms.blacksmith ?? false);
-    const hasPermission_herbalist = Boolean(src.hasPermission_herbalist ?? rawPerms.herbalist ?? false);
-    const hasPermission_guard = Boolean(src.hasPermission_guard ?? rawPerms.guard ?? false);
-    const hasPermission_oracle = Boolean(src.hasPermission_oracle ?? rawPerms.oracle ?? false);
+    const hasPermission_elder = Boolean(src.hasPermission_elder ?? rawPerms.elder_house ?? rawPerms.elder ?? false);
+    const hasPermission_blacksmith = Boolean(src.hasPermission_blacksmith ?? rawPerms.blacksmith_house ?? rawPerms.blacksmith ?? false);
+    const hasPermission_herbalist = Boolean(src.hasPermission_herbalist ?? rawPerms.herbalist_house ?? rawPerms.herbalist ?? false);
+    const hasPermission_guard = Boolean(src.hasPermission_guard ?? rawPerms.guard_house ?? rawPerms.guard ?? false);
+    const hasPermission_oracle = Boolean(src.hasPermission_oracle ?? rawPerms.oracle_house ?? rawPerms.oracle ?? false);
 
     const housePermissions = {
+      ...rawPerms,
       elder: hasPermission_elder,
       blacksmith: hasPermission_blacksmith,
       herbalist: hasPermission_herbalist,
@@ -126,7 +127,7 @@ export class CloudStorage {
     return {
       ...src,
       version: src.version || '3.6',
-      sceneId: typeof src.sceneId === 'string' && src.sceneId ? src.sceneId : 'village',
+      sceneId: typeof src.sceneId === 'string' && src.sceneId ? src.sceneId : 'overworld',
       playerX: Number.isFinite(Number(src.playerX)) ? Number(src.playerX) : 144,
       playerY: Number.isFinite(Number(src.playerY)) ? Number(src.playerY) : 108,
       health,

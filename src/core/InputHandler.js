@@ -178,15 +178,23 @@ export class InputHandler {
     return { x: dx, y: dy };
   }
 
-  consumeInteraction() {
+  consumeInteraction({ includeSpace = true } = {}) {
     const interacted =
       this.keysJustPressed.has('KeyE') ||
-      this.keysJustPressed.has('Space') ||
+      (includeSpace && this.keysJustPressed.has('Space')) ||
       this.keysJustPressed.has('Enter');
     this.keysJustPressed.delete('KeyE');
-    this.keysJustPressed.delete('Space');
+    if (includeSpace) this.keysJustPressed.delete('Space');
     this.keysJustPressed.delete('Enter');
     return interacted;
+  }
+
+  isKeyJustPressed(code) {
+    return this.keysJustPressed.has(code);
+  }
+
+  isKeyDown(code) {
+    return this.keysDown.has(code);
   }
 
   consumeAttack() {

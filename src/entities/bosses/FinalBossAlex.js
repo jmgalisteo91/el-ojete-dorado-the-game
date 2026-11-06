@@ -1,4 +1,5 @@
 import { Boss } from './Boss.js?v=8';
+import { CollisionSystem } from '../../physics/CollisionSystem.js?v=8';
 import { getRandomBattleBark } from '../../assets/VillainDialogues.js?v=8';
 
 /**
@@ -53,6 +54,7 @@ export class FinalBossAlex extends Boss {
     this.animTimer = 0;
     this.holograms = [];
     this.pendingBurstShots = [];
+    this.arenaTilemap = null;
     this.statusText = `💬 ${getRandomBattleBark('PHASE_1_START')}`;
   }
 
@@ -114,20 +116,27 @@ export class FinalBossAlex extends Boss {
   }
 
   _performQuantumTeleport() {
+    // Puntos despejados de la arena (los servidores ocupan las casillas (5,5), (18,5), (5,12) y (18,12))
     const arenaSpots = [
-      { x: 5 * 16, y: 5 * 16 },
-      { x: 18 * 16, y: 5 * 16 },
-      { x: 6 * 16, y: 11 * 16 },
-      { x: 17 * 16, y: 11 * 16 },
+      { x: 7 * 16, y: 4 * 16 },
+      { x: 15 * 16, y: 4 * 16 },
+      { x: 7 * 16, y: 10 * 16 },
+      { x: 15 * 16, y: 10 * 16 },
       { x: 11.5 * 16, y: 7 * 16 }
     ];
-    const spot = arenaSpots[Math.floor(Math.random() * arenaSpots.length)];
+    const tilemap = this.arenaTilemap;
+    const freeSpots = tilemap
+      ? arenaSpots.filter((s) => !CollisionSystem.collidesWithMap(this.getBoundingBoxAt(s.x, s.y), tilemap))
+      : arenaSpots;
+    if (freeSpots.length === 0) return;
+    const spot = freeSpots[Math.floor(Math.random() * freeSpots.length)];
     this.x = spot.x;
     this.y = spot.y;
     this.hitFlashTimer = 0.3;
   }
 
   update(dt, tilemap, player, paused = false, soundEngine = null) {
+    if (tilemap) this.arenaTilemap = tilemap;
     if (this.dead) {
       return super.update(dt, tilemap, player, paused, soundEngine);
     }

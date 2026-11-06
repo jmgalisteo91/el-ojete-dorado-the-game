@@ -121,6 +121,7 @@ export class PrototypeMicrowaveBoss extends Boss {
     }
 
     super.update(dt, tilemap, player, paused, soundEngine);
+    if (paused || this.dead) return { hitPlayer: false };
 
     // Estado aturdido tras romper los fusibles
     if (this.stunnedTimer > 0) {
