@@ -1,0 +1,18 @@
+el-ojete-dorado-the-game.html
+  h_e1bbc662b18209 915-948,5958,6204,8496-8514,12558-12579,28072-28124,28534,28536-28556,28996-29068,29137-29138,29408-29414,29778-29784,29791,29793,30903-30920
+src/world/Tilemap.js
+  h_e1bbc662b18209 1049,1054-1056,1102-1134
+tests/regression.mjs
+  h_e1bbc662b18209 1951-1976
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "2985f440e6fc854b2949349315cf7fcf94b816ae",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
