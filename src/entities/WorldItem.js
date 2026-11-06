@@ -1,5 +1,5 @@
-import { Entity } from './Entity.js?v=7';
-import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=7';
+import { Entity } from './Entity.js?v=8';
+import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=8';
 
 /**
  * Objeto recolectable en el mundo o dentro de un cofre que pasa al Inventario.

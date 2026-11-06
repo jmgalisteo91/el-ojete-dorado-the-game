@@ -1,5 +1,5 @@
-import { Entity } from './Entity.js?v=5';
-import { CollisionSystem } from '../physics/CollisionSystem.js?v=5';
+import { Entity } from './Entity.js?v=8';
+import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
 
 /**
  * Animal del pueblo (Oveja, Gallina, Perro) con deambulación orgánica (wander AI),

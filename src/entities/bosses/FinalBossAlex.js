@@ -1,5 +1,5 @@
-import { Boss } from './Boss.js?v=7';
-import { getRandomBattleBark } from '../../assets/VillainDialogues.js?v=7';
+import { Boss } from './Boss.js?v=8';
+import { getRandomBattleBark } from '../../assets/VillainDialogues.js?v=8';
 
 /**
  * Boss Final: "Mister AI Alex"

@@ -1,6 +1,6 @@
-import { Boss } from './Boss.js?v=7';
-import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
-import { findPath, hasLineOfSight } from '../../ai/Pathfinding.js?v=7';
+import { Boss } from './Boss.js?v=8';
+import { CollisionSystem } from '../../physics/CollisionSystem.js?v=8';
+import { findPath, hasLineOfSight } from '../../ai/Pathfinding.js?v=8';
 
 /**
  * Jefe Regional: "El Guardián del Stack Overflow"

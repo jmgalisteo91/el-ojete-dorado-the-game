@@ -1,5 +1,5 @@
-import { findPath, hasLineOfSight } from './Pathfinding.js?v=7';
-import { CollisionSystem } from '../physics/CollisionSystem.js?v=7';
+import { findPath, hasLineOfSight } from './Pathfinding.js?v=8';
+import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
 
 /**
  * EnemyBrain: máquina de estados de IA para enemigos normales (los jefes tienen su propia lógica).

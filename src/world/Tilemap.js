@@ -1,5 +1,5 @@
-import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=7';
-import { SpeechBubble } from '../ui/SpeechBubble.js?v=7';
+import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=8';
+import { SpeechBubble } from '../ui/SpeechBubble.js?v=8';
 
 /**
  * Tiles de la CAPA 2 (estructuras elevadas) del pipeline 2.5D: se dibujan siempre por encima

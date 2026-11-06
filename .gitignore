@@ -15,4 +15,6 @@ Thumbs.db
 # Archives & Temporary tests
 valleverde-rpg-tester.zip
 *.tmp
+__pycache__/
+*.pyc
 

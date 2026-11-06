@@ -18,12 +18,12 @@ import {
   CUTSCENE_IMAGES,
   renderFallbackToContext,
   getCutsceneImage
-} from '../assets/CutsceneImages.js?v=7';
+} from '../assets/CutsceneImages.js?v=8';
 import {
   SCENE_AI_ALEX_WARNING,
   SCENE_AI_ALEX_PREBATTLE,
   SCENE_ENDING_VICTORY
-} from '../assets/VillainDialogues.js?v=7';
+} from '../assets/VillainDialogues.js?v=8';
 
 export class AnimeCutsceneManager {
   constructor(viewportWidth = 320, viewportHeight = 180, music = null) {
@@ -696,7 +696,7 @@ export const SCENE_DEUS_PURIFICATION = {
 /**
  * Alias retrocompatible
  */
-export { SCENE_VICTORY_CREDITS } from '../assets/VillainDialogues.js?v=7';
+export { SCENE_VICTORY_CREDITS } from '../assets/VillainDialogues.js?v=8';
 
 export {
   SCENE_INTRO_GARBAGE_COLLECTOR,
@@ -704,4 +704,4 @@ export {
   SCENE_INTRO_PROTOTYPE_MICROWAVE,
   BOSS_CUTSCENES,
   getBossIntroCutscene
-} from '../assets/BossCutscenes.js?v=7';
+} from '../assets/BossCutscenes.js?v=8';

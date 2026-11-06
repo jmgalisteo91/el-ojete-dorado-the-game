@@ -1,32 +1,32 @@
-import { getDoorBlock, getDoorDestinationInfo, pushBackPlayer } from './core/DoorGatekeeper.js?v=7';
-import { GameLoop } from './core/GameLoop.js?v=7';
-import { InputHandler } from './core/InputHandler.js?v=7';
-import { Camera2D } from './core/Camera2D.js?v=7';
+import { getDoorBlock, getDoorDestinationInfo, pushBackPlayer } from './core/DoorGatekeeper.js?v=8';
+import { GameLoop } from './core/GameLoop.js?v=8';
+import { InputHandler } from './core/InputHandler.js?v=8';
+import { Camera2D } from './core/Camera2D.js?v=8';
 import {
   loadGameAssets,
   CHARACTER_TYPES,
   ITEM_ICONS,
   TILES
-} from './graphics/SpriteSheetGenerator.js?v=7';
-import { SpriteAnimator } from './graphics/Animator.js?v=7';
-import { Tilemap } from './world/Tilemap.js?v=7';
-import { CollisionSystem } from './physics/CollisionSystem.js?v=7';
-import { Player } from './entities/Player.js?v=7';
-import { NPC, getBromForgeChoices } from './entities/NPC.js?v=7';
-import { Animal } from './entities/Animal.js?v=7';
-import { Enemy } from './entities/Enemy.js?v=7';
-import { GarbageCollectorBoss } from './entities/bosses/GarbageCollectorBoss.js?v=7';
-import { StackOverflowBoss } from './entities/bosses/StackOverflowBoss.js?v=7';
-import { PrototypeMicrowaveBoss } from './entities/bosses/PrototypeMicrowaveBoss.js?v=7';
-import { FinalBossAlex } from './entities/bosses/FinalBossAlex.js?v=7';
-import { WorldItem } from './entities/WorldItem.js?v=7';
-import { DialogueBox } from './ui/DialogueBox.js?v=7';
-import { Inventory } from './ui/Inventory.js?v=7';
-import { CharacterStats } from './ui/CharacterStats.js?v=7';
-import { QuestLog } from './core/QuestLog.js?v=7';
-import { AchievementManager } from './core/AchievementManager.js?v=7';
-import { QuestLogView } from './ui/QuestLogView.js?v=7';
-import { MainMenuAndScenes } from './ui/MainMenuAndScenes.js?v=7';
+} from './graphics/SpriteSheetGenerator.js?v=8';
+import { SpriteAnimator } from './graphics/Animator.js?v=8';
+import { Tilemap } from './world/Tilemap.js?v=8';
+import { CollisionSystem } from './physics/CollisionSystem.js?v=8';
+import { Player } from './entities/Player.js?v=8';
+import { NPC, getBromForgeChoices } from './entities/NPC.js?v=8';
+import { Animal } from './entities/Animal.js?v=8';
+import { Enemy } from './entities/Enemy.js?v=8';
+import { GarbageCollectorBoss } from './entities/bosses/GarbageCollectorBoss.js?v=8';
+import { StackOverflowBoss } from './entities/bosses/StackOverflowBoss.js?v=8';
+import { PrototypeMicrowaveBoss } from './entities/bosses/PrototypeMicrowaveBoss.js?v=8';
+import { FinalBossAlex } from './entities/bosses/FinalBossAlex.js?v=8';
+import { WorldItem } from './entities/WorldItem.js?v=8';
+import { DialogueBox } from './ui/DialogueBox.js?v=8';
+import { Inventory } from './ui/Inventory.js?v=8';
+import { CharacterStats } from './ui/CharacterStats.js?v=8';
+import { QuestLog } from './core/QuestLog.js?v=8';
+import { AchievementManager } from './core/AchievementManager.js?v=8';
+import { QuestLogView } from './ui/QuestLogView.js?v=8';
+import { MainMenuAndScenes } from './ui/MainMenuAndScenes.js?v=8';
 import {
   calculateGameScore,
   submitGlobalScore,
@@ -37,7 +37,7 @@ import {
   markLocalFallbackSynced,
   getSavedCloudCode,
   setSavedCloudCode
-} from './core/ScoreSystem.js?v=7';
+} from './core/ScoreSystem.js?v=8';
 import {
   AnimeCutsceneManager,
   SCENE_JAIL_ARREST,
@@ -46,14 +46,14 @@ import {
   SCENE_DEUS_PURIFICATION,
   SCENE_ENDING_VICTORY,
   getBossIntroCutscene
-} from './ui/AnimeCutsceneManager.js?v=7';
-import { DayNightCycle } from './world/DayNightCycle.js?v=7';
-import { RenderPipeline } from './graphics/RenderPipeline.js?v=7';
-import { UILayout, UI_FONT } from './ui/UILayout.js?v=7';
-import { CloudStorage } from './services/CloudStorage.js?v=7';
-import { AIBotBrain } from './ai/AIBotBrain.js?v=7';
-import { AmbientMusic } from './audio/AmbientMusic.js?v=7';
-import { SpeechBubble } from './ui/SpeechBubble.js?v=7';
+} from './ui/AnimeCutsceneManager.js?v=8';
+import { DayNightCycle } from './world/DayNightCycle.js?v=8';
+import { RenderPipeline } from './graphics/RenderPipeline.js?v=8';
+import { UILayout, UI_FONT } from './ui/UILayout.js?v=8';
+import { CloudStorage } from './services/CloudStorage.js?v=8';
+import { AIBotBrain } from './ai/AIBotBrain.js?v=8';
+import { AmbientMusic } from './audio/AmbientMusic.js?v=8';
+import { SpeechBubble } from './ui/SpeechBubble.js?v=8';
 
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
@@ -4184,7 +4184,7 @@ export class RPGGame {
     this._saveGameToStorage();
   }
 
-  _getQuickSlotConsumable(quickKey) {
+  _getQuickSlotConsumable(quickKey = 'KeyR') {
     if (!this.inventory || !Array.isArray(this.inventory.items)) return null;
     
     // Mapear tecla a índice de consumible rápido (R=0, 1=1, 2=2, 3=3, 4=4, 5=5)
@@ -4197,8 +4197,7 @@ export class RPGGame {
       'Digit5': 4
     };
     
-    const index = keyToIndex[quickKey];
-    if (index === undefined) return null;
+    const index = typeof quickKey === 'string' && keyToIndex[quickKey] !== undefined ? keyToIndex[quickKey] : 0;
     
     // Ítems de consumible rápido en orden: [0]=poción armor, [1]=poción, [2]=café, [3]=pan, [4]=trucha
     const quickSlotIds = ['potion_armor', 'potion', 'coffee', 'bread', 'fish'];
@@ -4209,8 +4208,8 @@ export class RPGGame {
     return item || null;
   }
 
-  _useQuickSlotConsumable() {
-    const item = this._getQuickSlotConsumable();
+  _useQuickSlotConsumable(quickKey = 'KeyR') {
+    const item = this._getQuickSlotConsumable(quickKey);
     if (!item) {
       this.menuSystem.showNotice('🎒 Sin consumibles rápidos en la mochila', 2.0);
       return;
@@ -5429,12 +5428,13 @@ export class RPGGame {
     }
 
     // Ranura Rápida de Consumibles [R] o [1-5]
-    const quickKey = this.input.consumeKey('KeyR') ||
-      this.input.consumeKey('Digit1') ||
-      this.input.consumeKey('Digit2') ||
-      this.input.consumeKey('Digit3') ||
-      this.input.consumeKey('Digit4') ||
-      this.input.consumeKey('Digit5');
+    let quickKey = null;
+    for (const k of ['KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5']) {
+      if (this.input.consumeKey(k)) {
+        quickKey = k;
+        break;
+      }
+    }
     if (
       !this.dialogueBox.active &&
       this.menuSystem.state === 'none' &&

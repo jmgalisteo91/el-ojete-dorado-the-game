@@ -1,5 +1,5 @@
-import { Enemy } from '../Enemy.js?v=7';
-import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
+import { Enemy } from '../Enemy.js?v=8';
+import { CollisionSystem } from '../../physics/CollisionSystem.js?v=8';
 
 /**
  * Clase Base para Mini-Jefes del juego.

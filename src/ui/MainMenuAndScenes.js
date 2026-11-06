@@ -1,10 +1,10 @@
-import { CHARACTER_TYPES, ITEM_ICONS, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=7';
-import { WorldMap } from './WorldMap.js?v=7';
-import { EndingCredits } from './EndingCredits.js?v=7';
-import { GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=7';
-import { getLocalLeaderboard, fetchGlobalLeaderboard } from '../core/ScoreSystem.js?v=7';
-import { LeaderboardView } from './LeaderboardView.js?v=7';
-import { UILayout, GAME_VERSION } from './UILayout.js?v=7';
+import { CHARACTER_TYPES, ITEM_ICONS, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=8';
+import { WorldMap } from './WorldMap.js?v=8';
+import { EndingCredits } from './EndingCredits.js?v=8';
+import { GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=8';
+import { getLocalLeaderboard, fetchGlobalLeaderboard } from '../core/ScoreSystem.js?v=8';
+import { LeaderboardView } from './LeaderboardView.js?v=8';
+import { UILayout, GAME_VERSION } from './UILayout.js?v=8';
 
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art

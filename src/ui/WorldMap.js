@@ -16,7 +16,7 @@
  *   nivel de Armadura y Espada, y objetivo actual de la aventura.
  */
 
-import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
+import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
 
 export class WorldMap {
   constructor(menuSystem = null) {

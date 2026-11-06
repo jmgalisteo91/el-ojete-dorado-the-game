@@ -28531,7 +28531,7 @@ class RPGGame {
     this._saveGameToStorage();
   }
 
-  _getQuickSlotConsumable(quickKey) {
+  _getQuickSlotConsumable(quickKey = 'KeyR') {
     if (!this.inventory || !Array.isArray(this.inventory.items)) return null;
     
     // Mapear tecla a índice de consumible rápido (R=0, 1=1, 2=2, 3=3, 4=4, 5=5)
@@ -28544,8 +28544,7 @@ class RPGGame {
       'Digit5': 4
     };
     
-    const index = keyToIndex[quickKey];
-    if (index === undefined) return null;
+    const index = typeof quickKey === 'string' && keyToIndex[quickKey] !== undefined ? keyToIndex[quickKey] : 0;
     
     // Ítems de consumible rápido en orden: [0]=poción armor, [1]=poción, [2]=café, [3]=pan, [4]=trucha
     const quickSlotIds = ['potion_armor', 'potion', 'coffee', 'bread', 'fish'];
@@ -28556,8 +28555,8 @@ class RPGGame {
     return item || null;
   }
 
-  _useQuickSlotConsumable() {
-    const item = this._getQuickSlotConsumable();
+  _useQuickSlotConsumable(quickKey = 'KeyR') {
+    const item = this._getQuickSlotConsumable(quickKey);
     if (!item) {
       this.menuSystem.showNotice('🎒 Sin consumibles rápidos en la mochila', 2.0);
       return;
@@ -29776,12 +29775,13 @@ class RPGGame {
     }
 
     // Ranura Rápida de Consumibles [R] o [1-5]
-    const quickKey = this.input.consumeKey('KeyR') ||
-      this.input.consumeKey('Digit1') ||
-      this.input.consumeKey('Digit2') ||
-      this.input.consumeKey('Digit3') ||
-      this.input.consumeKey('Digit4') ||
-      this.input.consumeKey('Digit5');
+    let quickKey = null;
+    for (const k of ['KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5']) {
+      if (this.input.consumeKey(k)) {
+        quickKey = k;
+        break;
+      }
+    }
     if (
       !this.dialogueBox.active &&
       this.menuSystem.state === 'none' &&

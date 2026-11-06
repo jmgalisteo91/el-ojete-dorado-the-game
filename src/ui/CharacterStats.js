@@ -6,8 +6,8 @@
  * - Selector superior con [Tab] / [1] / [2] / [3] para conmutar entre Perfil, Logros y Habilidades.
  */
 
-import { SKILL_DEFS } from '../core/SkillCatalog.js?v=7';
-import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
+import { SKILL_DEFS } from '../core/SkillCatalog.js?v=8';
+import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
 
 export class CharacterStats {
   constructor(viewportWidth = 320, viewportHeight = 180) {

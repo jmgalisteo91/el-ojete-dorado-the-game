@@ -25,7 +25,7 @@ import {
   submitGlobalScore,
   calculateGameScore,
   formatPlayTime
-} from '../core/ScoreSystem.js?v=7';
+} from '../core/ScoreSystem.js?v=8';
 
 export class CloudStorage {
   static _syncStatus = 'synced'; // 'synced' | 'syncing' | 'pending' | 'offline'

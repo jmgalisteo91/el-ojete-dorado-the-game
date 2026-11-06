@@ -1,5 +1,5 @@
-import { calculateGameScore } from '../core/ScoreSystem.js?v=7';
-import { GAME_VERSION } from './UILayout.js?v=7';
+import { calculateGameScore } from '../core/ScoreSystem.js?v=8';
+import { GAME_VERSION } from './UILayout.js?v=8';
 
 /**
  * Submódulo de Créditos Finales y Expediente de Compilación (EndingCredits.js)

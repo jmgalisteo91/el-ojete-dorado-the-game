@@ -7,9 +7,9 @@
  * Gestiona visualmente los estados de carga, renderizado de tabla y fallback offline.
  */
 
-import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
-import { CloudStorage } from '../services/CloudStorage.js?v=7';
-import { formatPlayTime } from '../core/ScoreSystem.js?v=7';
+import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
+import { CloudStorage } from '../services/CloudStorage.js?v=8';
+import { formatPlayTime } from '../core/ScoreSystem.js?v=8';
 
 export class LeaderboardView {
   constructor(width = 320, height = 180) {

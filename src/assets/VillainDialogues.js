@@ -12,7 +12,7 @@
  * - getRandomBattleBark(phase): Función auxiliar para obtener una frase aleatoria.
  */
 
-import { CUTSCENE_IMAGES } from './CutsceneImages.js?v=7';
+import { CUTSCENE_IMAGES } from './CutsceneImages.js?v=8';
 
 /**
  * 1. SCENE_AI_ALEX_WARNING: Encuentro/Advertencia al oeste de Valleverde

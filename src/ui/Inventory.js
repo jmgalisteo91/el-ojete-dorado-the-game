@@ -6,7 +6,7 @@
  * - Panel lateral derecho: Icono, nombre, tipo de objeto, cantidad y descripción con wrapText estricto.
  */
 
-import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
+import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
 
 const KEY_OR_QUEST_ITEM_IDS = new Set([
   'dawn_armor',

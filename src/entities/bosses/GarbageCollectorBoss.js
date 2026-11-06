@@ -1,5 +1,5 @@
-import { Boss } from './Boss.js?v=7';
-import { CollisionSystem } from '../../physics/CollisionSystem.js?v=7';
+import { Boss } from './Boss.js?v=8';
+import { CollisionSystem } from '../../physics/CollisionSystem.js?v=8';
 
 /**
  * Jefe Regional: "El Garbage Collector Furioso"

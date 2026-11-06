@@ -1,4 +1,4 @@
-import { Boss } from './Boss.js?v=7';
+import { Boss } from './Boss.js?v=8';
 
 /**
  * Jefe Regional: "El Microondas Prototipo (V0.1 Alpha)"

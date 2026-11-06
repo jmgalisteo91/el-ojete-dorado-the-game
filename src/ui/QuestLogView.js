@@ -6,7 +6,7 @@
  * - Columna derecha: Detalles narrativos, objetivo actual y recompensas en Bytes con wrapText estricto.
  */
 
-import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=7';
+import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
 
 export class QuestLogView {
   constructor(questLog, viewportWidth = 320, viewportHeight = 180) {
