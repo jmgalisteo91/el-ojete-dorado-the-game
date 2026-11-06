@@ -1,0 +1,18 @@
+src/core/DoorGatekeeper.js
+  h_e1bbc662b18209 177-210
+src/entities/bosses/Boss.js
+  h_e1bbc662b18209 162-183
+src/main.js
+  h_e1bbc662b18209 1,3725-3777,4630-4702,4771-4772
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "393402efad0e839d52a405b6b036f8ebc3e407ef",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
