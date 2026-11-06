@@ -912,6 +912,40 @@ function getDoorDestinationInfo(targetScene) {
   return { title, description };
 }
 
+/**
+ * Empuja al jugador exactamente 1 tile (16px) hacia atrás cuando un centinela
+ * bloquea el paso por nivel insuficiente. La colisión del mapa evita atravesar paredes.
+ * @param {Object} player - Entidad del jugador con x, y, direction, knockbackTimer, etc.
+ * @param {string} [direction='down'] - Dirección hacia la que se empuja (opuesto al movimiento intentado)
+ * @returns {boolean} true si se realizó el empujón
+ */
+function pushBackPlayer(player, direction = 'down') {
+  if (!player) return false;
+
+  const tileSize = 16;
+  const pushDistance = tileSize; // 1 tile exactamente
+
+  const offsets = {
+    up:    { dx: 0,  dy: -pushDistance },
+    down:  { dx: 0,  dy:  pushDistance },
+    left:  { dx: -pushDistance, dy: 0 },
+    right: { dx:  pushDistance, dy: 0 }
+  };
+
+  const offset = offsets[direction] || offsets.down;
+
+  // Aplicar empujón de 1 tile
+  player.x += offset.dx;
+  player.y += offset.dy;
+
+  // Temporizador de knockback para evitar bucles de colisión inmediata
+  player.knockbackTimer = 0.5;
+  player.knockbackVx = offset.dx * 2;
+  player.knockbackVy = offset.dy * 2;
+
+  return true;
+}
+
   // ==========================================
   // Módulo: src/core/SkillCatalog.js
   // ==========================================
@@ -5921,7 +5955,7 @@ class Tilemap {
     setDeco(8, 8, TILES.WALL_INTERIOR, true);
     setDeco(4, 9, TILES.LAMPPOST, true);
     setDeco(8, 9, TILES.LAMPPOST, true);
-    setDeco(5, 10, TILES.SIGNPOST, true);
+    setDeco(5, 10, TILES.SIGNPOST, false);
     lightSources.push(
       { x: 6.5 * 16, y: 8.5 * 16, radius: 56, intensity: 1.0, color: '#38bdf8' },
       { x: 4.5 * 16, y: 9.5 * 16, radius: 44, intensity: 0.85, color: '#38bdf8' },
@@ -6167,6 +6201,7 @@ class Tilemap {
 
   /**
    * ZONA SUR: Las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).
+   * Las sub-mazmorras se generan proceduralmente con DungeonGenerator.
    */
   _buildSouthSwampScene() {
     const cols = 36;
@@ -6228,7 +6263,6 @@ class Tilemap {
     setDeco(10, 14, TILES.WALL_INTERIOR, true);
     setDeco(6, 15, TILES.LAMPPOST, true);
     setDeco(10, 15, TILES.LAMPPOST, true);
-    setDeco(7, 16, TILES.SIGNPOST, true);
 
     lightSources.push(
       { x: 8.5 * 16, y: 14.5 * 16, radius: 56, intensity: 1.0, color: '#22c55e' },
@@ -6245,7 +6279,6 @@ class Tilemap {
     setDeco(28, 14, TILES.WALL_INTERIOR, true);
     setDeco(24, 15, TILES.LAMPPOST, true);
     setDeco(28, 15, TILES.LAMPPOST, true);
-    setDeco(25, 16, TILES.SIGNPOST, true);
 
     lightSources.push(
       { x: 26.5 * 16, y: 14.5 * 16, radius: 56, intensity: 1.0, color: '#f97316' },
@@ -8460,6 +8493,25 @@ class Tilemap {
   }
 
   /** Rango de tiles visibles (con 1 tile de margen para las copas/tejados que sobresalen). */
+  /**
+   * Genera una mazmorra procedural al estilo roguelike usando BSP.
+   * @param {string} theme - Tema de la mazmorra ('sewers', 'mines', 'forge', 'citadel', 'quantum')
+   * @param {number} cols - Columnas del mapa
+   * @param {number} rows - Filas del mapa
+   * @param {number} seed - Semilla determinista para reproducibilidad
+   * @returns {Object} Datos del mapa generado
+   */
+  async _generateDungeon(theme, cols, rows, seed) {
+    const { generateDungeon } = await import('./DungeonGenerator.js');
+    const dungeon = generateDungeon({
+      cols,
+      rows,
+      seed: seed || Date.now(),
+      theme
+    });
+    return dungeon;
+  }
+
   _visibleTileRange(camera) {
     const camX = camera.renderX;
     const camY = camera.renderY;
@@ -12501,6 +12553,28 @@ class Boss extends Enemy {
     // Otorgar la habilidad al jugador
     if (player && this.rewardAbility) {
       player[this.rewardAbility] = true;
+    }
+
+    // Otorgar el Núcleo de Mazmorra correspondiente según el jefe derrotado
+    if (player) {
+      switch (this.id) {
+        case 'boss_stack_overflow':
+          player.dungeonCores.stack = true;
+          break;
+        case 'boss_garbage_collector':
+          player.dungeonCores.gc = true;
+          break;
+        case 'boss_prototype_microwave':
+          player.dungeonCores.microwave = true;
+          break;
+      }
+      // Recalcular gatesUnlocked basado en los núcleos obtenidos
+      const coresCount = [
+        player.dungeonCores.gc,
+        player.dungeonCores.stack,
+        player.dungeonCores.microwave
+      ].filter(Boolean).length;
+      player.gatesUnlocked = coresCount;
     }
 
     // Partículas de explosión del jefe
@@ -27995,6 +28069,59 @@ class RPGGame {
         tilesetSheet,
         isChest: true
       }),
+      // ==================== COFRES DE MAZMORRA - RECOMPENSAS FINALES ====================
+      // Estos cofres se encuentran al final de cada mazmorra y otorgan los Núcleos
+      // de Mazmorra necesarios para la Puerta Cuántica, además de habilidades y materiales.
+
+      new WorldItem({
+        id: 'chest_nucleo_stack',
+        name: 'Cofre del Núcleo Stack Overflow',
+        description: 'Cofre del Guardián del Stack Overflow. Contiene el Núcleo Stack y desbloquea la habilidad Corte en Cascada.',
+        iconIndex: ITEM_ICONS.DUNGEON_CORE_STACK,
+        x: 11 * 16,
+        y: 4 * 16,
+        sceneId: 'sword_temple',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
+      }),
+      new WorldItem({
+        id: 'chest_nucleo_gc',
+        name: 'Cofre del Núcleo Garbage Collector',
+        description: 'Cofre del Garbage Collector Furioso. Contiene el Núcleo GC y desbloquea la habilidad Dash Asíncrono.',
+        iconIndex: ITEM_ICONS.DUNGEON_CORE_GC,
+        x: 8 * 16,
+        y: 14 * 16,
+        sceneId: 'sewers_dungeon',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
+      }),
+      new WorldItem({
+        id: 'chest_nucleo_microwave',
+        name: 'Cofre del Núcleo Microondas Prototipo',
+        description: 'Cofre del Microondas Prototipo. Contiene el Núcleo Microondas y desbloquea la habilidad Barrera TypeScript.',
+        iconIndex: ITEM_ICONS.DUNGEON_CORE_MICROWAVE,
+        x: 12 * 16,
+        y: 8 * 16,
+        sceneId: 'ai_fortress_gate',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
+      }),
+      new WorldItem({
+        id: 'chest_magnetron',
+        name: 'Cofre del Magnetrón Cuántico',
+        description: 'Cofre oculto en La Forja. Contiene el Magnetrón necesario para forjar la Espada Overclockeada (Nivel 3) con Brom.',
+        iconIndex: ITEM_ICONS.MICROWAVE_MAGNETRON,
+        x: 20 * 16,
+        y: 8 * 16,
+        sceneId: 'forge_entry',
+        itemsSheet,
+        tilesetSheet,
+        isChest: true
+      }),
+
       new WorldItem({
         id: 'silicon_flower_1',
         name: 'Flor de Silicio',
@@ -28404,10 +28531,29 @@ class RPGGame {
     this._saveGameToStorage();
   }
 
-  _getQuickSlotConsumable() {
+  _getQuickSlotConsumable(quickKey) {
     if (!this.inventory || !Array.isArray(this.inventory.items)) return null;
-    const validIds = ['potion_armor', 'potion', 'coffee', 'bread', 'fish', 'apple', 'berry_pie', 'ointment', 'spring_water', 'hotfix'];
-    return this.inventory.items.find((it) => validIds.includes(it.id) && (it.qty || 1) > 0) || null;
+    
+    // Mapear tecla a índice de consumible rápido (R=0, 1=1, 2=2, 3=3, 4=4, 5=5)
+    const keyToIndex = {
+      'KeyR': 0,
+      'Digit1': 0,
+      'Digit2': 1,
+      'Digit3': 2,
+      'Digit4': 3,
+      'Digit5': 4
+    };
+    
+    const index = keyToIndex[quickKey];
+    if (index === undefined) return null;
+    
+    // Ítems de consumible rápido en orden: [0]=poción armor, [1]=poción, [2]=café, [3]=pan, [4]=trucha
+    const quickSlotIds = ['potion_armor', 'potion', 'coffee', 'bread', 'fish'];
+    const id = quickSlotIds[index];
+    
+    // Buscar el ítem en el inventario por ID y verificar que tenga cantidad
+    const item = this.inventory.items.find((it) => it && it.id === id && (it.qty || 1) > 0);
+    return item || null;
   }
 
   _useQuickSlotConsumable() {
@@ -28847,6 +28993,79 @@ class RPGGame {
               '¡Empúñala y úsala con supremo cuidado! Las fuerzas cuánticas son inmensas y exigen la máxima templanza en tu misión hacia El Ojete Dorado.»'
             ]);
           });
+        } else if (item.id === 'chest_nucleo_stack') {
+          // ==================== COFRE: NÚCLEO STACK ====================
+          this.player.dungeonCores.stack = true;
+          this.player.hasChargedAttack = true;
+          if (this.player.gatesUnlocked < 3) this.player.gatesUnlocked += 1;
+          this.inventory.addItem({
+            id: 'nucleo_stack',
+            name: 'Núcleo Stack Overflow',
+            description: 'Núcleo de energía del Guardián del Stack Overflow. Requerido para la Puerta Cuántica.',
+            iconIndex: ITEM_ICONS.DUNGEON_CORE_STACK,
+            qty: 1
+          });
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Núcleo Stack', [
+            'Has abierto el cofre y encontrado el [Núcleo Stack Overflow].',
+            '• Habilidad desbloqueada: [Corte en Cascada (Caso Base)]',
+            '• Núcleo de mazmorra añadido al altar de la Puerta Cuántica.',
+            `• Núcleos colocados: ${this.player.gatesUnlocked}/3`
+          ]);
+        } else if (item.id === 'chest_nucleo_gc') {
+          // ==================== COFRE: NÚCLEO GC ====================
+          this.player.dungeonCores.gc = true;
+          this.player.hasDash = true;
+          if (this.player.gatesUnlocked < 3) this.player.gatesUnlocked += 1;
+          this.inventory.addItem({
+            id: 'nucleo_gc',
+            name: 'Núcleo Garbage Collector',
+            description: 'Núcleo de energía del Garbage Collector Furioso. Requerido para la Puerta Cuántica.',
+            iconIndex: ITEM_ICONS.DUNGEON_CORE_GC,
+            qty: 1
+          });
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Núcleo GC', [
+            'Has abierto el cofre y encontrado el [Núcleo Garbage Collector].',
+            '• Habilidad desbloqueada: [Dash Asíncrono]',
+            '• Núcleo de mazmorra añadido al altar de la Puerta Cuántica.',
+            `• Núcleos colocados: ${this.player.gatesUnlocked}/3`
+          ]);
+        } else if (item.id === 'chest_nucleo_microwave') {
+          // ==================== COFRE: NÚCLEO MICROWAVE ====================
+          this.player.dungeonCores.microwave = true;
+          this.player.hasBarrier = true;
+          if (this.player.gatesUnlocked < 3) this.player.gatesUnlocked += 1;
+          this.inventory.addItem({
+            id: 'nucleo_microwave',
+            name: 'Núcleo Microondas Prototipo',
+            description: 'Núcleo de energía del Microondas Prototipo. Requerido para la Puerta Cuántica.',
+            iconIndex: ITEM_ICONS.DUNGEON_CORE_MICROWAVE,
+            qty: 1
+          });
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Núcleo Microondas', [
+            'Has abierto el cofre y encontrado el [Núcleo Microondas Prototipo].',
+            '• Habilidad desbloqueada: [Barrera TypeScript]',
+            '• Núcleo de mazmorra añadido al altar de la Puerta Cuántica.',
+            `• Núcleos colocados: ${this.player.gatesUnlocked}/3`
+          ]);
+        } else if (item.id === 'chest_magnetron') {
+          // ==================== COFRE: MAGNETRÓN ====================
+          this.inventory.addItem({
+            id: 'magnetron',
+            name: 'Magnetrón Cuántico',
+            description: 'Componente para forjar la Espada Overclockeada (Nivel 3). Entregárselo al Herrero Brom.',
+            iconIndex: ITEM_ICONS.MICROWAVE_MAGNETRON,
+            qty: 1
+          });
+          this._saveGameToStorage();
+          this.dialogueBox.showMessage('📦 ¡Cofre Abierto! · Magnetrón', [
+            'Has abierto el cofre y encontrado el [Magnetrón Cuántico].',
+            '• Componente esencial para la Espada Tier 3 (Overclockeada).',
+            '• Llévaselo al Herrero Brom en Valleverde para forjar tu espada al nivel máximo.',
+            '• Con el Magnetrón y suficiente silicio, Brom podrá mejorar tu espada.'
+          ]);
         } else {
           this.dialogueBox.showMessage(item.isChest ? '📦 ¡Cofre Abierto!' : 'Objeto Obtenido', [
             item.isChest
@@ -28915,17 +29134,8 @@ class RPGGame {
         const block = getDoorBlock(door.targetScene, this.player);
         if (block) {
           if (this.music) this.music.playDoorLockedSound();
-          if (door.targetScene === 'first_stage') {
-            this.player.x = Math.min(this.player.x, 31 * this.tilemap.tileSize);
-          } else if (door.targetScene === 'west_wastes') {
-            this.player.x = Math.max(this.player.x, 3.5 * this.tilemap.tileSize);
-          } else if (door.targetScene === 'north_peaks') {
-            this.player.y = Math.max(this.player.y, 2.5 * this.tilemap.tileSize);
-          } else if (door.targetScene === 'south_swamp') {
-            this.player.y = Math.min(this.player.y, 21 * this.tilemap.tileSize);
-          } else if (door.targetScene === 'ai_citadel') {
-            this.player.y = Math.max(this.player.y, 3.5 * this.tilemap.tileSize);
-          }
+          // Empujar al jugador exactamente 1 tile hacia atrás (opuesto al intento de cruce)
+          pushBackPlayer(this.player, this.player.direction || 'down');
           this.dialogueBox.showMessage(block.title, block.lines);
           return;
         }
@@ -29195,18 +29405,13 @@ class RPGGame {
     this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
     this.player.x = door.spawnX;
     this.player.y = door.spawnY;
-    this.player.direction =
-      door.type === 'enter'
-        ? 'up'
-        : door.type === 'stage_transition'
-          ? door.targetScene === 'overworld'
-            ? 'down'
-            : door.targetScene === 'condemned_realms'
-              ? 'up'
-              : door.targetScene === 'first_stage'
-                ? 'left'
-                : 'up'
-          : 'down';
+    // PRESERVAR DIRECCIÓN DE ENTRADA: si el jugador entra por la derecha, sigue mirando a la derecha.
+    // Solo se sobrescribe la dirección si la puerta especifica una dirección de entrada forzada
+    // (por ejemplo, al entrar en una casa por una puerta, se mira hacia adentro).
+    if (door.forceDirection) {
+      this.player.direction = door.forceDirection;
+    }
+    // Si no hay forceDirection, se mantiene la dirección actual del jugador (no se sobrescribe).
     this.camera.snapTo(this.player);
 
     if (this.music && this.music.currentBossTrack) {
@@ -29570,16 +29775,22 @@ class RPGGame {
       return;
     }
 
-    // Ranura Rápida de Consumibles [R] o [1]
+    // Ranura Rápida de Consumibles [R] o [1-5]
+    const quickKey = this.input.consumeKey('KeyR') ||
+      this.input.consumeKey('Digit1') ||
+      this.input.consumeKey('Digit2') ||
+      this.input.consumeKey('Digit3') ||
+      this.input.consumeKey('Digit4') ||
+      this.input.consumeKey('Digit5');
     if (
       !this.dialogueBox.active &&
       this.menuSystem.state === 'none' &&
       !this.inventory.isOpen &&
       !this.characterStats.isOpen &&
       (!this.questLogView || !this.questLogView.isOpen) &&
-      (this.input.consumeKey('KeyR') || this.input.consumeKey('Digit1'))
+      quickKey
     ) {
-      this._useQuickSlotConsumable();
+      this._useQuickSlotConsumable(quickKey);
     }
 
     // Apertura independiente de la Mochila (Tecla 'I' o Tab, salvo cuando la Ficha 'C' usa Tab para cambiar de pestaña)
@@ -30689,6 +30900,24 @@ class RPGGame {
       ctx.fillStyle = pct < 0.25 ? '#ef4444' : '#38bdf8';
       ctx.fillRect(heartsX + 0.5, sy + 0.5, (sw - 1) * pct, 3);
       if (this.player.comboStep > 0) {
+// =========================================================================
+    // 2. SUPERIOR DERECHA: Indicador de Monedas / Bytes
+    // =========================================================================
+    const coinX = heartsX + heartsW + 4;
+    const coinY = heartsY;
+    const coinW = 50;
+    const coinH = 15;
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
+    ctx.fillRect(coinX, coinY, coinW, coinH);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(coinX + 0.5, coinY + 0.5, coinW - 1, coinH - 1);
+    ctx.font = 'bold 5px monospace';
+    ctx.fillStyle = '#fde047';
+    ctx.textAlign = 'center';
+    ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
+    // =========================================================================
+    // Barra de stamina bajo los corazones (solo visible si hay espada y no está llena)
         ctx.fillStyle = '#fde047';
         for (let i = 0; i < this.player.comboStep; i++) {
           ctx.fillRect(heartsX + i * 5, sy + 5, 4, 2);

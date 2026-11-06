@@ -1948,6 +1948,32 @@ test('Desbloqueo de Menú de Audio y Opciones sin Bloqueo de Estado y Versión O
   assert.equal(menu.state, 'pause', 'Hacer clic sobre el botón ✕ Volver debe cerrar el menú de opciones');
 });
 
+test('Tilemap: Inicialización e integridad de Las Marismas del Hardware Legacy (south_swamp)', () => {
+  const tm = new Tilemap(null, 16);
+  assert.ok(tm.scenes.south_swamp, 'La escena south_swamp debe estar definida');
+  const swamp = tm.scenes.south_swamp;
+  assert.equal(swamp.cols, 36);
+  assert.equal(swamp.rows, 24);
+  assert.ok(swamp.layers.ground, 'Capa ground debe existir');
+  assert.ok(swamp.layers.decoration, 'Capa decoration debe existir');
+  assert.ok(swamp.layers.collision, 'Capa collision debe existir');
+  assert.equal(swamp.layers.ground.length, 24);
+  assert.equal(swamp.layers.ground[0].length, 36);
+
+  // Puerta hacia Cloacas del Legacy (Suroeste)
+  tm.loadScene('south_swamp');
+  const fakePlayerSewers = { centerX: 8.5 * 16, centerY: 14.5 * 16 };
+  const sewersDoor = tm.findNearbyDoor(fakePlayerSewers);
+  assert.ok(sewersDoor, 'Debe existir puerta a Cloacas');
+  assert.equal(sewersDoor.targetScene, 'sewers_entry');
+
+  // Puerta hacia La Forja del Prototipo (Sureste)
+  const fakePlayerForge = { centerX: 26.5 * 16, centerY: 14.5 * 16 };
+  const forgeDoor = tm.findNearbyDoor(fakePlayerForge);
+  assert.ok(forgeDoor, 'Debe existir puerta a La Forja');
+  assert.equal(forgeDoor.targetScene, 'forge_entry');
+});
+
 await Promise.all(asyncQueue);
 
 console.log(`\n${passed} pruebas OK, ${failures.length} fallos.`);

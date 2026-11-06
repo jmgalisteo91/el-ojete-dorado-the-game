@@ -1046,11 +1046,14 @@ export class Tilemap {
 
   /**
    * ZONA SUR: Las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).
-   * Las sub-mozmorras se generan proceduralmente con DungeonGenerator.
+   * Las sub-mazmorras se generan proceduralmente con DungeonGenerator.
    */
   _buildSouthSwampScene() {
     const cols = 36;
     const rows = 24;
+    const ground = this._createGrid(cols, rows, TILES.DIRT);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
     const lightSources = [];
 
     for (let r = 0; r < rows; r++) {
@@ -1096,7 +1099,39 @@ export class Tilemap {
       }
     }
 
-    // Zona de generación procedural (cloacas y forja)
+    // 1. Entrada Suroeste: Cloacas del Legacy (c = 8.5, r = 14.5 · Garbage Collector)
+    fillRect(ground, 6, 13, 5, 4, TILES.STONE_FLOOR);
+    setDeco(6, 14, TILES.WALL_INTERIOR, true);
+    setDeco(7, 14, TILES.WALL_INTERIOR, true);
+    setDeco(8, 14, TILES.DOOR, false);
+    setDeco(9, 14, TILES.WALL_INTERIOR, true);
+    setDeco(10, 14, TILES.WALL_INTERIOR, true);
+    setDeco(6, 15, TILES.LAMPPOST, true);
+    setDeco(10, 15, TILES.LAMPPOST, true);
+
+    lightSources.push(
+      { x: 8.5 * 16, y: 14.5 * 16, radius: 56, intensity: 1.0, color: '#22c55e' },
+      { x: 6.5 * 16, y: 15.5 * 16, radius: 44, intensity: 0.85, color: '#22c55e' },
+      { x: 10.5 * 16, y: 15.5 * 16, radius: 44, intensity: 0.85, color: '#22c55e' }
+    );
+
+    // 2. Entrada Sureste: La Forja del Prototipo (c = 26.5, r = 14.5 · Microondas)
+    fillRect(ground, 24, 13, 5, 4, TILES.STONE_FLOOR);
+    setDeco(24, 14, TILES.WALL_INTERIOR, true);
+    setDeco(25, 14, TILES.WALL_INTERIOR, true);
+    setDeco(26, 14, TILES.DOOR, false);
+    setDeco(27, 14, TILES.WALL_INTERIOR, true);
+    setDeco(28, 14, TILES.WALL_INTERIOR, true);
+    setDeco(24, 15, TILES.LAMPPOST, true);
+    setDeco(28, 15, TILES.LAMPPOST, true);
+
+    lightSources.push(
+      { x: 26.5 * 16, y: 14.5 * 16, radius: 56, intensity: 1.0, color: '#f97316' },
+      { x: 24.5 * 16, y: 15.5 * 16, radius: 44, intensity: 0.85, color: '#f97316' },
+      { x: 28.5 * 16, y: 15.5 * 16, radius: 44, intensity: 0.85, color: '#f97316' }
+    );
+
+    // Perímetro arbolado / ciénaga
     const placeTree = (c, r) => {
       if (r >= 1 && r < rows && c >= 0 && c < cols) {
         setDeco(c, r - 1, TILES.TREE_TOP, true);
