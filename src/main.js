@@ -5039,18 +5039,13 @@ export class RPGGame {
     this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
     this.player.x = door.spawnX;
     this.player.y = door.spawnY;
-    this.player.direction =
-      door.type === 'enter'
-        ? 'up'
-        : door.type === 'stage_transition'
-          ? door.targetScene === 'overworld'
-            ? 'down'
-            : door.targetScene === 'condemned_realms'
-              ? 'up'
-              : door.targetScene === 'first_stage'
-                ? 'left'
-                : 'up'
-          : 'down';
+    // PRESERVAR DIRECCIÓN DE ENTRADA: si el jugador entra por la derecha, sigue mirando a la derecha.
+    // Solo se sobrescribe la dirección si la puerta especifica una dirección de entrada forzada
+    // (por ejemplo, al entrar en una casa por una puerta, se mira hacia adentro).
+    if (door.forceDirection) {
+      this.player.direction = door.forceDirection;
+    }
+    // Si no hay forceDirection, se mantiene la dirección actual del jugador (no se sobrescribe).
     this.camera.snapTo(this.player);
 
     if (this.music && this.music.currentBossTrack) {
@@ -6533,6 +6528,24 @@ export class RPGGame {
       ctx.fillStyle = pct < 0.25 ? '#ef4444' : '#38bdf8';
       ctx.fillRect(heartsX + 0.5, sy + 0.5, (sw - 1) * pct, 3);
       if (this.player.comboStep > 0) {
+// =========================================================================
+    // 2. SUPERIOR DERECHA: Indicador de Monedas / Bytes
+    // =========================================================================
+    const coinX = heartsX + heartsW + 4;
+    const coinY = heartsY;
+    const coinW = 50;
+    const coinH = 15;
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
+    ctx.fillRect(coinX, coinY, coinW, coinH);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(coinX + 0.5, coinY + 0.5, coinW - 1, coinH - 1);
+    ctx.font = 'bold 5px monospace';
+    ctx.fillStyle = '#fde047';
+    ctx.textAlign = 'center';
+    ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
+    // =========================================================================
+    // Barra de stamina bajo los corazones (solo visible si hay espada y no está llena)
         ctx.fillStyle = '#fde047';
         for (let i = 0; i < this.player.comboStep; i++) {
           ctx.fillRect(heartsX + i * 5, sy + 5, 4, 2);
