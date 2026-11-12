@@ -1,0 +1,32 @@
+el-ojete-dorado-the-game.html
+  h_e1bbc662b18209 995-996,10830,11262-11263,11304-11306,11308,11339-11342,11344-11359,11361-11371,13096,14287,14513,14532-14537,14702,14742,15030,15144,15180,27547,28163-28164,28224,31328-31331,31609,32174,32716-32721,32839-32844,34326-34327
+src/ai/EnemyBrain.js
+  h_e1bbc662b18209 41
+src/core/DoorGatekeeper.js
+  h_e1bbc662b18209 137-138
+src/entities/Player.js
+  h_e1bbc662b18209 37,469-470,511-513,515,546-549,551-566,568-578
+src/entities/bosses/Boss.js
+  h_e1bbc662b18209 60,286,305-310
+src/entities/bosses/GarbageCollectorBoss.js
+  h_e1bbc662b18209 106,146
+src/entities/bosses/StackOverflowBoss.js
+  h_e1bbc662b18209 196,310,346
+src/main.js
+  h_e1bbc662b18209 561,1177-1178,1238,4342-4345,4623,5188,5730-5735,5853-5858,7340-7341
+sw.js
+  h_e1bbc662b18209 16
+tests/regression.mjs
+  h_e1bbc662b18209 277-278,281-285,925-927,933-934,936-937,941,943,945,947,949-950,952,954-956,964-992,2057,2062
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "95ed3e72389d067c3de9ffefab23b08b86c8663a",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
