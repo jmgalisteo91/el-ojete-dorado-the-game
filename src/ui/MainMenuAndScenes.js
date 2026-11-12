@@ -28,6 +28,8 @@ export class MainMenuAndScenes {
     this.previousStateBeforeOptions = 'title';
     this.previousStateBeforeControls = 'title';
     this.previousStateBeforeLeaderboard = 'title';
+    // (FIX B6) Mientras la despedida está en pantalla, el modal absorbe el input
+    this.exitFarewellActive = false;
     this._lastPointerX = -1;
     this._lastPointerY = -1;
 
@@ -479,10 +481,12 @@ export class MainMenuAndScenes {
     this._hideExitConfirmModal();
     const modal = document.getElementById('exit-farewell-modal');
     if (modal) modal.classList.remove('hidden');
+    this.exitFarewellActive = true;
     this._updateExitCountdownDisplay(3);
   }
 
   _hideExitFarewellModal() {
+    this.exitFarewellActive = false;
     if (typeof document === 'undefined') return;
     const modal = document.getElementById('exit-farewell-modal');
     if (modal) modal.classList.add('hidden');
@@ -744,8 +748,9 @@ export class MainMenuAndScenes {
     }
 
     if (this.state === 'pause_cloud') {
-      const saveInfo = this.callbacks.getSaveSummary ? this.callbacks.getSaveSummary() : null;
-      const slotCode = saveInfo?.cloudCode || 'SLOT-1';
+      // (FIX B2) Se lee el código real de la nube; si no existe, no se inventa una ranura
+      const cloudCode = this.callbacks.getCloudCode ? this.callbacks.getCloudCode() : null;
+      const slotLabel = cloudCode ? `[${cloudCode}]` : '[Sin código]';
       return [
         {
           label: 'Guardar Partida [Nube + Respaldo]',
@@ -758,10 +763,14 @@ export class MainMenuAndScenes {
           }
         },
         {
-          label: `Ver Código en la Nube [${slotCode}]`,
+          label: `Ver Código en la Nube ${slotLabel}`,
           action: () => {
             this.music.playMenuSelect();
-            this.showNotice(`Código de Ranura: ${slotCode}`);
+            if (!cloudCode) {
+              this.showNotice('Aún no hay código: guarda primero en la nube');
+              return;
+            }
+            this.showNotice(`Código de Ranura: ${cloudCode}`);
           }
         },
         {
@@ -964,6 +973,18 @@ export class MainMenuAndScenes {
           this._exitCloseTriggered = true;
           this._tryCloseBrowserWindow();
           this._onExitCountdownComplete();
+        }
+        return;
+      }
+
+      // (FIX B6) La despedida es un modal real: ni clics ni teclas de juego la cierran
+      // por accidente (el InputHandler escucha en window y el modal no los absorbía).
+      // Solo Escape, como cierre explícito, o los botones del DOM.
+      if (this.exitFarewellActive) {
+        if (input.consumeKey('Escape')) {
+          this.music.playMenuSelect();
+          this._hideExitFarewellModal();
+          this.openTitleScreen();
         }
         return;
       }
@@ -1387,7 +1408,8 @@ export class MainMenuAndScenes {
       if (this.previousStateBeforeLeaderboard === 'title') {
         this._renderTitleBackdropPixelArt(ctx);
       } else {
-        ctx.fillStyle = 'rgba(8, 11, 20, 0.78)';
+        // (FIX B5) Fondo opaco: el mundo ya no se dibuja por debajo del Salón de la Fama
+        ctx.fillStyle = '#080b14';
         ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
       }
       this._renderLeaderboardScreen(ctx);

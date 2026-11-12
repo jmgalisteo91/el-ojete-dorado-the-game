@@ -41,7 +41,7 @@ import { RenderPipeline } from '../src/graphics/RenderPipeline.js';
 import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT, GAME_VERSION } from '../src/ui/UILayout.js';
 import { CloudStorage } from '../src/services/CloudStorage.js';
 import { LeaderboardView } from '../src/ui/LeaderboardView.js';
-import { AudioManager } from '../src/audio/AudioManager.js';
+import { AudioManager } from '../src/audio/AudioManager.js?v=8';
 import { AmbientMusic } from '../src/audio/AmbientMusic.js';
 import { MainMenuAndScenes } from '../src/ui/MainMenuAndScenes.js';
 import { SCENE_AI_ALEX_WARNING, SCENE_ENDING_VICTORY } from '../src/assets/VillainDialogues.js';

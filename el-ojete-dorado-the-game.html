@@ -2,10 +2,19 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- (FIX M0.1) Metas de PWA también en el build portable -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0c10" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Ojete Dorado" />
   <title>El Ojete Dorado · Aventura RPG Pixel Art (Portable)</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%20width%3D%2264%22%20height%3D%2264%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22goldGlow%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23fff8d6%22%2F%3E%3Cstop%20offset%3D%2245%25%22%20stop-color%3D%22%23ffd700%22%2F%3E%3Cstop%20offset%3D%2275%25%22%20stop-color%3D%22%23f59e0b%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23b45309%22%2F%3E%3C%2FradialGradient%3E%3CradialGradient%20id%3D%22coreGlow%22%20cx%3D%2250%25%22%20cy%3D%2250%25%22%20r%3D%2250%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23ffffff%22%2F%3E%3Cstop%20offset%3D%2230%25%22%20stop-color%3D%22%2367e8f9%22%2F%3E%3Cstop%20offset%3D%2270%25%22%20stop-color%3D%22%233b82f6%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%231e1b4b%22%2F%3E%3C%2FradialGradient%3E%3ClinearGradient%20id%3D%22ringGrad%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23fef08a%22%2F%3E%3Cstop%20offset%3D%2235%25%22%20stop-color%3D%22%23eab308%22%2F%3E%3Cstop%20offset%3D%2270%25%22%20stop-color%3D%22%23ca8a04%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%2378350f%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3C!--%20Fondo%20redondeado%20oscuro%20estilo%20insignia%20RPG%20--%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2216%22%20fill%3D%22%230b0e17%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%222%22%20width%3D%2260%22%20height%3D%2260%22%20rx%3D%2214%22%20fill%3D%22none%22%20stroke%3D%22%23d97706%22%20stroke-width%3D%221.5%22%20stroke-opacity%3D%220.6%22%2F%3E%3C!--%20Halo%20de%20resplandor%20%C3%A1ureo%20--%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2222%22%20fill%3D%22%23d97706%22%20opacity%3D%220.18%22%2F%3E%3C!--%20Rayos%20solares%20%2F%20espigas%20sagradas%20de%20la%20reliquia%20--%3E%3Cpath%20d%3D%22M32%204%20L34%2010%20L30%2010%20Z%22%20fill%3D%22%23ffd700%22%2F%3E%3Cpath%20d%3D%22M32%2060%20L34%2054%20L30%2054%20Z%22%20fill%3D%22%23ffd700%22%2F%3E%3Cpath%20d%3D%22M4%2032%20L10%2034%20L10%2030%20Z%22%20fill%3D%22%23ffd700%22%2F%3E%3Cpath%20d%3D%22M60%2032%20L54%2034%20L54%2030%20Z%22%20fill%3D%22%23ffd700%22%2F%3E%3Cpath%20d%3D%22M12%2012%20L18%2015%20L15%2018%20Z%22%20fill%3D%22%23f59e0b%22%2F%3E%3Cpath%20d%3D%22M52%2012%20L46%2015%20L49%2018%20Z%22%20fill%3D%22%23f59e0b%22%2F%3E%3Cpath%20d%3D%22M12%2052%20L18%2049%20L15%2046%20Z%22%20fill%3D%22%23f59e0b%22%2F%3E%3Cpath%20d%3D%22M52%2052%20L46%2049%20L49%2046%20Z%22%20fill%3D%22%23f59e0b%22%2F%3E%3C!--%20Anillo%20exterior%20del%20Ojete%20Dorado%20--%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2218%22%20fill%3D%22url(%23ringGrad)%22%20stroke%3D%22%23fef08a%22%20stroke-width%3D%221.5%22%2F%3E%3C!--%20Joyas%20ornamentales%20incrustadas%20en%20el%20anillo%20--%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2216%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2248%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2232%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%3Ccircle%20cx%3D%2248%22%20cy%3D%2232%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%3C!--%20Bisel%20interior%20oscuro%20y%20corona%20dorada%20--%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2213.5%22%20fill%3D%22%23180e29%22%2F%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2212%22%20fill%3D%22url(%23goldGlow)%22%2F%3E%3C!--%20N%C3%BAcleo%20celestial%20de%20la%20reliquia%20(%22El%20Ojete%22)%20--%3E%3Cellipse%20cx%3D%2232%22%20cy%3D%2232%22%20rx%3D%226.5%22%20ry%3D%228%22%20fill%3D%22url(%23coreGlow)%22%2F%3E%3Cellipse%20cx%3D%2232%22%20cy%3D%2232%22%20rx%3D%223%22%20ry%3D%225.5%22%20fill%3D%22%23080614%22%2F%3E%3C!--%20Destello%20especular%20dentro%20de%20la%20pupila%20--%3E%3Ccircle%20cx%3D%2230.5%22%20cy%3D%2229.5%22%20r%3D%221.8%22%20fill%3D%22%23ffffff%22%2F%3E%3Ccircle%20cx%3D%2234%22%20cy%3D%2234%22%20r%3D%220.8%22%20fill%3D%22%23a5f3fc%22%2F%3E%3C!--%20Destello%20c%C3%B3smico%20%E2%9C%A6%20en%20esquina%20superior%20--%3E%3Cpath%20d%3D%22M47%208%20Q47%2013%2052%2013%20Q47%2013%2047%2018%20Q47%2013%2042%2013%20Q47%2013%2047%208%20Z%22%20fill%3D%22%23ffffff%22%2F%3E%3C%2Fsvg%3E" />
   <link rel="alternate icon" href="./favicon.svg" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon-180.png" />
+  <link rel="manifest" href="./manifest.json" />
   <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap');
 
@@ -26,28 +35,52 @@ html, body {
   height: 100%;
   background-color: #0b0c10;
   overflow: hidden;
+  /* (FIX M0.2) PWA: sin rebote ni pull-to-refresh, sin zoom por doble toque */
+  overscroll-behavior: none;
+  touch-action: manipulation;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--game-font);
+  /* (FIX M0.2) Sin selección, sin menú contextual de iOS, sin flash azul al tocar */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .viewport-wrapper {
   position: relative;
   width: 100vw;
+  /* Fallback para navegadores sin unidades dinámicas de viewport */
   height: 100vh;
+  height: 100dvh;
+  /* (FIX M0.2) Respeta el notch y la barra de gestos */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 #game-canvas {
-  width: min(100vw, calc(100vh * (16 / 9)));
-  height: min(100vh, calc(100vw * (9 / 16)));
-  image-rendering: auto;
+  /* Área útil real = viewport menos safe areas (con fallback vh) */
+  --safe-w: calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right));
+  --safe-h: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  --safe-h: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  width: min(var(--safe-w), calc(var(--safe-h) * (16 / 9)));
+  height: min(var(--safe-h), calc(var(--safe-w) * (9 / 16)));
+  /* (FIX M0.2) Pixel art nítido al escalar 320x180 -> 1280x720 */
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
   background-color: #141824;
   box-shadow: 0 0 32px rgba(0, 0, 0, 0.85);
   border: 2px solid #262b3d;
+  /* (FIX M0.2) El canvas no debe arrastrar ni hacer scroll al jugar */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Modal Pixel Art para escribir texto libre al NPC con IA */
@@ -1032,10 +1065,30 @@ class InputHandler {
 
     this.pointerX = -1;
     this.pointerY = -1;
+    // (FIX M1.1) Coordenadas en píxeles del backing store (1280x720) para los controles táctiles
+    this.pointerCanvasX = -1;
+    this.pointerCanvasY = -1;
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
     this.isPointerDown = false;
     this.lastAttackSource = null;
+
+    // (FIX M1.1) Capa táctil: convive con teclado y ratón, nunca los sustituye
+    this.isTouchDevice = false;
+    try {
+      if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        this.isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+      }
+    } catch (_) {
+      this.isTouchDevice = false;
+    }
+    this.touchState = {
+      moveX: 0,
+      moveY: 0,
+      buttons: new Set(), // acciones mantenidas (attack, interact, dash, barrier)
+      pressed: new Set()  // flanco de pulsación, se consume una vez por frame
+    };
+    this.touchControls = null;
 
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -1058,9 +1111,61 @@ class InputHandler {
   _notifyFirstInteraction() {
     if (!this._interactedOnce) {
       this._interactedOnce = true;
+      // (FIX M0.5) Primer gesto: intenta pantalla completa + landscape en táctiles
+      this._requestMobileFullscreen();
       if (typeof this.onFirstInteraction === 'function') {
         this.onFirstInteraction();
       }
+    }
+  }
+
+  /**
+   * (FIX M0.5) En dispositivos táctiles, pide fullscreen y bloqueo de orientación
+   * en el primer gesto del usuario (requisito de los navegadores).
+   * Todo va envuelto en try/catch: iOS rechaza fullscreen en muchos modelos y no
+   * todos los navegadores soportan `screen.orientation.lock`, y el juego debe seguir.
+   */
+  _requestMobileFullscreen() {
+    try {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return;
+      if (typeof window.matchMedia !== 'function') return;
+      if (!window.matchMedia('(pointer: coarse)').matches) return;
+
+      const root = document.documentElement;
+      if (!root) return;
+
+      const lockLandscape = () => {
+        try {
+          const orientation = window.screen && window.screen.orientation;
+          if (orientation && typeof orientation.lock === 'function') {
+            const result = orientation.lock('landscape');
+            if (result && typeof result.catch === 'function') result.catch(() => {});
+          }
+        } catch (_) {
+          /* Orientación no disponible: se ignora */
+        }
+      };
+
+      const alreadyFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+      const request =
+        root.requestFullscreen || root.webkitRequestFullscreen || root.webkitRequestFullScreen;
+
+      if (!alreadyFullscreen && typeof request === 'function') {
+        try {
+          const result = request.call(root);
+          if (result && typeof result.then === 'function') {
+            result.then(lockLandscape).catch(() => {});
+          } else {
+            lockLandscape();
+          }
+        } catch (_) {
+          /* iOS/ Safari: rechazo silencioso */
+        }
+      } else {
+        lockLandscape();
+      }
+    } catch (_) {
+      /* Nunca romper la entrada del juego por culpa del fullscreen */
     }
   }
 
@@ -1072,6 +1177,56 @@ class InputHandler {
     if (rect.width <= 0 || rect.height <= 0) return;
     this.pointerX = ((event.clientX - rect.left) / rect.width) * 320;
     this.pointerY = ((event.clientY - rect.top) / rect.height) * 180;
+    // (FIX M1.1) Misma posición en píxeles del canvas (0..1280 / 0..720)
+    this.pointerCanvasX = ((event.clientX - rect.left) / rect.width) * (el.width || 1280);
+    this.pointerCanvasY = ((event.clientY - rect.top) / rect.height) * (el.height || 720);
+  }
+
+  /** (FIX M1.7/M1.8) Expone el bloqueo por modal DOM para que TouchControls no capture input. */
+  isDOMBlocked() {
+    return this._isDOMModalBlocking();
+  }
+
+  /** (FIX M1.7) Engancha la capa visual/táctil; main la crea tras el InputHandler. */
+  attachTouchControls(touchControls) {
+    this.touchControls = touchControls || null;
+    if (this.touchControls) this.touchControls.enabled = this.isTouchDevice;
+  }
+
+  // ------------------------------------------------------------------ API táctil
+
+  /** Vector del joystick normalizado (-1..1). */
+  setTouchMovement(x, y) {
+    const nx = Number(x) || 0;
+    const ny = Number(y) || 0;
+    const len = Math.hypot(nx, ny);
+    if (len > 1) {
+      this.touchState.moveX = nx / len;
+      this.touchState.moveY = ny / len;
+    } else {
+      this.touchState.moveX = nx;
+      this.touchState.moveY = ny;
+    }
+  }
+
+  /** Mantiene pulsada una acción táctil y registra su flanco. */
+  pressTouchButton(code) {
+    if (!code) return;
+    this.touchState.buttons.add(code);
+    this.touchState.pressed.add(code);
+  }
+
+  releaseTouchButton(code) {
+    if (!code) return;
+    this.touchState.buttons.delete(code);
+  }
+
+  /** Limpia todo el estado táctil (blur, modal, cambio de escena). */
+  resetTouchState() {
+    this.touchState.moveX = 0;
+    this.touchState.moveY = 0;
+    this.touchState.buttons.clear();
+    this.touchState.pressed.clear();
   }
 
   _isDOMModalBlocking() {
@@ -1105,12 +1260,36 @@ class InputHandler {
 
   _onPointerMove(event) {
     this._updateCanvasCoords(event);
+    if (this.isTouchDevice && this.touchControls) {
+      this.touchControls.handlePointerMove(
+        this.pointerCanvasX,
+        this.pointerCanvasY,
+        event && event.pointerId !== undefined ? event.pointerId : 0
+      );
+    }
   }
 
   _onPointerDown(event) {
     this._notifyFirstInteraction();
     if (this._isDOMModalBlocking()) return;
     this._updateCanvasCoords(event);
+
+    // (FIX M1.7) En táctil, los controles tienen prioridad: si el toque cae en una
+    // zona (joystick/botones), NO se dispara el ataque por puntero.
+    if (this.isTouchDevice && this.touchControls) {
+      const pointerId = event && event.pointerId !== undefined ? event.pointerId : 0;
+      const zone = this.touchControls.hitTest(this.pointerCanvasX, this.pointerCanvasY);
+      if (zone) {
+        this.touchControls.handlePointerDown(
+          zone,
+          this.pointerCanvasX,
+          this.pointerCanvasY,
+          pointerId
+        );
+        return;
+      }
+    }
+
     if (!event || event.button === 0 || event.button === undefined) {
       this.pointerJustClicked = true;
       this.pointerAttackJustPressed = true;
@@ -1119,6 +1298,11 @@ class InputHandler {
   }
 
   _onPointerUp(event) {
+    if (this.isTouchDevice && this.touchControls) {
+      this.touchControls.handlePointerUp(
+        event && event.pointerId !== undefined ? event.pointerId : 0
+      );
+    }
     if (!event || event.button === 0 || event.button === undefined) {
       this.isPointerDown = false;
     }
@@ -1175,9 +1359,22 @@ class InputHandler {
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
     this.isPointerDown = false;
+    // (FIX M1.1/M1.8) Al perder el foco no debe quedar un joystick moviendo al jugador
+    this.resetTouchState();
+    if (this.touchControls) this.touchControls.resetAll();
   }
 
   getMovementVector() {
+    // (FIX M1.1) Si hay joystick activo manda el vector táctil; si está a cero, teclado.
+    if (this.isTouchDevice) {
+      const tx = this.touchState.moveX;
+      const ty = this.touchState.moveY;
+      if (tx !== 0 || ty !== 0) {
+        const len = Math.hypot(tx, ty);
+        return len > 1 ? { x: tx / len, y: ty / len } : { x: tx, y: ty };
+      }
+    }
+
     let dx = 0;
     let dy = 0;
 
@@ -1196,7 +1393,12 @@ class InputHandler {
   }
 
   consumeInteraction({ includeSpace = true } = {}) {
+    // (FIX M1.1) El botón A se mapea a 'interact' cuando hay algo con lo que interactuar
+    const touchInteracted = this.touchState.pressed.has('interact');
+    this.touchState.pressed.delete('interact');
+
     const interacted =
+      touchInteracted ||
       this.keysJustPressed.has('KeyE') ||
       (includeSpace && this.keysJustPressed.has('Space')) ||
       this.keysJustPressed.has('Enter');
@@ -1215,6 +1417,10 @@ class InputHandler {
   }
 
   consumeAttack() {
+    // (FIX M1.1) Flanco del botón A táctil (solo cuando no había interacción cerca)
+    const touchAttacked = this.touchState.pressed.has('attack');
+    this.touchState.pressed.delete('attack');
+
     const keyAttacked =
       this.keysJustPressed.has('KeyF') ||
       this.keysJustPressed.has('KeyJ') ||
@@ -1228,6 +1434,10 @@ class InputHandler {
     const pointerAttacked = this.pointerAttackJustPressed;
     this.pointerAttackJustPressed = false;
 
+    if (touchAttacked) {
+      this.lastAttackSource = 'touch';
+      return true;
+    }
     if (pointerAttacked) {
       this.lastAttackSource = 'pointer';
       return true;
@@ -1240,6 +1450,7 @@ class InputHandler {
   }
 
   isAttackHeld() {
+    if (this.touchState.buttons.has('attack')) return true;
     return (
       this.keysDown.has('Space') ||
       this.keysDown.has('KeyF') ||
@@ -1250,7 +1461,10 @@ class InputHandler {
   }
 
   consumeDash() {
+    const touchDashed = this.touchState.pressed.has('dash');
+    this.touchState.pressed.delete('dash');
     const dashed =
+      touchDashed ||
       this.keysJustPressed.has('ShiftLeft') ||
       this.keysJustPressed.has('ShiftRight');
     this.keysJustPressed.delete('ShiftLeft');
@@ -1259,7 +1473,9 @@ class InputHandler {
   }
 
   consumeBarrier() {
-    const val = this.keysJustPressed.has('KeyQ');
+    const touchBarrier = this.touchState.pressed.has('barrier');
+    this.touchState.pressed.delete('barrier');
+    const val = touchBarrier || this.keysJustPressed.has('KeyQ');
     this.keysJustPressed.delete('KeyQ');
     return val;
   }
@@ -1317,6 +1533,8 @@ class InputHandler {
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
+    // (FIX M1.1) Los flancos táctiles no consumidos caducan como los del teclado
+    this.touchState.pressed.clear();
   }
 }
 
@@ -3030,6 +3248,25 @@ const UI_COLORS = {
 
 const UI_FONT = 'monospace';
 
+/**
+ * (FIX M1.5) El HUD móvil necesita tipografía más grande: 320×180 lógicos es muy
+ * pequeño para leerlo en un teléfono.
+ */
+const TOUCH_HUD_SCALE = 1.35;
+
+/**
+ * Fuente del HUD con escala táctil.
+ * @param {number} base Tamaño lógico original en px.
+ * @param {boolean} isTouch Si el dispositivo es táctil.
+ * @param {boolean} [bold=false]
+ * @returns {string} Cadena `ctx.font` lista para usar.
+ */
+function hudFontSize(base, isTouch, bold = false) {
+  const scale = isTouch ? TOUCH_HUD_SCALE : 1;
+  const size = Math.round(base * scale * 10) / 10;
+  return `${bold ? 'bold ' : ''}${size}px ${UI_FONT}`;
+}
+
 class UILayout {
   /** Rectángulo seguro centrado: ningún elemento de UI debe salir de aquí. */
   static safeRect() {
@@ -3405,6 +3642,385 @@ class UILayout {
     ctx.fillRect(x, y, 2, trackH);
     ctx.fillStyle = UI_COLORS.accent;
     ctx.fillRect(x, thumbY, 2, thumbH);
+    ctx.restore();
+  }
+}
+
+  // ==========================================
+  // Módulo: src/ui/TouchControls.js
+  // ==========================================
+/**
+ * TouchControls · Capa de controles virtuales para móvil.
+ *
+ * Se dibuja en píxeles del canvas (0..1280 × 0..720) y se superpone al HUD, nunca
+ * dentro del espacio lógico 320×180. No escucha eventos por su cuenta: InputHandler
+ * le delega pointerdown/move/up (una única fuente de verdad, sin dobles disparos).
+ *
+ * Distribución:
+ *  - Joystick abajo a la izquierda (radio visual 50 CSS px, zona táctil 120 CSS px).
+ *  - Botón A (atacar/interactuar) abajo a la derecha, B (dash) arriba-izquierda,
+ *    C (barrera/parry) arriba.
+ *  - ☰ (pausa) arriba a la derecha, bajo el reloj del HUD.
+ *  - 🎒 (inventario) arriba a la izquierda, bajo corazones/monedas.
+ *
+ * Los tamaños se expresan en CSS px y se convierten a píxeles del canvas con el
+ * factor `w / clientWidth`, para que en un móvil el joystick siga midiendo 50 px
+ * reales de pantalla aunque el canvas esté a 693 CSS px de ancho.
+ */
+
+const DEAD_ZONE = 0.15;
+
+class TouchControls {
+  constructor(canvas, inputHandler, options = {}) {
+    this.canvas = canvas || null;
+    this.input = inputHandler || null;
+    this.enabled = Boolean(inputHandler && inputHandler.isTouchDevice);
+
+    this.isBlocked = typeof options.isBlocked === 'function' ? options.isBlocked : null;
+    this.onMenu = typeof options.onMenu === 'function' ? options.onMenu : null;
+    this.onBag = typeof options.onBag === 'function' ? options.onBag : null;
+    this.isInteractionAvailable =
+      typeof options.isInteractionAvailable === 'function' ? options.isInteractionAvailable : null;
+    // Paneles de canvas (inventario/ficha/diario): no tienen input táctil propio,
+    // así que el botón 🎒 debe seguir disponible para cerrarlos.
+    this.isPanelOpen = typeof options.isPanelOpen === 'function' ? options.isPanelOpen : null;
+
+    this.joystick = {
+      active: false,
+      pointerId: null,
+      x: 0,
+      y: 0,
+      dx: 0,
+      dy: 0
+    };
+    // pointerId -> { code, zone }
+    this.buttonPointers = new Map();
+  }
+
+  /** Hay dispositivo táctil (independiente de si ahora mismo está bloqueado). */
+  isTouchEnabled() {
+    return this.enabled;
+  }
+
+  /** ¿Puede dibujar/capturar input ahora mismo? (sin contar paneles de canvas) */
+  isUsable() {
+    return this.enabled && !this._hardBlocked();
+  }
+
+  _hardBlocked() {
+    try {
+      if (this.input && typeof this.input.isDOMBlocked === 'function' && this.input.isDOMBlocked()) {
+        return true;
+      }
+      if (this.isBlocked) return Boolean(this.isBlocked());
+    } catch (_) {
+      return false;
+    }
+    return false;
+  }
+
+  _panelOpen() {
+    try {
+      return Boolean(this.isPanelOpen && this.isPanelOpen());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** Geometría en píxeles del canvas. `k` = píxeles de canvas por píxel CSS. */
+  _layout() {
+    const w = this.canvas && this.canvas.width ? this.canvas.width : 1280;
+    const h = this.canvas && this.canvas.height ? this.canvas.height : 720;
+    const cssW = this.canvas && this.canvas.clientWidth ? this.canvas.clientWidth : w;
+    // (FIX M1.2) Tope superior: en pantallas muy pequeñas unos controles gigantes
+    // se comerían la barra de jefe y el HUD.
+    const k = Math.max(0.5, Math.min(2, w / Math.max(1, cssW)));
+
+    // Escala del HUD lógico (320×180) a píxeles del canvas
+    const sx = w / 320;
+
+    const margin = 18 * k;
+    const joyR = 50 * k;
+    const aR = 55 * k;
+    const bR = 45 * k;
+    const cR = 45 * k;
+    const menuR = 22 * k;
+    const bagR = 22 * k;
+
+    const joy = {
+      x: margin + joyR,
+      y: h - margin - joyR,
+      r: joyR,
+      zone: 120 * k
+    };
+    const a = { x: w - margin - aR, y: h - margin - aR, r: aR };
+    const b = { x: a.x - aR - bR - 12 * k, y: a.y - 14 * k, r: bR };
+    const c = { x: a.x - 12 * k, y: a.y - aR - cR - 12 * k, r: cR };
+
+    // El HUD ocupa la franja superior: el reloj termina en y≈20 lógicos y los
+    // corazones+stamina en y≈27. Los botones de menú se colocan justo debajo.
+    const menu = { x: w - margin - menuR, y: 20 * sx + 8 * k + menuR, r: menuR };
+    const bag = { x: margin + bagR, y: 30 * sx + 8 * k + bagR, r: bagR };
+
+    return { w, h, k, joy, a, b, c, menu, bag };
+  }
+
+  /**
+   * (FIX M1.7) Zona tocada: 'joystick' | 'btnA' | 'btnB' | 'btnC' | 'menu' | 'bag' | null.
+   * Coordenadas en píxeles del canvas (0..1280, 0..720).
+   */
+  hitTest(x, y) {
+    if (!this.isUsable()) return null;
+    const L = this._layout();
+    const hit = (circle, padding = 0) =>
+      Math.hypot(x - circle.x, y - circle.y) <= circle.r + padding;
+
+    // (FIX M1.4) Con el inventario abierto, solo responde el botón de cerrar (🎒/✕)
+    if (this._panelOpen()) {
+      return hit(L.bag, 8 * L.k) ? 'bag' : null;
+    }
+
+    if (hit(L.menu, 8 * L.k)) return 'menu';
+    if (hit(L.bag, 8 * L.k)) return 'bag';
+    if (hit(L.a)) return 'btnA';
+    if (hit(L.b)) return 'btnB';
+    if (hit(L.c)) return 'btnC';
+    if (Math.hypot(x - L.joy.x, y - L.joy.y) <= L.joy.zone) return 'joystick';
+    return null;
+  }
+
+  handlePointerDown(zone, x, y, pointerId = 0) {
+    if (!this.isUsable() || !zone) return;
+    if (this._panelOpen() && zone !== 'bag') return;
+
+    if (zone === 'menu') {
+      if (this.onMenu) this.onMenu();
+      return;
+    }
+    if (zone === 'bag') {
+      if (this.onBag) this.onBag();
+      return;
+    }
+
+    if (zone === 'joystick') {
+      if (this.joystick.active && this.joystick.pointerId !== pointerId) return;
+      this.joystick.active = true;
+      this.joystick.pointerId = pointerId;
+      this._updateJoystick(x, y);
+      return;
+    }
+
+    let code = null;
+    if (zone === 'btnA') {
+      const wantsInteraction =
+        this.isInteractionAvailable && this.isInteractionAvailable();
+      code = wantsInteraction ? 'interact' : 'attack';
+    } else if (zone === 'btnB') {
+      code = 'dash';
+    } else if (zone === 'btnC') {
+      code = 'barrier';
+    }
+    if (!code) return;
+
+    // Un mismo puntero no puede mantener dos botones a la vez
+    this._releaseButton(pointerId);
+    this.buttonPointers.set(pointerId, { code, zone });
+    if (this.input) this.input.pressTouchButton(code);
+  }
+
+  handlePointerMove(x, y, pointerId = 0) {
+    if (!this.isUsable() || this._panelOpen()) return;
+    if (this.joystick.active && this.joystick.pointerId === pointerId) {
+      this._updateJoystick(x, y);
+    }
+  }
+
+  handlePointerUp(pointerId = 0) {
+    if (this.joystick.active && this.joystick.pointerId === pointerId) {
+      this.joystick.active = false;
+      this.joystick.pointerId = null;
+      this.joystick.dx = 0;
+      this.joystick.dy = 0;
+      if (this.input) this.input.setTouchMovement(0, 0);
+    }
+    this._releaseButton(pointerId);
+  }
+
+  /** Suelta todos los controles (blur, modal, cambio de escena). */
+  resetAll() {
+    this.joystick.active = false;
+    this.joystick.pointerId = null;
+    this.joystick.dx = 0;
+    this.joystick.dy = 0;
+    this.joystick.x = 0;
+    this.joystick.y = 0;
+    if (this.input) {
+      this.input.setTouchMovement(0, 0);
+      for (const entry of this.buttonPointers.values()) {
+        this.input.releaseTouchButton(entry.code);
+      }
+    }
+    this.buttonPointers.clear();
+  }
+
+  _releaseButton(pointerId) {
+    const entry = this.buttonPointers.get(pointerId);
+    if (!entry) return;
+    this.buttonPointers.delete(pointerId);
+    if (this.input) this.input.releaseTouchButton(entry.code);
+  }
+
+  _updateJoystick(x, y) {
+    const L = this._layout();
+    const dx = x - L.joy.x;
+    const dy = y - L.joy.y;
+    const dist = Math.hypot(dx, dy);
+    const maxOffset = L.joy.r;
+
+    const clamped = Math.min(dist, maxOffset);
+    const nx = dist > 0 ? dx / dist : 0;
+    const ny = dist > 0 ? dy / dist : 0;
+
+    this.joystick.x = L.joy.x + nx * clamped;
+    this.joystick.y = L.joy.y + ny * clamped;
+
+    // Zona muerta del 15 % sobre el recorrido útil del pulgar
+    const norm = maxOffset > 0 ? clamped / maxOffset : 0;
+    let vx = 0;
+    let vy = 0;
+    if (norm > DEAD_ZONE) {
+      const scaled = (norm - DEAD_ZONE) / (1 - DEAD_ZONE);
+      vx = nx * scaled;
+      vy = ny * scaled;
+    }
+
+    this.joystick.dx = vx;
+    this.joystick.dy = vy;
+    if (this.input) this.input.setTouchMovement(vx, vy);
+  }
+
+  _isPressed(zone) {
+    for (const entry of this.buttonPointers.values()) {
+      if (entry.zone === zone) return true;
+    }
+    return false;
+  }
+
+  // ------------------------------------------------------------------ render
+
+  /**
+   * (FIX M1.6) Dibuja en coordenadas de pantalla del canvas (1280×720).
+   * El render de main está en 320×180; aquí se restablece la matriz a identidad.
+   */
+  render(ctx) {
+    if (!ctx || !this.enabled) return;
+    if (this._hardBlocked()) {
+      // (FIX M1.8) Con un modal DOM abierto no se dibuja ni se captura nada
+      this.resetAll();
+      return;
+    }
+
+    const L = this._layout();
+    const panelOpen = this._panelOpen();
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    if (panelOpen) {
+      // Inventario/ficha/diario abiertos: se apaga el resto y queda solo el cierre.
+      this.resetAll();
+      this._drawButton(ctx, L.bag, '✕', '#f87171', false, L.k);
+    } else {
+      this._drawJoystick(ctx, L);
+      this._drawButton(ctx, L.a, '⚔️', '#fde047', this._isPressed('btnA'), L.k);
+      this._drawButton(ctx, L.b, '⚡', '#38bdf8', this._isPressed('btnB'), L.k);
+      this._drawButton(ctx, L.c, '🛡️', '#c084fc', this._isPressed('btnC'), L.k);
+      this._drawButton(ctx, L.menu, '☰', '#e2e8f0', false, L.k);
+      this._drawButton(ctx, L.bag, '🎒', '#e2e8f0', false, L.k);
+    }
+
+    ctx.restore();
+  }
+
+  _drawJoystick(ctx, L) {
+    const active = this.joystick.active;
+    const { x, y, r, zone } = L.joy;
+
+    ctx.save();
+    ctx.globalAlpha = active ? 0.95 : 0.5;
+
+    // Zona táctil (solo visible al tocarla, para no ensuciar la escena)
+    if (active) {
+      ctx.beginPath();
+      ctx.arc(x, y, zone, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+      ctx.lineWidth = Math.max(1, 1.5 * L.k);
+      ctx.stroke();
+    }
+
+    // Base
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10, 14, 24, 0.42)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+    ctx.lineWidth = Math.max(2, r * 0.06);
+    ctx.stroke();
+
+    // Flechas direccionales
+    ctx.fillStyle = 'rgba(226, 232, 240, 0.72)';
+    ctx.font = `bold ${Math.round(r * 0.42)}px ${UI_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('▲', x, y - r * 0.62);
+    ctx.fillText('▼', x, y + r * 0.62);
+    ctx.fillText('◀', x - r * 0.62, y);
+    ctx.fillText('▶', x + r * 0.62, y);
+
+    // Pulgar
+    const tx = active ? this.joystick.x : x;
+    const ty = active ? this.joystick.y : y;
+    ctx.beginPath();
+    ctx.arc(tx, ty, r * 0.42, 0, Math.PI * 2);
+    ctx.fillStyle = active ? 'rgba(56, 189, 248, 0.8)' : 'rgba(148, 163, 184, 0.55)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(248, 250, 252, 0.9)';
+    ctx.lineWidth = Math.max(1, r * 0.04);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  _drawButton(ctx, circle, icon, color, pressed, k) {
+    const { x, y, r } = circle;
+
+    ctx.save();
+    ctx.globalAlpha = pressed ? 0.98 : 0.6;
+
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = pressed ? 'rgba(30, 41, 59, 0.94)' : 'rgba(10, 14, 24, 0.45)';
+    ctx.fill();
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2, r * 0.07);
+    ctx.stroke();
+
+    if (pressed) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = Math.max(1, 1.5 * k);
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.82, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = `${Math.round(r * 0.92)}px ${UI_FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(icon, x, y + r * 0.03);
+
     ctx.restore();
   }
 }
@@ -9657,6 +10273,19 @@ class CollisionSystem {
 
     for (const other of obstacles) {
       if (!other || other === entity || other.isSleeping) continue;
+
+      // (FIX NPC.7) Descarte rápido por distancia antes de construir cajas: con ~20 cuerpos
+      // por escena se ahorra la mayoría de los cálculos. Las hitboxes son de 10x8 px, así
+      // que con más de 32 px entre centros no puede haber solape.
+      if (typeof entity.centerX === 'number' && typeof other.centerX === 'number') {
+        if (
+          Math.abs(entity.centerX - other.centerX) > 32 ||
+          Math.abs(entity.centerY - other.centerY) > 32
+        ) {
+          continue;
+        }
+      }
+
       const otherBox = other.worldBoundingBox;
       if (!otherBox) continue;
 
@@ -10705,12 +11334,16 @@ class Player extends Entity {
       });
       const canCrossChasm = Boolean(tilemap && 'allowChasmCrossing' in tilemap);
       if (canCrossChasm) tilemap.allowChasmCrossing = true;
+      // (FIX NPC.4) El Dash es una maniobra de combate: no la frenan aldeanos ni animales
+      const dashObstacles = Array.isArray(obstacles)
+        ? obstacles.filter((o) => o && !o.isNpc && !o.isAnimal)
+        : obstacles;
       const { blockedX, blockedY } = CollisionSystem.moveWithCollisions(
         this,
         this.dashVx * dt,
         this.dashVy * dt,
         tilemap,
-        obstacles
+        dashObstacles
       );
       if (canCrossChasm) {
         tilemap.allowChasmCrossing = false;
@@ -11178,6 +11811,11 @@ class NPC extends Entity {
 
     // Cooldown para evitar bloqueos permanentes si el jugador permanece cerca
     this.politePauseCooldown = 0;
+
+    // (FIX NPC.4) Marca de "cuerpo blando": el dash del jugador no se bloquea con NPCs
+    this.isNpc = true;
+    // (FIX NPC.4/NPC.5) Amenaza viva en la escena: huye y no suelta barks
+    this.inCombat = false;
   }
 
   canInteract(player) {
@@ -11203,6 +11841,8 @@ class NPC extends Entity {
   }
 
   triggerAmbientBark(customText = null) {
+    // (FIX NPC.5) Nada de bocadillos ambientales en mitad de un combate
+    if (this.inCombat) return;
     const text =
       customText ||
       (this.ambientPhrases.length > 0
@@ -11216,8 +11856,9 @@ class NPC extends Entity {
     }
   }
 
-  update(dt, tilemap, obstacles, isTalking = false, player = null) {
+  update(dt, tilemap, obstacles, isTalking = false, player = null, threat = null) {
     this.promptBobTimer += dt * 4.5;
+    this.inCombat = Boolean(threat);
     this.jobAnimTimer += dt;
 
     if (this.politePauseCooldown > 0) {
@@ -11237,6 +11878,24 @@ class NPC extends Entity {
     if (isTalking) {
       this.isMoving = false;
       this.ambientBubbleTimer = 0;
+      super.update(dt);
+      return;
+    }
+
+    // (FIX NPC.3) Si la escenografía cambió y quedó incrustado en un muro/techo, se recoloca
+    this._ensureFreePosition(tilemap);
+
+    // (FIX NPC.4) Con un enemigo vivo cerca: los estáticos se guarecen y el resto huye.
+    // Nada de pausa cortés ni de rutina mientras dure el combate.
+    if (this.inCombat) {
+      this.ambientBubbleTimer = 0;
+      this.ambientBubbleText = '';
+      this.currentActivityIcon = '';
+      if (this.behavior === 'static') {
+        this.isMoving = false;
+      } else {
+        this._fleeFromThreat(threat, dt, tilemap, obstacles);
+      }
       super.update(dt);
       return;
     }
@@ -11303,7 +11962,9 @@ class NPC extends Entity {
       return;
     }
 
-    const target = this.patrolPoints[this.currentWaypointIndex];
+    // (FIX NPC.3) Waypoints autorados dentro de un muro (mesas, tejados, agua) se
+    // corrigen a la baldosa libre más cercana: mismo patrón que el FIX 3.2 de la IA de enemigos.
+    const target = this._resolveNavTarget(this.patrolPoints[this.currentWaypointIndex], tilemap);
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const dist = Math.hypot(dx, dy);
@@ -11404,6 +12065,81 @@ class NPC extends Entity {
     }
 
     super.update(dt);
+  }
+
+  /**
+   * (FIX NPC.3) Saca al NPC de una baldosa incrustada usando la caja real de colisión.
+   * Los NPCs estáticos se respetan: muchos posan a propósito tras un mostrador o altar.
+   */
+  _ensureFreePosition(tilemap) {
+    if (!tilemap || this.behavior === 'static') return;
+    if (!CollisionSystem.collidesWithMap(this.worldBoundingBox, tilemap)) return;
+
+    const ts = tilemap.tileSize;
+    const baseCol = Math.floor(this.x / ts);
+    const baseRow = Math.floor(this.y / ts);
+    for (let radius = 1; radius <= 3; radius++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+          const col = baseCol + dx;
+          const row = baseRow + dy;
+          if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(col * ts, row * ts), tilemap)) {
+            this.x = col * ts;
+            this.y = row * ts;
+            this.stuckTimer = 0;
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * (FIX NPC.3) Corrige un waypoint que cae en una baldosa sólida. Devuelve el waypoint
+   * tal cual si es alcanzable, o el centro de la baldosa libre más cercana.
+   */
+  _resolveNavTarget(target, tilemap) {
+    if (!tilemap || !target) return target;
+    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(target.x, target.y), tilemap)) {
+      return target;
+    }
+    const ts = tilemap.tileSize;
+    const free = nearestFreeTile(tilemap, Math.floor(target.x / ts), Math.floor(target.y / ts), 3);
+    if (!free) return target;
+    return { ...target, x: free.col * ts, y: free.row * ts };
+  }
+
+  /**
+   * (FIX NPC.4) Huida simple: se aleja de la amenaza y, si la diagonal está tapada,
+   * prueba el deslizamiento lateral; si las tres fallan, se queda cubierto.
+   */
+  _fleeFromThreat(threat, dt, tilemap, obstacles) {
+    if (!threat) return;
+    const tx = typeof threat.centerX === 'number' ? threat.centerX : threat.x;
+    const ty = typeof threat.centerY === 'number' ? threat.centerY : threat.y;
+    const dx = this.centerX - tx;
+    const dy = this.centerY - ty;
+    const dist = Math.max(0.001, Math.hypot(dx, dy));
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const step = this.speed * 1.6 * dt;
+
+    for (const [ax, ay] of [[nx, ny], [-ny, nx], [ny, -nx]]) {
+      const res = CollisionSystem.moveWithCollisions(this, ax * step, ay * step, tilemap, obstacles);
+      if (!(res.blockedX && res.blockedY)) {
+        if (Math.abs(ax) >= Math.abs(ay)) {
+          this.direction = ax > 0 ? 'right' : 'left';
+        } else {
+          this.direction = ay > 0 ? 'down' : 'up';
+        }
+        this.isMoving = true;
+        return;
+      }
+    }
+
+    this.isMoving = false;
+    this.stuckTimer = 0;
   }
 
   render(ctx, camera) {
@@ -11727,8 +12463,17 @@ function getBromForgeChoices(game) {
   });
 
   choices.push({
-    label: '🍞 ¿Tienes algo de Pan Campesino?',
+    // (FIX NPC.8) Era un grifo infinito de pan: se cogía gratis y se revendía a 2 Bytes
+    // en el mismo menú. Ahora es una sola hogaza de bienvenida por partida.
+    label: game.bromBreadGift ? '🍞 Pan Campesino (Ya te di tu hogaza)' : '🍞 ¿Tienes algo de Pan Campesino?',
     onSelect: () => {
+      if (game.bromBreadGift) {
+        dialogueBox.showMessage('Herrero Brom · Forjador', [
+          'Ya te di la hogaza de bienvenida, muchacho. La próxima la compras como todo el mundo.',
+          'El horno de mi forja no da de comer gratis a Media Valleverde.'
+        ], getBromForgeChoices(game));
+        return;
+      }
       if (inventory && !inventory.hasItem('bread')) {
         inventory.addItem({
           id: 'bread',
@@ -11737,12 +12482,13 @@ function getBromForgeChoices(game) {
           iconIndex: 1, // ITEM_ICONS.BREAD
           qty: 1
         });
+        game.bromBreadGift = true;
         if (typeof game._saveGameToStorage === 'function') {
           game._saveGameToStorage();
         }
         dialogueBox.showMessage('Herrero Brom · Forjador', [
           '¡Claro que sí! Toma una hogaza recién salida del horno de leña de mi forja.',
-          'Se ha añadido [Pan Campesino x1] a tu mochila.'
+          'Es la de bienvenida: no habrá otra. Se ha añadido [Pan Campesino x1] a tu mochila.'
         ], getBromForgeChoices(game));
       } else {
         dialogueBox.showMessage('Herrero Brom · Forjador', [
@@ -11831,6 +12577,24 @@ class Animal extends Entity {
 
     this.stateTimer = 1 + Math.random() * 2;
     this.moveDir = { x: 0, y: 0 };
+    this.heartTimer = 0;
+    this.ambientSoundCooldown = 4 + Math.random() * 6;
+
+    // (FIX NPC.4) El dash del jugador no se bloquea con animales del pueblo
+    this.isAnimal = true;
+  }
+
+  /**
+   * (FIX NPC.1) Devuelve el animal a su punto de origen y limpia el estado transitorio
+   * (paseo, corazón, temporizadores) para que una partida nueva no herede la anterior.
+   */
+  reset() {
+    this.x = this.homeX;
+    this.y = this.homeY;
+    this.direction = 'down';
+    this.isMoving = false;
+    this.moveDir = { x: 0, y: 0 };
+    this.stateTimer = 1 + Math.random() * 2;
     this.heartTimer = 0;
     this.ambientSoundCooldown = 4 + Math.random() * 6;
   }
@@ -16843,34 +17607,30 @@ class WorldMap {
       return false;
     };
 
+    // (FIX B7) Solo estado vivo del juego: las claves `ojete_*` de localStorage nunca
+    // las escribió nadie (restos del formato v3.4), así que eran ramas muertas.
     const gcDefeated = Boolean(
       player?.dungeonCores?.gc ||
       player?.hasDash ||
-      isEnemyDead('boss_garbage_collector') ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_core_gc') === 'true')
+      isEnemyDead('boss_garbage_collector')
     );
 
     const stackDefeated = Boolean(
       player?.dungeonCores?.stack ||
       player?.hasChargedAttack ||
-      isEnemyDead('boss_stack_overflow') ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_core_stack') === 'true')
+      isEnemyDead('boss_stack_overflow')
     );
 
     const microwaveDefeated = Boolean(
       player?.dungeonCores?.microwave ||
       player?.hasBarrier ||
-      isEnemyDead('boss_prototype_microwave') ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_core_microwave') === 'true')
+      isEnemyDead('boss_prototype_microwave')
     );
 
-    const alexDefeated = Boolean(
-      isEnemyDead('boss_final_ai_alex') ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_game_won') === 'true')
-    );
+    const alexDefeated = isEnemyDead('boss_final_ai_alex');
 
-    const hasArmor = Boolean(player?.hasArmor || (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_armor_obtained') === 'true'));
-    const hasSword = Boolean(player?.hasSword || (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_sword_obtained') === 'true'));
+    const hasArmor = Boolean(player?.hasArmor);
+    const hasSword = Boolean(player?.hasSword);
 
     const swordLevel = player?.swordLevel || (hasSword ? 1 : 0);
     const armorLevel = player?.armorLevel || (hasArmor ? 1 : 0);
@@ -18676,6 +19436,8 @@ class MainMenuAndScenes {
     this.previousStateBeforeOptions = 'title';
     this.previousStateBeforeControls = 'title';
     this.previousStateBeforeLeaderboard = 'title';
+    // (FIX B6) Mientras la despedida está en pantalla, el modal absorbe el input
+    this.exitFarewellActive = false;
     this._lastPointerX = -1;
     this._lastPointerY = -1;
 
@@ -19127,10 +19889,12 @@ class MainMenuAndScenes {
     this._hideExitConfirmModal();
     const modal = document.getElementById('exit-farewell-modal');
     if (modal) modal.classList.remove('hidden');
+    this.exitFarewellActive = true;
     this._updateExitCountdownDisplay(3);
   }
 
   _hideExitFarewellModal() {
+    this.exitFarewellActive = false;
     if (typeof document === 'undefined') return;
     const modal = document.getElementById('exit-farewell-modal');
     if (modal) modal.classList.add('hidden');
@@ -19392,8 +20156,9 @@ class MainMenuAndScenes {
     }
 
     if (this.state === 'pause_cloud') {
-      const saveInfo = this.callbacks.getSaveSummary ? this.callbacks.getSaveSummary() : null;
-      const slotCode = saveInfo?.cloudCode || 'SLOT-1';
+      // (FIX B2) Se lee el código real de la nube; si no existe, no se inventa una ranura
+      const cloudCode = this.callbacks.getCloudCode ? this.callbacks.getCloudCode() : null;
+      const slotLabel = cloudCode ? `[${cloudCode}]` : '[Sin código]';
       return [
         {
           label: 'Guardar Partida [Nube + Respaldo]',
@@ -19406,10 +20171,14 @@ class MainMenuAndScenes {
           }
         },
         {
-          label: `Ver Código en la Nube [${slotCode}]`,
+          label: `Ver Código en la Nube ${slotLabel}`,
           action: () => {
             this.music.playMenuSelect();
-            this.showNotice(`Código de Ranura: ${slotCode}`);
+            if (!cloudCode) {
+              this.showNotice('Aún no hay código: guarda primero en la nube');
+              return;
+            }
+            this.showNotice(`Código de Ranura: ${cloudCode}`);
           }
         },
         {
@@ -19612,6 +20381,18 @@ class MainMenuAndScenes {
           this._exitCloseTriggered = true;
           this._tryCloseBrowserWindow();
           this._onExitCountdownComplete();
+        }
+        return;
+      }
+
+      // (FIX B6) La despedida es un modal real: ni clics ni teclas de juego la cierran
+      // por accidente (el InputHandler escucha en window y el modal no los absorbía).
+      // Solo Escape, como cierre explícito, o los botones del DOM.
+      if (this.exitFarewellActive) {
+        if (input.consumeKey('Escape')) {
+          this.music.playMenuSelect();
+          this._hideExitFarewellModal();
+          this.openTitleScreen();
         }
         return;
       }
@@ -20035,7 +20816,8 @@ class MainMenuAndScenes {
       if (this.previousStateBeforeLeaderboard === 'title') {
         this._renderTitleBackdropPixelArt(ctx);
       } else {
-        ctx.fillStyle = 'rgba(8, 11, 20, 0.78)';
+        // (FIX B5) Fondo opaco: el mundo ya no se dibuja por debajo del Salón de la Fama
+        ctx.fillStyle = '#080b14';
         ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
       }
       this._renderLeaderboardScreen(ctx);
@@ -25417,6 +26199,53 @@ class RPGGame {
       }
     }, canvas);
 
+    // (FIX M1.2-M1.8) Controles táctiles. Se construyen aquí y se enganchan al input;
+    // los callbacks son perezosos (menuSystem/inventory se crean más abajo).
+    this.touchControls = new TouchControls(canvas, this.input, {
+      // (FIX M1.8) Bloqueo duro: modales DOM, pausa y diálogo. Los paneles de canvas
+      // (inventario/ficha/diario) se gestionan aparte para poder cerrarlos con 🎒.
+      isBlocked: () =>
+        this.input.isDOMBlocked() ||
+        this.menuSystem.isBlockingGameplay() ||
+        this.dialogueBox.active,
+      isPanelOpen: () =>
+        Boolean(
+          this.inventory.isOpen ||
+          this.characterStats.isOpen ||
+          (this.questLogView && this.questLogView.isOpen)
+        ),
+      onMenu: () => {
+        if (this.menuSystem.state !== 'none' || this.dialogueBox.active) return;
+        this.player.stopMovement();
+        this.menuSystem.openPauseMenu();
+      },
+      onBag: () => {
+        if (this.menuSystem.state !== 'none' || this.dialogueBox.active) return;
+        if (this.inventory.isOpen) {
+          this.inventory.close();
+          return;
+        }
+        if (this.characterStats.isOpen) {
+          this.characterStats.close();
+          return;
+        }
+        if (this.questLogView && this.questLogView.isOpen) {
+          this.questLogView.close();
+          return;
+        }
+        this.inventory.open();
+        if (this.music) this.music.playMenuSelect();
+      },
+      isInteractionAvailable: () => {
+        try {
+          return Boolean(this._findBestInteraction());
+        } catch (_) {
+          return false;
+        }
+      }
+    });
+    this.input.attachTouchControls(this.touchControls);
+
     this.tilemap = new Tilemap(assets.tilesetSheet, assets.tileSize);
     this.camera = new Camera2D(
       VIEWPORT_WIDTH,
@@ -25519,6 +26348,10 @@ class RPGGame {
     this.transitionCooldown = 0;
     // (FIX 2.4) Origen de la última entrada a un templo (para que su salida vuelva a esa sala)
     this.templeReturn = null;
+    // (FIX NPC.6) Cambio de rutina pospuesto porque el NPC estaba hablando
+    this._npcsSchedulePending = false;
+    // (FIX NPC.8) Brom solo regala una hogaza de pan por partida
+    this.bromBreadGift = false;
 
     // Control de eventos y debouncing de los Puzles en los Templos Binarios
     this.activeArmorSwitchTile = null;
@@ -25545,6 +26378,14 @@ class RPGGame {
         onOpenCloudSave: () => this._openCloudSaveModal(),
         onOpenCloudLoad: () => this._openCloudLoadModal(),
         getSaveSummary: () => this._getSaveSummary(),
+        // (FIX B2) Código de nube real para el menú (antes el menú inventaba 'SLOT-1')
+        getCloudCode: () => {
+          try {
+            return getSavedCloudCode() || null;
+          } catch {
+            return null;
+          }
+        },
         onApplyOptions: (opts) => this._applyGameOptions(opts),
         onOpenQuestLog: () => {
           if (this.inventory && this.inventory.isOpen) this.inventory.close();
@@ -25747,6 +26588,17 @@ class RPGGame {
     this.enemies = this._createFirstStageEnemies();
     this.worldItems = this._createWorldItems();
 
+    // (FIX NPC.8) El regalo de pan vuelve a estar disponible en una partida nueva
+    this.bromBreadGift = false;
+
+    // (FIX NPC.1) Los animales vuelven a su sitio: antes conservaban posición y estado
+    // de la partida anterior al empezar una nueva.
+    if (Array.isArray(this.animals)) {
+      for (const animal of this.animals) {
+        if (typeof animal.reset === 'function') animal.reset();
+      }
+    }
+
     this.inventory.items = [];
     this.inventory.selectedIndex = 0;
     this.gameCompleted = false;
@@ -25866,6 +26718,8 @@ class RPGGame {
       totalDeaths: this.totalDeaths || 0,
       totalJailVisits: this.totalJailVisits || 0,
       housePermissions: { ...this.housePermissions },
+      // (FIX NPC.8) Evita farmear pan (y dinero) recargando la partida
+      bromBreadGift: Boolean(this.bromBreadGift),
       inventoryItems: this.inventory.items.map((it) => ({ ...it })),
       bossCutscenesSeen: { ...this.bossCutscenesSeen },
       prebattleAlexCutscenePlayed: Boolean(this.prebattleAlexCutscenePlayed),
@@ -26273,6 +27127,7 @@ class RPGGame {
       this.totalJailVisits = typeof data.totalJailVisits === 'number' ? data.totalJailVisits : 0;
       this.isJailedForever = false;
       this.player.hasBrokenHeartCurse = Boolean(data.hasBrokenHeartCurse);
+      this.bromBreadGift = Boolean(data.bromBreadGift);
 
       // Carga y sincronización del Puzle 1 (Templo de la Armadura)
       if (data.armorPuzzle && this.tilemap?.armorPuzzle) {
@@ -27370,7 +28225,9 @@ class RPGGame {
         name: 'Herbolaria Lyra · Alquimista',
         jobTitle: 'Botánica y Alquimista',
         homeSceneId: 'herbalist_house',
-        x: 8 * 16,
+        // (FIX NPC.3) Estaba dentro del tejado de su cabaña (tile ROOF_RED, capa superior):
+        // se dibujaba oculta. Ahora posa junto a la casa, en suelo libre.
+        x: 9 * 16,
         y: 17 * 16,
         speed: 0,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERBALIST),
@@ -29057,8 +29914,15 @@ class RPGGame {
    */
   _updateNPCSchedules() {
     const isNight = this.dayNight.timeOfDayHours >= 22 || this.dayNight.timeOfDayHours < 6;
+    // (FIX NPC.6) No se manda a la cama a quien está a mitad de una frase: se pospone
+    // su cambio de rutina hasta que el diálogo termine.
+    const talkingNPC = this.dialogueBox && this.dialogueBox.active ? this.dialogueBox.currentNPC : null;
     for (const npc of this.npcs) {
       if (!npc.homeSceneId || npc.homeSceneId === 'overworld') continue;
+      if (npc === talkingNPC) {
+        this._npcsSchedulePending = true;
+        continue;
+      }
 
       if (isNight) {
         npc.sceneId = npc.homeSceneId;
@@ -29075,6 +29939,30 @@ class RPGGame {
         }
       }
     }
+  }
+
+  /**
+   * (FIX NPC.4) Amenaza de combate real para un NPC: el enemigo despierto (persiguiendo
+   * o alertado) más cercano dentro del radio. No basta con que haya esbirros vivos en la
+   * escena: los dos drones de entrenamiento del pueblo harían huir a todos en bucle.
+   */
+  _findNPCThreat(npc, enemies, radius = 160) {
+    if (!npc || !Array.isArray(enemies) || enemies.length === 0) return null;
+    let best = null;
+    let bestDist = radius;
+    for (const enemy of enemies) {
+      if (!enemy || enemy.dead) continue;
+      const awake = enemy.isBoss
+        ? enemy.activeCombat !== false
+        : (enemy.brain && (enemy.brain.state === 'CHASE' || enemy.brain.state === 'ALERT'));
+      if (!awake) continue;
+      const d = Math.hypot(enemy.centerX - npc.centerX, enemy.centerY - npc.centerY);
+      if (d < bestDist) {
+        bestDist = d;
+        best = enemy;
+      }
+    }
+    return best;
   }
 
   /**
@@ -31502,6 +32390,10 @@ class RPGGame {
     }
     if (Math.floor(prevHour) !== Math.floor(this.dayNight.timeOfDayHours)) {
       this._updateNPCSchedules();
+    } else if (this._npcsSchedulePending && !this.dialogueBox.active) {
+      // (FIX NPC.6) El cambio de rutina que se pospuso por el diálogo se aplica ahora
+      this._npcsSchedulePending = false;
+      this._updateNPCSchedules();
     }
 
     const { npcs, animals, enemies, items } = this._getActiveSceneEntities();
@@ -31669,7 +32561,8 @@ class RPGGame {
     for (const npc of npcs) {
       const isTalking =
         this.dialogueBox.active && this.dialogueBox.currentNPC === npc;
-      npc.update(dt, this.tilemap, allEntities, isTalking, this.player);
+      const threat = isTalking ? null : this._findNPCThreat(npc, enemies);
+      npc.update(dt, this.tilemap, allEntities, isTalking, this.player, threat);
     }
     for (const animal of animals) {
       animal.update(
@@ -32043,6 +32936,7 @@ class RPGGame {
       this.menuSystem.state === 'exit_screen' ||
       this.menuSystem.state === 'game_over' ||
       this.menuSystem.state === 'world_map' ||
+      this.menuSystem.state === 'leaderboard' ||
       this.menuSystem.state === 'credits' ||
       (this.menuSystem.state === 'options' && this.menuSystem.previousState === 'title') ||
       (this.menuSystem.state === 'controls' && this.menuSystem.previousStateBeforeControls === 'title') ||
@@ -32141,6 +33035,9 @@ class RPGGame {
     if (this.achievementManager) {
       this.achievementManager.renderToast(ctx);
     }
+    // (FIX M1.6) Controles táctiles al final para quedar por encima del HUD y de los
+    // paneles de canvas (así el botón de cerrar del inventario sigue visible).
+    if (this.touchControls) this.touchControls.render(ctx);
   }
 
   _renderAbyssalPortal(ctx, portalObj = null) {
@@ -32275,6 +33172,10 @@ class RPGGame {
     ctx.save();
     ctx.textBaseline = 'middle';
 
+    // (FIX M1.5) HUD móvil: tipografía 1.35x y menos información secundaria
+    const isTouchHud = Boolean(this.touchControls && this.touchControls.isTouchEnabled());
+    const hudFont = (size, bold = false) => hudFontSize(size, isTouchHud, bold);
+
     // =========================================================================
     // 1. SUPERIOR DERECHA: Cápsula translúcida con reloj digital, icono solar/lunar y micro-indicador cloud (☁️)
     // =========================================================================
@@ -32295,12 +33196,12 @@ class RPGGame {
     ctx.strokeRect(capsuleX + 0.5, capsuleY + 0.5, capsuleW - 1, capsuleH - 1);
 
     // Icono solar/lunar
-    ctx.font = `6px ${UI_FONT}`;
+    ctx.font = hudFont(6);
     ctx.textAlign = 'left';
     ctx.fillText(sunMoonIcon, capsuleX + 4, capsuleY + 7.5);
 
     // Hora digital
-    ctx.font = `bold 5.5px ${UI_FONT}`;
+    ctx.font = hudFont(5.5, true);
     ctx.fillStyle = '#ffe599';
     ctx.fillText(timeStr, capsuleX + 16, capsuleY + 7.5);
 
@@ -32308,7 +33209,7 @@ class RPGGame {
     const syncColor = this.cloudSyncStatus === 'syncing'
       ? '#38bdf8'
       : (this.hasPendingCloudSync ? '#f59e0b' : '#4ade80');
-    ctx.font = `6px ${UI_FONT}`;
+    ctx.font = hudFont(6);
     ctx.fillStyle = syncColor;
     ctx.textAlign = 'right';
     ctx.fillText('☁', capsuleX + capsuleW - 4, capsuleY + 7.5);
@@ -32344,7 +33245,7 @@ class RPGGame {
         ctx.fillRect(hx, hy, 11, 11);
         ctx.strokeStyle = '#ef4444';
         ctx.strokeRect(hx + 0.5, hy + 0.5, 10, 10);
-        ctx.font = 'bold 5.5px monospace';
+        ctx.font = hudFont(5.5, true);
         ctx.fillStyle = (performance.now() % 400 < 200) ? '#ef4444' : '#fca5a5';
         ctx.textAlign = 'center';
         ctx.fillText('ERR', hx + 5.5, hy + 6);
@@ -32385,14 +33286,16 @@ class RPGGame {
         color = '#64748b';
       }
 
-      ctx.font = '7.5px monospace';
+      ctx.font = hudFont(7.5);
       ctx.fillStyle = color;
       ctx.textAlign = 'center';
       ctx.fillText(char, hx + 5.5, hy + 6);
     }
 
     // Icono 🤖% junto a los corazones ÚNICAMENTE si la robotización supera el 50%
-    if (this.player.robotizationLevel > 50) {
+    // (FIX M1.5) En móvil se oculta el badge de robotización (información secundaria)
+    const showRobotBadge = !isTouchHud && this.player.robotizationLevel > 50;
+    if (showRobotBadge) {
       const robVal = Math.round(this.player.robotizationLevel);
       const robBadgeX = heartsX + heartsW + 4;
       const robBadgeY = heartsY;
@@ -32406,7 +33309,7 @@ class RPGGame {
       ctx.lineWidth = 1;
       ctx.strokeRect(robBadgeX + 0.5, robBadgeY + 0.5, robBadgeW - 1, robBadgeH - 1);
 
-      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.font = hudFont(5, true);
       ctx.fillStyle = isCrit ? '#f87171' : '#fde047';
       ctx.textAlign = 'center';
       ctx.fillText(`🤖${robVal}%`, robBadgeX + robBadgeW / 2, robBadgeY + 7.5);
@@ -32434,7 +33337,7 @@ class RPGGame {
     // (FIX 1.6) Antes vivía dentro de `if (comboStep > 0)`, así que solo aparecía
     // durante un combo. Ahora se dibuja siempre, con o sin espada, stamina o combo.
     // =========================================================================
-    const coinX = this.player.robotizationLevel > 50
+    const coinX = showRobotBadge
       ? heartsX + heartsW + 4 + 34 + 4   // desplazado a la derecha del icono 🤖%
       : heartsX + heartsW + 4;
     const coinY = heartsY;
@@ -32445,7 +33348,7 @@ class RPGGame {
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
     ctx.strokeRect(coinX + 0.5, coinY + 0.5, coinW - 1, coinH - 1);
-    ctx.font = 'bold 5px monospace';
+    ctx.font = hudFont(5, true);
     ctx.fillStyle = '#fde047';
     ctx.textAlign = 'center';
     ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
@@ -32482,7 +33385,9 @@ class RPGGame {
       const barW = 186;
       const barH = 14;
       const barX = Math.round((VIEWPORT_WIDTH - barW) / 2);
-      const barY = VIEWPORT_HEIGHT - 22;
+      // (FIX M1.5) En táctil los botones ocupan la esquina inferior derecha:
+      // la barra de jefe pasa arriba y centrada para no quedar tapada.
+      const barY = isTouchHud ? 40 : VIEWPORT_HEIGHT - 22;
 
       ctx.fillStyle = 'rgba(10, 14, 24, 0.88)';
       ctx.fillRect(barX, barY - 7, barW, barH + 7);
@@ -32490,12 +33395,12 @@ class RPGGame {
       ctx.lineWidth = 1;
       ctx.strokeRect(barX + 0.5, barY - 6.5, barW - 1, barH + 6);
 
-      ctx.font = 'bold 5.5px monospace';
+      ctx.font = hudFont(5.5, true);
       ctx.fillStyle = activeBoss.themeColor || '#38bdf8';
       ctx.textAlign = 'left';
       ctx.fillText(activeBoss.name.toUpperCase(), barX + 5, barY - 2);
 
-      ctx.font = '5.5px monospace';
+      ctx.font = hudFont(5.5);
       ctx.textAlign = 'right';
       if (activeBoss.dead) {
         ctx.fillStyle = '#fde047';
@@ -32531,7 +33436,8 @@ class RPGGame {
     const quickItem = this._getQuickSlotConsumable();
     // [R] lanza el console.log una vez aprendido; la ranura queda en [1]
     const quickLabel = this.player.skills?.log ? '[1]' : '[R]';
-    const qsX = 6;
+    // (FIX M1.5) En táctil el joystick ocupa la esquina inferior izquierda
+    const qsX = isTouchHud ? Math.round(VIEWPORT_WIDTH / 2) - 8 : 6;
     const qsY = VIEWPORT_HEIGHT - 22;
     const qsW = 16;
     const qsH = 16;
@@ -32546,7 +33452,7 @@ class RPGGame {
       if (this.inventory && this.inventory.itemsSheet) {
         UILayout.drawItemIcon(ctx, this.inventory.itemsSheet, quickItem.iconIndex, qsX + 2, qsY + 2, 12);
       } else {
-        ctx.font = 'bold 6px monospace';
+        ctx.font = hudFont(6, true);
         ctx.fillStyle = '#38bdf8';
         ctx.textAlign = 'center';
         ctx.fillText('+', qsX + 8, qsY + 8);
@@ -32554,7 +33460,7 @@ class RPGGame {
 
       // Contador flotante de unidades y etiqueta [R]
       const qtyStr = `x${quickItem.qty || 1}`;
-      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.font = hudFont(4.5, true);
       ctx.fillStyle = 'rgba(10, 14, 23, 0.9)';
       ctx.fillRect(qsX + qsW + 2, qsY + 3, 24, 10);
       ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
@@ -32564,7 +33470,7 @@ class RPGGame {
       ctx.textAlign = 'left';
       ctx.fillText(`${quickLabel}${qtyStr}`, qsX + qsW + 4, qsY + 8);
     } else {
-      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.font = hudFont(4.5, true);
       ctx.fillStyle = '#64748b';
       ctx.textAlign = 'center';
       ctx.fillText(quickLabel, qsX + 8, qsY + 8);
@@ -32574,7 +33480,32 @@ class RPGGame {
   }
 }
 
+/**
+ * (FIX M0.4) Registra el Service Worker de la PWA.
+ * Solo en http(s): el HTML portable abierto con file:// no puede registrar SW.
+ */
+function registerServiceWorker() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  if (typeof window === 'undefined' || !window.location) return;
+  const protocol = window.location.protocol;
+  if (protocol !== 'http:' && protocol !== 'https:') return;
+
+  const register = () => {
+    navigator.serviceWorker.register('./sw.js').catch((err) => {
+      // No es crítico: el juego funciona sin SW, solo se pierde el modo offline.
+      console.warn('[PWA] Service Worker no registrado:', err && err.message ? err.message : err);
+    });
+  };
+
+  if (document.readyState === 'complete') {
+    register();
+  } else {
+    window.addEventListener('load', register, { once: true });
+  }
+}
+
 async function bootstrap() {
+  registerServiceWorker();
   try {
     const canvas = document.getElementById('game-canvas');
     if (!canvas) {

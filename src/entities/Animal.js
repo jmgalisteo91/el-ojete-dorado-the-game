@@ -42,6 +42,24 @@ export class Animal extends Entity {
     this.moveDir = { x: 0, y: 0 };
     this.heartTimer = 0;
     this.ambientSoundCooldown = 4 + Math.random() * 6;
+
+    // (FIX NPC.4) El dash del jugador no se bloquea con animales del pueblo
+    this.isAnimal = true;
+  }
+
+  /**
+   * (FIX NPC.1) Devuelve el animal a su punto de origen y limpia el estado transitorio
+   * (paseo, corazón, temporizadores) para que una partida nueva no herede la anterior.
+   */
+  reset() {
+    this.x = this.homeX;
+    this.y = this.homeY;
+    this.direction = 'down';
+    this.isMoving = false;
+    this.moveDir = { x: 0, y: 0 };
+    this.stateTimer = 1 + Math.random() * 2;
+    this.heartTimer = 0;
+    this.ambientSoundCooldown = 4 + Math.random() * 6;
   }
 
   canInteract(player) {

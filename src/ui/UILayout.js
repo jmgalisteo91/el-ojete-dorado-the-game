@@ -60,6 +60,25 @@ export const UI_COLORS = {
 
 export const UI_FONT = 'monospace';
 
+/**
+ * (FIX M1.5) El HUD móvil necesita tipografía más grande: 320×180 lógicos es muy
+ * pequeño para leerlo en un teléfono.
+ */
+export const TOUCH_HUD_SCALE = 1.35;
+
+/**
+ * Fuente del HUD con escala táctil.
+ * @param {number} base Tamaño lógico original en px.
+ * @param {boolean} isTouch Si el dispositivo es táctil.
+ * @param {boolean} [bold=false]
+ * @returns {string} Cadena `ctx.font` lista para usar.
+ */
+export function hudFontSize(base, isTouch, bold = false) {
+  const scale = isTouch ? TOUCH_HUD_SCALE : 1;
+  const size = Math.round(base * scale * 10) / 10;
+  return `${bold ? 'bold ' : ''}${size}px ${UI_FONT}`;
+}
+
 export class UILayout {
   /** Rectángulo seguro centrado: ningún elemento de UI debe salir de aquí. */
   static safeRect() {

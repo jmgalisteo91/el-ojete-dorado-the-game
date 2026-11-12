@@ -49,11 +49,12 @@ import {
 } from './ui/AnimeCutsceneManager.js?v=8';
 import { DayNightCycle } from './world/DayNightCycle.js?v=8';
 import { RenderPipeline } from './graphics/RenderPipeline.js?v=8';
-import { UILayout, UI_FONT } from './ui/UILayout.js?v=8';
+import { UILayout, UI_FONT, hudFontSize } from './ui/UILayout.js?v=8';
 import { CloudStorage } from './services/CloudStorage.js?v=8';
 import { AIBotBrain } from './ai/AIBotBrain.js?v=8';
 import { AmbientMusic } from './audio/AmbientMusic.js?v=8';
 import { SpeechBubble } from './ui/SpeechBubble.js?v=8';
+import { TouchControls } from './ui/TouchControls.js?v=8';
 
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
@@ -111,6 +112,53 @@ export class RPGGame {
         this.achievementManager.setAudioContext(this.music.ctx);
       }
     }, canvas);
+
+    // (FIX M1.2-M1.8) Controles táctiles. Se construyen aquí y se enganchan al input;
+    // los callbacks son perezosos (menuSystem/inventory se crean más abajo).
+    this.touchControls = new TouchControls(canvas, this.input, {
+      // (FIX M1.8) Bloqueo duro: modales DOM, pausa y diálogo. Los paneles de canvas
+      // (inventario/ficha/diario) se gestionan aparte para poder cerrarlos con 🎒.
+      isBlocked: () =>
+        this.input.isDOMBlocked() ||
+        this.menuSystem.isBlockingGameplay() ||
+        this.dialogueBox.active,
+      isPanelOpen: () =>
+        Boolean(
+          this.inventory.isOpen ||
+          this.characterStats.isOpen ||
+          (this.questLogView && this.questLogView.isOpen)
+        ),
+      onMenu: () => {
+        if (this.menuSystem.state !== 'none' || this.dialogueBox.active) return;
+        this.player.stopMovement();
+        this.menuSystem.openPauseMenu();
+      },
+      onBag: () => {
+        if (this.menuSystem.state !== 'none' || this.dialogueBox.active) return;
+        if (this.inventory.isOpen) {
+          this.inventory.close();
+          return;
+        }
+        if (this.characterStats.isOpen) {
+          this.characterStats.close();
+          return;
+        }
+        if (this.questLogView && this.questLogView.isOpen) {
+          this.questLogView.close();
+          return;
+        }
+        this.inventory.open();
+        if (this.music) this.music.playMenuSelect();
+      },
+      isInteractionAvailable: () => {
+        try {
+          return Boolean(this._findBestInteraction());
+        } catch (_) {
+          return false;
+        }
+      }
+    });
+    this.input.attachTouchControls(this.touchControls);
 
     this.tilemap = new Tilemap(assets.tilesetSheet, assets.tileSize);
     this.camera = new Camera2D(
@@ -214,6 +262,10 @@ export class RPGGame {
     this.transitionCooldown = 0;
     // (FIX 2.4) Origen de la última entrada a un templo (para que su salida vuelva a esa sala)
     this.templeReturn = null;
+    // (FIX NPC.6) Cambio de rutina pospuesto porque el NPC estaba hablando
+    this._npcsSchedulePending = false;
+    // (FIX NPC.8) Brom solo regala una hogaza de pan por partida
+    this.bromBreadGift = false;
 
     // Control de eventos y debouncing de los Puzles en los Templos Binarios
     this.activeArmorSwitchTile = null;
@@ -240,6 +292,14 @@ export class RPGGame {
         onOpenCloudSave: () => this._openCloudSaveModal(),
         onOpenCloudLoad: () => this._openCloudLoadModal(),
         getSaveSummary: () => this._getSaveSummary(),
+        // (FIX B2) Código de nube real para el menú (antes el menú inventaba 'SLOT-1')
+        getCloudCode: () => {
+          try {
+            return getSavedCloudCode() || null;
+          } catch {
+            return null;
+          }
+        },
         onApplyOptions: (opts) => this._applyGameOptions(opts),
         onOpenQuestLog: () => {
           if (this.inventory && this.inventory.isOpen) this.inventory.close();
@@ -442,6 +502,17 @@ export class RPGGame {
     this.enemies = this._createFirstStageEnemies();
     this.worldItems = this._createWorldItems();
 
+    // (FIX NPC.8) El regalo de pan vuelve a estar disponible en una partida nueva
+    this.bromBreadGift = false;
+
+    // (FIX NPC.1) Los animales vuelven a su sitio: antes conservaban posición y estado
+    // de la partida anterior al empezar una nueva.
+    if (Array.isArray(this.animals)) {
+      for (const animal of this.animals) {
+        if (typeof animal.reset === 'function') animal.reset();
+      }
+    }
+
     this.inventory.items = [];
     this.inventory.selectedIndex = 0;
     this.gameCompleted = false;
@@ -561,6 +632,8 @@ export class RPGGame {
       totalDeaths: this.totalDeaths || 0,
       totalJailVisits: this.totalJailVisits || 0,
       housePermissions: { ...this.housePermissions },
+      // (FIX NPC.8) Evita farmear pan (y dinero) recargando la partida
+      bromBreadGift: Boolean(this.bromBreadGift),
       inventoryItems: this.inventory.items.map((it) => ({ ...it })),
       bossCutscenesSeen: { ...this.bossCutscenesSeen },
       prebattleAlexCutscenePlayed: Boolean(this.prebattleAlexCutscenePlayed),
@@ -968,6 +1041,7 @@ export class RPGGame {
       this.totalJailVisits = typeof data.totalJailVisits === 'number' ? data.totalJailVisits : 0;
       this.isJailedForever = false;
       this.player.hasBrokenHeartCurse = Boolean(data.hasBrokenHeartCurse);
+      this.bromBreadGift = Boolean(data.bromBreadGift);
 
       // Carga y sincronización del Puzle 1 (Templo de la Armadura)
       if (data.armorPuzzle && this.tilemap?.armorPuzzle) {
@@ -2065,7 +2139,9 @@ export class RPGGame {
         name: 'Herbolaria Lyra · Alquimista',
         jobTitle: 'Botánica y Alquimista',
         homeSceneId: 'herbalist_house',
-        x: 8 * 16,
+        // (FIX NPC.3) Estaba dentro del tejado de su cabaña (tile ROOF_RED, capa superior):
+        // se dibujaba oculta. Ahora posa junto a la casa, en suelo libre.
+        x: 9 * 16,
         y: 17 * 16,
         speed: 0,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERBALIST),
@@ -3752,8 +3828,15 @@ export class RPGGame {
    */
   _updateNPCSchedules() {
     const isNight = this.dayNight.timeOfDayHours >= 22 || this.dayNight.timeOfDayHours < 6;
+    // (FIX NPC.6) No se manda a la cama a quien está a mitad de una frase: se pospone
+    // su cambio de rutina hasta que el diálogo termine.
+    const talkingNPC = this.dialogueBox && this.dialogueBox.active ? this.dialogueBox.currentNPC : null;
     for (const npc of this.npcs) {
       if (!npc.homeSceneId || npc.homeSceneId === 'overworld') continue;
+      if (npc === talkingNPC) {
+        this._npcsSchedulePending = true;
+        continue;
+      }
 
       if (isNight) {
         npc.sceneId = npc.homeSceneId;
@@ -3770,6 +3853,30 @@ export class RPGGame {
         }
       }
     }
+  }
+
+  /**
+   * (FIX NPC.4) Amenaza de combate real para un NPC: el enemigo despierto (persiguiendo
+   * o alertado) más cercano dentro del radio. No basta con que haya esbirros vivos en la
+   * escena: los dos drones de entrenamiento del pueblo harían huir a todos en bucle.
+   */
+  _findNPCThreat(npc, enemies, radius = 160) {
+    if (!npc || !Array.isArray(enemies) || enemies.length === 0) return null;
+    let best = null;
+    let bestDist = radius;
+    for (const enemy of enemies) {
+      if (!enemy || enemy.dead) continue;
+      const awake = enemy.isBoss
+        ? enemy.activeCombat !== false
+        : (enemy.brain && (enemy.brain.state === 'CHASE' || enemy.brain.state === 'ALERT'));
+      if (!awake) continue;
+      const d = Math.hypot(enemy.centerX - npc.centerX, enemy.centerY - npc.centerY);
+      if (d < bestDist) {
+        bestDist = d;
+        best = enemy;
+      }
+    }
+    return best;
   }
 
   /**
@@ -6197,6 +6304,10 @@ export class RPGGame {
     }
     if (Math.floor(prevHour) !== Math.floor(this.dayNight.timeOfDayHours)) {
       this._updateNPCSchedules();
+    } else if (this._npcsSchedulePending && !this.dialogueBox.active) {
+      // (FIX NPC.6) El cambio de rutina que se pospuso por el diálogo se aplica ahora
+      this._npcsSchedulePending = false;
+      this._updateNPCSchedules();
     }
 
     const { npcs, animals, enemies, items } = this._getActiveSceneEntities();
@@ -6364,7 +6475,8 @@ export class RPGGame {
     for (const npc of npcs) {
       const isTalking =
         this.dialogueBox.active && this.dialogueBox.currentNPC === npc;
-      npc.update(dt, this.tilemap, allEntities, isTalking, this.player);
+      const threat = isTalking ? null : this._findNPCThreat(npc, enemies);
+      npc.update(dt, this.tilemap, allEntities, isTalking, this.player, threat);
     }
     for (const animal of animals) {
       animal.update(
@@ -6738,6 +6850,7 @@ export class RPGGame {
       this.menuSystem.state === 'exit_screen' ||
       this.menuSystem.state === 'game_over' ||
       this.menuSystem.state === 'world_map' ||
+      this.menuSystem.state === 'leaderboard' ||
       this.menuSystem.state === 'credits' ||
       (this.menuSystem.state === 'options' && this.menuSystem.previousState === 'title') ||
       (this.menuSystem.state === 'controls' && this.menuSystem.previousStateBeforeControls === 'title') ||
@@ -6836,6 +6949,9 @@ export class RPGGame {
     if (this.achievementManager) {
       this.achievementManager.renderToast(ctx);
     }
+    // (FIX M1.6) Controles táctiles al final para quedar por encima del HUD y de los
+    // paneles de canvas (así el botón de cerrar del inventario sigue visible).
+    if (this.touchControls) this.touchControls.render(ctx);
   }
 
   _renderAbyssalPortal(ctx, portalObj = null) {
@@ -6970,6 +7086,10 @@ export class RPGGame {
     ctx.save();
     ctx.textBaseline = 'middle';
 
+    // (FIX M1.5) HUD móvil: tipografía 1.35x y menos información secundaria
+    const isTouchHud = Boolean(this.touchControls && this.touchControls.isTouchEnabled());
+    const hudFont = (size, bold = false) => hudFontSize(size, isTouchHud, bold);
+
     // =========================================================================
     // 1. SUPERIOR DERECHA: Cápsula translúcida con reloj digital, icono solar/lunar y micro-indicador cloud (☁️)
     // =========================================================================
@@ -6990,12 +7110,12 @@ export class RPGGame {
     ctx.strokeRect(capsuleX + 0.5, capsuleY + 0.5, capsuleW - 1, capsuleH - 1);
 
     // Icono solar/lunar
-    ctx.font = `6px ${UI_FONT}`;
+    ctx.font = hudFont(6);
     ctx.textAlign = 'left';
     ctx.fillText(sunMoonIcon, capsuleX + 4, capsuleY + 7.5);
 
     // Hora digital
-    ctx.font = `bold 5.5px ${UI_FONT}`;
+    ctx.font = hudFont(5.5, true);
     ctx.fillStyle = '#ffe599';
     ctx.fillText(timeStr, capsuleX + 16, capsuleY + 7.5);
 
@@ -7003,7 +7123,7 @@ export class RPGGame {
     const syncColor = this.cloudSyncStatus === 'syncing'
       ? '#38bdf8'
       : (this.hasPendingCloudSync ? '#f59e0b' : '#4ade80');
-    ctx.font = `6px ${UI_FONT}`;
+    ctx.font = hudFont(6);
     ctx.fillStyle = syncColor;
     ctx.textAlign = 'right';
     ctx.fillText('☁', capsuleX + capsuleW - 4, capsuleY + 7.5);
@@ -7039,7 +7159,7 @@ export class RPGGame {
         ctx.fillRect(hx, hy, 11, 11);
         ctx.strokeStyle = '#ef4444';
         ctx.strokeRect(hx + 0.5, hy + 0.5, 10, 10);
-        ctx.font = 'bold 5.5px monospace';
+        ctx.font = hudFont(5.5, true);
         ctx.fillStyle = (performance.now() % 400 < 200) ? '#ef4444' : '#fca5a5';
         ctx.textAlign = 'center';
         ctx.fillText('ERR', hx + 5.5, hy + 6);
@@ -7080,14 +7200,16 @@ export class RPGGame {
         color = '#64748b';
       }
 
-      ctx.font = '7.5px monospace';
+      ctx.font = hudFont(7.5);
       ctx.fillStyle = color;
       ctx.textAlign = 'center';
       ctx.fillText(char, hx + 5.5, hy + 6);
     }
 
     // Icono 🤖% junto a los corazones ÚNICAMENTE si la robotización supera el 50%
-    if (this.player.robotizationLevel > 50) {
+    // (FIX M1.5) En móvil se oculta el badge de robotización (información secundaria)
+    const showRobotBadge = !isTouchHud && this.player.robotizationLevel > 50;
+    if (showRobotBadge) {
       const robVal = Math.round(this.player.robotizationLevel);
       const robBadgeX = heartsX + heartsW + 4;
       const robBadgeY = heartsY;
@@ -7101,7 +7223,7 @@ export class RPGGame {
       ctx.lineWidth = 1;
       ctx.strokeRect(robBadgeX + 0.5, robBadgeY + 0.5, robBadgeW - 1, robBadgeH - 1);
 
-      ctx.font = `bold 5px ${UI_FONT}`;
+      ctx.font = hudFont(5, true);
       ctx.fillStyle = isCrit ? '#f87171' : '#fde047';
       ctx.textAlign = 'center';
       ctx.fillText(`🤖${robVal}%`, robBadgeX + robBadgeW / 2, robBadgeY + 7.5);
@@ -7129,7 +7251,7 @@ export class RPGGame {
     // (FIX 1.6) Antes vivía dentro de `if (comboStep > 0)`, así que solo aparecía
     // durante un combo. Ahora se dibuja siempre, con o sin espada, stamina o combo.
     // =========================================================================
-    const coinX = this.player.robotizationLevel > 50
+    const coinX = showRobotBadge
       ? heartsX + heartsW + 4 + 34 + 4   // desplazado a la derecha del icono 🤖%
       : heartsX + heartsW + 4;
     const coinY = heartsY;
@@ -7140,7 +7262,7 @@ export class RPGGame {
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
     ctx.strokeRect(coinX + 0.5, coinY + 0.5, coinW - 1, coinH - 1);
-    ctx.font = 'bold 5px monospace';
+    ctx.font = hudFont(5, true);
     ctx.fillStyle = '#fde047';
     ctx.textAlign = 'center';
     ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
@@ -7177,7 +7299,9 @@ export class RPGGame {
       const barW = 186;
       const barH = 14;
       const barX = Math.round((VIEWPORT_WIDTH - barW) / 2);
-      const barY = VIEWPORT_HEIGHT - 22;
+      // (FIX M1.5) En táctil los botones ocupan la esquina inferior derecha:
+      // la barra de jefe pasa arriba y centrada para no quedar tapada.
+      const barY = isTouchHud ? 40 : VIEWPORT_HEIGHT - 22;
 
       ctx.fillStyle = 'rgba(10, 14, 24, 0.88)';
       ctx.fillRect(barX, barY - 7, barW, barH + 7);
@@ -7185,12 +7309,12 @@ export class RPGGame {
       ctx.lineWidth = 1;
       ctx.strokeRect(barX + 0.5, barY - 6.5, barW - 1, barH + 6);
 
-      ctx.font = 'bold 5.5px monospace';
+      ctx.font = hudFont(5.5, true);
       ctx.fillStyle = activeBoss.themeColor || '#38bdf8';
       ctx.textAlign = 'left';
       ctx.fillText(activeBoss.name.toUpperCase(), barX + 5, barY - 2);
 
-      ctx.font = '5.5px monospace';
+      ctx.font = hudFont(5.5);
       ctx.textAlign = 'right';
       if (activeBoss.dead) {
         ctx.fillStyle = '#fde047';
@@ -7226,7 +7350,8 @@ export class RPGGame {
     const quickItem = this._getQuickSlotConsumable();
     // [R] lanza el console.log una vez aprendido; la ranura queda en [1]
     const quickLabel = this.player.skills?.log ? '[1]' : '[R]';
-    const qsX = 6;
+    // (FIX M1.5) En táctil el joystick ocupa la esquina inferior izquierda
+    const qsX = isTouchHud ? Math.round(VIEWPORT_WIDTH / 2) - 8 : 6;
     const qsY = VIEWPORT_HEIGHT - 22;
     const qsW = 16;
     const qsH = 16;
@@ -7241,7 +7366,7 @@ export class RPGGame {
       if (this.inventory && this.inventory.itemsSheet) {
         UILayout.drawItemIcon(ctx, this.inventory.itemsSheet, quickItem.iconIndex, qsX + 2, qsY + 2, 12);
       } else {
-        ctx.font = 'bold 6px monospace';
+        ctx.font = hudFont(6, true);
         ctx.fillStyle = '#38bdf8';
         ctx.textAlign = 'center';
         ctx.fillText('+', qsX + 8, qsY + 8);
@@ -7249,7 +7374,7 @@ export class RPGGame {
 
       // Contador flotante de unidades y etiqueta [R]
       const qtyStr = `x${quickItem.qty || 1}`;
-      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.font = hudFont(4.5, true);
       ctx.fillStyle = 'rgba(10, 14, 23, 0.9)';
       ctx.fillRect(qsX + qsW + 2, qsY + 3, 24, 10);
       ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
@@ -7259,7 +7384,7 @@ export class RPGGame {
       ctx.textAlign = 'left';
       ctx.fillText(`${quickLabel}${qtyStr}`, qsX + qsW + 4, qsY + 8);
     } else {
-      ctx.font = `bold 4.5px ${UI_FONT}`;
+      ctx.font = hudFont(4.5, true);
       ctx.fillStyle = '#64748b';
       ctx.textAlign = 'center';
       ctx.fillText(quickLabel, qsX + 8, qsY + 8);
@@ -7269,7 +7394,32 @@ export class RPGGame {
   }
 }
 
+/**
+ * (FIX M0.4) Registra el Service Worker de la PWA.
+ * Solo en http(s): el HTML portable abierto con file:// no puede registrar SW.
+ */
+function registerServiceWorker() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  if (typeof window === 'undefined' || !window.location) return;
+  const protocol = window.location.protocol;
+  if (protocol !== 'http:' && protocol !== 'https:') return;
+
+  const register = () => {
+    navigator.serviceWorker.register('./sw.js').catch((err) => {
+      // No es crítico: el juego funciona sin SW, solo se pierde el modo offline.
+      console.warn('[PWA] Service Worker no registrado:', err && err.message ? err.message : err);
+    });
+  };
+
+  if (document.readyState === 'complete') {
+    register();
+  } else {
+    window.addEventListener('load', register, { once: true });
+  }
+}
+
 async function bootstrap() {
+  registerServiceWorker();
   try {
     const canvas = document.getElementById('game-canvas');
     if (!canvas) {

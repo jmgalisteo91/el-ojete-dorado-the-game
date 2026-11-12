@@ -15,10 +15,30 @@ export class InputHandler {
 
     this.pointerX = -1;
     this.pointerY = -1;
+    // (FIX M1.1) Coordenadas en píxeles del backing store (1280x720) para los controles táctiles
+    this.pointerCanvasX = -1;
+    this.pointerCanvasY = -1;
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
     this.isPointerDown = false;
     this.lastAttackSource = null;
+
+    // (FIX M1.1) Capa táctil: convive con teclado y ratón, nunca los sustituye
+    this.isTouchDevice = false;
+    try {
+      if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        this.isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+      }
+    } catch (_) {
+      this.isTouchDevice = false;
+    }
+    this.touchState = {
+      moveX: 0,
+      moveY: 0,
+      buttons: new Set(), // acciones mantenidas (attack, interact, dash, barrier)
+      pressed: new Set()  // flanco de pulsación, se consume una vez por frame
+    };
+    this.touchControls = null;
 
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -41,9 +61,61 @@ export class InputHandler {
   _notifyFirstInteraction() {
     if (!this._interactedOnce) {
       this._interactedOnce = true;
+      // (FIX M0.5) Primer gesto: intenta pantalla completa + landscape en táctiles
+      this._requestMobileFullscreen();
       if (typeof this.onFirstInteraction === 'function') {
         this.onFirstInteraction();
       }
+    }
+  }
+
+  /**
+   * (FIX M0.5) En dispositivos táctiles, pide fullscreen y bloqueo de orientación
+   * en el primer gesto del usuario (requisito de los navegadores).
+   * Todo va envuelto en try/catch: iOS rechaza fullscreen en muchos modelos y no
+   * todos los navegadores soportan `screen.orientation.lock`, y el juego debe seguir.
+   */
+  _requestMobileFullscreen() {
+    try {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return;
+      if (typeof window.matchMedia !== 'function') return;
+      if (!window.matchMedia('(pointer: coarse)').matches) return;
+
+      const root = document.documentElement;
+      if (!root) return;
+
+      const lockLandscape = () => {
+        try {
+          const orientation = window.screen && window.screen.orientation;
+          if (orientation && typeof orientation.lock === 'function') {
+            const result = orientation.lock('landscape');
+            if (result && typeof result.catch === 'function') result.catch(() => {});
+          }
+        } catch (_) {
+          /* Orientación no disponible: se ignora */
+        }
+      };
+
+      const alreadyFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+      const request =
+        root.requestFullscreen || root.webkitRequestFullscreen || root.webkitRequestFullScreen;
+
+      if (!alreadyFullscreen && typeof request === 'function') {
+        try {
+          const result = request.call(root);
+          if (result && typeof result.then === 'function') {
+            result.then(lockLandscape).catch(() => {});
+          } else {
+            lockLandscape();
+          }
+        } catch (_) {
+          /* iOS/ Safari: rechazo silencioso */
+        }
+      } else {
+        lockLandscape();
+      }
+    } catch (_) {
+      /* Nunca romper la entrada del juego por culpa del fullscreen */
     }
   }
 
@@ -55,6 +127,56 @@ export class InputHandler {
     if (rect.width <= 0 || rect.height <= 0) return;
     this.pointerX = ((event.clientX - rect.left) / rect.width) * 320;
     this.pointerY = ((event.clientY - rect.top) / rect.height) * 180;
+    // (FIX M1.1) Misma posición en píxeles del canvas (0..1280 / 0..720)
+    this.pointerCanvasX = ((event.clientX - rect.left) / rect.width) * (el.width || 1280);
+    this.pointerCanvasY = ((event.clientY - rect.top) / rect.height) * (el.height || 720);
+  }
+
+  /** (FIX M1.7/M1.8) Expone el bloqueo por modal DOM para que TouchControls no capture input. */
+  isDOMBlocked() {
+    return this._isDOMModalBlocking();
+  }
+
+  /** (FIX M1.7) Engancha la capa visual/táctil; main la crea tras el InputHandler. */
+  attachTouchControls(touchControls) {
+    this.touchControls = touchControls || null;
+    if (this.touchControls) this.touchControls.enabled = this.isTouchDevice;
+  }
+
+  // ------------------------------------------------------------------ API táctil
+
+  /** Vector del joystick normalizado (-1..1). */
+  setTouchMovement(x, y) {
+    const nx = Number(x) || 0;
+    const ny = Number(y) || 0;
+    const len = Math.hypot(nx, ny);
+    if (len > 1) {
+      this.touchState.moveX = nx / len;
+      this.touchState.moveY = ny / len;
+    } else {
+      this.touchState.moveX = nx;
+      this.touchState.moveY = ny;
+    }
+  }
+
+  /** Mantiene pulsada una acción táctil y registra su flanco. */
+  pressTouchButton(code) {
+    if (!code) return;
+    this.touchState.buttons.add(code);
+    this.touchState.pressed.add(code);
+  }
+
+  releaseTouchButton(code) {
+    if (!code) return;
+    this.touchState.buttons.delete(code);
+  }
+
+  /** Limpia todo el estado táctil (blur, modal, cambio de escena). */
+  resetTouchState() {
+    this.touchState.moveX = 0;
+    this.touchState.moveY = 0;
+    this.touchState.buttons.clear();
+    this.touchState.pressed.clear();
   }
 
   _isDOMModalBlocking() {
@@ -88,12 +210,36 @@ export class InputHandler {
 
   _onPointerMove(event) {
     this._updateCanvasCoords(event);
+    if (this.isTouchDevice && this.touchControls) {
+      this.touchControls.handlePointerMove(
+        this.pointerCanvasX,
+        this.pointerCanvasY,
+        event && event.pointerId !== undefined ? event.pointerId : 0
+      );
+    }
   }
 
   _onPointerDown(event) {
     this._notifyFirstInteraction();
     if (this._isDOMModalBlocking()) return;
     this._updateCanvasCoords(event);
+
+    // (FIX M1.7) En táctil, los controles tienen prioridad: si el toque cae en una
+    // zona (joystick/botones), NO se dispara el ataque por puntero.
+    if (this.isTouchDevice && this.touchControls) {
+      const pointerId = event && event.pointerId !== undefined ? event.pointerId : 0;
+      const zone = this.touchControls.hitTest(this.pointerCanvasX, this.pointerCanvasY);
+      if (zone) {
+        this.touchControls.handlePointerDown(
+          zone,
+          this.pointerCanvasX,
+          this.pointerCanvasY,
+          pointerId
+        );
+        return;
+      }
+    }
+
     if (!event || event.button === 0 || event.button === undefined) {
       this.pointerJustClicked = true;
       this.pointerAttackJustPressed = true;
@@ -102,6 +248,11 @@ export class InputHandler {
   }
 
   _onPointerUp(event) {
+    if (this.isTouchDevice && this.touchControls) {
+      this.touchControls.handlePointerUp(
+        event && event.pointerId !== undefined ? event.pointerId : 0
+      );
+    }
     if (!event || event.button === 0 || event.button === undefined) {
       this.isPointerDown = false;
     }
@@ -158,9 +309,22 @@ export class InputHandler {
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
     this.isPointerDown = false;
+    // (FIX M1.1/M1.8) Al perder el foco no debe quedar un joystick moviendo al jugador
+    this.resetTouchState();
+    if (this.touchControls) this.touchControls.resetAll();
   }
 
   getMovementVector() {
+    // (FIX M1.1) Si hay joystick activo manda el vector táctil; si está a cero, teclado.
+    if (this.isTouchDevice) {
+      const tx = this.touchState.moveX;
+      const ty = this.touchState.moveY;
+      if (tx !== 0 || ty !== 0) {
+        const len = Math.hypot(tx, ty);
+        return len > 1 ? { x: tx / len, y: ty / len } : { x: tx, y: ty };
+      }
+    }
+
     let dx = 0;
     let dy = 0;
 
@@ -179,7 +343,12 @@ export class InputHandler {
   }
 
   consumeInteraction({ includeSpace = true } = {}) {
+    // (FIX M1.1) El botón A se mapea a 'interact' cuando hay algo con lo que interactuar
+    const touchInteracted = this.touchState.pressed.has('interact');
+    this.touchState.pressed.delete('interact');
+
     const interacted =
+      touchInteracted ||
       this.keysJustPressed.has('KeyE') ||
       (includeSpace && this.keysJustPressed.has('Space')) ||
       this.keysJustPressed.has('Enter');
@@ -198,6 +367,10 @@ export class InputHandler {
   }
 
   consumeAttack() {
+    // (FIX M1.1) Flanco del botón A táctil (solo cuando no había interacción cerca)
+    const touchAttacked = this.touchState.pressed.has('attack');
+    this.touchState.pressed.delete('attack');
+
     const keyAttacked =
       this.keysJustPressed.has('KeyF') ||
       this.keysJustPressed.has('KeyJ') ||
@@ -211,6 +384,10 @@ export class InputHandler {
     const pointerAttacked = this.pointerAttackJustPressed;
     this.pointerAttackJustPressed = false;
 
+    if (touchAttacked) {
+      this.lastAttackSource = 'touch';
+      return true;
+    }
     if (pointerAttacked) {
       this.lastAttackSource = 'pointer';
       return true;
@@ -223,6 +400,7 @@ export class InputHandler {
   }
 
   isAttackHeld() {
+    if (this.touchState.buttons.has('attack')) return true;
     return (
       this.keysDown.has('Space') ||
       this.keysDown.has('KeyF') ||
@@ -233,7 +411,10 @@ export class InputHandler {
   }
 
   consumeDash() {
+    const touchDashed = this.touchState.pressed.has('dash');
+    this.touchState.pressed.delete('dash');
     const dashed =
+      touchDashed ||
       this.keysJustPressed.has('ShiftLeft') ||
       this.keysJustPressed.has('ShiftRight');
     this.keysJustPressed.delete('ShiftLeft');
@@ -242,7 +423,9 @@ export class InputHandler {
   }
 
   consumeBarrier() {
-    const val = this.keysJustPressed.has('KeyQ');
+    const touchBarrier = this.touchState.pressed.has('barrier');
+    this.touchState.pressed.delete('barrier');
+    const val = touchBarrier || this.keysJustPressed.has('KeyQ');
     this.keysJustPressed.delete('KeyQ');
     return val;
   }
@@ -300,6 +483,8 @@ export class InputHandler {
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
+    // (FIX M1.1) Los flancos táctiles no consumidos caducan como los del teclado
+    this.touchState.pressed.clear();
   }
 }
 

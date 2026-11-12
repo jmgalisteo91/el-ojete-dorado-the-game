@@ -1,5 +1,6 @@
 import { Entity } from './Entity.js?v=8';
 import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
+import { nearestFreeTile } from '../ai/Pathfinding.js?v=8';
 import { renderNPCBarkBubble, renderActivityIcon } from '../ui/SpeechBubble.js?v=8';
 
 const DIRECTIONS = ['down', 'up', 'left', 'right'];
@@ -74,6 +75,11 @@ export class NPC extends Entity {
 
     // Cooldown para evitar bloqueos permanentes si el jugador permanece cerca
     this.politePauseCooldown = 0;
+
+    // (FIX NPC.4) Marca de "cuerpo blando": el dash del jugador no se bloquea con NPCs
+    this.isNpc = true;
+    // (FIX NPC.4/NPC.5) Amenaza viva en la escena: huye y no suelta barks
+    this.inCombat = false;
   }
 
   canInteract(player) {
@@ -99,6 +105,8 @@ export class NPC extends Entity {
   }
 
   triggerAmbientBark(customText = null) {
+    // (FIX NPC.5) Nada de bocadillos ambientales en mitad de un combate
+    if (this.inCombat) return;
     const text =
       customText ||
       (this.ambientPhrases.length > 0
@@ -112,8 +120,9 @@ export class NPC extends Entity {
     }
   }
 
-  update(dt, tilemap, obstacles, isTalking = false, player = null) {
+  update(dt, tilemap, obstacles, isTalking = false, player = null, threat = null) {
     this.promptBobTimer += dt * 4.5;
+    this.inCombat = Boolean(threat);
     this.jobAnimTimer += dt;
 
     if (this.politePauseCooldown > 0) {
@@ -133,6 +142,24 @@ export class NPC extends Entity {
     if (isTalking) {
       this.isMoving = false;
       this.ambientBubbleTimer = 0;
+      super.update(dt);
+      return;
+    }
+
+    // (FIX NPC.3) Si la escenografía cambió y quedó incrustado en un muro/techo, se recoloca
+    this._ensureFreePosition(tilemap);
+
+    // (FIX NPC.4) Con un enemigo vivo cerca: los estáticos se guarecen y el resto huye.
+    // Nada de pausa cortés ni de rutina mientras dure el combate.
+    if (this.inCombat) {
+      this.ambientBubbleTimer = 0;
+      this.ambientBubbleText = '';
+      this.currentActivityIcon = '';
+      if (this.behavior === 'static') {
+        this.isMoving = false;
+      } else {
+        this._fleeFromThreat(threat, dt, tilemap, obstacles);
+      }
       super.update(dt);
       return;
     }
@@ -199,7 +226,9 @@ export class NPC extends Entity {
       return;
     }
 
-    const target = this.patrolPoints[this.currentWaypointIndex];
+    // (FIX NPC.3) Waypoints autorados dentro de un muro (mesas, tejados, agua) se
+    // corrigen a la baldosa libre más cercana: mismo patrón que el FIX 3.2 de la IA de enemigos.
+    const target = this._resolveNavTarget(this.patrolPoints[this.currentWaypointIndex], tilemap);
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const dist = Math.hypot(dx, dy);
@@ -300,6 +329,81 @@ export class NPC extends Entity {
     }
 
     super.update(dt);
+  }
+
+  /**
+   * (FIX NPC.3) Saca al NPC de una baldosa incrustada usando la caja real de colisión.
+   * Los NPCs estáticos se respetan: muchos posan a propósito tras un mostrador o altar.
+   */
+  _ensureFreePosition(tilemap) {
+    if (!tilemap || this.behavior === 'static') return;
+    if (!CollisionSystem.collidesWithMap(this.worldBoundingBox, tilemap)) return;
+
+    const ts = tilemap.tileSize;
+    const baseCol = Math.floor(this.x / ts);
+    const baseRow = Math.floor(this.y / ts);
+    for (let radius = 1; radius <= 3; radius++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+          const col = baseCol + dx;
+          const row = baseRow + dy;
+          if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(col * ts, row * ts), tilemap)) {
+            this.x = col * ts;
+            this.y = row * ts;
+            this.stuckTimer = 0;
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * (FIX NPC.3) Corrige un waypoint que cae en una baldosa sólida. Devuelve el waypoint
+   * tal cual si es alcanzable, o el centro de la baldosa libre más cercana.
+   */
+  _resolveNavTarget(target, tilemap) {
+    if (!tilemap || !target) return target;
+    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(target.x, target.y), tilemap)) {
+      return target;
+    }
+    const ts = tilemap.tileSize;
+    const free = nearestFreeTile(tilemap, Math.floor(target.x / ts), Math.floor(target.y / ts), 3);
+    if (!free) return target;
+    return { ...target, x: free.col * ts, y: free.row * ts };
+  }
+
+  /**
+   * (FIX NPC.4) Huida simple: se aleja de la amenaza y, si la diagonal está tapada,
+   * prueba el deslizamiento lateral; si las tres fallan, se queda cubierto.
+   */
+  _fleeFromThreat(threat, dt, tilemap, obstacles) {
+    if (!threat) return;
+    const tx = typeof threat.centerX === 'number' ? threat.centerX : threat.x;
+    const ty = typeof threat.centerY === 'number' ? threat.centerY : threat.y;
+    const dx = this.centerX - tx;
+    const dy = this.centerY - ty;
+    const dist = Math.max(0.001, Math.hypot(dx, dy));
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const step = this.speed * 1.6 * dt;
+
+    for (const [ax, ay] of [[nx, ny], [-ny, nx], [ny, -nx]]) {
+      const res = CollisionSystem.moveWithCollisions(this, ax * step, ay * step, tilemap, obstacles);
+      if (!(res.blockedX && res.blockedY)) {
+        if (Math.abs(ax) >= Math.abs(ay)) {
+          this.direction = ax > 0 ? 'right' : 'left';
+        } else {
+          this.direction = ay > 0 ? 'down' : 'up';
+        }
+        this.isMoving = true;
+        return;
+      }
+    }
+
+    this.isMoving = false;
+    this.stuckTimer = 0;
   }
 
   render(ctx, camera) {
@@ -623,8 +727,17 @@ export function getBromForgeChoices(game) {
   });
 
   choices.push({
-    label: '🍞 ¿Tienes algo de Pan Campesino?',
+    // (FIX NPC.8) Era un grifo infinito de pan: se cogía gratis y se revendía a 2 Bytes
+    // en el mismo menú. Ahora es una sola hogaza de bienvenida por partida.
+    label: game.bromBreadGift ? '🍞 Pan Campesino (Ya te di tu hogaza)' : '🍞 ¿Tienes algo de Pan Campesino?',
     onSelect: () => {
+      if (game.bromBreadGift) {
+        dialogueBox.showMessage('Herrero Brom · Forjador', [
+          'Ya te di la hogaza de bienvenida, muchacho. La próxima la compras como todo el mundo.',
+          'El horno de mi forja no da de comer gratis a Media Valleverde.'
+        ], getBromForgeChoices(game));
+        return;
+      }
       if (inventory && !inventory.hasItem('bread')) {
         inventory.addItem({
           id: 'bread',
@@ -633,12 +746,13 @@ export function getBromForgeChoices(game) {
           iconIndex: 1, // ITEM_ICONS.BREAD
           qty: 1
         });
+        game.bromBreadGift = true;
         if (typeof game._saveGameToStorage === 'function') {
           game._saveGameToStorage();
         }
         dialogueBox.showMessage('Herrero Brom · Forjador', [
           '¡Claro que sí! Toma una hogaza recién salida del horno de leña de mi forja.',
-          'Se ha añadido [Pan Campesino x1] a tu mochila.'
+          'Es la de bienvenida: no habrá otra. Se ha añadido [Pan Campesino x1] a tu mochila.'
         ], getBromForgeChoices(game));
       } else {
         dialogueBox.showMessage('Herrero Brom · Forjador', [

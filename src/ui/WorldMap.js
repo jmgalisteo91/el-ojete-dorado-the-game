@@ -170,34 +170,30 @@ export class WorldMap {
       return false;
     };
 
+    // (FIX B7) Solo estado vivo del juego: las claves `ojete_*` de localStorage nunca
+    // las escribió nadie (restos del formato v3.4), así que eran ramas muertas.
     const gcDefeated = Boolean(
       player?.dungeonCores?.gc ||
       player?.hasDash ||
-      isEnemyDead('boss_garbage_collector') ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_core_gc') === 'true')
+      isEnemyDead('boss_garbage_collector')
     );
 
     const stackDefeated = Boolean(
       player?.dungeonCores?.stack ||
       player?.hasChargedAttack ||
-      isEnemyDead('boss_stack_overflow') ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_core_stack') === 'true')
+      isEnemyDead('boss_stack_overflow')
     );
 
     const microwaveDefeated = Boolean(
       player?.dungeonCores?.microwave ||
       player?.hasBarrier ||
-      isEnemyDead('boss_prototype_microwave') ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_core_microwave') === 'true')
+      isEnemyDead('boss_prototype_microwave')
     );
 
-    const alexDefeated = Boolean(
-      isEnemyDead('boss_final_ai_alex') ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_game_won') === 'true')
-    );
+    const alexDefeated = isEnemyDead('boss_final_ai_alex');
 
-    const hasArmor = Boolean(player?.hasArmor || (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_armor_obtained') === 'true'));
-    const hasSword = Boolean(player?.hasSword || (typeof localStorage !== 'undefined' && localStorage.getItem('ojete_sword_obtained') === 'true'));
+    const hasArmor = Boolean(player?.hasArmor);
+    const hasSword = Boolean(player?.hasSword);
 
     const swordLevel = player?.swordLevel || (hasSword ? 1 : 0);
     const armorLevel = player?.armorLevel || (hasArmor ? 1 : 0);

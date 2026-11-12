@@ -67,6 +67,19 @@ export class CollisionSystem {
 
     for (const other of obstacles) {
       if (!other || other === entity || other.isSleeping) continue;
+
+      // (FIX NPC.7) Descarte rápido por distancia antes de construir cajas: con ~20 cuerpos
+      // por escena se ahorra la mayoría de los cálculos. Las hitboxes son de 10x8 px, así
+      // que con más de 32 px entre centros no puede haber solape.
+      if (typeof entity.centerX === 'number' && typeof other.centerX === 'number') {
+        if (
+          Math.abs(entity.centerX - other.centerX) > 32 ||
+          Math.abs(entity.centerY - other.centerY) > 32
+        ) {
+          continue;
+        }
+      }
+
       const otherBox = other.worldBoundingBox;
       if (!otherBox) continue;
 

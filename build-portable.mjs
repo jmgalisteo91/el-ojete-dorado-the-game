@@ -15,6 +15,7 @@ const MODULE_ORDER = [
   'src/core/ScoreSystem.js',
   'src/services/CloudStorage.js',
   'src/ui/UILayout.js',
+  'src/ui/TouchControls.js',
   'src/graphics/SpriteSheetGenerator.js',
   'src/graphics/Animator.js',
   'src/ui/SpeechBubble.js',
@@ -130,10 +131,19 @@ function buildPortableHtml() {
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- (FIX M0.1) Metas de PWA también en el build portable -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0c10" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Ojete Dorado" />
   <title>El Ojete Dorado · Aventura RPG Pixel Art (Portable)</title>
   <link rel="icon" type="image/svg+xml" href="${faviconDataUri}" />
   <link rel="alternate icon" href="./favicon.svg" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon-180.png" />
+  <link rel="manifest" href="./manifest.json" />
   <style>
 ${css.trim()}
   </style>

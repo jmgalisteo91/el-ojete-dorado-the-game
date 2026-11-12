@@ -1,4 +1,4 @@
-import { AudioManager } from './AudioManager.js';
+import { AudioManager } from './AudioManager.js?v=8';
 
 /**
  * AmbientMusic.js · Módulo de Audio y Música Ambiental

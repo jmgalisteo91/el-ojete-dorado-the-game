@@ -1,0 +1,36 @@
+{
+  "name": "El Ojete Dorado · The Game",
+  "short_name": "Ojete Dorado",
+  "description": "Aventura RPG pixel art de acción y puzles en Valleverde. Consagra tu equipo, purga las mazmorras y derrota a Mister AI Alex.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "orientation": "landscape",
+  "background_color": "#0b0c10",
+  "theme_color": "#0b0c10",
+  "categories": ["games", "entertainment"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

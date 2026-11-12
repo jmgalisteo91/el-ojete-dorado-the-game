@@ -708,12 +708,16 @@ export class Player extends Entity {
       });
       const canCrossChasm = Boolean(tilemap && 'allowChasmCrossing' in tilemap);
       if (canCrossChasm) tilemap.allowChasmCrossing = true;
+      // (FIX NPC.4) El Dash es una maniobra de combate: no la frenan aldeanos ni animales
+      const dashObstacles = Array.isArray(obstacles)
+        ? obstacles.filter((o) => o && !o.isNpc && !o.isAnimal)
+        : obstacles;
       const { blockedX, blockedY } = CollisionSystem.moveWithCollisions(
         this,
         this.dashVx * dt,
         this.dashVy * dt,
         tilemap,
-        obstacles
+        dashObstacles
       );
       if (canCrossChasm) {
         tilemap.allowChasmCrossing = false;
