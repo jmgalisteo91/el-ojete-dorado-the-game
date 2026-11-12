@@ -39,6 +39,8 @@ export class InputHandler {
       pressed: new Set()  // flanco de pulsación, se consume una vez por frame
     };
     this.touchControls = null;
+    // (FIX M3.3) Punteros activos (para pinch-zoom del mapa): id -> {x, y} lógico
+    this.activePointers = new Map();
 
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -46,6 +48,7 @@ export class InputHandler {
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerDown = this._onPointerDown.bind(this);
     this._onPointerUp = this._onPointerUp.bind(this);
+    this._onVisibilityChange = this._onVisibilityChange.bind(this);
 
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this._onKeyDown, { passive: false });
@@ -56,6 +59,22 @@ export class InputHandler {
       window.addEventListener('pointerup', this._onPointerUp);
       window.addEventListener('pointercancel', this._onPointerUp);
     }
+    // (FIX M2.2) Al ocultar la pestaña/app se limpia todo: evita teclas y controles pegados
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener('visibilitychange', this._onVisibilityChange);
+    }
+  }
+
+  _onVisibilityChange() {
+    if (typeof document === 'undefined' || !document.hidden) return;
+    this.keysDown.clear();
+    this.keysJustPressed.clear();
+    this.pointerJustClicked = false;
+    this.pointerAttackJustPressed = false;
+    this.isPointerDown = false;
+    this.activePointers.clear();
+    this.resetTouchState();
+    if (this.touchControls) this.touchControls.resetAll();
   }
 
   _notifyFirstInteraction() {
@@ -210,6 +229,10 @@ export class InputHandler {
 
   _onPointerMove(event) {
     this._updateCanvasCoords(event);
+    // (FIX M3.3) Actualizar la posición del puntero activo
+    if (event && event.pointerId !== undefined && this.activePointers.has(event.pointerId)) {
+      this.activePointers.set(event.pointerId, { x: this.pointerX, y: this.pointerY });
+    }
     if (this.isTouchDevice && this.touchControls) {
       this.touchControls.handlePointerMove(
         this.pointerCanvasX,
@@ -223,6 +246,10 @@ export class InputHandler {
     this._notifyFirstInteraction();
     if (this._isDOMModalBlocking()) return;
     this._updateCanvasCoords(event);
+    // (FIX M3.3) Registrar el puntero para gestos multipunto
+    if (event && event.pointerId !== undefined) {
+      this.activePointers.set(event.pointerId, { x: this.pointerX, y: this.pointerY });
+    }
 
     // (FIX M1.7) En táctil, los controles tienen prioridad: si el toque cae en una
     // zona (joystick/botones), NO se dispara el ataque por puntero.
@@ -248,6 +275,10 @@ export class InputHandler {
   }
 
   _onPointerUp(event) {
+    // (FIX M3.3) Liberar el puntero
+    if (event && event.pointerId !== undefined) {
+      this.activePointers.delete(event.pointerId);
+    }
     if (this.isTouchDevice && this.touchControls) {
       this.touchControls.handlePointerUp(
         event && event.pointerId !== undefined ? event.pointerId : 0
@@ -309,6 +340,7 @@ export class InputHandler {
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
     this.isPointerDown = false;
+    this.activePointers.clear();
     // (FIX M1.1/M1.8) Al perder el foco no debe quedar un joystick moviendo al jugador
     this.resetTouchState();
     if (this.touchControls) this.touchControls.resetAll();

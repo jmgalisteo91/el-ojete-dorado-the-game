@@ -14,7 +14,7 @@ import { CollisionSystem } from './physics/CollisionSystem.js?v=8';
 import { Player } from './entities/Player.js?v=8';
 import { NPC, getBromForgeChoices } from './entities/NPC.js?v=8';
 import { Animal } from './entities/Animal.js?v=8';
-import { Enemy } from './entities/Enemy.js?v=8';
+import { Enemy, setParticleScale } from './entities/Enemy.js?v=8';
 import { GarbageCollectorBoss } from './entities/bosses/GarbageCollectorBoss.js?v=8';
 import { StackOverflowBoss } from './entities/bosses/StackOverflowBoss.js?v=8';
 import { PrototypeMicrowaveBoss } from './entities/bosses/PrototypeMicrowaveBoss.js?v=8';
@@ -58,7 +58,27 @@ import { TouchControls } from './ui/TouchControls.js?v=8';
 
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
-const RENDER_SCALE = 4; // Renderizado nativo HD 1280x720 (4x sobre base lógica 320x180)
+const BASE_RENDER_SCALE = 4; // Desktop: 1280x720 (4x sobre la base lógica 320x180)
+
+/**
+ * (FIX M2.1) Escala del canvas según el dispositivo.
+ *  - Desktop: 4x → 1280x720 (sin cambios).
+ *  - Táctil: devicePixelRatio capado a 2 → 2x → 640x360. En un móvil 3x no se
+ *    dispara el backing store y el coste de relleno baja ~4x.
+ * Si en el futuro se sube el cap, la fórmula ya devuelve 3x (960x540), etc.
+ */
+function computeRenderScale() {
+  try {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return BASE_RENDER_SCALE;
+    }
+    if (!window.matchMedia('(pointer: coarse)').matches) return BASE_RENDER_SCALE;
+    const dpr = Math.min(Number(window.devicePixelRatio) || 1, 2);
+    return Math.max(2, Math.round(dpr));
+  } catch (_) {
+    return BASE_RENDER_SCALE;
+  }
+}
 
 /**
  * (FIX 1.7) Escenas hostiles: suenan con la música de escenario ('stage1') en lugar de
@@ -101,10 +121,19 @@ export const ABYSSAL_POINTER_SPAWN_CANDIDATES = [
 export class RPGGame {
   constructor(canvas, assets) {
     this.canvas = canvas;
+
+    // (FIX M2.1) El canvas se dimensiona en JS; el HTML queda como valor por defecto.
+    this.renderScale = computeRenderScale();
+    canvas.width = VIEWPORT_WIDTH * this.renderScale;
+    canvas.height = VIEWPORT_HEIGHT * this.renderScale;
+
     this.ctx = canvas.getContext('2d');
     this.ctx.imageSmoothingEnabled = false;
 
     this.assets = assets;
+
+    // (FIX M2.6) Perfil de rendimiento: 'low' | 'normal' | 'high'
+    this.performanceProfile = this._detectPerformanceProfile();
     this.music = new AmbientMusic();
     this.input = new InputHandler(() => {
       this.music.unlockAndStart();
@@ -156,6 +185,28 @@ export class RPGGame {
         } catch (_) {
           return false;
         }
+      },
+      // (FIX M3.5) Acciones táctiles para teclas huérfanas
+      isLogAvailable: () => Boolean(this.player && this.player.skills && this.player.skills.log),
+      onLog: () => {
+        if (this.player && this.player.skills && this.player.skills.log) {
+          this.player.throwLog(this.music);
+        }
+      },
+      getQuickSlots: () => {
+        const defs = [
+          { id: 'potion_armor', icon: '🛡' },
+          { id: 'potion', icon: '🧪' },
+          { id: 'coffee', icon: '☕' }
+        ];
+        return defs.map((def) => {
+          const item = this.inventory.items.find((it) => it.id === def.id && (it.qty || 1) > 0);
+          return item ? { icon: def.icon, qty: item.qty } : null;
+        });
+      },
+      onQuickSlot: (index) => {
+        const key = ['Digit1', 'Digit2', 'Digit3'][index];
+        if (key) this._useQuickSlotConsumable(key);
       }
     });
     this.input.attachTouchControls(this.touchControls);
@@ -190,8 +241,20 @@ export class RPGGame {
       return res;
     };
     this.questLogView = new QuestLogView(this.questLog, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+
+    // (FIX M3.1/M3.2/M3.4) Paneles en modo táctil
+    this.dialogueBox.isTouchDevice = this.input.isTouchDevice;
+    this.inventory.setTouchMode(this.input.isTouchDevice);
+    this.characterStats.setTouchMode(this.input.isTouchDevice);
+    this.questLogView.setTouchMode(this.input.isTouchDevice);
     this.dayNight = new DayNightCycle(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, 720);
     this.renderPipeline = new RenderPipeline(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+    // (FIX M2.6) Modo degradado: sin niebla, sin viñeta y con menos partículas
+    this.renderPipeline.setQuality(this.performanceProfile);
+    setParticleScale(this.performanceProfile === 'low' ? 0.45 : 1);
+
+    // (FIX M2.3) Pausa automática al perder el foco (móvil y desktop)
+    this._installAutoPause();
 
     this.jailRemainingSeconds = 0;
     this.jailerAngerCount = 0;
@@ -311,6 +374,8 @@ export class RPGGame {
       }
     );
     this.menuSystem.setAnimeCutsceneManager(this.animeCutscenes);
+    // (FIX M3.6) Guía y tutorial táctil dentro del sistema de menús
+    this.menuSystem.isTouchDevice = this.input.isTouchDevice;
     this._applyGameOptions(this.menuSystem.options);
 
     // Sistema de Sincronización Cloud-First con Fallback Local
@@ -4204,6 +4269,55 @@ export class RPGGame {
     this.loop.start();
   }
 
+  /** (FIX M2.3) Registra el listener de visibilidad que pausa la partida. */
+  _installAutoPause() {
+    if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this._autoPauseOnHidden();
+    });
+  }
+
+  /**
+   * (FIX M2.3) Pausa solo en partida activa: no en título, pausa, diálogo,
+   * inventario, ficha, diario ni cinemáticas.
+   */
+  _autoPauseOnHidden() {
+    if (!this.menuSystem || this.menuSystem.state !== 'none') return;
+    if (this.animeCutscenes && this.animeCutscenes.isActive) return;
+    // Si ya hay un modal DOM abierto (chat IA, cloud, score), la partida ya está bloqueada
+    if (this.input && typeof this.input.isDOMBlocked === 'function' && this.input.isDOMBlocked()) {
+      return;
+    }
+    if (
+      (this.dialogueBox && this.dialogueBox.active) ||
+      (this.inventory && this.inventory.isOpen) ||
+      (this.characterStats && this.characterStats.isOpen) ||
+      (this.questLogView && this.questLogView.isOpen)
+    ) {
+      return;
+    }
+    if (this.player) this.player.stopMovement();
+    this.menuSystem.openPauseMenu();
+  }
+
+  /**
+   * (FIX M2.6) Heurística de gama baja: pocos núcleos o poca RAM.
+   * deviceMemory solo existe en Chromium; si falta no se penaliza.
+   * @returns {'low'|'normal'|'high'}
+   */
+  _detectPerformanceProfile() {
+    try {
+      if (typeof navigator === 'undefined') return 'normal';
+      const cores = Number(navigator.hardwareConcurrency) || 0;
+      const memory = Number(navigator.deviceMemory) || 0;
+      if ((cores > 0 && cores < 4) || (memory > 0 && memory < 4)) return 'low';
+      if (cores >= 8 && (memory === 0 || memory >= 8)) return 'high';
+      return 'normal';
+    } catch (_) {
+      return 'normal';
+    }
+  }
+
   _isNightTime() {
     return typeof this.dayNight?.isNight === 'function'
       ? this.dayNight.isNight()
@@ -5994,6 +6108,27 @@ export class RPGGame {
     }
     this.menuSystem.updateNotice(dt);
 
+    // (FIX M3.6) Tutorial táctil la primera vez que se juega en móvil
+    if (
+      this.input.isTouchDevice &&
+      !this._touchTutorialChecked &&
+      this.menuSystem.state === 'none' &&
+      !this.dialogueBox.active
+    ) {
+      this._touchTutorialChecked = true;
+      let tutorialDone = false;
+      try {
+        tutorialDone = localStorage.getItem('ojete_touch_tutorial_done') === '1';
+      } catch (_) {
+        tutorialDone = false;
+      }
+      if (!tutorialDone) {
+        this.menuSystem.startTouchTutorial();
+        this.input.endFrame();
+        return;
+      }
+    }
+
     if (this.animeCutscenes && this.animeCutscenes.isActive) {
       this.animeCutscenes.update(dt, this.input);
       this.input.endFrame();
@@ -6111,6 +6246,8 @@ export class RPGGame {
 
     // Ventana Activa: Diario de Misiones y Objetivos (Tecla 'L')
     if (this.questLogView && this.questLogView.isOpen) {
+      // (FIX M3.4) Toque para seleccionar y arrastre para scroll
+      this.questLogView.handleTouchInput(this.input);
       if (this.input.consumeKey('KeyM')) {
         this.questLogView.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
@@ -6150,6 +6287,13 @@ export class RPGGame {
 
     // Ventana Activa: Mochila de Inventario (Tecla 'I')
     if (this.inventory.isOpen) {
+      // (FIX M3.2) Toque / arrastre / acciones grandes
+      const touchInventoryAction = this.inventory.handleTouchInput(this.input);
+      if (touchInventoryAction === 'use') {
+        this._handleUseSelectedInventoryItem();
+      } else if (touchInventoryAction === 'drop') {
+        this._handleDropSelectedInventoryItem();
+      }
       if (this.input.consumeKey('KeyM')) {
         this.inventory.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
@@ -6288,7 +6432,8 @@ export class RPGGame {
       }
     }
 
-    if (this.input.consumeKey('F3')) {
+    // (FIX M3.5) F3 es una tecla de desarrollo: solo en escritorio
+    if (!this.input.isTouchDevice && this.input.consumeKey('F3')) {
       this.debugMode = !this.debugMode;
     }
     this.sceneSurvivalTimer = (this.sceneSurvivalTimer || 0) + dt;
@@ -6841,12 +6986,13 @@ export class RPGGame {
 
   render() {
     const ctx = this.ctx;
-    ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+    ctx.setTransform(this.renderScale, 0, 0, this.renderScale, 0, 0);
     ctx.imageSmoothingEnabled = false;
 
     if (
       this.menuSystem.state === 'title' ||
       this.menuSystem.state === 'cutscene' ||
+      this.menuSystem.state === 'touch_tutorial' ||
       this.menuSystem.state === 'exit_screen' ||
       this.menuSystem.state === 'game_over' ||
       this.menuSystem.state === 'world_map' ||
@@ -7268,7 +7414,7 @@ export class RPGGame {
     ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
 
     if (this.player.parryFlashTimer > 0) {
-      SpeechBubble.renderCombatBanner(ctx, '¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, 28);
+      SpeechBubble.renderCombatBanner(ctx, '¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, isTouchHud ? 18 : 28);
     }
 
     // 3. Indicador de Calabozo Municipal (únicamente activo si está cumpliendo condena)
@@ -7301,7 +7447,7 @@ export class RPGGame {
       const barX = Math.round((VIEWPORT_WIDTH - barW) / 2);
       // (FIX M1.5) En táctil los botones ocupan la esquina inferior derecha:
       // la barra de jefe pasa arriba y centrada para no quedar tapada.
-      const barY = isTouchHud ? 40 : VIEWPORT_HEIGHT - 22;
+      const barY = isTouchHud ? 30 : VIEWPORT_HEIGHT - 22;
 
       ctx.fillStyle = 'rgba(10, 14, 24, 0.88)';
       ctx.fillRect(barX, barY - 7, barW, barH + 7);
@@ -7418,8 +7564,49 @@ function registerServiceWorker() {
   }
 }
 
+/**
+ * (FIX M2.5) Teclado virtual (iOS/Android): cuando un input/textarea recibe el foco,
+ * los modales se anclan al viewport visual (`visualViewport`) en vez de al layout,
+ * para que el campo y los botones no queden debajo del teclado.
+ */
+function setupVirtualKeyboardViewport() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const vv = window.visualViewport;
+  const root = document.documentElement;
+  const isField = (el) => Boolean(el) && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+
+  const sync = () => {
+    const focused = isField(document.activeElement);
+    if (document.body) document.body.classList.toggle('keyboard-open', focused);
+    if (vv && root) {
+      root.style.setProperty('--vv-height', `${Math.round(vv.height)}px`);
+      root.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+    }
+  };
+
+  const onFocusIn = (event) => {
+    if (!isField(event.target)) return;
+    sync();
+    try {
+      event.target.scrollIntoView({ block: 'center', inline: 'nearest' });
+    } catch (_) {
+      /* Sin soporte de scroll: el CSS fixed ya lo coloca */
+    }
+  };
+  const onFocusOut = () => setTimeout(sync, 80);
+
+  if (vv && typeof vv.addEventListener === 'function') {
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+  }
+  window.addEventListener('resize', sync);
+  document.addEventListener('focusin', onFocusIn);
+  document.addEventListener('focusout', onFocusOut);
+}
+
 async function bootstrap() {
   registerServiceWorker();
+  setupVirtualKeyboardViewport();
   try {
     const canvas = document.getElementById('game-canvas');
     if (!canvas) {

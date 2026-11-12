@@ -13,7 +13,7 @@
  * de index.html y de los imports de los módulos).
  */
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v4';
 const ASSET_VERSION = '8';
 const CACHE_NAME = `ojete-dorado-${CACHE_VERSION}`;
 

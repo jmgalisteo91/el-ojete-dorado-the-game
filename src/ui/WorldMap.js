@@ -23,6 +23,143 @@ export class WorldMap {
     this.menuSystem = menuSystem;
     this._lastLocationName = 'Aldea de Valleverde';
     this._lastZoneId = 'center';
+
+    // (FIX M3.3) Vista navegable: pan + zoom + pinch
+    this.isTouchDevice = false;
+    this.view = { zoom: 1, panX: 0, panY: 0 };
+    this.minZoom = 0.9;
+    this.maxZoom = 2.2;
+    this._buttons = [];
+    this._touchWasDown = false;
+    this._dragStart = null;
+    this._pinchDist = null;
+    this._closeRequested = false;
+  }
+
+  setTouchMode(isTouch) {
+    this.isTouchDevice = Boolean(isTouch);
+  }
+
+  _mapRect() {
+    return { x: 6, y: 16, w: LOGICAL_WIDTH - 12, h: 140 };
+  }
+
+  _clampView() {
+    const rect = this._mapRect();
+    const maxX = (rect.w * (this.view.zoom - 1)) / 2 + 8;
+    const maxY = (rect.h * (this.view.zoom - 1)) / 2 + 8;
+    this.view.panX = Math.max(-maxX, Math.min(maxX, this.view.panX));
+    this.view.panY = Math.max(-maxY, Math.min(maxY, this.view.panY));
+  }
+
+  _setZoom(zoom) {
+    this.view.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, zoom));
+    this._clampView();
+  }
+
+  resetView() {
+    this.view.zoom = 1;
+    this.view.panX = 0;
+    this.view.panY = 0;
+  }
+
+  consumeCloseRequest() {
+    const requested = this._closeRequested;
+    this._closeRequested = false;
+    return requested;
+  }
+
+  _handleButton(id) {
+    if (id === 'close') {
+      this._closeRequested = true;
+    } else if (id === 'in') {
+      this._setZoom(this.view.zoom * 1.25);
+    } else if (id === 'out') {
+      this._setZoom(this.view.zoom / 1.25);
+    } else if (id === 'reset') {
+      this.resetView();
+    }
+  }
+
+  /**
+   * (FIX M3.3) Pan con un dedo, zoom con pinch y botones de navegación.
+   * Se llama cada frame mientras el mapa está abierto.
+   */
+  updateInput(input) {
+    if (!input) return;
+    const px = input.pointerX;
+    const py = input.pointerY;
+    const down = Boolean(input.isPointerDown);
+
+    // Botones de pantalla (sin transformar)
+    if (input.pointerJustClicked && this.isTouchDevice) {
+      for (const b of this._buttons) {
+        if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) {
+          this._handleButton(b.id);
+          return;
+        }
+      }
+    }
+
+    const pointers = input.activePointers ? Array.from(input.activePointers.values()) : [];
+
+    // Pinch de dos dedos
+    if (pointers.length >= 2) {
+      const d = Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
+      if (this._pinchDist != null && this._pinchDist > 0) {
+        this._setZoom(this.view.zoom * (d / this._pinchDist));
+      }
+      this._pinchDist = d;
+      this._dragStart = null;
+      return;
+    }
+    this._pinchDist = null;
+
+    // Pan con un dedo
+    if (down && !this._touchWasDown) {
+      this._touchWasDown = true;
+      const rect = this._mapRect();
+      if (px >= rect.x && px <= rect.x + rect.w && py >= rect.y && py <= rect.y + rect.h) {
+        this._dragStart = { x: px, y: py, panX: this.view.panX, panY: this.view.panY };
+      }
+    } else if (down && this._dragStart) {
+      this.view.panX = this._dragStart.panX + (px - this._dragStart.x);
+      this.view.panY = this._dragStart.panY + (py - this._dragStart.y);
+      this._clampView();
+    } else if (!down) {
+      this._touchWasDown = false;
+      this._dragStart = null;
+    }
+  }
+
+  _drawMapButtons(ctx, W, H) {
+    this._buttons = [];
+    if (!this.isTouchDevice) return;
+    const r = 8.5;
+    const defs = [
+      { id: 'close', x: W - 14, y: 26, r, icon: '✕', color: '#f87171' },
+      { id: 'in', x: W - 14, y: 48, r, icon: '+', color: '#38bdf8' },
+      { id: 'out', x: W - 14, y: 68, r, icon: '−', color: '#38bdf8' },
+      { id: 'reset', x: 14, y: 26, r, icon: '⌂', color: '#e5c07b' }
+    ];
+    for (const b of defs) {
+      ctx.save();
+      ctx.globalAlpha = 0.88;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(10, 14, 24, 0.85)';
+      ctx.fill();
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.fillStyle = b.color;
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(b.icon, b.x, b.y + 0.5);
+      ctx.restore();
+      this._buttons.push({ id: b.id, x: b.x - b.r - 2, y: b.y - b.r - 2, w: (b.r + 2) * 2, h: (b.r + 2) * 2 });
+    }
   }
 
   /**
@@ -49,6 +186,17 @@ export class WorldMap {
 
     // 1. Marco pergamino exterior estilo Zelda clásico
     this._drawZeldaFrame(ctx, W, H);
+
+    // (FIX M3.3) Contenido del mapa con pan/zoom (recortado al marco interior)
+    const mapCX = mapX + mapW / 2;
+    const mapCY = mapY + mapH / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(mapX, mapY, mapW, mapH);
+    ctx.clip();
+    ctx.translate(mapCX + this.view.panX, mapCY + this.view.panY);
+    ctx.scale(this.view.zoom, this.view.zoom);
+    ctx.translate(-mapCX, -mapCY);
 
     // 2. Fondo oceánico y cuadrícula topográfica
     this._drawTopographyBackground(ctx, mapX, mapY, mapW, mapH);
@@ -77,9 +225,13 @@ export class WorldMap {
     // 8. Marcador de Posición del Héroe "★ TÚ"
     this._drawHeroLocationMarker(ctx, locInfo, t);
 
-    // 9. Encabezado superior y Barra HUD inferior estilo Zelda
+    // 9. El contenido del mapa termina aquí (fin del clip/transform)
+    ctx.restore();
+
+    // 10. Encabezado superior, barra HUD y botones de navegación (sin transformar)
     this._drawZeldaHeader(ctx, W);
     this._drawZeldaHUD(ctx, W, H, locInfo, status, player);
+    this._drawMapButtons(ctx, W, H);
 
     ctx.restore();
   }

@@ -28,6 +28,9 @@ export class DialogueBox {
     this.charSpeed = 40;
     this.blinkTimer = 0;
 
+    // (FIX M3.1) En táctil el texto y las opciones se agrandan 1.5x
+    this.isTouchDevice = false;
+
     // Estado de "Charla de la vida en plan coñazo"
     this.isRantMode = false;
     this.rantPenaltyPool = [];
@@ -44,14 +47,16 @@ export class DialogueBox {
     }
   }
 
-  _paginateLines(rawLines, maxCharsPerLine = 46, maxLinesPerPage = 2) {
+  _paginateLines(rawLines, maxCharsPerLine = null, maxLinesPerPage = 2) {
     if (!rawLines) return ['...'];
     const input = Array.isArray(rawLines) ? rawLines : [rawLines];
     const pages = [];
+    // (FIX M3.1) Con fuente 12px caben menos caracteres por línea
+    const charsPerLine = maxCharsPerLine || (this.isTouchDevice ? 28 : 46);
 
     for (const rawText of input) {
       if (!rawText || typeof rawText !== 'string') continue;
-      const wrapped = this._wrapTextSimple(rawText, maxCharsPerLine);
+      const wrapped = this._wrapTextSimple(rawText, charsPerLine);
       if (wrapped.length <= maxLinesPerPage) {
         pages.push(wrapped.join('\n'));
       } else {
@@ -347,10 +352,15 @@ export class DialogueBox {
   render(ctx) {
     if (!this.active) return;
 
+    // (FIX M3.1) Caja más alta y tipografía 1.5x en táctil
+    const isTouch = Boolean(this.isTouchDevice);
     const boxX = 12;
-    const boxY = 124;
+    const boxH = isTouch ? 54 : 48;
+    const boxY = this.viewportHeight - boxH - 8;
     const boxW = this.viewportWidth - 24;
-    const boxH = 48;
+    const textFont = isTouch ? 'bold 12px monospace' : '8px monospace';
+    const lineHeight = isTouch ? 16 : 11;
+    const maxVisibleLines = isTouch ? 2 : 3;
 
     ctx.save();
 
@@ -367,11 +377,11 @@ export class DialogueBox {
     ctx.fillRect(boxX + 3, boxY + 3, boxW - 6, boxH - 6);
 
     if (this.speakerName) {
-      ctx.font = 'bold 8px monospace';
-      const nameW = Math.ceil(ctx.measureText(this.speakerName).width) + 12;
-      const nameH = 12;
+      ctx.font = isTouch ? 'bold 12px monospace' : 'bold 8px monospace';
+      const nameW = Math.ceil(ctx.measureText(this.speakerName).width) + (isTouch ? 16 : 12);
+      const nameH = isTouch ? 18 : 12;
       const nameX = boxX + 6;
-      const nameY = boxY - 8;
+      const nameY = boxY - nameH + 4;
 
       ctx.fillStyle = '#121624';
       ctx.fillRect(nameX, nameY, nameW, nameH);
@@ -383,49 +393,50 @@ export class DialogueBox {
       ctx.fillStyle = '#ffd885';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
-      ctx.fillText(this.speakerName, nameX + 6, nameY + 2);
+      ctx.fillText(this.speakerName, nameX + 6, nameY + (isTouch ? 3 : 2));
     }
 
     // Si está en modo charla coñazo, mostrar aviso tentador o alerta de "¡PILLADO!"
     if (this.isRantMode && !this.isShowingChoices()) {
-      ctx.font = 'bold 6px monospace';
+      ctx.font = isTouch ? 'bold 9px monospace' : 'bold 6px monospace';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'top';
       if (this.caughtBannerTimer > 0) {
         ctx.fillStyle = '#ff6b6b';
-        ctx.fillText('¡PILLADO SALTANDO! +2 PÁGS DE CHAPA', boxX + boxW - 6, boxY - 7);
+        ctx.fillText('¡PILLADO SALTANDO! +2 PÁGS DE CHAPA', boxX + boxW - 6, boxY - (isTouch ? 10 : 7));
       } else {
         ctx.fillStyle = '#7ae582';
-        ctx.fillText('[Pulsa E rápido para saltar chapa]', boxX + boxW - 6, boxY - 7);
+        ctx.fillText(isTouch ? '[Toca rápido para saltar chapa]' : '[Pulsa E rápido para saltar chapa]', boxX + boxW - 6, boxY - (isTouch ? 10 : 7));
       }
     }
 
     const fullText = this.lines[this.currentLineIndex] || '';
     const shownText = fullText.slice(0, Math.floor(this.visibleChars));
 
-    ctx.font = '8px monospace';
+    ctx.font = textFont;
     ctx.fillStyle = '#f0f4f8';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
 
     const wrappedLines = this._wrapText(ctx, shownText, boxW - 20);
-    const startTextY = boxY + 9;
-    const lineHeight = 11;
+    const startTextY = boxY + (isTouch ? 8 : 9);
 
-    wrappedLines.slice(0, 3).forEach((line, idx) => {
+    wrappedLines.slice(0, maxVisibleLines).forEach((line, idx) => {
       ctx.fillText(line, boxX + 9, startTextY + idx * lineHeight);
     });
 
     const pageInfo = `${this.currentLineIndex + 1}/${this.lines.length}`;
     ctx.fillStyle = '#9aa5b8';
-    ctx.font = '7px monospace';
+    ctx.font = isTouch ? '9.5px monospace' : '7px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(pageInfo, boxX + boxW - 20, boxY + boxH - 11);
+    ctx.fillText(pageInfo, boxX + boxW - (isTouch ? 28 : 20), boxY + boxH - (isTouch ? 13 : 11));
 
     if (Math.floor(this.visibleChars) >= fullText.length) {
       const bounce = Math.sin(this.blinkTimer) > 0 ? 0 : 1;
       ctx.fillStyle = '#ffd885';
-      ctx.fillText('▶', boxX + boxW - 8, boxY + boxH - 11 + bounce);
+      // (FIX M3.1) Indicador de avance más grande en táctil
+      ctx.font = isTouch ? 'bold 14px monospace' : '7px monospace';
+      ctx.fillText('▶', boxX + boxW - (isTouch ? 13 : 8), boxY + boxH - (isTouch ? 17 : 11) + bounce);
     }
 
     if (this.isShowingChoices()) {
@@ -436,19 +447,21 @@ export class DialogueBox {
   }
 
   _renderChoicesMenu(ctx, boxX, boxY, boxW) {
-    ctx.font = '7px monospace';
-    const itemHeight = 12;
-    const paddingV = 5;
+    // (FIX M3.1) Opciones 1.5x y filas altas, fáciles de tocar
+    const isTouch = Boolean(this.isTouchDevice);
+    ctx.font = isTouch ? 'bold 10.5px monospace' : '7px monospace';
+    const itemHeight = isTouch ? 19 : 12;
+    const paddingV = isTouch ? 7 : 5;
     const menuH = this.choices.length * itemHeight + paddingV * 2;
 
     let maxLabelW = 110;
     for (const c of this.choices) {
-      const w = Math.ceil(ctx.measureText(`▶ ${c.label}`).width) + 16;
+      const w = Math.ceil(ctx.measureText(`▶ ${c.label}`).width) + (isTouch ? 24 : 16);
       if (w > maxLabelW) maxLabelW = w;
     }
-    const menuW = Math.min(boxW, maxLabelW);
+    const menuW = Math.min(boxW, isTouch ? Math.max(200, maxLabelW) : maxLabelW);
     const menuX = boxX + boxW - menuW;
-    const menuY = Math.max(16, boxY - menuH - 4);
+    const menuY = Math.max(isTouch ? 6 : 16, boxY - menuH - (isTouch ? 8 : 4));
     this.lastMenuBounds = { menuX, menuY, menuW, menuH, itemHeight, paddingV };
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';

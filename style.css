@@ -509,3 +509,41 @@ html, body {
   border-color: #5eead4;
   box-shadow: 0 0 16px rgba(94, 234, 212, 0.4);
 }
+
+/* ==========================================================================
+   (FIX M2.5) Teclado virtual (iOS/Android)
+   Cuando un input/textarea recibe el foco, los modales se anclan al viewport
+   visual para que el campo y los botones no queden debajo del teclado.
+   `interactive-widget=resizes-content` (index.html) ya ayuda en Chromium;
+   estas reglas cubren iOS, que ignora ese hint.
+   ========================================================================== */
+body.keyboard-open .ai-chat-modal,
+body.keyboard-open .exit-modal-backdrop {
+  position: fixed;
+  top: var(--vv-top, 0px);
+  right: 0;
+  bottom: auto;
+  left: 0;
+  height: var(--vv-height, 100dvh);
+}
+
+body.keyboard-open .ai-chat-modal {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+body.keyboard-open .ai-chat-card,
+body.keyboard-open .score-card,
+body.keyboard-open .exit-confirm-card,
+body.keyboard-open .exit-farewell-card {
+  max-height: calc(var(--vv-height, 100dvh) - 16px);
+  overflow-y: auto;
+}
+
+/* iOS hace zoom al enfocar un input con font-size < 16px */
+@media (pointer: coarse) {
+  #ai-chat-input,
+  #cloud-load-code-input {
+    font-size: 16px;
+  }
+}
+

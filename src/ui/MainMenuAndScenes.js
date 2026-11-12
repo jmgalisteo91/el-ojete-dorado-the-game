@@ -20,6 +20,11 @@ export class MainMenuAndScenes {
 
     this.worldMap = new WorldMap(this);
     this.worldMapContext = null;
+    // (FIX M3.6) Contexto táctil: guía de controles y tutorial de 3 pasos
+    this.isTouchDevice = false;
+    this.touchTutorialStep = 0;
+    this.touchTutorialDone = false;
+    this._touchTutorialCooldown = 0;
     this.leaderboardView = new LeaderboardView(viewportWidth, viewportHeight);
 
     // Estados: 'title' | 'options' | 'cutscene' | 'exit_screen' | 'pause' | 'none'
@@ -155,6 +160,10 @@ export class MainMenuAndScenes {
       this.previousStateBeforeMap = this.state === 'pause' ? 'pause' : 'none';
     }
     this.state = 'world_map';
+    if (this.worldMap) {
+      this.worldMap.isTouchDevice = this.isTouchDevice;
+      this.worldMap.resetView();
+    }
     this.currentSceneId = currentSceneId;
     if (context) {
       this.worldMapContext = context;
@@ -1011,13 +1020,37 @@ export class MainMenuAndScenes {
 
     // Mapa del Reino del Gran Ojal
     if (this.state === 'world_map') {
-      if (
-        input.consumeKey('KeyM') ||
-        input.consumeKey('Escape') ||
-        input.consumeInteraction() ||
-        input.consumePointerClick()
-      ) {
+      // (FIX M3.3) Pan/zoom/pinch y botones; el clic ya no cierra el mapa
+      if (this.worldMap) {
+        this.worldMap.updateInput(input);
+        if (this.worldMap.consumeCloseRequest()) {
+          this.closeWorldMap();
+          return;
+        }
+      }
+      if (input.consumeKey('KeyM') || input.consumeKey('Escape')) {
         this.closeWorldMap();
+      }
+      return;
+    }
+
+    // (FIX M3.6) Tutorial táctil de 3 pasos
+    if (this.state === 'touch_tutorial') {
+      if (this._touchTutorialCooldown > 0) {
+        this._touchTutorialCooldown = Math.max(0, this._touchTutorialCooldown - dt);
+        return;
+      }
+      const advance =
+        input.pointerJustClicked ||
+        input.consumeInteraction() ||
+        input.consumeKey('Enter') ||
+        input.consumeKey('Space') ||
+        input.consumeKey('Escape');
+      if (advance) {
+        this.touchTutorialStep += 1;
+        if (this.touchTutorialStep >= 3) {
+          this.finishTouchTutorial();
+        }
       }
       return;
     }
@@ -1393,6 +1426,11 @@ export class MainMenuAndScenes {
       return;
     }
 
+    if (this.state === 'touch_tutorial') {
+      this._renderTouchTutorial(ctx);
+      return;
+    }
+
     if (this.state === 'controls') {
       if (this.previousStateBeforeControls === 'title') {
         this._renderTitleBackdropPixelArt(ctx);
@@ -1501,12 +1539,23 @@ export class MainMenuAndScenes {
     ctx.fillStyle = '#ffd885';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    ctx.fillText('🎮 CONTROLES & GUÍA DE TECLAS · EL OJETE DORADO', winX + 8, winY + 6);
+    ctx.fillText(
+      this.isTouchDevice ? '📱 CONTROLES TÁCTILES · EL OJETE DORADO' : '🎮 CONTROLES & GUÍA DE TECLAS · EL OJETE DORADO',
+      winX + 8,
+      winY + 6
+    );
 
     ctx.font = '6px monospace';
     ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'right';
-    ctx.fillText('[Escape / Clic] Volver', winX + winW - 8, winY + 7);
+    ctx.fillText(this.isTouchDevice ? '[Toca] Volver' : '[Escape / Clic] Volver', winX + winW - 8, winY + 7);
+
+    // (FIX M3.6) En móvil se muestra el diagrama táctil en lugar de la tabla de teclas
+    if (this.isTouchDevice) {
+      this._renderTouchControlsGuide(ctx, winX, winY, winW, winH);
+      ctx.restore();
+      return;
+    }
 
     // Helper para dibujar categorías
     const drawCategoryBox = (bx, by, bw, bh, title, titleColor, items) => {
@@ -1599,6 +1648,170 @@ export class MainMenuAndScenes {
     ctx.textBaseline = 'middle';
     ctx.fillText('◀ VOLVER [Escape / Clic]', btnX + btnW / 2, btnY + btnH / 2);
 
+    ctx.restore();
+  }
+
+  /**
+   * (FIX M3.6) Diagrama de controles táctiles (joystick + A/B/C + ☰/🎒).
+   */
+  _renderTouchControlsGuide(ctx, winX, winY, winW, winH) {
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    const drawPad = (cx, cy, r, icon, color, label) => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(10, 14, 24, 0.9)';
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.font = `bold ${Math.round(r * 0.9)}px monospace`;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(icon, cx, cy + 0.5);
+      if (label) {
+        ctx.font = '4.6px monospace';
+        ctx.fillStyle = '#cbd5e1';
+        ctx.textBaseline = 'top';
+        ctx.fillText(label, cx, cy + r + 3);
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+    };
+
+    // Joystick (inferior izquierda)
+    const jx = winX + 52;
+    const jy = winY + 108;
+    ctx.beginPath();
+    ctx.arc(jx, jy, 26, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10, 14, 24, 0.85)';
+    ctx.fill();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(jx, jy, 11, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.8)';
+    ctx.fill();
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('▲', jx, jy - 17);
+    ctx.fillText('▼', jx, jy + 17);
+    ctx.fillText('◀', jx - 17, jy);
+    ctx.fillText('▶', jx + 17, jy);
+    ctx.font = 'bold 5.5px monospace';
+    ctx.fillStyle = '#ffd885';
+    ctx.fillText('MOVERSE', jx, jy + 34);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    // Botones de acción (inferior derecha)
+    drawPad(winX + 238, winY + 116, 18, 'A', '#fde047', 'ATACAR / HABLAR');
+    drawPad(winX + 200, winY + 104, 13, 'B', '#38bdf8', 'DASH');
+    drawPad(winX + 238, winY + 88, 13, 'C', '#c084fc', 'PARRY');
+
+    // Esquinas superiores
+    drawPad(winX + 24, winY + 30, 9, '🎒', '#e2e8f0', 'MOCHILA');
+    drawPad(winX + winW - 24, winY + 30, 9, '☰', '#e2e8f0', 'PAUSA');
+
+    // Lista de equivalencias
+    const lines = [
+      ['🕹️', 'Joystick: moverte'],
+      ['⚔️', 'A: atacar / interactuar'],
+      ['⚡', 'B: dash'],
+      ['🛡️', 'C: barrera / parry'],
+      ['🎒', 'Bolsa: inventario'],
+      ['☰', 'Pausa'],
+      ['✕', 'Cierra paneles abiertos']
+    ];
+    const lx = winX + 92;
+    let ly = winY + 24;
+    ctx.font = '5.5px monospace';
+    for (const [icon, text] of lines) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(icon, lx, ly);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(text, lx + 12, ly);
+      ly += 11;
+    }
+
+    ctx.font = 'bold 5.5px monospace';
+    ctx.fillStyle = '#38bdf8';
+    ctx.textAlign = 'center';
+    ctx.fillText('Toca en cualquier sitio para volver', winX + winW / 2, winY + winH - 14);
+    ctx.textAlign = 'left';
+  }
+
+  /**
+   * (FIX M3.6) Tutorial táctil de 3 pasos la primera vez que se juega en móvil.
+   */
+  startTouchTutorial() {
+    this.state = 'touch_tutorial';
+    this.touchTutorialStep = 0;
+    this.touchTutorialDone = false;
+    this._touchTutorialCooldown = 0.35;
+    if (this.music && typeof this.music.playMenuSelect === 'function') this.music.playMenuSelect();
+  }
+
+  finishTouchTutorial() {
+    this.state = 'none';
+    this.touchTutorialDone = true;
+    try {
+      localStorage.setItem('ojete_touch_tutorial_done', '1');
+    } catch (_) {
+      /* localStorage no disponible */
+    }
+  }
+
+  _renderTouchTutorial(ctx) {
+    const W = this.viewportWidth;
+    const H = this.viewportHeight;
+    const steps = [
+      { icon: '🕹️', title: 'MUEVE CON EL JOYSTICK', body: 'Arrastra el dedo en la esquina inferior izquierda. El pulgar sigue tu dedo.' },
+      { icon: '⚔️', title: 'ATACA CON A', body: 'El botón A ataca. Si hay alguien cerca, habla o interactúa automáticamente.' },
+      { icon: '☰', title: 'PAUSA CON ☰', body: 'Arriba a la derecha. Con 🎒 abres la mochila y con ✕ cierras los paneles.' }
+    ];
+    const step = steps[Math.max(0, Math.min(2, this.touchTutorialStep))];
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(3, 5, 10, 0.88)';
+    ctx.fillRect(0, 0, W, H);
+
+    const cardW = 250;
+    const cardH = 108;
+    const cardX = Math.round((W - cardW) / 2);
+    const cardY = Math.round((H - cardH) / 2);
+
+    ctx.fillStyle = '#0a0f1d';
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.fillStyle = '#e5c07b';
+    ctx.fillRect(cardX + 1, cardY + 1, cardW - 2, cardH - 2);
+    ctx.fillStyle = '#101728';
+    ctx.fillRect(cardX + 2.5, cardY + 2.5, cardW - 5, cardH - 5);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '28px monospace';
+    ctx.fillText(step.icon, W / 2, cardY + 12);
+
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = '#ffd885';
+    ctx.fillText(step.title, W / 2, cardY + 40);
+
+    ctx.font = '5.5px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    const bodyLines = UILayout.wrapText(ctx, step.body, cardW - 30);
+    bodyLines.slice(0, 3).forEach((line, idx) => {
+      ctx.fillText(line, W / 2, cardY + 54 + idx * 9);
+    });
+
+    ctx.font = 'bold 5.5px monospace';
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText(`${this.touchTutorialStep + 1}/3 · TOCA PARA CONTINUAR`, W / 2, cardY + cardH - 14);
     ctx.restore();
   }
 

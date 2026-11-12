@@ -72,11 +72,129 @@ export class Inventory {
     this.items = [];
     this.selectedIndex = 0;
     this.statusMessage = '';
+
+    // (FIX M3.2) Rejilla táctil 3x3, acciones grandes y drag & drop
+    this.isTouchDevice = false;
+    this.gridCols = 4;
+    this.gridRows = 2;
+    this._lastSlots = [];
+    this._touchActions = [];
+    this._pageButtons = [];
+    this._pointerWasDown = false;
+    this._drag = null;
+  }
+
+  /** (FIX M3.2) Configura la rejilla y el modo de interacción táctil. */
+  setTouchMode(isTouch) {
+    this.isTouchDevice = Boolean(isTouch);
+    this.visibleSlots = this.isTouchDevice ? 9 : 8;
+    this.slotSize = this.isTouchDevice ? 26 : 22;
+    this.gridCols = this.isTouchDevice ? 3 : 4;
+    this.gridRows = this.isTouchDevice ? 3 : 2;
+    this._resetTouch();
+    this._clampSelectedIndex();
+  }
+
+  _resetTouch() {
+    this._pointerWasDown = false;
+    this._drag = null;
+    this._touchActions = [];
+    this._pageButtons = [];
+  }
+
+  _changePage(direction) {
+    const totalPages = Math.max(1, Math.ceil(Math.max(this.items.length, 1) / this.visibleSlots));
+    const currentPage = Math.floor(this.selectedIndex / this.visibleSlots);
+    const nextPage = Math.max(0, Math.min(totalPages - 1, currentPage + (direction === 'prev' ? -1 : 1)));
+    this.selectedIndex = nextPage * this.visibleSlots;
+    this._clampSelectedIndex();
+    this.statusMessage = '';
+  }
+
+  _clampSelectedIndex() {
+    if (this.selectedIndex >= this.items.length) {
+      this.selectedIndex = Math.max(0, this.items.length - 1);
+    }
+    if (this.selectedIndex < 0) this.selectedIndex = 0;
+  }
+
+  _slotAt(px, py) {
+    for (const slot of this._lastSlots) {
+      if (px >= slot.x && px <= slot.x + slot.w && py >= slot.y && py <= slot.y + slot.h) {
+        return slot;
+      }
+    }
+    return null;
+  }
+
+  /** (FIX M3.2) Intercambia dos ranuras ocupadas. */
+  _swapSlots(a, b) {
+    if (a === b) return false;
+    if (a < 0 || b < 0 || a >= this.items.length || b >= this.items.length) return false;
+    const tmp = this.items[a];
+    this.items[a] = this.items[b];
+    this.items[b] = tmp;
+    this.statusMessage = 'Ranuras reordenadas.';
+    return true;
+  }
+
+  /**
+   * (FIX M3.2) Input táctil del inventario. Devuelve 'use' | 'drop' | null.
+   * Se llama cada frame mientras el panel está abierto. Gestiona:
+   *  - toque en ranura → seleccionar
+   *  - arrastrar de ranura a ranura → intercambiar
+   *  - botones contextuales grandes → usar / tirar
+   */
+  handleTouchInput(input) {
+    if (!this.isOpen || !this.isTouchDevice || !input) return null;
+    const px = input.pointerX;
+    const py = input.pointerY;
+    const down = Boolean(input.isPointerDown);
+
+    if (input.pointerJustClicked) {
+      for (const action of this._touchActions) {
+        if (px >= action.x && px <= action.x + action.w && py >= action.y && py <= action.y + action.h) {
+          return action.id;
+        }
+      }
+      for (const button of this._pageButtons) {
+        if (px >= button.x && px <= button.x + button.w && py >= button.y && py <= button.y + button.h) {
+          this._changePage(button.id);
+          return null;
+        }
+      }
+    }
+
+    const slot = this._slotAt(px, py);
+
+    if (down && !this._pointerWasDown) {
+      this._pointerWasDown = true;
+      if (slot) {
+        this.selectedIndex = slot.index;
+        this.statusMessage = '';
+        if (this.items[slot.index]) {
+          this._drag = { from: slot.index, startX: px, startY: py };
+        }
+      }
+    } else if (!down && this._pointerWasDown) {
+      this._pointerWasDown = false;
+      if (this._drag) {
+        const moved = Math.hypot(px - this._drag.startX, py - this._drag.startY) > 6;
+        const target = this._slotAt(px, py);
+        if (moved && target && target.index !== this._drag.from) {
+          this._swapSlots(this._drag.from, target.index);
+        }
+        this._drag = null;
+      }
+    }
+
+    return null;
   }
 
   open() {
     this.isOpen = true;
     this.statusMessage = '';
+    this._resetTouch();
   }
 
   toggle() {
@@ -87,6 +205,7 @@ export class Inventory {
   close() {
     this.isOpen = false;
     this.statusMessage = '';
+    this._resetTouch();
   }
 
   /**
@@ -212,10 +331,10 @@ export class Inventory {
    * Navegación por la cuadrícula de 4 columnas × 2 filas por página
    */
   moveSelection(dir) {
-    const cols = 4;
+    const cols = this.gridCols;
     const totalPages = Math.max(1, Math.ceil(Math.max(this.items.length, this.selectedIndex + 1) / this.visibleSlots));
     const totalSlots = totalPages * this.visibleSlots;
-    const rows = Math.max(2, Math.ceil(totalSlots / cols));
+    const rows = Math.max(this.gridRows, Math.ceil(totalSlots / cols));
     const col = this.selectedIndex % cols;
     const row = Math.floor(this.selectedIndex / cols);
 
@@ -282,11 +401,35 @@ export class Inventory {
       headerText: `RANURAS (PÁG ${currentPage + 1}/${totalPages})`
     });
 
-    const cols = 4;
-    const rows = 2;
-    const slotSize = 22; // 22×22 px estrictos según especificación
+    // (FIX M3.2) Flechas de página táctiles (hasta 16 objetos en 3x3)
+    this._pageButtons = [];
+    if (this.isTouchDevice && totalPages > 1) {
+      const bw = 11;
+      const bh = 11;
+      const by = leftRect.y + 2;
+      const prev = { id: 'prev', x: leftRect.x + leftRect.w - 26, y: by, w: bw, h: bh };
+      const next = { id: 'next', x: leftRect.x + leftRect.w - 13, y: by, w: bw, h: bh };
+      for (const b of [prev, next]) {
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.95)';
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.strokeStyle = UI_COLORS.borderInner;
+        ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+        ctx.font = `bold 7px ${UI_FONT}`;
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.textAlign = 'center';
+        ctx.fillText(b.id === 'prev' ? '‹' : '›', b.x + b.w / 2, b.y + 1.5);
+      }
+      ctx.textAlign = 'left';
+      this._pageButtons = [prev, next];
+    }
+
+    // (FIX M3.2) 4x2 en desktop; 3x3 con celdas mayores en táctil
+    const cols = this.gridCols;
+    const rows = this.gridRows;
+    const slotSize = this.slotSize;
     const gapX = 4;
-    const gapY = 5;
+    const gapY = this.isTouchDevice ? 3 : 5;
+    this._lastSlots = [];
     const gridW = cols * slotSize + (cols - 1) * gapX; // 100 px
     const gridStartX = leftRect.x + Math.floor((leftRect.w - gridW) / 2);
     const gridStartY = leftRect.y + 16;
@@ -302,8 +445,9 @@ export class Inventory {
         const sy = gridStartY + r * (slotSize + gapY);
         const isSelected = slotIndex === this.selectedIndex;
         const item = this.items[slotIndex];
+        this._lastSlots.push({ x: sx, y: sy, w: slotSize, h: slotSize, index: slotIndex });
 
-        // Fondo y bisel de ranura 22×22 px
+        // Fondo y bisel de ranura
         ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
         ctx.fillRect(sx, sy, slotSize, slotSize);
 
@@ -312,8 +456,9 @@ export class Inventory {
         ctx.strokeRect(sx + 0.5, sy + 0.5, slotSize - 1, slotSize - 1);
 
         if (item) {
-          // Dibujar sprite 16x16 centrado dentro del slot de 22x22
-          UILayout.drawItemIcon(ctx, this.itemsSheet, item.iconIndex, sx + 3, sy + 2, 16);
+          // Dibujar sprite 16x16 centrado dentro de la ranura
+          const iconPad = Math.floor((slotSize - 16) / 2);
+          UILayout.drawItemIcon(ctx, this.itemsSheet, item.iconIndex, sx + iconPad, sy + iconPad, 16);
 
           // Etiqueta de cantidad en esquina inferior derecha
           const qtyStr = `x${item.qty}`;
@@ -338,7 +483,7 @@ export class Inventory {
           ctx.fillStyle = 'rgba(100, 116, 139, 0.45)';
           const numStr = String(slotIndex + 1);
           const nw = ctx.measureText(numStr).width;
-          ctx.fillText(numStr, sx + Math.floor((slotSize - nw) / 2), sy + 9);
+          ctx.fillText(numStr, sx + Math.floor((slotSize - nw) / 2), sy + Math.floor(slotSize / 2) - 2);
         }
       }
     }
@@ -438,19 +583,49 @@ export class Inventory {
         ctx.fillText(line, padX, sepY + 5 + idx * 7);
       });
 
-      // Acciones contextuales en la base del panel derecho
-      const actY = rightRect.y + rightRect.h - 15;
-      ctx.fillStyle = 'rgba(20, 29, 47, 0.92)';
-      ctx.fillRect(padX, actY, innerW, 11);
-      ctx.strokeStyle = UI_COLORS.borderInner;
-      ctx.strokeRect(padX + 0.5, actY + 0.5, innerW - 1, 10);
+      // (FIX M3.2) Acciones contextuales: botones grandes en táctil
+      this._touchActions = [];
+      if (this.isTouchDevice) {
+        const gap = 4;
+        const btnW = (innerW - gap) / 2;
+        const btnH = 17;
+        const actY = rightRect.y + rightRect.h - btnH - 4;
+        const useRect = { id: 'use', x: padX, y: actY, w: btnW, h: btnH };
+        const dropRect = { id: 'drop', x: padX + btnW + gap, y: actY, w: btnW, h: btnH };
 
-      ctx.font = `bold 4px ${UI_FONT}`;
-      ctx.fillStyle = UI_COLORS.cyan;
-      ctx.fillText('[E] Usar / Equipar', padX + 4, actY + 3.5);
+        ctx.fillStyle = 'rgba(20, 60, 45, 0.95)';
+        ctx.fillRect(useRect.x, useRect.y, useRect.w, useRect.h);
+        ctx.strokeStyle = UI_COLORS.emerald;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(useRect.x + 0.5, useRect.y + 0.5, useRect.w - 1, useRect.h - 1);
+        ctx.font = `bold 6px ${UI_FONT}`;
+        ctx.fillStyle = UI_COLORS.emerald;
+        ctx.textAlign = 'center';
+        ctx.fillText('USAR / EQUIPAR', useRect.x + useRect.w / 2, useRect.y + 5);
 
-      ctx.fillStyle = UI_COLORS.crimson;
-      ctx.fillText('[X] Descartar', padX + innerW - 48, actY + 3.5);
+        ctx.fillStyle = 'rgba(70, 20, 26, 0.95)';
+        ctx.fillRect(dropRect.x, dropRect.y, dropRect.w, dropRect.h);
+        ctx.strokeStyle = UI_COLORS.crimson;
+        ctx.strokeRect(dropRect.x + 0.5, dropRect.y + 0.5, dropRect.w - 1, dropRect.h - 1);
+        ctx.fillStyle = UI_COLORS.crimson;
+        ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5);
+
+        ctx.textAlign = 'left';
+        this._touchActions = [useRect, dropRect];
+      } else {
+        const actY = rightRect.y + rightRect.h - 15;
+        ctx.fillStyle = 'rgba(20, 29, 47, 0.92)';
+        ctx.fillRect(padX, actY, innerW, 11);
+        ctx.strokeStyle = UI_COLORS.borderInner;
+        ctx.strokeRect(padX + 0.5, actY + 0.5, innerW - 1, 10);
+
+        ctx.font = `bold 4px ${UI_FONT}`;
+        ctx.fillStyle = UI_COLORS.cyan;
+        ctx.fillText('[E] Usar / Equipar', padX + 4, actY + 3.5);
+
+        ctx.fillStyle = UI_COLORS.crimson;
+        ctx.fillText('[X] Descartar', padX + innerW - 48, actY + 3.5);
+      }
     } else {
       ctx.font = `bold 4.5px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.textMuted;

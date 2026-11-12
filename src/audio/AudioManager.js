@@ -194,6 +194,10 @@ export class AudioManager {
     this.villainPattern = this.combatPattern;
 
     this._setupAutoUnlock();
+
+    // (FIX M2.4) Suspender el AudioContext en segundo plano
+    this._isHidden = false;
+    this._setupVisibilityHandling();
   }
 
   // ===========================================================================
@@ -353,6 +357,24 @@ export class AudioManager {
     this.sfxGainNode.gain.cancelScheduledValues(now);
     this.sfxGainNode.gain.setValueAtTime(this.sfxGainNode.gain.value, now);
     this.sfxGainNode.gain.linearRampToValueAtTime(targetSfx, now + 0.04);
+  }
+
+  /**
+   * (FIX M2.4) Al ocultar la pestaña se suspende el AudioContext (ahorra batería y
+   * evita música en background). Al volver se intenta reanudar; si el navegador exige
+   * gesto, el siguiente toque llama a `unlockAndStart()` y lo reanuda.
+   */
+  _setupVisibilityHandling() {
+    if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+    document.addEventListener('visibilitychange', () => {
+      this._isHidden = Boolean(document.hidden);
+      if (!this.ctx) return;
+      if (this._isHidden) {
+        if (this.ctx.state === 'running') this.ctx.suspend().catch(() => {});
+      } else if (this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+    });
   }
 
   _setupAutoUnlock() {
@@ -556,6 +578,8 @@ export class AudioManager {
 
     this.timerId = setInterval(() => {
       if (!this.ctx || this.isMusicMuted()) return;
+      // (FIX M2.4) No reanudar ni programar notas mientras está en segundo plano
+      if (this._isHidden) return;
       if (this.mode === 'game_over' || this.mode === 'silent' || this.mode === 'none') {
         return;
       }
@@ -739,6 +763,9 @@ export class AudioManager {
 
   _playSfxTone({ freq, type = 'square', startTime, duration, peakGain = 0.08, attack = 0.005 }) {
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    if (this._isHidden) return;
+    // (FIX M2.4) Cualquier SFX es una oportunidad de reanudar tras volver a la pestaña
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 

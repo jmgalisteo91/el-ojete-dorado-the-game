@@ -38,7 +38,16 @@ export class RenderPipeline {
     this._vignette = null;
     this._fogTexture = null;
 
+    // (FIX M2.6) Calidad gráfica: 'low' desactiva niebla y viñeta
+    this.quality = 'normal';
+
     this.stats = { sorted: 0, props: 0, entities: 0, shadows: 0 };
+  }
+
+  /** (FIX M2.6) Ajusta la calidad gráfica según el perfil de rendimiento. */
+  setQuality(profile) {
+    this.quality = profile === 'low' ? 'low' : profile === 'high' ? 'high' : 'normal';
+    return this.quality;
   }
 
   /** Avanza el reloj interno de la niebla (llamar una vez por update lógico). */
@@ -109,7 +118,8 @@ export class RenderPipeline {
     tilemap.renderOverhead(ctx, camera, enemies, player);
 
     // ── CAPA 3 · Atmósfera y profundidad de campo ────────────────────────────
-    if (!isInterior) {
+    // (FIX M2.6) En gama baja se omite la niebla (relleno de pantalla completo)
+    if (!isInterior && this.quality !== 'low') {
       this._renderFog(ctx, camera, dayNight);
     }
 
@@ -117,7 +127,10 @@ export class RenderPipeline {
       dayNight.render(ctx, camera, tilemap.lightSources, player, isInterior, tilemap.windowLights);
     }
 
-    this._renderVignette(ctx, isInterior);
+    // (FIX M2.6) La viñeta también se omite en gama baja
+    if (this.quality !== 'low') {
+      this._renderVignette(ctx, isInterior);
+    }
 
     // ── CAPA 4 · WORLD_HUD_OVERLAY (Bocadillos, globos flotantes y prompts de acción) ──
     // Se dibuja DESPUÉS de las entidades Y-Sorted, DESPUÉS de estructuras altas (tejados/árboles)

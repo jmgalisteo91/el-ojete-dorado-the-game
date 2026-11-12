@@ -3,6 +3,17 @@ import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
 import { EnemyBrain, AI_STATE, inferArchetype } from '../ai/EnemyBrain.js?v=8';
 import { GameLoop } from '../core/GameLoop.js?v=8';
 
+
+// (FIX M2.6) Escala de partículas (1 = normal, 0.45 = gama baja). main la ajusta.
+let particleScale = 1;
+
+/** @param {number} scale 0.15..1 */
+export function setParticleScale(scale) {
+  const value = Number(scale);
+  particleScale = Number.isFinite(value) ? Math.max(0.15, Math.min(1, value)) : 1;
+}
+
+
 const SHOT_SPEED = 78;
 const SHOT_LIFE = 2.4;
 const CONTACT_RANGE = 12.5;
@@ -161,8 +172,10 @@ export class Enemy extends Entity {
    * Estructura: { x, y, vx, vy, life, maxLife, gravity, color, size }.
    */
   _emitParticles(count, colors, speedMin, speedMax, life, gravity = 0) {
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.7;
+    // (FIX M2.6) Densidad global ajustable desde main según el perfil de rendimiento
+    const total = Math.max(1, Math.round(count * particleScale));
+    for (let i = 0; i < total; i++) {
+      const angle = (i / total) * Math.PI * 2 + Math.random() * 0.7;
       const speed = speedMin + Math.random() * (speedMax - speedMin);
       this.particles.push({
         x: this.centerX,

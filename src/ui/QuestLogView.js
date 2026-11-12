@@ -18,6 +18,65 @@ export class QuestLogView {
     this.selectedIndex = 0;
     this.scrollOffset = 0;
     this.maxVisibleQuests = 4; // Máximo 4 simultáneas visibles según especificación
+
+    // (FIX M3.4) Toque y arrastre en móvil
+    this.isTouchDevice = false;
+    this.rowH = 24;
+    this._rowRects = [];
+    this._listRect = null;
+    this._touchWasDown = false;
+    this._dragStartY = 0;
+    this._dragStartScroll = 0;
+    this._dragging = false;
+  }
+
+  setTouchMode(isTouch) {
+    this.isTouchDevice = Boolean(isTouch);
+    this.rowH = this.isTouchDevice ? 26 : 24;
+  }
+
+  _maxScroll() {
+    const list = this._getQuestList();
+    return Math.max(0, list.length - this.maxVisibleQuests);
+  }
+
+  /** (FIX M3.4) Toque para seleccionar y arrastre vertical para hacer scroll. */
+  handleTouchInput(input) {
+    if (!this.isOpen || !this.isTouchDevice || !input) return false;
+    const px = input.pointerX;
+    const py = input.pointerY;
+    const down = Boolean(input.isPointerDown);
+    const list = this._listRect;
+
+    if (down && !this._touchWasDown) {
+      this._touchWasDown = true;
+      if (list && px >= list.x && px <= list.x + list.w && py >= list.y && py <= list.y + list.h) {
+        this._dragStartY = py;
+        this._dragStartScroll = this.scrollOffset;
+        this._dragging = true;
+      }
+    } else if (down && this._dragging) {
+      const dy = py - this._dragStartY;
+      if (Math.abs(dy) > 4) {
+        const delta = Math.round(dy / this.rowH);
+        this.scrollOffset = Math.max(0, Math.min(this._maxScroll(), this._dragStartScroll - delta));
+      }
+    } else if (!down && this._touchWasDown) {
+      this._touchWasDown = false;
+      if (this._dragging) {
+        const moved = Math.abs(py - this._dragStartY) > 6;
+        if (!moved) {
+          for (const row of this._rowRects) {
+            if (px >= row.x && px <= row.x + row.w && py >= row.y && py <= row.y + row.h) {
+              this.selectedIndex = row.index;
+              break;
+            }
+          }
+        }
+      }
+      this._dragging = false;
+    }
+    return true;
   }
 
   open() {
@@ -116,8 +175,10 @@ export class QuestLogView {
 
     const listStartX = leftRect.x + 4;
     const listStartY = leftRect.y + 16;
-    const rowH = 24;
+    const rowH = this.rowH;
     const rowW = leftRect.w - 12;
+    this._listRect = { x: listStartX, y: listStartY, w: rowW, h: this.maxVisibleQuests * (rowH + 2) };
+    this._rowRects = [];
 
     const visibleQuests = quests.slice(this.scrollOffset, this.scrollOffset + this.maxVisibleQuests);
 
@@ -127,6 +188,7 @@ export class QuestLogView {
       const isCompleted = q.status === 'COMPLETED';
       const isMain = q.category === 'MAIN';
       const ry = listStartY + idx * (rowH + 2);
+      this._rowRects.push({ x: listStartX, y: ry, w: rowW, h: rowH, index: fullIndex });
 
       // Caja de la fila
       ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;

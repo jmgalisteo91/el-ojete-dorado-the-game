@@ -17,6 +17,15 @@ export class CharacterStats {
     this.activeTab = 'stats'; // 'stats' | 'achievements' | 'skills'
     this.skillCursor = 0;
     this.skillMessage = '';
+
+    // (FIX M3.4) Tabs y filas con zonas de toque más grandes
+    this.isTouchDevice = false;
+    this._skillRowRects = [];
+    this._tabRects = [];
+  }
+
+  setTouchMode(isTouch) {
+    this.isTouchDevice = Boolean(isTouch);
   }
 
   open() {
@@ -120,11 +129,13 @@ export class CharacterStats {
 
     if (input.pointerJustClicked) {
       const modal = UILayout.modalRect();
-      const tabY = modal.y + 18;
+      const tabH = this.isTouchDevice ? 18 : 11;
+      const tabY = modal.y + 15 + 3;
       const px = input.pointerX;
       const py = input.pointerY;
 
-      if (py >= tabY && py <= tabY + 12) {
+      // (FIX M3.4) Zona de toque de pestañas más alta en táctil
+      if (py >= tabY && py <= tabY + tabH + 2) {
         if (px >= modal.x + 5 && px <= modal.x + 98) {
           this.switchTab('stats');
           return true;
@@ -134,6 +145,29 @@ export class CharacterStats {
         } else if (px >= modal.x + 198 && px <= modal.x + modal.w - 5) {
           this.switchTab('skills');
           return true;
+        }
+      }
+
+      // (FIX M3.4) Tocar una fila de habilidad: 1º selecciona, 2º compra
+      if (this.activeTab === 'skills') {
+        for (const row of this._skillRowRects) {
+          if (px >= row.x && px <= row.x + row.w && py >= row.y && py <= row.y + row.h) {
+            if (this.skillCursor === row.index) {
+              const def = SKILL_DEFS[row.index];
+              if (def && player) {
+                if (player.skills[def.key]) {
+                  this.skillMessage = 'Ya dominas esta habilidad.';
+                } else if (player.purchaseSkill(def.key)) {
+                  this.skillMessage = `¡${def.name} desbloqueada!`;
+                } else {
+                  this.skillMessage = `Necesitas ${def.cost} punto(s) de habilidad.`;
+                }
+              }
+            } else {
+              this.skillCursor = row.index;
+            }
+            return true;
+          }
         }
       }
     }
@@ -170,8 +204,10 @@ export class CharacterStats {
     // BARRA DE PESTAÑAS COMPACTA ([Tab] Perfil / Logros / Habilidades)
     // =========================================================================
     const tabBarY = content.y;
-    const tabH = 11;
+    // (FIX M3.4) Pestañas más altas en táctil (más fáciles de tocar)
+    const tabH = this.isTouchDevice ? 18 : 11;
     const tabGap = 3;
+    this._tabRects = [];
     const tabW = Math.floor((content.w - tabGap * 2) / 3);
 
     const tabs = [
@@ -182,6 +218,7 @@ export class CharacterStats {
 
     tabs.forEach((tab, idx) => {
       const tx = content.x + idx * (tabW + tabGap);
+      this._tabRects.push({ x: tx, y: tabBarY, w: tabW, h: tabH, id: tab.id });
       const isActive = this.activeTab === tab.id;
       ctx.fillStyle = isActive ? UI_COLORS.slotSelectedBg : UI_COLORS.panelBg;
       ctx.fillRect(tx, tabBarY, tabW, tabH);
@@ -189,10 +226,14 @@ export class CharacterStats {
       ctx.lineWidth = 1;
       ctx.strokeRect(tx + 0.5, tabBarY + 0.5, tabW - 1, tabH - 1);
 
-      ctx.font = `bold 4.1px ${UI_FONT}`;
+      ctx.font = `bold ${this.isTouchDevice ? '5.4' : '4.1'}px ${UI_FONT}`;
       ctx.fillStyle = isActive ? UI_COLORS.gold : UI_COLORS.textSecondary;
       const lw = ctx.measureText(tab.label).width;
-      ctx.fillText(tab.label, tx + Math.max(2, Math.floor((tabW - lw) / 2)), tabBarY + 3.5);
+      ctx.fillText(
+        tab.label,
+        tx + Math.max(2, Math.floor((tabW - lw) / 2)),
+        tabBarY + (this.isTouchDevice ? 5.5 : 3.5)
+      );
     });
 
     const bodyRect = {
@@ -414,11 +455,13 @@ export class CharacterStats {
     const x = rect.x + 6;
     const w = rect.w - 12;
     let y = rect.y + 16;
+    this._skillRowRects = [];
 
     SKILL_DEFS.forEach((def, i) => {
       const owned = Boolean(player && player.skills[def.key]);
       const selected = i === this.skillCursor;
       const rowH = 22;
+      this._skillRowRects.push({ x, y, w, h: rowH - 2, index: i });
 
       ctx.fillStyle = selected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
       ctx.fillRect(x, y, w, rowH - 2);
@@ -434,7 +477,9 @@ export class CharacterStats {
       ctx.fillStyle = UI_COLORS.textSecondary;
       ctx.fillText(UILayout.fitText(ctx, def.desc, w - 55), x + 8, y + 11);
 
-      const statusStr = owned ? '✓ ACTIVA' : `[Enter] ${def.cost}pt`;
+      const statusStr = owned
+        ? '✓ ACTIVA'
+        : (this.isTouchDevice ? `TOCA 2x · ${def.cost}pt` : `[Enter] ${def.cost}pt`);
       ctx.font = `bold 4.2px ${UI_FONT}`;
       ctx.fillStyle = owned ? UI_COLORS.emerald : (player && player.skillPoints >= def.cost ? UI_COLORS.gold : UI_COLORS.textMuted);
       const sw = ctx.measureText(statusStr).width;

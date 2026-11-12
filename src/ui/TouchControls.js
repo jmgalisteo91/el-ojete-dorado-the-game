@@ -35,6 +35,11 @@ export class TouchControls {
     // Paneles de canvas (inventario/ficha/diario): no tienen input táctil propio,
     // así que el botón 🎒 debe seguir disponible para cerrarlos.
     this.isPanelOpen = typeof options.isPanelOpen === 'function' ? options.isPanelOpen : null;
+    // (FIX M3.5) Acciones sin equivalente de teclado en móvil
+    this.isLogAvailable = typeof options.isLogAvailable === 'function' ? options.isLogAvailable : null;
+    this.onLog = typeof options.onLog === 'function' ? options.onLog : null;
+    this.getQuickSlots = typeof options.getQuickSlots === 'function' ? options.getQuickSlots : null;
+    this.onQuickSlot = typeof options.onQuickSlot === 'function' ? options.onQuickSlot : null;
 
     this.joystick = {
       active: false,
@@ -78,14 +83,35 @@ export class TouchControls {
     }
   }
 
+  _logAvailable() {
+    try {
+      return Boolean(this.isLogAvailable && this.isLogAvailable());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  _quickSlots() {
+    try {
+      const slots = this.getQuickSlots ? this.getQuickSlots() : null;
+      return Array.isArray(slots) ? slots : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
   /** Geometría en píxeles del canvas. `k` = píxeles de canvas por píxel CSS. */
   _layout() {
     const w = this.canvas && this.canvas.width ? this.canvas.width : 1280;
     const h = this.canvas && this.canvas.height ? this.canvas.height : 720;
     const cssW = this.canvas && this.canvas.clientWidth ? this.canvas.clientWidth : w;
-    // (FIX M1.2) Tope superior: en pantallas muy pequeñas unos controles gigantes
-    // se comerían la barra de jefe y el HUD.
-    const k = Math.max(0.5, Math.min(2, w / Math.max(1, cssW)));
+    // (FIX M1.2/M2.1) Tope superior: en pantallas bajas unos controles gigantes se
+    // comerían la barra de jefe. `fit` reduce el tamaño en pantallas de poca altura
+    // y `maxK` garantiza que el clúster A/B/C quepa bajo la barra (88 px de backing).
+    const cssH = this.canvas && this.canvas.clientHeight ? this.canvas.clientHeight : h;
+    const fit = Math.max(0.6, Math.min(1, cssH / 420));
+    const maxK = Math.min(2, Math.max(0.45, (h - 88) / 230));
+    const k = Math.max(0.45, Math.min(maxK, (w / Math.max(1, cssW)) * fit));
 
     // Escala del HUD lógico (320×180) a píxeles del canvas
     const sx = w / 320;
@@ -113,7 +139,22 @@ export class TouchControls {
     const menu = { x: w - margin - menuR, y: 20 * sx + 8 * k + menuR, r: menuR };
     const bag = { x: margin + bagR, y: 30 * sx + 8 * k + bagR, r: bagR };
 
-    return { w, h, k, joy, a, b, c, menu, bag };
+    // (FIX M3.5) Botón contextual de log y 3 ranuras rápidas táctiles
+    const logR = 18 * k;
+    const log = { x: bag.x, y: bag.y + bagR + 10 * k + logR, r: logR };
+    const quickR = 15 * k;
+    // Deben quedar por encima del slot rápido del HUD (y≈158 lógicos)
+    const hudQuickTop = (h / 180) * 158;
+    const quickY = Math.min(h - 100 * k, hudQuickTop - quickR - 8);
+    const quickGap = 36 * k;
+    const quick = [0, 1, 2].map((index) => ({
+      x: w / 2 + (index - 1) * quickGap,
+      y: quickY,
+      r: quickR,
+      index
+    }));
+
+    return { w, h, k, joy, a, b, c, menu, bag, log, quick };
   }
 
   /**
@@ -133,6 +174,14 @@ export class TouchControls {
 
     if (hit(L.menu, 8 * L.k)) return 'menu';
     if (hit(L.bag, 8 * L.k)) return 'bag';
+    if (this._logAvailable() && hit(L.log, 6 * L.k)) return 'log';
+    const quickSlots = this._quickSlots();
+    if (quickSlots.some(Boolean)) {
+      for (const q of L.quick) {
+        // Solo las ranuras con objeto son pulsables
+        if (quickSlots[q.index] && hit(q, 6 * L.k)) return `quick${q.index}`;
+      }
+    }
     if (hit(L.a)) return 'btnA';
     if (hit(L.b)) return 'btnB';
     if (hit(L.c)) return 'btnC';
@@ -150,6 +199,15 @@ export class TouchControls {
     }
     if (zone === 'bag') {
       if (this.onBag) this.onBag();
+      return;
+    }
+    if (zone === 'log') {
+      if (this.onLog) this.onLog();
+      return;
+    }
+    if (typeof zone === 'string' && zone.startsWith('quick')) {
+      const index = Number(zone.slice(5));
+      if (this.onQuickSlot) this.onQuickSlot(index);
       return;
     }
 
@@ -288,6 +346,10 @@ export class TouchControls {
       this._drawButton(ctx, L.c, '🛡️', '#c084fc', this._isPressed('btnC'), L.k);
       this._drawButton(ctx, L.menu, '☰', '#e2e8f0', false, L.k);
       this._drawButton(ctx, L.bag, '🎒', '#e2e8f0', false, L.k);
+      if (this._logAvailable()) {
+        this._drawButton(ctx, L.log, '📜', '#fde047', false, L.k);
+      }
+      this._drawQuickSlots(ctx, L);
     }
 
     ctx.restore();
@@ -340,6 +402,41 @@ export class TouchControls {
     ctx.stroke();
 
     ctx.restore();
+  }
+
+  _drawQuickSlots(ctx, L) {
+    const slots = this._quickSlots();
+    if (!slots.some(Boolean)) return;
+
+    slots.forEach((slot, index) => {
+      const q = L.quick[index];
+      if (!q) return;
+      const size = q.r * 1.8;
+      ctx.save();
+      ctx.globalAlpha = slot ? 0.92 : 0.3;
+
+      ctx.fillStyle = slot ? 'rgba(10, 14, 24, 0.62)' : 'rgba(10, 14, 24, 0.28)';
+      ctx.fillRect(q.x - size / 2, q.y - size / 2, size, size);
+      ctx.strokeStyle = slot ? '#38bdf8' : 'rgba(148, 163, 184, 0.6)';
+      ctx.lineWidth = Math.max(1, q.r * 0.12);
+      ctx.strokeRect(q.x - size / 2, q.y - size / 2, size, size);
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (slot) {
+        ctx.font = `${Math.round(q.r * 1.15)}px ${UI_FONT}`;
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText(slot.icon, q.x, q.y - 2);
+        ctx.font = `bold ${Math.round(q.r * 0.62)}px ${UI_FONT}`;
+        ctx.fillStyle = '#fde047';
+        ctx.fillText(`x${slot.qty}`, q.x, q.y + q.r * 0.62);
+      } else {
+        ctx.font = `bold ${Math.round(q.r * 0.8)}px ${UI_FONT}`;
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.8)';
+        ctx.fillText(String(index + 1), q.x, q.y);
+      }
+      ctx.restore();
+    });
   }
 
   _drawButton(ctx, circle, icon, color, pressed, k) {
