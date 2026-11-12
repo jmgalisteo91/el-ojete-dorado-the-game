@@ -1,5 +1,6 @@
 import { Enemy } from '../Enemy.js?v=8';
 import { CollisionSystem } from '../../physics/CollisionSystem.js?v=8';
+import { GameLoop } from '../../core/GameLoop.js?v=8';
 
 /**
  * Clase Base para Mini-Jefes del juego.
@@ -130,6 +131,9 @@ export class Boss extends Enemy {
     if (this.hp <= 0 && !this.dead) {
       this.triggerBossDefeat(player, soundEngine);
     }
+
+    // (FIX 1.1) Los jefes sobrescriben takeSwordHit, así que heredan aquí el freeze frame
+    GameLoop.triggerHitstop(this.dead ? 4 : 3);
 
     return true;
   }

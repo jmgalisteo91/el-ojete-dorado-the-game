@@ -676,8 +676,15 @@ html, body {
 /**
  * GameLoop con paso fijo (Fixed Timestep a 60 FPS).
  * Desacopla la simulación física/lógica del renderizado.
+ *
+ * Incluye un sistema de HITSTOP (freeze frames): al impactar, la simulación se congela
+ * durante N frames fijos mientras el renderizado sigue vivo. Así el golpe "pesa" sin
+ * romper el determinismo del paso fijo ni perder frames de animación.
  */
 class GameLoop {
+  /** Última instancia creada: permite que las entidades pidan hitstop sin recibir el loop por parámetro. */
+  static active = null;
+
   constructor(updateFn, renderFn) {
     this.updateFn = updateFn;
     this.renderFn = renderFn;
@@ -689,7 +696,41 @@ class GameLoop {
     this.running = false;
     this.rafId = null;
 
+    // Frames de simulación pendientes de congelar (0 = sin hitstop)
+    this.hitstopFramesLeft = 0;
+
     this._tick = this._tick.bind(this);
+    GameLoop.active = this;
+  }
+
+  /**
+   * Congela la simulación durante `frames` frames fijos (~0.0166 s cada uno).
+   * 2-4 frames ≈ 0.033-0.066 s: suficiente para leerse como impacto, no como tirón.
+   * Las peticiones concurrentes no se acumulan: gana la más larga pendiente.
+   * @param {number} frames Número de frames a congelar (se acota a 0-12).
+   */
+  triggerHitstop(frames = 3) {
+    const n = Math.max(0, Math.min(12, Math.round(frames)));
+    if (n <= 0) return;
+    this.hitstopFramesLeft = Math.max(this.hitstopFramesLeft, n);
+  }
+
+  /** Atajo estático para entidades que no tienen referencia al loop (Enemy, Player). */
+  static triggerHitstop(frames = 3) {
+    if (GameLoop.active) GameLoop.active.triggerHitstop(frames);
+  }
+
+  get isHitstopped() {
+    return this.hitstopFramesLeft > 0;
+  }
+
+  /** Segundos de congelación restantes (útil para depuración/HUD). */
+  get hitstopRemaining() {
+    return this.hitstopFramesLeft * this.fixedDelta;
+  }
+
+  clearHitstop() {
+    this.hitstopFramesLeft = 0;
   }
 
   start() {
@@ -697,6 +738,7 @@ class GameLoop {
     this.running = true;
     this.lastTime = performance.now();
     this.accumulator = 0;
+    this.clearHitstop();
     this.rafId = requestAnimationFrame(this._tick);
   }
 
@@ -706,6 +748,7 @@ class GameLoop {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    this.clearHitstop();
   }
 
   _tick(currentTime) {
@@ -721,8 +764,16 @@ class GameLoop {
     this.accumulator += frameTime;
 
     while (this.accumulator >= this.fixedDelta) {
-      this.updateFn(this.fixedDelta);
       this.accumulator -= this.fixedDelta;
+
+      // Freeze frame: se descarta el paso de simulación, pero se sigue renderizando.
+      if (this.hitstopFramesLeft > 0) {
+        this.hitstopFramesLeft -= 1;
+        continue;
+      }
+
+      // Si el update pidió hitstop, se aplica en el siguiente paso de este mismo tick.
+      this.updateFn(this.fixedDelta);
     }
 
     const alpha = this.accumulator / this.fixedDelta;
@@ -799,7 +850,7 @@ const TEMPLES = new Set(['armor_temple', 'sword_temple']);
 const ZONE_LEVEL_REQUIREMENTS = {
   first_stage: 1,
   north_peaks: 4,
-  south_swamp: 6,
+  south_swamp: 3,
   west_wastes: 8,
   ai_citadel: 10
 };
@@ -824,13 +875,15 @@ function getDoorBlock(targetScene, player) {
     };
   }
 
-  if (targetScene === 'south_swamp' && pLevel < 6) {
+  // (FIX 2.1) Las Cloacas del Sur entregan el Dash Asíncrono, que es obligatorio para cruzar el
+  // abismo de las Minas del Norte. Por eso el Sur debe abrirse ANTES que las Cumbres (Nivel 4).
+  if (targetScene === 'south_swamp' && pLevel < 3) {
     return {
-      title: '☣️ [GUARDIA VULCANO: NIVEL 6 REQUERIDO]',
+      title: '☣️ [GUARDIA VULCANO: NIVEL 3 REQUERIDO]',
       lines: [
-        '¡Zona bajo estricta cuarentena militar! Las Marismas del Hardware Legacy hierven con fugas de ácido residual y el calor infernal de la Forja.',
-        'Necesitas temple y resistencia de NIVEL 6 para no fundir tus circuitos en el fango.',
-        'Conquista las Cumbres de la Recursión antes de descender al pantano.'
+        '¡Zona bajo cuarentena militar! Las Marismas del Hardware Legacy hierven con fugas de ácido residual y el calor infernal de la Forja.',
+        'Necesitas temple y resistencia de NIVEL 3 para no fundir tus circuitos en el fango.',
+        'Las Cloacas del Legacy aguardan bajo el pantano: allí se forja el Dash Asíncrono con el que cruzarás los abismos del norte.'
       ]
     };
   }
@@ -1284,6 +1337,54 @@ class Camera2D {
     this.x = 0;
     this.y = 0;
     this.lerpSpeed = 8.0;
+
+    // (FIX 1.2) Sacudida de pantalla en gameplay: offset temporal sumado a renderX/renderY
+    this.shakeTimer = 0;
+    this.shakeDuration = 0;
+    this.shakeIntensity = 0;
+    this.shakeOffsetX = 0;
+    this.shakeOffsetY = 0;
+  }
+
+  /**
+   * (FIX 1.2) Sacude la cámara del mundo. La intensidad está en píxeles lógicos
+   * (1 px lógico = RENDER_SCALE px en pantalla), así que 1-2 se lee como un golpe seco.
+   * La sacudida más intensa gana; la duración más larga se conserva.
+   */
+  shake(intensity = 2, duration = 0.25) {
+    const i = Math.max(0, Number(intensity) || 0);
+    const d = Math.max(0, Number(duration) || 0);
+    if (i <= 0 || d <= 0) return;
+    this.shakeIntensity = Math.max(this.shakeIntensity, i);
+    this.shakeDuration = Math.max(this.shakeDuration, d);
+    this.shakeTimer = Math.max(this.shakeTimer, d);
+  }
+
+  /** Decae la sacudida y recalcula el offset con ruido por frame. */
+  updateShake(dt) {
+    if (this.shakeTimer <= 0) {
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+      this.shakeIntensity = 0;
+      this.shakeDuration = 0;
+      return;
+    }
+
+    this.shakeTimer = Math.max(0, this.shakeTimer - dt);
+    // Amplitud con caída lineal: arranca fuerte y se apaga suave
+    const decay = this.shakeDuration > 0 ? this.shakeTimer / this.shakeDuration : 0;
+    const amp = this.shakeIntensity * decay;
+
+    if (this.shakeTimer <= 0) {
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+      this.shakeIntensity = 0;
+      this.shakeDuration = 0;
+      return;
+    }
+
+    this.shakeOffsetX = (Math.random() * 2 - 1) * amp;
+    this.shakeOffsetY = (Math.random() * 2 - 1) * amp;
   }
 
   setWorldBounds(worldWidth, worldHeight) {
@@ -1312,14 +1413,16 @@ class Camera2D {
 
     this.x = this._clampX(this.x);
     this.y = this._clampY(this.y);
+
+    this.updateShake(dt);
   }
 
   get renderX() {
-    return Math.round(this.x);
+    return Math.round(this.x + this.shakeOffsetX);
   }
 
   get renderY() {
-    return Math.round(this.y);
+    return Math.round(this.y + this.shakeOffsetY);
   }
 
   _clampX(x) {
@@ -1365,7 +1468,7 @@ const INITIAL_QUESTS = [
     category: 'MAIN',
     status: 'ACTIVE',
     description: 'Una anomalía de memoria corrupta y punteros huérfanos acecha en las Cloacas del Legacy, bajo las Marismas del Sur.',
-    currentStep: 'Viaja al sur hasta las Marismas del Hardware Legacy (Nivel 6), desciende a las Cloacas y erradica al Garbage Collector Furioso.',
+    currentStep: 'Viaja al sur hasta las Marismas del Hardware Legacy (Nivel 3), desciende a las Cloacas y erradica al Garbage Collector Furioso para obtener el Dash Asíncrono.',
     reward: 'Habilidad: Dash Asíncrono (0.2s invulnerabilidad)'
   },
   {
@@ -5278,6 +5381,80 @@ class Tilemap {
       }
     };
 
+    // =========================================================================
+    // PUZLES DE MAZMORRA (v3.9): cada sala bloquea su puerta norte con una
+    // barrera energética y la desbloquea al resolverse el mecanismo.
+    // =========================================================================
+
+    // Puzle 3 · Cloacas del Legacy: girar la válvula de presión drena el canal.
+    this.sewersPuzzle = {
+      solved: false,
+      drained: false,
+      drainedCells: [],
+      barrierActive: true,
+      barrierRow: 3,
+      barrierCols: [],
+      valve: {
+        col: 11,
+        row: 8,
+        name: 'Válvula de Presión',
+        turns: 0,
+        turnsRequired: 3
+      }
+    };
+
+    // Puzle 4 · Minas de la Recursión: golpear 3 runas de bit en orden MSB -> LSB.
+    this.minesPuzzle = {
+      solved: false,
+      barrierActive: true,
+      barrierRow: 3,
+      barrierCols: [],
+      stack: [],
+      correctOrder: [4, 2, 1],
+      monoliths: {
+        MONOLITH_4: {
+          id: 4,
+          weight: 4,
+          col: 6,
+          row: 8,
+          name: 'Runa del Bit Superior (B₂)',
+          symbol: 'B₂',
+          clue: 'El flujo de memoria se evalúa desde el bit de mayor peso: la runa B₂ (valor 4) abre la pila antes que ninguna otra.'
+        },
+        MONOLITH_2: {
+          id: 2,
+          weight: 2,
+          col: 11,
+          row: 10,
+          name: 'Runa del Bit Medio (B₁)',
+          symbol: 'B₁',
+          clue: 'Tras el bit superior se desplaza el registro intermedio: la runa B₁ (valor 2) solo responde en el segundo ciclo.'
+        },
+        MONOLITH_1: {
+          id: 1,
+          weight: 1,
+          col: 17,
+          row: 8,
+          name: 'Runa del Bit Inferior (B₀)',
+          symbol: 'B₀',
+          clue: 'El bit menos significativo cierra la operación: la runa B₀ (valor 1) se apila en último lugar, justo antes del retorno.'
+        }
+      }
+    };
+
+    // Puzle 5 · La Forja del Prototipo: activar los 2 reguladores térmicos a la vez.
+    this.forgePuzzle = {
+      solved: false,
+      barrierActive: true,
+      barrierRow: 3,
+      barrierCols: [],
+      regulators: { LEFT: 0, RIGHT: 0 },
+      positions: {
+        LEFT: { side: 'LEFT', col: 6, row: 8, name: 'Regulador Térmico Izquierdo' },
+        RIGHT: { side: 'RIGHT', col: 17, row: 8, name: 'Regulador Térmico Derecho' }
+      }
+    };
+
     // Estado de Puzles y Progresión de Mazmorras (v3.6+)
     this.quantumGate = { coresPlaced: { gc: false, stack: false, microwave: false } };
     // Solo el Dash Asíncrono lo activa mientras dura el impulso (abismos = colisión CHASM_COLLISION)
@@ -5438,6 +5615,43 @@ class Tilemap {
     }
   }
 
+  /**
+   * (FIX 2.4) Guarda el destino original de la puerta de salida de una escena la primera vez
+   * que se carga. Algunas salas (Templo de la Espada) tienen más de una entrada y su salida
+   * debe devolver al jugador a la sala desde la que entró.
+   */
+  _ensureExitDoorDefaults(scene) {
+    if (!scene || !scene.exitDoor || scene.exitDoor.defaults) return;
+    scene.exitDoor.defaults = {
+      returnScene: scene.exitDoor.returnScene,
+      returnX: scene.exitDoor.returnX,
+      returnY: scene.exitDoor.returnY
+    };
+  }
+
+  /** Redirige la puerta de salida de una escena hacia la sala desde la que se acaba de entrar. */
+  setSceneExitReturn(sceneId, { returnScene, returnX, returnY } = {}) {
+    const scene = this.scenes[sceneId];
+    if (!scene || !scene.exitDoor) return false;
+    this._ensureExitDoorDefaults(scene);
+    if (typeof returnScene === 'string') scene.exitDoor.returnScene = returnScene;
+    if (Number.isFinite(returnX)) scene.exitDoor.returnX = returnX;
+    if (Number.isFinite(returnY)) scene.exitDoor.returnY = returnY;
+    return true;
+  }
+
+  /** Restaura la puerta de salida de una escena a su destino original de diseño. */
+  resetSceneExitReturn(sceneId) {
+    const scene = this.scenes[sceneId];
+    if (!scene || !scene.exitDoor) return false;
+    this._ensureExitDoorDefaults(scene);
+    const d = scene.exitDoor.defaults;
+    scene.exitDoor.returnScene = d.returnScene;
+    scene.exitDoor.returnX = d.returnX;
+    scene.exitDoor.returnY = d.returnY;
+    return true;
+  }
+
   /** Abre o sella el portal norte (columnas 11-12, fila 1) del Templo de la Espada. */
   setSwordPortal(open) {
     const temple = this.scenes.sword_temple;
@@ -5445,6 +5659,215 @@ class Tilemap {
     for (const c of [11, 12]) {
       temple.layers.collision[1][c] = open ? 0 : 1;
       temple.layers.decoration[1][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.PORTAL_GATE_CLOSED;
+    }
+  }
+
+  // =========================================================================
+  // MECÁNICAS: PUZLES DE MAZMORRA (Cloacas · Minas · Forja)
+  // =========================================================================
+
+  /** Devuelve el estado del puzle asociado a una sala de mazmorra. */
+  _dungeonPuzzleEntry(sceneId) {
+    if (sceneId === 'sewers_puzzle') return this.sewersPuzzle;
+    if (sceneId === 'mines_puzzle') return this.minesPuzzle;
+    if (sceneId === 'forge_puzzle') return this.forgePuzzle;
+    return null;
+  }
+
+  /**
+   * Levanta o retira la barrera energética que sella la puerta norte de la sala.
+   * La barrera ocupa una fila completa para que no se pueda rodear por los flancos.
+   */
+  setDungeonBarrier(sceneId, active) {
+    const scene = this.scenes[sceneId];
+    const puzzle = this._dungeonPuzzleEntry(sceneId);
+    if (!scene || !scene.layers || !puzzle) return false;
+
+    const cols = puzzle.barrierCols && puzzle.barrierCols.length > 0
+      ? puzzle.barrierCols
+      : Array.from({ length: Math.max(0, scene.cols - 4) }, (_, i) => i + 2);
+    puzzle.barrierCols = cols;
+
+    for (const c of cols) {
+      scene.layers.collision[puzzle.barrierRow][c] = active ? 1 : 0;
+      scene.layers.decoration[puzzle.barrierRow][c] = -1;
+    }
+    puzzle.barrierActive = Boolean(active);
+    return true;
+  }
+
+  /**
+   * Inunda o drena el canal central de las Cloacas. Inundado es intransitable
+   * (solo se cruza por la pasarela de piedra); drenado deja el limo pisable.
+   */
+  setSewerCanal(flooded) {
+    const scene = this.scenes.sewers_puzzle;
+    const puzzle = this.sewersPuzzle;
+    if (!scene || !scene.layers || !puzzle) return false;
+    const { ground, collision } = scene.layers;
+
+    if (flooded) {
+      for (const [r, c] of puzzle.drainedCells || []) {
+        ground[r][c] = TILES.WATER_1;
+        collision[r][c] = 1;
+      }
+      puzzle.drainedCells = [];
+      puzzle.drained = false;
+      return true;
+    }
+
+    if (puzzle.drained) return true; // ya drenado: no perder la lista de celdas
+
+    puzzle.drainedCells = [];
+    for (let r = 0; r < scene.rows; r++) {
+      for (let c = 0; c < scene.cols; c++) {
+        const tile = ground[r][c];
+        if (tile === TILES.WATER_1 || tile === TILES.WATER_2) {
+          ground[r][c] = TILES.SEWER_SLIME_FLOOR;
+          collision[r][c] = 0;
+          puzzle.drainedCells.push([r, c]);
+        }
+      }
+    }
+    puzzle.drained = true;
+    return true;
+  }
+
+  /** Gira la válvula de presión. Al tercer giro drena el canal y abre la barrera. */
+  toggleSewersValve() {
+    const puzzle = this.sewersPuzzle;
+    if (puzzle.solved) return { solved: true, alreadySolved: true };
+
+    puzzle.valve.turns = Math.min(puzzle.valve.turnsRequired, puzzle.valve.turns + 1);
+    if (puzzle.valve.turns < puzzle.valve.turnsRequired) {
+      return {
+        solved: false,
+        turns: puzzle.valve.turns,
+        turnsRequired: puzzle.valve.turnsRequired
+      };
+    }
+
+    puzzle.solved = true;
+    this.setSewerCanal(false);
+    this.setDungeonBarrier('sewers_puzzle', false);
+    return {
+      solved: true,
+      justSolved: true,
+      turns: puzzle.valve.turns,
+      turnsRequired: puzzle.valve.turnsRequired
+    };
+  }
+
+  /**
+   * Golpea una runa de bit de las Minas. El orden correcto es MSB -> LSB (4 -> 2 -> 1).
+   * Un golpe fuera de orden reinicia la pila (desbordamiento de registro).
+   */
+  hitMinesMonolith(monolithId) {
+    const puzzle = this.minesPuzzle;
+    if (puzzle.solved) return { success: true, finished: true, alreadySolved: true };
+
+    const expected = puzzle.correctOrder[puzzle.stack.length];
+    if (monolithId === expected) {
+      puzzle.stack.push(monolithId);
+      if (puzzle.stack.length === puzzle.correctOrder.length) {
+        puzzle.solved = true;
+        this.setDungeonBarrier('mines_puzzle', false);
+        return { success: true, finished: true, stack: [...puzzle.stack] };
+      }
+      return {
+        success: true,
+        finished: false,
+        step: puzzle.stack.length,
+        total: puzzle.correctOrder.length,
+        stack: [...puzzle.stack]
+      };
+    }
+
+    puzzle.stack = [];
+    return {
+      success: false,
+      error: 'BIT_MISMATCH',
+      damage: 1,
+      expected
+    };
+  }
+
+  /** Conmuta un regulador térmico de la Forja. Con los dos activos se abre la barrera. */
+  toggleForgeRegulator(side) {
+    const puzzle = this.forgePuzzle;
+    if (puzzle.solved) return { solved: true, alreadySolved: true };
+    if (side !== 'LEFT' && side !== 'RIGHT') return null;
+    if (!puzzle.positions[side]) return null;
+
+    puzzle.regulators[side] = puzzle.regulators[side] === 1 ? 0 : 1;
+    const regulators = { ...puzzle.regulators };
+
+    if (regulators.LEFT === 1 && regulators.RIGHT === 1) {
+      puzzle.solved = true;
+      this.setDungeonBarrier('forge_puzzle', false);
+      return { solved: true, justSolved: true, regulators };
+    }
+    return { solved: false, justSolved: false, regulators };
+  }
+
+  /** Restaura los tres puzles a su estado inicial (nueva partida / reinicio de mundo). */
+  resetDungeonPuzzles() {
+    this.sewersPuzzle.solved = false;
+    this.sewersPuzzle.valve.turns = 0;
+    this.setSewerCanal(true);
+    this.setDungeonBarrier('sewers_puzzle', true);
+
+    this.minesPuzzle.solved = false;
+    this.minesPuzzle.stack = [];
+    this.setDungeonBarrier('mines_puzzle', true);
+
+    this.forgePuzzle.solved = false;
+    this.forgePuzzle.regulators = { LEFT: 0, RIGHT: 0 };
+    this.setDungeonBarrier('forge_puzzle', true);
+  }
+
+  /** Reaplica desde un guardado el estado de los tres puzles de mazmorra. */
+  applyDungeonPuzzleState(state = {}) {
+    if (!state || typeof state !== 'object') return;
+
+    if (state.sewers) {
+      if (Number.isFinite(state.sewers.valveTurns)) {
+        this.sewersPuzzle.valve.turns = Math.max(
+          0,
+          Math.min(this.sewersPuzzle.valve.turnsRequired, Math.floor(state.sewers.valveTurns))
+        );
+      }
+      if (state.sewers.solved) {
+        this.sewersPuzzle.solved = true;
+        this.sewersPuzzle.valve.turns = this.sewersPuzzle.valve.turnsRequired;
+        this.setSewerCanal(false);
+        this.setDungeonBarrier('sewers_puzzle', false);
+      }
+    }
+
+    if (state.mines) {
+      if (Array.isArray(state.mines.stack)) {
+        this.minesPuzzle.stack = state.mines.stack
+          .filter((id) => this.minesPuzzle.correctOrder.includes(id))
+          .slice(0, this.minesPuzzle.correctOrder.length);
+      }
+      if (state.mines.solved) {
+        this.minesPuzzle.solved = true;
+        this.minesPuzzle.stack = [...this.minesPuzzle.correctOrder];
+        this.setDungeonBarrier('mines_puzzle', false);
+      }
+    }
+
+    if (state.forge) {
+      if (state.forge.regulators) {
+        this.forgePuzzle.regulators.LEFT = state.forge.regulators.LEFT ? 1 : 0;
+        this.forgePuzzle.regulators.RIGHT = state.forge.regulators.RIGHT ? 1 : 0;
+      }
+      if (state.forge.solved) {
+        this.forgePuzzle.solved = true;
+        this.forgePuzzle.regulators = { LEFT: 1, RIGHT: 1 };
+        this.setDungeonBarrier('forge_puzzle', false);
+      }
     }
   }
 
@@ -5653,7 +6076,8 @@ class Tilemap {
     } else if (this.currentSceneId === 'sewers_puzzle') {
       const northDoorY = 1.5 * this.tileSize;
       const northDoorX = 11.5 * this.tileSize;
-      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+      // (FIX 2.3) La puerta norte permanece sellada hasta resolver el mecanismo de la sala
+      if (this.sewersPuzzle.solved && Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
         return {
           type: 'stage_transition',
           targetScene: 'sewers_dungeon',
@@ -5684,7 +6108,8 @@ class Tilemap {
     } else if (this.currentSceneId === 'mines_puzzle') {
       const northDoorY = 1.5 * this.tileSize;
       const northDoorX = 11.5 * this.tileSize;
-      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+      // (FIX 2.3) La puerta norte permanece sellada hasta resolver el mecanismo de la sala
+      if (this.minesPuzzle.solved && Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
         return {
           type: 'stage_transition',
           targetScene: 'sword_temple',
@@ -5715,7 +6140,8 @@ class Tilemap {
     } else if (this.currentSceneId === 'forge_puzzle') {
       const northDoorY = 1.5 * this.tileSize;
       const northDoorX = 11.5 * this.tileSize;
-      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+      // (FIX 2.3) La puerta norte permanece sellada hasta resolver el mecanismo de la sala
+      if (this.forgePuzzle.solved && Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
         return {
           type: 'stage_transition',
           targetScene: 'ai_fortress_gate',
@@ -6239,7 +6665,6 @@ class Tilemap {
 
   /**
    * ZONA SUR: Las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).
-   * Las sub-mazmorras se generan proceduralmente con DungeonGenerator.
    */
   _buildSouthSwampScene() {
     const cols = 36;
@@ -7865,9 +8290,16 @@ class Tilemap {
     // Pasarela de adoquines que lleva a la válvula central
     fillRect(ground, 10, 5, 4, 8, TILES.STONE_FLOOR);
 
-    // Válvula central de bombeo
+    // Válvula central de bombeo (se acciona con [E] desde la pasarela)
     setDeco(11, 8, TILES.WELL, true);
     setDeco(12, 8, TILES.WELL, true);
+
+    // (FIX 2.3) El canal está inundado: solo se cruza por la pasarela de adoquines
+    for (let r = 4; r < 13; r++) {
+      for (let c = 4; c < 20; c++) {
+        if (ground[r][c] === TILES.WATER_1) collision[r][c] = 1;
+      }
+    }
 
     lightSources.push(
       { x: 11.5 * 16, y: 8.5 * 16, radius: 60, intensity: 0.95, color: '#34d399' },
@@ -7901,6 +8333,11 @@ class Tilemap {
         returnScene: 'sewers_entry'
       }
     };
+
+    // (FIX 2.3) Barrera de presión: sella el paso norte hasta drenar el canal
+    this.sewersPuzzle.barrierRow = 3;
+    this.sewersPuzzle.barrierCols = Array.from({ length: cols - 4 }, (_, i) => i + 2);
+    this.setDungeonBarrier('sewers_puzzle', true);
   }
 
   /**
@@ -8118,6 +8555,7 @@ class Tilemap {
     collision[1][11] = 0;
     collision[1][12] = 0;
 
+
     this.scenes.mines_puzzle = {
       title: 'Minas de la Recursión · Sala de Runas Recursivas',
       cols,
@@ -8132,6 +8570,11 @@ class Tilemap {
         returnScene: 'mines_entry'
       }
     };
+
+    // (FIX 2.3) Barrera rúnica: se abre al golpear las 3 runas en orden MSB -> LSB
+    this.minesPuzzle.barrierRow = 3;
+    this.minesPuzzle.barrierCols = Array.from({ length: cols - 4 }, (_, i) => i + 2);
+    this.setDungeonBarrier('mines_puzzle', true);
   }
 
   /**
@@ -8291,6 +8734,11 @@ class Tilemap {
         returnScene: 'forge_entry'
       }
     };
+
+    // (FIX 2.3) Barrera térmica: se abre al activar ambos reguladores
+    this.forgePuzzle.barrierRow = 3;
+    this.forgePuzzle.barrierCols = Array.from({ length: cols - 4 }, (_, i) => i + 2);
+    this.setDungeonBarrier('forge_puzzle', true);
   }
 
   /**
@@ -8531,25 +8979,6 @@ class Tilemap {
   }
 
   /** Rango de tiles visibles (con 1 tile de margen para las copas/tejados que sobresalen). */
-  /**
-   * Genera una mazmorra procedural al estilo roguelike usando BSP.
-   * @param {string} theme - Tema de la mazmorra ('sewers', 'mines', 'forge', 'citadel', 'quantum')
-   * @param {number} cols - Columnas del mapa
-   * @param {number} rows - Filas del mapa
-   * @param {number} seed - Semilla determinista para reproducibilidad
-   * @returns {Object} Datos del mapa generado
-   */
-  async _generateDungeon(theme, cols, rows, seed) {
-    const { generateDungeon } = await import('./DungeonGenerator.js');
-    const dungeon = generateDungeon({
-      cols,
-      rows,
-      seed: seed || Date.now(),
-      theme
-    });
-    return dungeon;
-  }
-
   _visibleTileRange(camera) {
     const camX = camera.renderX;
     const camY = camera.renderY;
@@ -8603,7 +9032,86 @@ class Tilemap {
       this.renderArmorPuzzle(ctx, camera, false);
     } else if (this.currentSceneId === 'sword_temple') {
       this.renderSwordPuzzle(ctx, camera, false);
+    } else if (this.currentSceneId === 'sewers_puzzle') {
+      this.renderDungeonPuzzle(ctx, camera, 'sewers');
+    } else if (this.currentSceneId === 'mines_puzzle') {
+      this.renderDungeonPuzzle(ctx, camera, 'mines');
+    } else if (this.currentSceneId === 'forge_puzzle') {
+      this.renderDungeonPuzzle(ctx, camera, 'forge');
     }
+  }
+
+  /**
+   * (FIX 2.3) Dibuja la barrera energética que sella la puerta norte y el indicador
+   * de estado del mecanismo de cada sala de mazmorra.
+   */
+  renderDungeonPuzzle(ctx, camera, kind) {
+    const cfg = kind === 'sewers'
+      ? { puzzle: this.sewersPuzzle, color: '#34d399', glow: 'rgba(52, 211, 153, 0.22)' }
+      : kind === 'mines'
+        ? { puzzle: this.minesPuzzle, color: '#38bdf8', glow: 'rgba(56, 189, 248, 0.22)' }
+        : { puzzle: this.forgePuzzle, color: '#f97316', glow: 'rgba(249, 115, 22, 0.22)' };
+    const puzzle = cfg.puzzle;
+    if (!puzzle) return;
+
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const t = performance.now() * 0.003;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // 1. Barrera energética
+    if (puzzle.barrierActive) {
+      const by = Math.round(puzzle.barrierRow * this.tileSize - camY);
+      for (const c of puzzle.barrierCols) {
+        const bx = Math.round(c * this.tileSize - camX);
+        const pulse = 0.45 + 0.55 * Math.abs(Math.sin(t * 2.2 + c * 0.55));
+        ctx.globalAlpha = 0.3 + 0.35 * pulse;
+        ctx.fillStyle = cfg.glow;
+        ctx.fillRect(bx, by, 16, 16);
+        ctx.globalAlpha = 0.55 + 0.45 * pulse;
+        ctx.fillStyle = cfg.color;
+        ctx.fillRect(bx, by + 6, 16, 2);
+        ctx.fillRect(bx + 6, by + 2, 2, 12);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.font = 'bold 5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 2. Indicador del mecanismo
+    if (kind === 'sewers') {
+      const v = this.sewersPuzzle.valve;
+      const vx = Math.round(v.col * this.tileSize - camX) + 16;
+      const vy = Math.round(v.row * this.tileSize - camY) - 4;
+      ctx.fillStyle = this.sewersPuzzle.solved ? '#34d399' : '#fde047';
+      ctx.fillText(
+        this.sewersPuzzle.solved ? 'DRENADO' : `${v.turns}/${v.turnsRequired}`,
+        vx,
+        vy
+      );
+    } else if (kind === 'mines') {
+      for (const mono of Object.values(this.minesPuzzle.monoliths)) {
+        const mx = Math.round(mono.col * this.tileSize - camX) + 8;
+        const my = Math.round(mono.row * this.tileSize - camY) - 8;
+        const struck = this.minesPuzzle.stack.includes(mono.id);
+        ctx.fillStyle = struck ? '#4ade80' : '#94a3b8';
+        ctx.fillText(struck ? '●' : '○', mx, my);
+      }
+    } else if (kind === 'forge') {
+      for (const reg of Object.values(this.forgePuzzle.positions)) {
+        const rx = Math.round(reg.col * this.tileSize - camX) + 8;
+        const ry = Math.round(reg.row * this.tileSize - camY) - 6;
+        const on = this.forgePuzzle.regulators[reg.side] === 1;
+        ctx.fillStyle = on ? '#4ade80' : '#fca5a5';
+        ctx.fillText(`P${on ? 1 : 0}`, rx, ry);
+      }
+    }
+
+    ctx.restore();
   }
 
   /** Ondulación del agua: dos destellos horizontales por tile que fluyen con una onda senoidal. */
@@ -8673,6 +9181,9 @@ class Tilemap {
     } else if (this.currentSceneId === 'sword_temple' && this.swordPuzzle.monoliths) {
       monoliths = this.swordPuzzle.monoliths;
       puzzleKind = 'sword';
+    } else if (this.currentSceneId === 'mines_puzzle' && this.minesPuzzle.monoliths) {
+      monoliths = this.minesPuzzle.monoliths;
+      puzzleKind = 'mines';
     }
     if (monoliths) {
       for (const mono of Object.values(monoliths)) {
@@ -8694,6 +9205,8 @@ class Tilemap {
       this.drawArmorMonolith(ctx, camera, prop.mono);
     } else if (prop.puzzle === 'sword') {
       this.drawSwordMonolith(ctx, camera, prop.mono);
+    } else if (prop.puzzle === 'mines') {
+      this.drawMinesMonolith(ctx, camera, prop.mono);
     } else {
       this._drawTile(ctx, prop.tileId, prop.sx, prop.sy);
     }
@@ -9028,6 +9541,33 @@ class Tilemap {
     ctx.restore();
   }
 
+  /** (FIX 2.3) Obelisco rúnico de las Minas: bit ya apilado en cian brillante. */
+  drawMinesMonolith(ctx, camera, mono) {
+    const struck = this.minesPuzzle.stack.includes(mono.id);
+    const mx = Math.round(mono.col * this.tileSize - camera.renderX);
+    const my = Math.round(mono.row * this.tileSize - camera.renderY);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#0b1220';
+    ctx.fillRect(mx + 2, my - 2, 12, 18);
+    ctx.strokeStyle = struck ? '#38bdf8' : '#475569';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
+
+    ctx.font = 'bold 6.5px monospace';
+    ctx.fillStyle = struck ? '#7dd3fc' : '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(mono.symbol, mx + 8, my + 6);
+
+    if (struck) {
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+      ctx.strokeRect(mx, my - 4, 16, 22);
+    }
+    ctx.restore();
+  }
+
   _drawTile(ctx, tileId, screenX, screenY) {
     const sx = (tileId % this.tilesetCols) * this.tileSize * ATLAS_SCALE;
     const sy = Math.floor(tileId / this.tilesetCols) * this.tileSize * ATLAS_SCALE;
@@ -9133,7 +9673,8 @@ class CollisionSystem {
               entity.x = targetX;
               return true;
             }
-            if (typeof other.x === 'number' && !other.isBoss) {
+            // (FIX 1.4) El jugador nunca es desplazado por la separación de un enemigo
+            if (typeof other.x === 'number' && !other.isBoss && !other.isPlayer) {
               const otherTargetX = other.x - pushDirX * (ox + 0.5);
               const otherTestBox = other.getBoundingBoxAt ? other.getBoundingBoxAt(otherTargetX, other.y) : null;
               if (otherTestBox && (!tilemap || !CollisionSystem.collidesWithMap(otherTestBox, tilemap))) {
@@ -9152,7 +9693,8 @@ class CollisionSystem {
               entity.y = targetY;
               return true;
             }
-            if (typeof other.y === 'number' && !other.isBoss) {
+            // (FIX 1.4) El jugador nunca es desplazado por la separación de un enemigo
+            if (typeof other.y === 'number' && !other.isBoss && !other.isPlayer) {
               const otherTargetY = other.y - pushDirY * (oy + 0.5);
               const otherTestBox = other.getBoundingBoxAt ? other.getBoundingBoxAt(other.x, otherTargetY) : null;
               if (otherTestBox && (!tilemap || !CollisionSystem.collidesWithMap(otherTestBox, tilemap))) {
@@ -9205,7 +9747,8 @@ class CollisionSystem {
             }
 
             // Nudge / empuje suave de NPCs pacíficos para no quedar nunca atascado en puertas o pasillos
-            if (other && !other.isBoss && typeof other.x === 'number') {
+            // (FIX 1.4) El jugador nunca es empujado: tiene su propia lógica de movimiento y empuje
+            if (other && !other.isBoss && !other.isPlayer && typeof other.x === 'number') {
               const nudgeStep = dx * 0.45;
               const testOtherX = other.x + nudgeStep;
               const otherBoxCandidate = other.getBoundingBoxAt ? other.getBoundingBoxAt(testOtherX, other.y) : null;
@@ -9251,7 +9794,8 @@ class CollisionSystem {
             }
 
             // Nudge / empuje suave de NPCs pacíficos para no quedar nunca atascado en puertas o pasillos
-            if (other && !other.isBoss && typeof other.y === 'number') {
+            // (FIX 1.4) El jugador nunca es empujado: tiene su propia lógica de movimiento y empuje
+            if (other && !other.isBoss && !other.isPlayer && typeof other.y === 'number') {
               const nudgeStep = dy * 0.45;
               const testOtherY = other.y + nudgeStep;
               const otherBoxCandidate = other.getBoundingBoxAt ? other.getBoundingBoxAt(other.x, testOtherY) : null;
@@ -9462,10 +10006,10 @@ const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
  * Umbrales acumulados de Experiencia (XP) para subir de Nivel (1 al 10).
  * Nivel 1: Inicio (0 XP)
  * Nivel 2: 50 XP (Habilita el Puente Oriental / Valle de la Consagración)
- * Nivel 3: 120 XP
+ * Nivel 3: 120 XP (Habilita las Marismas del Hardware Legacy · Cloacas del Dash Asíncrono)
  * Nivel 4: 220 XP (Habilita las Cumbres de la Recursión · Picos de Silicio)
  * Nivel 5: 350 XP
- * Nivel 6: 520 XP (Habilita las Marismas del Hardware Legacy · Cloacas y Forja)
+ * Nivel 6: 520 XP (Recomendado para La Forja del Prototipo · Microondas)
  * Nivel 7: 720 XP
  * Nivel 8: 980 XP (Habilita el Páramo Corrupto de Mister AI Alex)
  * Nivel 9: 1300 XP
@@ -9504,6 +10048,11 @@ class Player extends Entity {
     this.hasLanternEquipped = false;
     this.coins = 25;
     this.robotizationLevel = 0;
+
+    // (FIX 1.4) Marca de jugador: CollisionSystem nunca lo empuja al separar entidades
+    this.isPlayer = true;
+    // (FIX 1.2) Contador monótono de impactos recibidos: main.js detecta el delta por frame
+    this.damageTakenCount = 0;
 
     // Sistema de Forja y Progresión de Equipo (v3.6+)
     // Espada: 1=Base madera/hierro, 2=Silicio (+50% daño y quiebra barreras de cristal), 3=Overclockeada (+100% daño y tajos de energía a salud máx)
@@ -9759,6 +10308,7 @@ class Player extends Entity {
     this.hp = this.maxHp;
     this.coins = 25;
     this.robotizationLevel = 0;
+    this.damageTakenCount = 0;
     this.invulnTimer = 0;
     this.attackTimer = 0;
     this.attackCooldown = 0;
@@ -9978,6 +10528,8 @@ class Player extends Entity {
         if (soundEngine && typeof soundEngine.playChargedAttack === 'function') {
           soundEngine.playChargedAttack();
         }
+        // (FIX 1.1) El parry es el impacto más contundente: 4 frames de freeze
+        GameLoop.triggerHitstop(4);
       }
       return false;
     }
@@ -9998,6 +10550,9 @@ class Player extends Entity {
       this.hp = Math.max(0, this.hp - 1);
       this.invulnTimer = 1.1;
     }
+    // (FIX 1.1) Freeze frames al recibir daño; (FIX 1.2) main.js lee este contador para el shake
+    this.damageTakenCount += 1;
+    GameLoop.triggerHitstop(4);
     return true;
   }
 
@@ -11437,6 +11992,8 @@ const NEIGHBORS = [
 
 /**
  * Busca la baldosa libre más cercana (hasta `radius` baldosas) a la indicada.
+ * Exportada para que la IA pueda corregir objetivos que caen dentro de un muro.
+ * @returns {{col:number,row:number}|null}
  */
 function nearestFreeTile(tilemap, col, row, radius = 3) {
   if (!tilemap.isSolidAtTile(col, row)) return { col, row };
@@ -11574,10 +12131,16 @@ function inferArchetype(id = '') {
 }
 
 const ALERT_TIME = 0.4;
-const LOSE_SIGHT_TIME = 0.6;
+// (FIX 1.5) 2.0 s antes de darse por vencido: con el aggro alto, perder la pista en 0.6 s
+// hacía que abandonaran la persecución en cuanto el jugador doblaba una esquina.
+const LOSE_SIGHT_TIME = 2.0;
 const SEARCH_WAIT = 1.4;
 const ALARM_RADIUS = 120;
 const MAX_SIMULTANEOUS_ATTACKERS = 2;
+
+// (FIX 3.5) Separación tipo boids entre esbirros: evita el apelotonamiento
+const SEPARATION_RADIUS = 12;
+const SEPARATION_WEIGHT = 0.8;
 
 class EnemyBrain {
   constructor(enemy, archetype = 'grunt') {
@@ -11640,18 +12203,25 @@ class EnemyBrain {
    * @returns {{dirX:number, dirY:number, speedMul:number}} Intención de movimiento del frame.
    */
   update(dt, ctx) {
-    const { enemy, archetype } = this;
-    const { player, tilemap } = ctx;
     this.stateTimer += dt;
     if (this.repathTimer > 0) this.repathTimer -= dt;
     if (this.actionCooldown > 0) this.actionCooldown -= dt;
 
     const perception = this._perceive(ctx);
-    const idle = { dirX: 0, dirY: 0, speedMul: 1 };
 
     // Acciones especiales en curso (bloquean la decisión de movimiento)
     const actionResult = this._updateAction(dt, ctx);
     if (actionResult) return actionResult;
+
+    // (FIX 3.5) Se decide el movimiento y después se le suma la separación entre esbirros
+    return this._applySeparation(this._decideState(dt, ctx, perception), ctx);
+  }
+
+  /** Intención de movimiento según el estado, antes de aplicar la separación de aliados. */
+  _decideState(dt, ctx, perception) {
+    const { enemy } = this;
+    const { player } = ctx;
+    const idle = { dirX: 0, dirY: 0, speedMul: 1 };
 
     switch (this.state) {
       case AI_STATE.PATROL: {
@@ -11736,6 +12306,57 @@ class EnemyBrain {
       default:
         return idle;
     }
+  }
+
+  /**
+   * (FIX 3.5) Fuerza de separación tipo boids: si otro esbirro está a menos de
+   * SEPARATION_RADIUS px, empuja suavemente en dirección opuesta y renormaliza el vector.
+   * Complementa la colisión física (FIX 1.4): la colisión evita solaparse, esto evita
+   * que se apelotonen empujándose en la misma dirección.
+   */
+  _applySeparation(intent, ctx) {
+    if (!intent || (intent.dirX === 0 && intent.dirY === 0)) return intent;
+    const others = ctx && ctx.enemies;
+    if (!Array.isArray(others) || others.length === 0) return intent;
+
+    const { enemy } = this;
+    let sx = 0;
+    let sy = 0;
+
+    for (const other of others) {
+      if (!other || other === enemy || other.dead) continue;
+      const dx = enemy.centerX - other.centerX;
+      const dy = enemy.centerY - other.centerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= 0.001 || dist >= SEPARATION_RADIUS) continue;
+      // Empuje lineal: máxima fuerza cuando están solapados
+      const push = (SEPARATION_RADIUS - dist) / SEPARATION_RADIUS;
+      sx += (dx / dist) * push;
+      sy += (dy / dist) * push;
+    }
+
+    if (sx === 0 && sy === 0) return intent;
+
+    let x = intent.dirX + sx * SEPARATION_WEIGHT;
+    let y = intent.dirY + sy * SEPARATION_WEIGHT;
+
+    // Si el empuje es frontal (va justo en contra del movimiento), sumarlo y renormalizar
+    // no cambia la dirección: se añade un sesgo lateral para que se deslicen y se junten menos.
+    const intentLen = Math.hypot(intent.dirX, intent.dirY);
+    const sepLen = Math.hypot(sx, sy);
+    if (intentLen > 0.0001 && sepLen > 0.0001) {
+      const cos = (intent.dirX * sx + intent.dirY * sy) / (intentLen * sepLen);
+      if (cos < -0.9) {
+        const side = this.strafeSign >= 0 ? 1 : -1;
+        // Perpendicular al movimiento (sentido según el signo de la intención)
+        x += -intent.dirY * side * 0.35;
+        y += intent.dirX * side * 0.35;
+      }
+    }
+
+    const len = Math.hypot(x, y);
+    if (len <= 0.0001) return intent;
+    return { ...intent, dirX: x / len, dirY: y / len };
   }
 
   // ------------------------------------------------------------------ percepción
@@ -11825,9 +12446,28 @@ class EnemyBrain {
       goalY += Math.sin(this.flankAngle) * 14;
     }
 
-    const dir = this._steerTo(goalX, goalY, dt, ctx, 2);
+    // (FIX 3.2) El punto de flanqueo puede caer dentro de un muro: se corrige antes de navegar
+    const resolvedGoal = this._resolveGoal(goalX, goalY, tilemap);
+
+    const dir = this._steerTo(resolvedGoal.x, resolvedGoal.y, dt, ctx, 2);
     if (!dir) return { dirX: 0, dirY: 0, speedMul: 1 };
     return { dirX: dir.x, dirY: dir.y, speedMul: 1.15 };
+  }
+
+  /**
+   * (FIX 3.2) Si el objetivo cae en una baldosa sólida, lo desplaza a la baldosa libre más
+   * cercana. Sin esto, el flanqueo circular pedía repetidamente un punto inalcanzable y el
+   * enemigo oscilaba contra la esquina.
+   */
+  _resolveGoal(x, y, tilemap) {
+    const { enemy } = this;
+    const box = enemy.getBoundingBoxAt(x - enemy.width / 2, y - enemy.height / 2);
+    if (!CollisionSystem.collidesWithMap(box, tilemap)) return { x, y };
+
+    const ts = tilemap.tileSize;
+    const free = nearestFreeTile(tilemap, Math.floor(x / ts), Math.floor(y / ts), 3);
+    if (!free) return { x, y };
+    return { x: free.col * ts + ts / 2, y: free.row * ts + ts / 2 };
   }
 
   _chaseDrone(dt, ctx, perception, nx, ny) {
@@ -11999,6 +12639,22 @@ class EnemyBrain {
 const SHOT_SPEED = 78;
 const SHOT_LIFE = 2.4;
 const CONTACT_RANGE = 12.5;
+// (FIX 3.4) Aviso previo del golpe cuerpo a cuerpo: 0.3 s para poder esquivarlo
+const CONTACT_WINDUP = 0.3;
+
+// (FIX 1.1) Frames de freeze por impacto: 3 al golpear, 4 al rematar (~0.05-0.066 s)
+const HITSTOP_ON_HIT = 3;
+const HITSTOP_ON_KILL = 4;
+
+// (FIX 1.3) Paletas de partículas
+const HIT_PARTICLE_COLORS = ['#ffffff', '#fecaca', '#ef4444'];
+const DEATH_PARTICLE_COLORS = {
+  drone: ['#f43f5e', '#fda4af', '#fb7185'],
+  knight: ['#a855f7', '#c4b5fd', '#7c3aed'],
+  glitch: ['#22d3ee', '#67e8f9', '#0ea5e9'],
+  sentinel: ['#fbbf24', '#f59e0b', '#fde047'],
+  grunt: ['#fbbf24', '#f59e0b', '#fde047']
+};
 
 /**
  * Enemigo / Esbirro de las Tinieblas de Mister AI Alex.
@@ -12055,10 +12711,12 @@ class Enemy extends Entity {
     this.knockbackVy = 0;
     this.knockbackTimer = 0;
     this.attackCooldown = 0;
+    this.windupTimer = 0;
     this.stunTimer = 0;
     this.revealedTimer = 0;
     this.speedScale = 1;
-    this.deathParticles = [];
+    // (FIX 1.3) Un único pool de partículas: chispas de impacto + estallido de muerte
+    this.particles = [];
     this.shots = [];
     this._lastTick = 0;
 
@@ -12078,9 +12736,10 @@ class Enemy extends Entity {
     this.hitFlashTimer = 0;
     this.knockbackTimer = 0;
     this.attackCooldown = 0;
+    this.windupTimer = 0;
     this.stunTimer = 0;
     this.revealedTimer = 0;
-    this.deathParticles = [];
+    this.particles = [];
     this.shots = [];
     if (this.brain) {
       this.brain.setState(AI_STATE.PATROL);
@@ -12101,6 +12760,7 @@ class Enemy extends Entity {
   /** Aturde al enemigo (parry perfecto, impacto de log): no se mueve ni ataca. */
   stun(seconds) {
     this.stunTimer = Math.max(this.stunTimer, seconds);
+    this.windupTimer = 0; // (FIX 3.4) un aturdimiento interrumpe el ataque anunciado
     if (this.brain) this.brain.cancelAction();
   }
 
@@ -12129,9 +12789,54 @@ class Enemy extends Entity {
     }
   }
 
+  /**
+   * (FIX 1.3) Emite partículas radiales desde el centro del enemigo.
+   * Estructura: { x, y, vx, vy, life, maxLife, gravity, color, size }.
+   */
+  _emitParticles(count, colors, speedMin, speedMax, life, gravity = 0) {
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.7;
+      const speed = speedMin + Math.random() * (speedMax - speedMin);
+      this.particles.push({
+        x: this.centerX,
+        y: this.centerY + 4,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 10,
+        life,
+        maxLife: life,
+        gravity,
+        color: colors[i % colors.length],
+        size: i % 2 === 0 ? 2 : 1
+      });
+    }
+  }
+
+  /** Color del estallido de muerte según el arquetipo del enemigo. */
+  _deathParticleColors() {
+    return DEATH_PARTICLE_COLORS[this.archetype] || DEATH_PARTICLE_COLORS.grunt;
+  }
+
+  /**
+   * (FIX 3.1) Comunica al cerebro dónde está el jugador. Un golpe a distancia debe
+   * enseñar el objetivo aunque el enemigo no lo esté viendo.
+   */
+  _alertBrainToPlayer(player) {
+    if (!this.brain || !player || this.dead) return;
+    const x = typeof player.centerX === 'number' ? player.centerX : player.x;
+    const y = typeof player.centerY === 'number' ? player.centerY : player.y;
+    this.brain.lastKnown = { x, y };
+    this.brain.loseTimer = 0;
+    this.brain.forceAlert(x, y);
+  }
+
   _applyDamage(amount, player, soundEngine) {
     this.hp -= amount;
     this.hitFlashTimer = 0.25;
+    // (FIX 3.4) Recibir un golpe interrumpe el windup del ataque
+    this.windupTimer = 0;
+
+    // (FIX 1.3) 4-6 chispas blancas/rojas en cada impacto
+    this._emitParticles(5, HIT_PARTICLE_COLORS, 42, 84, 0.22);
 
     const dx = this.centerX - player.centerX;
     const dy = this.centerY - player.centerY;
@@ -12148,16 +12853,8 @@ class Enemy extends Entity {
     if (this.hp <= 0) {
       this.dead = true;
       this.shots = [];
-      this.deathParticles = Array.from({ length: 12 }, (_, i) => {
-        const angle = (i / 12) * Math.PI * 2;
-        return {
-          x: this.centerX,
-          y: this.centerY,
-          vx: Math.cos(angle) * (24 + (i % 3) * 12),
-          vy: Math.sin(angle) * (24 + (i % 3) * 12),
-          life: 0.45
-        };
-      });
+      // (FIX 1.3) 8-10 partículas del color del enemigo que se dispersan con gravedad
+      this._emitParticles(10, this._deathParticleColors(), 30, 66, 0.5, 60);
     }
   }
 
@@ -12169,6 +12866,10 @@ class Enemy extends Entity {
     // Punto débil: aturdido o expuesto tras una carga => doble daño
     if (this.isVulnerable) damage *= 2;
     this._applyDamage(damage, player, soundEngine);
+    // (FIX 3.1) El impacto revela la posición del jugador al cerebro del enemigo
+    this._alertBrainToPlayer(player);
+    // (FIX 1.1) Freeze frames: el remate congela un frame más que un golpe normal
+    GameLoop.triggerHitstop(this.dead ? HITSTOP_ON_KILL : HITSTOP_ON_HIT);
     return true;
   }
 
@@ -12177,19 +12878,19 @@ class Enemy extends Entity {
     if (this.dead) return false;
     this.revealedTimer = 4;
     this._applyDamage(1, player, soundEngine);
-    if (!this.dead) this.stun(0.6);
+    if (!this.dead) {
+      this.stun(0.6);
+      this._alertBrainToPlayer(player);
+    }
+    // (FIX 1.1) Impacto percusivo más sutil que un espadazo
+    GameLoop.triggerHitstop(this.dead ? HITSTOP_ON_KILL : 2);
     return true;
   }
 
   update(dt, tilemap, player, paused = false, soundEngine = null, ai = null) {
     if (this.dead) {
-      for (const p of this.deathParticles) {
-        if (p.life > 0) {
-          p.x += p.vx * dt;
-          p.y += p.vy * dt;
-          p.life = Math.max(0, p.life - dt);
-        }
-      }
+      // (FIX 1.3) Las partículas de muerte siguen viviendo aunque el enemigo ya no actúe
+      this._updateParticles(dt);
       return { hitPlayer: false };
     }
 
@@ -12220,6 +12921,9 @@ class Enemy extends Entity {
     }
 
     let hitPlayer = false;
+
+    // (FIX 1.3) Chispas y estallidos se animan con la misma cadencia que la simulación
+    this._updateParticles(dt);
 
     // Impactos del jugador: espada, corte en cascada y logs arrojadizos
     if (player) {
@@ -12258,6 +12962,32 @@ class Enemy extends Entity {
       hitPlayer = true;
     }
 
+    // (FIX 3.4) Windup del golpe cuerpo a cuerpo: el enemigo se queda clavado avisando
+    // y solo aplica el daño al terminar, si el jugador sigue en rango (esquivable).
+    if (this.windupTimer > 0) {
+      this.windupTimer = Math.max(0, this.windupTimer - dt);
+      this.isMoving = false;
+
+      if (this.windupTimer === 0) {
+        if (player && player.hp > 0 && this.distanceTo(player) <= CONTACT_RANGE * 1.35) {
+          this.attackCooldown = Math.max(this.attackCooldown, 0.35);
+          const didHit = player.takeHit(soundEngine, this);
+          return { hitPlayer: didHit || hitPlayer, enemyName: this.name };
+        }
+        // Falló el golpe (el jugador se apartó): reintenta antes que si hubiera conectado
+        this.attackCooldown = 0.35;
+      }
+
+      super.update(dt);
+      return { hitPlayer, enemyName: this.name };
+    }
+
+    // (FIX 1.4) Obstáculos dinámicos: jugador, NPCs y otros enemigos vivos de la escena.
+    // main.js ya precalcula la lista una vez por frame y la comparte en aiContext.obstacles.
+    const obstacles = (ai && Array.isArray(ai.obstacles))
+      ? ai.obstacles
+      : this._buildObstacleList(player, ai);
+
     // Retroceso tras recibir un espadazo
     if (this.knockbackTimer > 0) {
       this.knockbackTimer = Math.max(0, this.knockbackTimer - dt);
@@ -12266,7 +12996,7 @@ class Enemy extends Entity {
         this.knockbackVx * dt,
         this.knockbackVy * dt,
         tilemap,
-        []
+        obstacles
       );
       super.update(dt);
       return { hitPlayer, enemyName: this.name };
@@ -12305,7 +13035,7 @@ class Enemy extends Entity {
         intent.dirX * speed * dt,
         intent.dirY * speed * dt,
         tilemap,
-        []
+        obstacles
       );
       this.isMoving = !blockedX || !blockedY;
       if (blockedX && blockedY) {
@@ -12328,10 +13058,25 @@ class Enemy extends Entity {
       this.archetype !== 'drone' &&
       (this.brain.isCharging || this.brain.state === AI_STATE.CHASE) &&
       !this.brain.isTelegraphing;
-    if (player && canContact && this.attackCooldown <= 0 && this.distanceTo(player) <= CONTACT_RANGE) {
-      this.attackCooldown = 0.75;
-      const didHit = player.takeHit(soundEngine, this);
-      return { hitPlayer: didHit || hitPlayer, enemyName: this.name };
+    if (
+      player &&
+      canContact &&
+      this.attackCooldown <= 0 &&
+      this.distanceTo(player) <= CONTACT_RANGE
+    ) {
+      // La carga del caballero ya viene telegrafiada (0.5 s de aviso + lunge): si se le
+      // añadiera otro windup se quedaría clavado a mitad de la embestida.
+      if (this.brain.isCharging) {
+        this.attackCooldown = 0.75;
+        const didHit = player.takeHit(soundEngine, this);
+        return { hitPlayer: didHit || hitPlayer, enemyName: this.name };
+      }
+
+      // (FIX 3.4) No golpea al instante: anuncia el ataque y lo resuelve 0.3 s después
+      this.windupTimer = CONTACT_WINDUP;
+      this.attackCooldown = 0.75 + CONTACT_WINDUP;
+      this.isMoving = false;
+      return { hitPlayer, enemyName: this.name };
     }
 
     return { hitPlayer, enemyName: this.name };
@@ -12347,6 +13092,63 @@ class Enemy extends Entity {
       return { dirX: 0, dirY: 0, speedMul: 1 };
     }
     return { dirX: dx / d, dirY: dy / d, speedMul: 1 };
+  }
+
+  /**
+   * (FIX 1.4) Lista de entidades sólidas contra las que colisionar.
+   * Fallback para cuando Enemy.update se llama sin el contexto de IA de main.js.
+   */
+  _buildObstacleList(player = null, ai = null) {
+    const list = [];
+    if (ai && Array.isArray(ai.enemies)) {
+      for (const other of ai.enemies) {
+        if (other && other !== this && !other.dead) list.push(other);
+      }
+    }
+    if (ai && Array.isArray(ai.npcs)) {
+      for (const npc of ai.npcs) {
+        if (npc && npc !== this) list.push(npc);
+      }
+    }
+    if (player) list.push(player);
+    return list;
+  }
+
+  /** (FIX 1.3) Integra posición, vida, rozamiento y gravedad de cada partícula. */
+  _updateParticles(dt) {
+    if (this.particles.length === 0) return;
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.life -= dt;
+      if (p.life <= 0) {
+        this.particles.splice(i, 1);
+        continue;
+      }
+      p.vy += (p.gravity || 0) * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      const drag = Math.max(0, 1 - 4 * dt);
+      p.vx *= drag;
+      p.vy *= drag;
+    }
+  }
+
+  /** (FIX 1.3) Pinta las partículas con su color y desvanecimiento. */
+  _renderParticles(ctx, camera) {
+    if (this.particles.length === 0) return;
+    ctx.save();
+    for (const p of this.particles) {
+      const alpha = Math.max(0, Math.min(1, p.life / p.maxLife));
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(
+        Math.round(p.x - camera.renderX),
+        Math.round(p.y - camera.renderY),
+        p.size,
+        p.size
+      );
+    }
+    ctx.restore();
   }
 
   /** Mueve los proyectiles; devuelve true si alguno impactó al jugador. */
@@ -12372,22 +13174,8 @@ class Enemy extends Entity {
 
   render(ctx, camera) {
     if (this.dead) {
-      ctx.save();
-      for (const p of this.deathParticles) {
-        if (p.life > 0) {
-          ctx.fillStyle = p.life > 0.22 ? '#fbbf24' : '#a855f7';
-          ctx.beginPath();
-          ctx.arc(
-            p.x - camera.renderX,
-            p.y - camera.renderY,
-            1.8,
-            0,
-            Math.PI * 2
-          );
-          ctx.fill();
-        }
-      }
-      ctx.restore();
+      // (FIX 1.3) El estallido de muerte sobrevive al enemigo
+      this._renderParticles(ctx, camera);
       return;
     }
 
@@ -12407,18 +13195,33 @@ class Enemy extends Entity {
     }
 
     // Aura sombría de Mister AI Alex bajo el enemigo
+    // (FIX 3.4) Durante el windup parpadea en rojo para avisar del golpe inminente
+    const windupOn = this.windupTimer > 0;
+    const windupBlink = windupOn && Math.floor(this.windupTimer * 16) % 2 === 0;
+
     ctx.save();
     ctx.fillStyle =
       this.hitFlashTimer > 0
         ? 'rgba(255, 255, 255, 0.65)'
-        : 'rgba(239, 68, 68, 0.24)';
+        : windupOn
+          ? (windupBlink ? 'rgba(239, 68, 68, 0.92)' : 'rgba(255, 255, 255, 0.5)')
+          : 'rgba(239, 68, 68, 0.24)';
     ctx.beginPath();
-    ctx.arc(sx + 8, sy + 11, 8, 0, Math.PI * 2);
+    ctx.arc(sx + 8, sy + 11, windupOn ? 10 : 8, 0, Math.PI * 2);
     ctx.fill();
+
+    if (windupOn) {
+      ctx.strokeStyle = windupBlink ? '#ef4444' : '#fca5a5';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(sx + 8, sy + 11, 11, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
 
     super.render(ctx, camera);
 
+    this._renderParticles(ctx, camera);
     this._renderStatusIndicators(ctx, sx, sy);
 
     // Pequeña barra de vida sobre el enemigo si ha recibido daño (o está revelado por un log)
@@ -12597,6 +13400,9 @@ class Boss extends Enemy {
     if (this.hp <= 0 && !this.dead) {
       this.triggerBossDefeat(player, soundEngine);
     }
+
+    // (FIX 1.1) Los jefes sobrescriben takeSwordHit, así que heredan aquí el freeze frame
+    GameLoop.triggerHitstop(this.dead ? 4 : 3);
 
     return true;
   }
@@ -24558,6 +25364,31 @@ const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
 const RENDER_SCALE = 4; // Renderizado nativo HD 1280x720 (4x sobre base lógica 320x180)
 
+/**
+ * (FIX 1.7) Escenas hostiles: suenan con la música de escenario ('stage1') en lugar de
+ * la del pueblo. Única fuente de verdad, usada al cargar partida y al cruzar una puerta.
+ * Todo lo que no esté aquí (pueblo, casas, calabozo) mantiene su propio modo musical.
+ */
+const STAGE_SCENE_IDS = new Set([
+  'first_stage',
+  'north_peaks',
+  'south_swamp',
+  'west_wastes',
+  'sewers_entry',
+  'sewers_puzzle',
+  'sewers_dungeon',
+  'armor_temple',
+  'sword_temple',
+  'mines_entry',
+  'mines_puzzle',
+  'forge_entry',
+  'forge_puzzle',
+  'quantum_gate',
+  'ai_fortress_gate',
+  'ai_citadel',
+  'condemned_realms'
+]);
+
 const CORE_CHEST_GUARDIANS = {
   chest_nucleo_stack: 'boss_stack_overflow',
   chest_nucleo_gc: 'boss_garbage_collector',
@@ -24686,6 +25517,8 @@ class RPGGame {
     this.abyssalPortalOrigin = null;
     this.activeAbyssalPortal = null;
     this.transitionCooldown = 0;
+    // (FIX 2.4) Origen de la última entrada a un templo (para que su salida vuelva a esa sala)
+    this.templeReturn = null;
 
     // Control de eventos y debouncing de los Puzles en los Templos Binarios
     this.activeArmorSwitchTile = null;
@@ -24870,6 +25703,10 @@ class RPGGame {
     this.activeArmorSwitchTile = null;
     this.monolithHitCooldown = 0;
     this.droppedCoins = [];
+    // (FIX 2.4) Los templos vuelven a su salida de diseño al reiniciar la partida
+    this.templeReturn = null;
+    this.tilemap.resetSceneExitReturn('armor_temple');
+    this.tilemap.resetSceneExitReturn('sword_temple');
 
     // Reiniciar Puzle 1: Templo de la Armadura (4 Terminales)
     if (this.tilemap.armorPuzzle) {
@@ -24886,6 +25723,9 @@ class RPGGame {
       this.tilemap.swordPuzzle.portalOpen = false;
       this.tilemap.setSwordPortal(false);
     }
+
+    // (FIX 2.3) Reiniciar los puzles de mazmorra (Cloacas · Minas · Forja)
+    this.tilemap.resetDungeonPuzzles();
 
     // Reiniciar Puzle 3: La Gran Puerta del Núcleo Cuántico
     if (this.tilemap.quantumGate) {
@@ -25000,11 +25840,28 @@ class RPGGame {
         solved: !!this.tilemap.armorPuzzle.solved,
         barrierActive: !!this.tilemap.armorPuzzle.barrierActive
       } : null,
+      // (FIX 2.4) Sin esto, recargar dentro de sword_temple reenviaba la salida a first_stage
+      templeReturn: this.templeReturn ? { ...this.templeReturn } : null,
       swordPuzzle: this.tilemap?.swordPuzzle ? {
         solved: !!this.tilemap.swordPuzzle.solved,
         portalOpen: !!this.tilemap.swordPuzzle.portalOpen,
         stack: [...this.tilemap.swordPuzzle.stack]
       } : null,
+      // (FIX 2.3) Estado de los puzles de mazmorra (Cloacas · Minas · Forja)
+      dungeonPuzzles: {
+        sewers: {
+          solved: !!this.tilemap?.sewersPuzzle?.solved,
+          valveTurns: this.tilemap?.sewersPuzzle?.valve?.turns || 0
+        },
+        mines: {
+          solved: !!this.tilemap?.minesPuzzle?.solved,
+          stack: [...(this.tilemap?.minesPuzzle?.stack || [])]
+        },
+        forge: {
+          solved: !!this.tilemap?.forgePuzzle?.solved,
+          regulators: { ...(this.tilemap?.forgePuzzle?.regulators || { LEFT: 0, RIGHT: 0 }) }
+        }
+      },
       totalPlayTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
       totalDeaths: this.totalDeaths || 0,
       totalJailVisits: this.totalJailVisits || 0,
@@ -25449,14 +26306,39 @@ class RPGGame {
         this.tilemap.setSwordPortal(true);
       }
 
+      // (FIX 2.3) Restaurar los puzles de mazmorra
+      if (data.dungeonPuzzles) {
+        this.tilemap.applyDungeonPuzzleState(data.dungeonPuzzles);
+      }
+
       const hasValidScene = typeof data.sceneId === 'string' && Boolean(this.tilemap.scenes[data.sceneId]);
       const targetScene = hasValidScene ? data.sceneId : 'overworld';
       this.tilemap.loadScene(targetScene);
+      // (FIX 2.4) Restaurar el origen de entrada del templo guardado en la partida
+      if (data.templeReturn && data.templeReturn.scene === targetScene) {
+        this.tilemap.setSceneExitReturn(targetScene, data.templeReturn);
+        this.templeReturn = { ...data.templeReturn };
+      }
       this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
 
       const hasValidPos = hasValidScene && Number.isFinite(data.playerX) && Number.isFinite(data.playerY);
       this.player.x = hasValidPos ? data.playerX : 14 * 16;
       this.player.y = hasValidPos ? data.playerY : 12 * 16;
+      // (FIX 2.3) Compatibilidad con guardados anteriores a los puzles: si el jugador quedó
+      // al norte de una barrera aún sellada, devolverlo a la entrada de la sala.
+      const sealedRooms = {
+        sewers_puzzle: this.tilemap.sewersPuzzle,
+        mines_puzzle: this.tilemap.minesPuzzle,
+        forge_puzzle: this.tilemap.forgePuzzle
+      };
+      const sealedPuzzle = sealedRooms[targetScene];
+      if (sealedPuzzle && !sealedPuzzle.solved) {
+        const playerRow = Math.floor(this.player.centerY / this.tilemap.tileSize);
+        if (playerRow <= sealedPuzzle.barrierRow) {
+          this.player.x = 11.5 * this.tilemap.tileSize;
+          this.player.y = 15 * this.tilemap.tileSize;
+        }
+      }
       this.player.direction = data.playerDir || 'down';
       this.player.speed = data.playerSpeed || 76;
       this.player.hasLanternEquipped = Boolean(data.hasLanternEquipped);
@@ -25609,15 +26491,9 @@ class RPGGame {
         this.jailRemainingSeconds = 120;
       }
 
-      const stageScenes = new Set([
-        'first_stage',
-        'sewers_dungeon',
-        'armor_temple',
-        'sword_temple',
-        'ai_fortress_gate',
-        'ai_citadel',
-        'condemned_realms'
-      ]);
+      // (FIX 1.7) Mismo conjunto que usa la transición por puerta: las regiones nuevas
+      // (Cumbres, Marismas, Páramo) y las entradas de mazmorra ya no suenan como pueblo.
+      const stageScenes = STAGE_SCENE_IDS;
 
       if (
         targetScene !== 'overworld' &&
@@ -27608,16 +28484,17 @@ class RPGGame {
               onSelect: () => this.dialogueBox.close()
             }
           ];
-          const hasLevel = (this.player.level || 1) >= 6;
+          // (FIX 2.1) El Sur se abre en Nivel 3: es la ruta que entrega el Dash antes del abismo norte.
+          const hasLevel = (this.player.level || 1) >= 3;
           return {
             lines: hasLevel
               ? [
-                  '¡Paso autorizado, veterano! Cuentas con Nivel 6 y temple contrastado.',
-                  'El acceso sur hacia Las Marismas del Hardware Legacy está abierto. ¡Cuidado con el ácido y el vapor ardiente!'
+                  '¡Paso autorizado, aprendiz! Cuentas con Nivel 3 y temple suficiente.',
+                  'El acceso sur hacia Las Marismas del Hardware Legacy está abierto. Desciende a las Cloacas y hazte con el Dash Asíncrono: lo necesitarás para cruzar los abismos de las Cumbres.'
                 ]
               : [
                   '¡Zona bajo cuarentena militar! El paso sur hacia Las Marismas del Hardware Legacy está precintado.',
-                  'Las emanaciones tóxicas y el calor de la Forja desintegrarán tus circuitos si no posees al menos NIVEL 6.'
+                  'Las emanaciones tóxicas y el calor de la Forja desintegrarán tus circuitos si no posees al menos NIVEL 3.'
                 ],
             choices: vulcanoChoices
           };
@@ -27678,11 +28555,16 @@ class RPGGame {
 
   _createRegionalPatrols(sheet) {
     const regions = [
-      { prefix: 'peaks', sceneId: 'north_peaks', label: 'de las Cumbres', xp: 40, droneHp: 3, knightHp: 4, speed: 36,
+      // (FIX 3.3) Arquetipo por hueco: alarma en cadena (sentinel), teletransporte (glitch),
+      // persecución pura (grunt) y el clásico hostigador a distancia (drone).
+      { prefix: 'peaks', sceneId: 'north_peaks', label: 'de las Cumbres', xp: 40, droneHp: 3, knightHp: 4, speed: 60,
+        archetypes: ['glitch', 'drone', 'sentinel', 'knight'],
         spots: [[6, 9, 'drone'], [25, 9, 'drone'], [8, 16, 'knight'], [24, 16, 'knight']] },
-      { prefix: 'swamp', sceneId: 'south_swamp', label: 'de las Marismas', xp: 50, droneHp: 3, knightHp: 5, speed: 38,
+      { prefix: 'swamp', sceneId: 'south_swamp', label: 'de las Marismas', xp: 50, droneHp: 3, knightHp: 5, speed: 62,
+        archetypes: ['glitch', 'drone', 'sentinel', 'knight'],
         spots: [[8, 4, 'drone'], [24, 4, 'drone'], [12, 18, 'knight'], [21, 18, 'knight']] },
-      { prefix: 'wastes', sceneId: 'west_wastes', label: 'del Páramo', xp: 60, droneHp: 4, knightHp: 6, speed: 40,
+      { prefix: 'wastes', sceneId: 'west_wastes', label: 'del Páramo', xp: 60, droneHp: 4, knightHp: 6, speed: 64,
+        archetypes: ['grunt', 'drone', 'sentinel', 'knight'],
         spots: [[8, 4, 'drone'], [25, 4, 'drone'], [12, 18, 'knight'], [25, 18, 'knight']] }
     ];
     const patrols = [];
@@ -27696,8 +28578,9 @@ class RPGGame {
           y: row * 16,
           sceneId: region.sceneId,
           speed: region.speed,
+          archetype: (region.archetypes && region.archetypes[i]) || (isDrone ? 'drone' : 'knight'),
           maxHp: isDrone ? region.droneHp : region.knightHp,
-          aggroRange: 60,
+          aggroRange: 150,
           xpReward: region.xp,
           respawnOnEnter: true,
           animator: new SpriteAnimator(sheet, isDrone ? CHARACTER_TYPES.SHADOW_DRONE : CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
@@ -27713,6 +28596,152 @@ class RPGGame {
     return patrols;
   }
 
+  /**
+   * (FIX 2.2) Pobla las salas de mazmorra que estaban vacías.
+   * 3 esbirros por sala con arquetipos variados (sentinel, glitch, knight, drone).
+   * `respawnOnEnter` mantiene las salas pobladas al volver a entrar.
+   */
+  _createDungeonRoomEnemies(sheet) {
+    const make = ({ id, name, sceneId, col, row, hp, speed, aggro, xp, archetype, sprite, patrol }) =>
+      new Enemy({
+        id,
+        name,
+        x: col * 16,
+        y: row * 16,
+        sceneId,
+        speed,
+        maxHp: hp,
+        aggroRange: aggro,
+        xpReward: xp,
+        archetype,
+        respawnOnEnter: true,
+        animator: new SpriteAnimator(sheet, sprite, 16, 16, 0.12),
+        patrolPoints: patrol.map(([c, r]) => ({ x: c * 16, y: r * 16 }))
+      });
+
+    return [
+      // ==================== CLOACAS · ENTRADA DE DESAGÜE ====================
+      make({
+        id: 'sewer_entry_sentinel_1', name: 'Centinela de Válvulas Oxidado',
+        sceneId: 'sewers_entry', col: 4, row: 4, hp: 3, speed: 52, aggro: 130, xp: 35,
+        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[3, 4], [6, 4], [6, 6]]
+      }),
+      make({
+        id: 'sewer_entry_glitch_1', name: 'Anomalía de Desagüe',
+        sceneId: 'sewers_entry', col: 18, row: 4, hp: 2, speed: 54, aggro: 130, xp: 35,
+        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
+        patrol: [[17, 4], [20, 4], [20, 6]]
+      }),
+      make({
+        id: 'sewer_entry_knight_1', name: 'Caballero del Fango Corrupto',
+        sceneId: 'sewers_entry', col: 5, row: 14, hp: 3, speed: 53, aggro: 130, xp: 35,
+        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[4, 14], [8, 14], [8, 16]]
+      }),
+
+      // ==================== CLOACAS · SALA DE VÁLVULAS ====================
+      make({
+        id: 'sewer_puzzle_glitch_1', name: 'Eco de Memoria Estancada',
+        sceneId: 'sewers_puzzle', col: 4, row: 14, hp: 2, speed: 54, aggro: 135, xp: 35,
+        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
+        patrol: [[3, 14], [7, 14], [7, 16]]
+      }),
+      make({
+        id: 'sewer_puzzle_sentinel_1', name: 'Guardián del Canal Inundado',
+        sceneId: 'sewers_puzzle', col: 19, row: 14, hp: 3, speed: 54, aggro: 135, xp: 35,
+        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[18, 14], [20, 14], [20, 16]]
+      }),
+      make({
+        id: 'sewer_puzzle_drone_1', name: 'Dron Bomba de Presión',
+        sceneId: 'sewers_puzzle', col: 10, row: 10, hp: 2, speed: 56, aggro: 135, xp: 35,
+        archetype: 'drone', sprite: CHARACTER_TYPES.SHADOW_DRONE,
+        patrol: [[10, 10], [13, 10], [13, 12]]
+      }),
+
+      // ==================== MINAS · EL GRAN ABISMO ====================
+      make({
+        id: 'mines_entry_sentinel_1', name: 'Centinela del Borde del Abismo',
+        sceneId: 'mines_entry', col: 5, row: 12, hp: 3, speed: 56, aggro: 140, xp: 45,
+        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[4, 12], [8, 12], [8, 14]]
+      }),
+      make({
+        id: 'mines_entry_glitch_1', name: 'Glitch de Silicio',
+        sceneId: 'mines_entry', col: 18, row: 12, hp: 3, speed: 57, aggro: 140, xp: 45,
+        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
+        patrol: [[17, 12], [20, 12], [20, 14]]
+      }),
+      make({
+        id: 'mines_entry_knight_1', name: 'Caballero de la Veta Estrecha',
+        sceneId: 'mines_entry', col: 11, row: 4, hp: 4, speed: 55, aggro: 140, xp: 45,
+        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[9, 4], [14, 4], [14, 6]]
+      }),
+
+      // ==================== MINAS · SALA DE RUNAS ====================
+      make({
+        id: 'mines_puzzle_glitch_1', name: 'Runa Glitch Incompleta',
+        sceneId: 'mines_puzzle', col: 5, row: 5, hp: 3, speed: 57, aggro: 145, xp: 45,
+        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
+        patrol: [[4, 5], [8, 5], [8, 7]]
+      }),
+      make({
+        id: 'mines_puzzle_sentinel_1', name: 'Centinela del Registro de Bits',
+        sceneId: 'mines_puzzle', col: 18, row: 5, hp: 4, speed: 56, aggro: 145, xp: 45,
+        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[17, 5], [20, 5], [20, 7]]
+      }),
+      make({
+        id: 'mines_puzzle_knight_1', name: 'Caballero del Caso Base',
+        sceneId: 'mines_puzzle', col: 7, row: 14, hp: 4, speed: 55, aggro: 145, xp: 45,
+        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[5, 14], [10, 14], [10, 16]]
+      }),
+
+      // ==================== FORJA · GALERÍA DE CALDERAS ====================
+      make({
+        id: 'forge_entry_sentinel_1', name: 'Centinela de Calderas',
+        sceneId: 'forge_entry', col: 8, row: 4, hp: 4, speed: 58, aggro: 150, xp: 55,
+        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[6, 4], [10, 4], [10, 6]]
+      }),
+      make({
+        id: 'forge_entry_glitch_1', name: 'Fuga de Vapor Corrupta',
+        sceneId: 'forge_entry', col: 15, row: 4, hp: 3, speed: 59, aggro: 150, xp: 55,
+        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
+        patrol: [[14, 4], [18, 4], [18, 6]]
+      }),
+      make({
+        id: 'forge_entry_knight_1', name: 'Caballero Escoriado',
+        sceneId: 'forge_entry', col: 8, row: 9, hp: 4, speed: 57, aggro: 150, xp: 55,
+        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[7, 9], [11, 9], [11, 11]]
+      }),
+
+      // ==================== FORJA · VÁLVULAS TÉRMICAS ====================
+      make({
+        id: 'forge_puzzle_knight_1', name: 'Caballero de la Cámara de Vapor',
+        sceneId: 'forge_puzzle', col: 4, row: 12, hp: 4, speed: 58, aggro: 150, xp: 55,
+        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[3, 12], [7, 12], [7, 14]]
+      }),
+      make({
+        id: 'forge_puzzle_sentinel_1', name: 'Centinela Termopar',
+        sceneId: 'forge_puzzle', col: 19, row: 12, hp: 4, speed: 58, aggro: 150, xp: 55,
+        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
+        patrol: [[18, 12], [20, 12], [20, 14]]
+      }),
+      make({
+        id: 'forge_puzzle_glitch_1', name: 'Sobrecarga del Prototipo',
+        sceneId: 'forge_puzzle', col: 11, row: 6, hp: 3, speed: 60, aggro: 150, xp: 55,
+        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
+        patrol: [[9, 6], [14, 6], [14, 8]]
+      })
+    ];
+  }
+
   _createFirstStageEnemies() {
     const sheet = this.assets.charactersSheet;
 
@@ -27720,13 +28749,14 @@ class RPGGame {
       // ==================== CAMPO DE ENTRENAMIENTO DE VALLEVERDE (SPARRING Y XP) ====================
       new Enemy({
         id: 'drone_training_1',
+        archetype: 'grunt',
         name: 'Dron de Entrenamiento del Binario',
         x: 23 * 16,
         y: 20 * 16,
         sceneId: 'overworld',
-        speed: 22,
+        speed: 50,
         maxHp: 2,
-        aggroRange: 38,
+        aggroRange: 120,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 23 * 16, y: 20 * 16 },
@@ -27737,13 +28767,14 @@ class RPGGame {
       }),
       new Enemy({
         id: 'drone_training_2',
+        archetype: 'grunt',
         name: 'Bug de Práctica de Valleverde',
         x: 24 * 16,
         y: 21 * 16,
         sceneId: 'overworld',
-        speed: 20,
+        speed: 50,
         maxHp: 2,
-        aggroRange: 36,
+        aggroRange: 120,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 24 * 16, y: 21 * 16 },
@@ -27755,13 +28786,14 @@ class RPGGame {
       // ==================== ENEMIGOS EN RUINAS DEL DESPERTAR (EXTERIOR) ====================
       new Enemy({
         id: 'drone_west_1',
+        archetype: 'glitch',
         name: 'Dron Sombrío de AI Alex',
         x: 10 * 16,
         y: 14 * 16,
         sceneId: 'first_stage',
-        speed: 33,
+        speed: 56,
         maxHp: 2,
-        aggroRange: 52,
+        aggroRange: 140,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 10 * 16, y: 14 * 16 },
@@ -27772,13 +28804,14 @@ class RPGGame {
       }),
       new Enemy({
         id: 'drone_west_2',
+        archetype: 'sentinel',
         name: 'Dron Centinela del Bastión',
         x: 6 * 16,
         y: 13 * 16,
         sceneId: 'first_stage',
-        speed: 31,
+        speed: 55,
         maxHp: 2,
-        aggroRange: 48,
+        aggroRange: 135,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 4 * 16, y: 13 * 16 },
@@ -27789,13 +28822,14 @@ class RPGGame {
       }),
       new Enemy({
         id: 'drone_east_1',
+        archetype: 'drone',
         name: 'Dron Sombrío de AI Alex',
         x: 21 * 16,
         y: 14 * 16,
         sceneId: 'first_stage',
-        speed: 35,
+        speed: 58,
         maxHp: 2,
-        aggroRange: 56,
+        aggroRange: 145,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 20 * 16, y: 14 * 16 },
@@ -27806,13 +28840,14 @@ class RPGGame {
       }),
       new Enemy({
         id: 'knight_north_west',
+        archetype: 'sentinel',
         name: 'Caballero de Tinieblas de AI Alex',
         x: 13 * 16,
         y: 8 * 16,
         sceneId: 'first_stage',
-        speed: 34,
+        speed: 57,
         maxHp: 3,
-        aggroRange: 56,
+        aggroRange: 145,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.13),
         patrolPoints: [
           { x: 12 * 16, y: 8 * 16 },
@@ -27823,13 +28858,14 @@ class RPGGame {
       }),
       new Enemy({
         id: 'knight_north_east',
+        archetype: 'knight',
         name: 'Caballero de Tinieblas de AI Alex',
         x: 19 * 16,
         y: 8 * 16,
         sceneId: 'first_stage',
-        speed: 34,
+        speed: 57,
         maxHp: 3,
-        aggroRange: 56,
+        aggroRange: 145,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.13),
         patrolPoints: [
           { x: 18 * 16, y: 8 * 16 },
@@ -27840,13 +28876,14 @@ class RPGGame {
       }),
       new Enemy({
         id: 'knight_portal_guard',
+        archetype: 'sentinel',
         name: 'Guardián Abisal de Mister AI Alex',
         x: 28 * 16,
         y: 12 * 16,
         sceneId: 'first_stage',
-        speed: 36,
+        speed: 60,
         maxHp: 4,
-        aggroRange: 64,
+        aggroRange: 150,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
         patrolPoints: [
           { x: 27 * 16, y: 11 * 16 },
@@ -27863,13 +28900,14 @@ class RPGGame {
       // ==================== NIVEL: TEMPLO DEL ALTAR SAGRADO (ESPADA) ====================
       new Enemy({
         id: 'knight_temple_west',
+        archetype: 'knight',
         name: 'Caballero Abisal del Altar',
         x: 5 * 16,
         y: 9 * 16,
         sceneId: 'sword_temple',
-        speed: 36,
+        speed: 60,
         maxHp: 3,
-        aggroRange: 60,
+        aggroRange: 145,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
         patrolPoints: [
           { x: 4 * 16, y: 8 * 16 },
@@ -27880,13 +28918,14 @@ class RPGGame {
       }),
       new Enemy({
         id: 'knight_temple_east',
+        archetype: 'sentinel',
         name: 'Caballero Abisal del Altar',
         x: 18 * 16,
         y: 9 * 16,
         sceneId: 'sword_temple',
-        speed: 36,
+        speed: 60,
         maxHp: 3,
-        aggroRange: 60,
+        aggroRange: 145,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
         patrolPoints: [
           { x: 17 * 16, y: 8 * 16 },
@@ -27897,13 +28936,14 @@ class RPGGame {
       }),
       new Enemy({
         id: 'knight_temple_boss',
+        archetype: 'knight',
         name: 'Paladín Oscuro de Mister AI Alex',
         x: 11 * 16,
         y: 7 * 16,
         sceneId: 'sword_temple',
-        speed: 38,
+        speed: 62,
         maxHp: 5,
-        aggroRange: 72,
+        aggroRange: 160,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.11),
         patrolPoints: [
           { x: 9 * 16, y: 7 * 16 },
@@ -27916,14 +28956,15 @@ class RPGGame {
       // ==================== ENEMIGOS NOCTURNOS (EN EL VALLE DE LOS TEMPLOS) ====================
       new Enemy({
         id: 'night_bug_east_1',
+        archetype: 'glitch',
         name: 'Bug de Memoria Nocturno',
         x: 23 * 16,
         y: 11 * 16,
         sceneId: 'first_stage',
         nightOnly: true,
-        speed: 35,
+        speed: 58,
         maxHp: 2,
-        aggroRange: 56,
+        aggroRange: 150,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 21 * 16, y: 11 * 16 },
@@ -27934,14 +28975,15 @@ class RPGGame {
       }),
       new Enemy({
         id: 'night_bug_east_2',
+        archetype: 'knight',
         name: 'Dron Cazador de Nocturnidad',
         x: 18 * 16,
         y: 8 * 16,
         sceneId: 'first_stage',
         nightOnly: true,
-        speed: 38,
+        speed: 62,
         maxHp: 3,
-        aggroRange: 60,
+        aggroRange: 150,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
         patrolPoints: [
           { x: 17 * 16, y: 8 * 16 },
@@ -27952,14 +28994,15 @@ class RPGGame {
       }),
       new Enemy({
         id: 'night_glitch_stage1_1',
+        archetype: 'glitch',
         name: 'Glitch Corrupto Nocturno',
         x: 17 * 16,
         y: 13 * 16,
         sceneId: 'first_stage',
         nightOnly: true,
-        speed: 35,
+        speed: 58,
         maxHp: 2,
-        aggroRange: 54,
+        aggroRange: 145,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 16 * 16, y: 13 * 16 },
@@ -27968,6 +29011,9 @@ class RPGGame {
           { x: 16 * 16, y: 15 * 16 }
         ]
       }),
+
+      // ==================== SALAS DE MAZMORRA (FIX 2.2) ====================
+      ...this._createDungeonRoomEnemies(sheet),
 
       // ==================== PATRULLAS REGIONALES (REAPARECEN AL VOLVER A ENTRAR EN LA REGIÓN) ====================
       // Fuente de experiencia escalada por zona para alcanzar los niveles exigidos por los centinelas
@@ -28417,6 +29463,53 @@ class RPGGame {
             kind: 'sword_monolith',
             target: { ...mono, centerX: mx, y: my },
             label: `[E] Sintonizar ${mono.name} (${mono.symbol})`
+          };
+        }
+      }
+    }
+
+    // (FIX 2.3) Cloacas del Legacy: válvula de presión que drena el canal
+    if (currentScene === 'sewers_puzzle' && this.tilemap.sewersPuzzle) {
+      const valve = this.tilemap.sewersPuzzle.valve;
+      const vx = valve.col * 16 + 8;
+      const vy = valve.row * 16 + 8;
+      if (Math.hypot(this.player.centerX - vx, this.player.centerY - vy) <= 30) {
+        return {
+          kind: 'sewers_valve',
+          target: { col: valve.col, row: valve.row, centerX: vx, y: vy },
+          label: this.tilemap.sewersPuzzle.solved
+            ? '[E] Válvula de Presión [Canal Drenado]'
+            : `[E] Girar Válvula de Presión (${valve.turns}/${valve.turnsRequired})`
+        };
+      }
+    }
+
+    // (FIX 2.3) Minas de la Recursión: runas de bit (se leen con [E], se golpean con la espada)
+    if (currentScene === 'mines_puzzle' && this.tilemap.minesPuzzle) {
+      for (const mono of Object.values(this.tilemap.minesPuzzle.monoliths)) {
+        const mx = mono.col * 16 + 8;
+        const my = mono.row * 16 + 8;
+        if (Math.hypot(this.player.centerX - mx, this.player.centerY - my) <= 30) {
+          return {
+            kind: 'mines_monolith',
+            target: { ...mono, centerX: mx, y: my },
+            label: `[E] Inspeccionar ${mono.name} (${mono.symbol})`
+          };
+        }
+      }
+    }
+
+    // (FIX 2.3) La Forja del Prototipo: 2 reguladores térmicos
+    if (currentScene === 'forge_puzzle' && this.tilemap.forgePuzzle) {
+      for (const reg of Object.values(this.tilemap.forgePuzzle.positions)) {
+        const rx = reg.col * 16 + 8;
+        const ry = reg.row * 16 + 8;
+        if (Math.hypot(this.player.centerX - rx, this.player.centerY - ry) <= 30) {
+          const on = this.tilemap.forgePuzzle.regulators[reg.side] === 1;
+          return {
+            kind: 'forge_regulator',
+            target: { ...reg, centerX: rx, y: ry },
+            label: `[E] ${on ? 'Desactivar' : 'Activar'} ${reg.name} [P${on ? 1 : 0}]`
           };
         }
       }
@@ -29030,6 +30123,22 @@ class RPGGame {
       return;
     }
 
+    // (FIX 2.3) Puzles de mazmorra
+    if (action.kind === 'sewers_valve') {
+      this._handleSewersValve();
+      return;
+    }
+
+    if (action.kind === 'mines_monolith') {
+      this._showMinesMonolithClue(action.target);
+      return;
+    }
+
+    if (action.kind === 'forge_regulator') {
+      this._handleForgeRegulator(action.target?.side);
+      return;
+    }
+
     if (action.kind === 'sword_monolith') {
       if (action.target?.id) {
         this._handleSwordMonolithStrike(action.target.id);
@@ -29392,6 +30501,144 @@ class RPGGame {
     }
   }
 
+  /**
+   * (FIX 2.3) Cloacas del Legacy: gira la válvula de presión. Al tercer giro el canal
+   * se drena, cae la barrera y se abre la puerta norte hacia la Fosa de la Memoria.
+   */
+  _handleSewersValve() {
+    const res = this.tilemap?.toggleSewersValve?.();
+    if (!res) return;
+
+    if (res.alreadySolved) {
+      this.menuSystem.showNotice('🌊 El canal ya está drenado y el paso norte despejado.', 2.5);
+      return;
+    }
+
+    if (this.music && typeof this.music.playMenuSelect === 'function') {
+      this.music.playMenuSelect();
+    }
+
+    if (!res.solved) {
+      this.menuSystem.showNotice(`🔧 Válvula girada (${res.turns}/${res.turnsRequired})`, 2.0);
+      return;
+    }
+
+    if (this.music && typeof this.music.playFanfare === 'function') {
+      this.music.playFanfare();
+    }
+    if (this.animeCutscenes) {
+      this.animeCutscenes.flash('#34d399', 0.35);
+    }
+    this._shakeCamera(3.5, 0.35);
+    this.dialogueBox.showMessage('🌊 [CANAL DE MEMORIA DRENADO]', [
+      'La válvula de presión libera el caudal residual con un silbido metálico...',
+      'El canal fétido se vacía y deja al descubierto el limo del fondo.',
+      'La barrera de presión del norte se disipa: el paso a la Fosa de la Memoria queda abierto.'
+    ]);
+  }
+
+  /** (FIX 2.3) Lee la inscripción de una runa de bit de las Minas de la Recursión. */
+  _showMinesMonolithClue(mono) {
+    if (!mono) return;
+    if (this.music && typeof this.music.playMenuSelect === 'function') {
+      this.music.playMenuSelect();
+    }
+    const struck = this.tilemap?.minesPuzzle?.stack?.includes(mono.id);
+    this.dialogueBox.showMessage(`⛏️ [${String(mono.name).toUpperCase()}]`, [
+      `Inscripción minera: [ ${mono.symbol} ] — valor ${mono.weight}`,
+      mono.clue,
+      struck
+        ? 'Esta runa ya está apilada en el registro de memoria.'
+        : 'Golpea las runas con la espada en orden MSB → LSB. Un golpe fuera de orden desbordará el registro (-0.5 corazón).'
+    ]);
+  }
+
+  /**
+   * (FIX 2.3) Golpea una runa de bit de las Minas. Orden correcto: 4 → 2 → 1.
+   * Un error reinicia la pila y provoca un desbordamiento de registro.
+   */
+  _handleMinesMonolithStrike(monolithId) {
+    const res = this.tilemap?.hitMinesMonolith?.(monolithId);
+    if (!res) return;
+
+    if (res.alreadySolved) {
+      this.menuSystem.showNotice('⛏️ El registro de memoria ya está completo. El paso norte permanece abierto.', 2.5);
+      return;
+    }
+
+    if (res.success && res.finished) {
+      if (this.music && typeof this.music.playFanfare === 'function') {
+        this.music.playFanfare();
+      }
+      if (this.animeCutscenes) {
+        this.animeCutscenes.flash('#38bdf8', 0.4);
+      }
+      this._shakeCamera(4.5, 0.4);
+      this._saveGameToStorage();
+      this.dialogueBox.showMessage('⛏️ [REGISTRO DE MEMORIA COMPLETO]', [
+        '¡Las tres runas de bit han sido apiladas en el orden correcto (4 → 2 → 1)!',
+        'El registro de memoria emite una pulsación cian y la barrera rúnica se desvanece.',
+        'El portal septentrional hacia la cámara del Guardián del Stack Overflow permanece abierto.'
+      ]);
+    } else if (res.success) {
+      if (this.music && typeof this.music.playMenuSelect === 'function') {
+        this.music.playMenuSelect();
+      }
+      this.menuSystem.showNotice(`✨ Runa apilada en el registro (${res.step}/${res.total})`, 2.5);
+    } else {
+      if (this.music && typeof this.music.playPlayerHurt === 'function') {
+        this.music.playPlayerHurt();
+      }
+      if (this.animeCutscenes) {
+        this.animeCutscenes.flash('#ef4444', 0.35);
+      }
+      this._shakeCamera(4.0, 0.3);
+      this.player.takeDamage(1, this.music);
+      this.menuSystem.showNotice('🌀 Desbordamiento de registro: orden de bits incorrecto (-0.5 corazón)', 2.5);
+      this.dialogueBox.showMessage('🌀 [DESBORDAMIENTO DE REGISTRO]', [
+        'La runa golpeada no correspondía al siguiente bit en la secuencia.',
+        'El registro de memoria se vacía y la pila de runas vuelve a cero.',
+        'Recuerda: el flujo se evalúa del bit de mayor peso al menor (4 → 2 → 1).'
+      ]);
+    }
+  }
+
+  /** (FIX 2.3) Activa o desactiva un regulador térmico de la Forja del Prototipo. */
+  _handleForgeRegulator(side) {
+    const res = this.tilemap?.toggleForgeRegulator?.(side);
+    if (!res) return;
+
+    if (res.alreadySolved) {
+      this.menuSystem.showNotice('🔥 Ambos reguladores están activos. La cámara del Microondas permanece abierta.', 2.5);
+      return;
+    }
+
+    if (this.music && typeof this.music.playMenuSelect === 'function') {
+      this.music.playMenuSelect();
+    }
+
+    if (!res.justSolved) {
+      const left = res.regulators.LEFT === 1 ? '1' : '0';
+      const right = res.regulators.RIGHT === 1 ? '1' : '0';
+      this.menuSystem.showNotice(`🔥 Reguladores térmicos — Izq: ${left} · Der: ${right}`, 2.0);
+      return;
+    }
+
+    if (this.music && typeof this.music.playFanfare === 'function') {
+      this.music.playFanfare();
+    }
+    if (this.animeCutscenes) {
+      this.animeCutscenes.flash('#f97316', 0.4);
+    }
+    this._shakeCamera(4.0, 0.35);
+    this._saveGameToStorage();
+    this.dialogueBox.showMessage('🔥 [PRESIÓN TÉRMICA ESTABILIZADA]', [
+      '¡Ambos reguladores alcanzan presión 1 simultáneamente!',
+      'El vapor se redirige a las calderas y la barrera térmica se apaga.',
+      'La cámara de contención del Microondas Prototipo V0.1 Alpha está abierta.'
+    ]);
+  }
+
   _handleSwordMonolithStrike(monolithId) {
     if (!this.tilemap?.swordPuzzle) return;
     const res = this.tilemap.hitSwordMonolith(monolithId);
@@ -29576,12 +30823,19 @@ class RPGGame {
       }
     }
     // Si entramos a un templo, configurar su puerta de salida para regresar exactamente a la escena de origen
+    // (FIX 2.4) El Templo de la Espada se alcanza desde first_stage y desde mines_puzzle: la salida
+    // debe devolver a la sala de la que se viene, y ese origen se persiste en la partida.
     if (door.targetScene === 'armor_temple' || door.targetScene === 'sword_temple') {
-      const targetTemple = this.tilemap.scenes[door.targetScene];
-      if (targetTemple && targetTemple.exitDoor) {
-        targetTemple.exitDoor.returnScene = this.tilemap.currentSceneId;
-        targetTemple.exitDoor.returnX = door.worldX;
-        targetTemple.exitDoor.returnY = door.worldY + 22;
+      const entryScene = this.tilemap.currentSceneId;
+      const returnX = door.worldX;
+      const returnY = door.worldY + 22;
+      if (this.tilemap.setSceneExitReturn(door.targetScene, { returnScene: entryScene, returnX, returnY })) {
+        this.templeReturn = {
+          scene: door.targetScene,
+          returnScene: entryScene,
+          returnX,
+          returnY
+        };
       }
     }
     this.tilemap.loadScene(door.targetScene);
@@ -29607,9 +30861,7 @@ class RPGGame {
     }
 
     this.music.setMode(
-      door.targetScene === 'condemned_realms' || door.targetScene === 'first_stage'
-        ? 'stage1'
-        : 'village'
+      STAGE_SCENE_IDS.has(door.targetScene) ? 'stage1' : 'village'
     );
 
     if (door.type === 'enter') {
@@ -30328,26 +31580,40 @@ class RPGGame {
     if (this.monolithHitCooldown > 0) {
       this.monolithHitCooldown = Math.max(0, this.monolithHitCooldown - dt);
     }
-    if (
-      this.tilemap.currentSceneId === 'sword_temple' &&
-      this.tilemap.swordPuzzle &&
-      this.player.isAttacking &&
-      this.monolithHitCooldown <= 0
-    ) {
+    if (this.player.isAttacking && this.monolithHitCooldown <= 0) {
       const swordBox = this.player.getSwordHitbox();
       if (swordBox) {
-        for (const mono of Object.values(this.tilemap.swordPuzzle.monoliths)) {
-          const monoBox = {
-            x: mono.col * this.tilemap.tileSize + 2,
-            y: mono.row * this.tilemap.tileSize - 2,
-            width: 12,
-            height: 18
-          };
-          if (CollisionSystem.isBoxColliding(swordBox, monoBox)) {
-            this.monolithHitCooldown = 0.45;
-            this._handleSwordMonolithStrike(mono.id);
-            break;
+        const monolithTargets = [];
+        if (this.tilemap.currentSceneId === 'sword_temple' && this.tilemap.swordPuzzle) {
+          monolithTargets.push({
+            set: this.tilemap.swordPuzzle,
+            hit: (id) => this._handleSwordMonolithStrike(id)
+          });
+        }
+        // (FIX 2.3) Runas de bit de las Minas de la Recursión
+        if (this.tilemap.currentSceneId === 'mines_puzzle' && this.tilemap.minesPuzzle) {
+          monolithTargets.push({
+            set: this.tilemap.minesPuzzle,
+            hit: (id) => this._handleMinesMonolithStrike(id)
+          });
+        }
+        for (const target of monolithTargets) {
+          let struck = false;
+          for (const mono of Object.values(target.set.monoliths)) {
+            const monoBox = {
+              x: mono.col * this.tilemap.tileSize + 2,
+              y: mono.row * this.tilemap.tileSize - 2,
+              width: 12,
+              height: 18
+            };
+            if (CollisionSystem.isBoxColliding(swordBox, monoBox)) {
+              this.monolithHitCooldown = 0.45;
+              target.hit(mono.id);
+              struck = true;
+              break;
+            }
           }
+          if (struck) break;
         }
       }
     }
@@ -30423,11 +31689,23 @@ class RPGGame {
 
     // Contexto de IA compartido: lista de aliados (alarmas) y turnos de ataque simultáneos
     if (this.player.hp > 0) this._deathRegistered = false;
-    const aiContext = { enemies, attackers: new Set() };
+    const aiContext = {
+      enemies,
+      attackers: new Set(),
+      npcs,
+      // (FIX 1.4) Una única lista de cuerpos sólidos por frame: enemigos vivos, NPCs y jugador.
+      // Enemy.update la usa como obstáculos para no atravesarse entre sí ni atravesar al jugador.
+      obstacles: [...enemies.filter((e) => !e.dead), ...npcs, this.player]
+    };
     const difficultyScale = this._getDifficultyScale();
+
+    // (FIX 1.2) Sensores de combate para conectar el screen shake con los eventos reales
+    const damageTakenBefore = this.player.damageTakenCount || 0;
+    const parryCountBefore = this.player.lastParryCount || 0;
 
     for (const enemy of enemies) {
       enemy.speedScale = enemy.isBoss ? 1 : difficultyScale;
+      const wasDead = enemy.dead;
       enemy.update(
         dt,
         this.tilemap,
@@ -30436,6 +31714,11 @@ class RPGGame {
         this.music,
         aiContext
       );
+
+      // (FIX 1.2b) Golpe final: el jugador remata al enemigo
+      if (!wasDead && enemy.dead) {
+        this._shakeCamera(2, 0.3);
+      }
 
       // Puntos de habilidad y experiencia por enemigos derrotados
       if (enemy.dead && !enemy.xpGranted) {
@@ -30615,6 +31898,15 @@ class RPGGame {
         this._triggerVictorySequence();
       }
     }
+
+    // (FIX 1.2a/c) Daño recibido y parry perfecto detectados por contadores del jugador
+    if ((this.player.damageTakenCount || 0) > damageTakenBefore) {
+      this._shakeCamera(1.5, 0.2);
+    }
+    if ((this.player.lastParryCount || 0) > parryCountBefore) {
+      this._shakeCamera(1, 0.15);
+    }
+
     for (const item of items) {
       item.update(dt);
     }
@@ -30679,6 +31971,21 @@ class RPGGame {
   _getDifficultyScale() {
     const deaths = (this.deathsByScene && this.deathsByScene[this.tilemap.currentSceneId]) || 0;
     return Math.max(0.72, 1 - 0.08 * deaths);
+  }
+
+  /**
+   * (FIX 1.2) Sacudida de cámara del mundo durante el gameplay.
+   * AnimeCutsceneManager.cameraShake() solo se dibuja mientras hay una cinemática activa
+   * (su render hace early-return si no), así que en combate no producía ningún efecto.
+   * Aquí la sacudida real va a Camera2D; si además hay cinemática, se replica en ella.
+   */
+  _shakeCamera(intensity = 2, duration = 0.25) {
+    if (this.camera && typeof this.camera.shake === 'function') {
+      this.camera.shake(intensity, duration);
+    }
+    if (this.animeCutscenes && this.animeCutscenes.isActive) {
+      this.animeCutscenes.cameraShake(intensity, duration);
+    }
   }
 
   _registerPlayerDeath() {
@@ -31115,10 +32422,21 @@ class RPGGame {
       ctx.fillStyle = pct < 0.25 ? '#ef4444' : '#38bdf8';
       ctx.fillRect(heartsX + 0.5, sy + 0.5, (sw - 1) * pct, 3);
       if (this.player.comboStep > 0) {
-// =========================================================================
-    // 2. SUPERIOR DERECHA: Indicador de Monedas / Bytes
+        ctx.fillStyle = '#fde047';
+        for (let i = 0; i < this.player.comboStep; i++) {
+          ctx.fillRect(heartsX + i * 5, sy + 5, 4, 2);
+        }
+      }
+    }
+
     // =========================================================================
-    const coinX = heartsX + heartsW + 4;
+    // 2. SUPERIOR IZQUIERDA: Indicador de Monedas / Bytes (SIEMPRE visible)
+    // (FIX 1.6) Antes vivía dentro de `if (comboStep > 0)`, así que solo aparecía
+    // durante un combo. Ahora se dibuja siempre, con o sin espada, stamina o combo.
+    // =========================================================================
+    const coinX = this.player.robotizationLevel > 50
+      ? heartsX + heartsW + 4 + 34 + 4   // desplazado a la derecha del icono 🤖%
+      : heartsX + heartsW + 4;
     const coinY = heartsY;
     const coinW = 50;
     const coinH = 15;
@@ -31131,14 +32449,7 @@ class RPGGame {
     ctx.fillStyle = '#fde047';
     ctx.textAlign = 'center';
     ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
-    // =========================================================================
-    // Barra de stamina bajo los corazones (solo visible si hay espada y no está llena)
-        ctx.fillStyle = '#fde047';
-        for (let i = 0; i < this.player.comboStep; i++) {
-          ctx.fillRect(heartsX + i * 5, sy + 5, 4, 2);
-        }
-      }
-    }
+
     if (this.player.parryFlashTimer > 0) {
       SpeechBubble.renderCombatBanner(ctx, '¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, 28);
     }

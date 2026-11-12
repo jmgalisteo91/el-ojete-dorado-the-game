@@ -62,7 +62,7 @@ const TEMPLES = new Set(['armor_temple', 'sword_temple']);
 export const ZONE_LEVEL_REQUIREMENTS = {
   first_stage: 1,
   north_peaks: 4,
-  south_swamp: 6,
+  south_swamp: 3,
   west_wastes: 8,
   ai_citadel: 10
 };
@@ -87,13 +87,15 @@ export function getDoorBlock(targetScene, player) {
     };
   }
 
-  if (targetScene === 'south_swamp' && pLevel < 6) {
+  // (FIX 2.1) Las Cloacas del Sur entregan el Dash Asíncrono, que es obligatorio para cruzar el
+  // abismo de las Minas del Norte. Por eso el Sur debe abrirse ANTES que las Cumbres (Nivel 4).
+  if (targetScene === 'south_swamp' && pLevel < 3) {
     return {
-      title: '☣️ [GUARDIA VULCANO: NIVEL 6 REQUERIDO]',
+      title: '☣️ [GUARDIA VULCANO: NIVEL 3 REQUERIDO]',
       lines: [
-        '¡Zona bajo estricta cuarentena militar! Las Marismas del Hardware Legacy hierven con fugas de ácido residual y el calor infernal de la Forja.',
-        'Necesitas temple y resistencia de NIVEL 6 para no fundir tus circuitos en el fango.',
-        'Conquista las Cumbres de la Recursión antes de descender al pantano.'
+        '¡Zona bajo cuarentena militar! Las Marismas del Hardware Legacy hierven con fugas de ácido residual y el calor infernal de la Forja.',
+        'Necesitas temple y resistencia de NIVEL 3 para no fundir tus circuitos en el fango.',
+        'Las Cloacas del Legacy aguardan bajo el pantano: allí se forja el Dash Asíncrono con el que cruzarás los abismos del norte.'
       ]
     };
   }

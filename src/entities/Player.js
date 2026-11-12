@@ -1,6 +1,7 @@
 import { Entity } from './Entity.js?v=8';
 import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
 import { SKILL_DEFS } from '../core/SkillCatalog.js?v=8';
+import { GameLoop } from '../core/GameLoop.js?v=8';
 
 const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
 
@@ -8,10 +9,10 @@ const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
  * Umbrales acumulados de Experiencia (XP) para subir de Nivel (1 al 10).
  * Nivel 1: Inicio (0 XP)
  * Nivel 2: 50 XP (Habilita el Puente Oriental / Valle de la Consagración)
- * Nivel 3: 120 XP
+ * Nivel 3: 120 XP (Habilita las Marismas del Hardware Legacy · Cloacas del Dash Asíncrono)
  * Nivel 4: 220 XP (Habilita las Cumbres de la Recursión · Picos de Silicio)
  * Nivel 5: 350 XP
- * Nivel 6: 520 XP (Habilita las Marismas del Hardware Legacy · Cloacas y Forja)
+ * Nivel 6: 520 XP (Recomendado para La Forja del Prototipo · Microondas)
  * Nivel 7: 720 XP
  * Nivel 8: 980 XP (Habilita el Páramo Corrupto de Mister AI Alex)
  * Nivel 9: 1300 XP
@@ -50,6 +51,11 @@ export class Player extends Entity {
     this.hasLanternEquipped = false;
     this.coins = 25;
     this.robotizationLevel = 0;
+
+    // (FIX 1.4) Marca de jugador: CollisionSystem nunca lo empuja al separar entidades
+    this.isPlayer = true;
+    // (FIX 1.2) Contador monótono de impactos recibidos: main.js detecta el delta por frame
+    this.damageTakenCount = 0;
 
     // Sistema de Forja y Progresión de Equipo (v3.6+)
     // Espada: 1=Base madera/hierro, 2=Silicio (+50% daño y quiebra barreras de cristal), 3=Overclockeada (+100% daño y tajos de energía a salud máx)
@@ -305,6 +311,7 @@ export class Player extends Entity {
     this.hp = this.maxHp;
     this.coins = 25;
     this.robotizationLevel = 0;
+    this.damageTakenCount = 0;
     this.invulnTimer = 0;
     this.attackTimer = 0;
     this.attackCooldown = 0;
@@ -524,6 +531,8 @@ export class Player extends Entity {
         if (soundEngine && typeof soundEngine.playChargedAttack === 'function') {
           soundEngine.playChargedAttack();
         }
+        // (FIX 1.1) El parry es el impacto más contundente: 4 frames de freeze
+        GameLoop.triggerHitstop(4);
       }
       return false;
     }
@@ -544,6 +553,9 @@ export class Player extends Entity {
       this.hp = Math.max(0, this.hp - 1);
       this.invulnTimer = 1.1;
     }
+    // (FIX 1.1) Freeze frames al recibir daño; (FIX 1.2) main.js lee este contador para el shake
+    this.damageTakenCount += 1;
+    GameLoop.triggerHitstop(4);
     return true;
   }
 

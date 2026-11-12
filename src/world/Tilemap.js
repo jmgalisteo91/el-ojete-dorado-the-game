@@ -114,6 +114,80 @@ export class Tilemap {
       }
     };
 
+    // =========================================================================
+    // PUZLES DE MAZMORRA (v3.9): cada sala bloquea su puerta norte con una
+    // barrera energética y la desbloquea al resolverse el mecanismo.
+    // =========================================================================
+
+    // Puzle 3 · Cloacas del Legacy: girar la válvula de presión drena el canal.
+    this.sewersPuzzle = {
+      solved: false,
+      drained: false,
+      drainedCells: [],
+      barrierActive: true,
+      barrierRow: 3,
+      barrierCols: [],
+      valve: {
+        col: 11,
+        row: 8,
+        name: 'Válvula de Presión',
+        turns: 0,
+        turnsRequired: 3
+      }
+    };
+
+    // Puzle 4 · Minas de la Recursión: golpear 3 runas de bit en orden MSB -> LSB.
+    this.minesPuzzle = {
+      solved: false,
+      barrierActive: true,
+      barrierRow: 3,
+      barrierCols: [],
+      stack: [],
+      correctOrder: [4, 2, 1],
+      monoliths: {
+        MONOLITH_4: {
+          id: 4,
+          weight: 4,
+          col: 6,
+          row: 8,
+          name: 'Runa del Bit Superior (B₂)',
+          symbol: 'B₂',
+          clue: 'El flujo de memoria se evalúa desde el bit de mayor peso: la runa B₂ (valor 4) abre la pila antes que ninguna otra.'
+        },
+        MONOLITH_2: {
+          id: 2,
+          weight: 2,
+          col: 11,
+          row: 10,
+          name: 'Runa del Bit Medio (B₁)',
+          symbol: 'B₁',
+          clue: 'Tras el bit superior se desplaza el registro intermedio: la runa B₁ (valor 2) solo responde en el segundo ciclo.'
+        },
+        MONOLITH_1: {
+          id: 1,
+          weight: 1,
+          col: 17,
+          row: 8,
+          name: 'Runa del Bit Inferior (B₀)',
+          symbol: 'B₀',
+          clue: 'El bit menos significativo cierra la operación: la runa B₀ (valor 1) se apila en último lugar, justo antes del retorno.'
+        }
+      }
+    };
+
+    // Puzle 5 · La Forja del Prototipo: activar los 2 reguladores térmicos a la vez.
+    this.forgePuzzle = {
+      solved: false,
+      barrierActive: true,
+      barrierRow: 3,
+      barrierCols: [],
+      regulators: { LEFT: 0, RIGHT: 0 },
+      positions: {
+        LEFT: { side: 'LEFT', col: 6, row: 8, name: 'Regulador Térmico Izquierdo' },
+        RIGHT: { side: 'RIGHT', col: 17, row: 8, name: 'Regulador Térmico Derecho' }
+      }
+    };
+
     // Estado de Puzles y Progresión de Mazmorras (v3.6+)
     this.quantumGate = { coresPlaced: { gc: false, stack: false, microwave: false } };
     // Solo el Dash Asíncrono lo activa mientras dura el impulso (abismos = colisión CHASM_COLLISION)
@@ -274,6 +348,43 @@ export class Tilemap {
     }
   }
 
+  /**
+   * (FIX 2.4) Guarda el destino original de la puerta de salida de una escena la primera vez
+   * que se carga. Algunas salas (Templo de la Espada) tienen más de una entrada y su salida
+   * debe devolver al jugador a la sala desde la que entró.
+   */
+  _ensureExitDoorDefaults(scene) {
+    if (!scene || !scene.exitDoor || scene.exitDoor.defaults) return;
+    scene.exitDoor.defaults = {
+      returnScene: scene.exitDoor.returnScene,
+      returnX: scene.exitDoor.returnX,
+      returnY: scene.exitDoor.returnY
+    };
+  }
+
+  /** Redirige la puerta de salida de una escena hacia la sala desde la que se acaba de entrar. */
+  setSceneExitReturn(sceneId, { returnScene, returnX, returnY } = {}) {
+    const scene = this.scenes[sceneId];
+    if (!scene || !scene.exitDoor) return false;
+    this._ensureExitDoorDefaults(scene);
+    if (typeof returnScene === 'string') scene.exitDoor.returnScene = returnScene;
+    if (Number.isFinite(returnX)) scene.exitDoor.returnX = returnX;
+    if (Number.isFinite(returnY)) scene.exitDoor.returnY = returnY;
+    return true;
+  }
+
+  /** Restaura la puerta de salida de una escena a su destino original de diseño. */
+  resetSceneExitReturn(sceneId) {
+    const scene = this.scenes[sceneId];
+    if (!scene || !scene.exitDoor) return false;
+    this._ensureExitDoorDefaults(scene);
+    const d = scene.exitDoor.defaults;
+    scene.exitDoor.returnScene = d.returnScene;
+    scene.exitDoor.returnX = d.returnX;
+    scene.exitDoor.returnY = d.returnY;
+    return true;
+  }
+
   /** Abre o sella el portal norte (columnas 11-12, fila 1) del Templo de la Espada. */
   setSwordPortal(open) {
     const temple = this.scenes.sword_temple;
@@ -281,6 +392,215 @@ export class Tilemap {
     for (const c of [11, 12]) {
       temple.layers.collision[1][c] = open ? 0 : 1;
       temple.layers.decoration[1][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.PORTAL_GATE_CLOSED;
+    }
+  }
+
+  // =========================================================================
+  // MECÁNICAS: PUZLES DE MAZMORRA (Cloacas · Minas · Forja)
+  // =========================================================================
+
+  /** Devuelve el estado del puzle asociado a una sala de mazmorra. */
+  _dungeonPuzzleEntry(sceneId) {
+    if (sceneId === 'sewers_puzzle') return this.sewersPuzzle;
+    if (sceneId === 'mines_puzzle') return this.minesPuzzle;
+    if (sceneId === 'forge_puzzle') return this.forgePuzzle;
+    return null;
+  }
+
+  /**
+   * Levanta o retira la barrera energética que sella la puerta norte de la sala.
+   * La barrera ocupa una fila completa para que no se pueda rodear por los flancos.
+   */
+  setDungeonBarrier(sceneId, active) {
+    const scene = this.scenes[sceneId];
+    const puzzle = this._dungeonPuzzleEntry(sceneId);
+    if (!scene || !scene.layers || !puzzle) return false;
+
+    const cols = puzzle.barrierCols && puzzle.barrierCols.length > 0
+      ? puzzle.barrierCols
+      : Array.from({ length: Math.max(0, scene.cols - 4) }, (_, i) => i + 2);
+    puzzle.barrierCols = cols;
+
+    for (const c of cols) {
+      scene.layers.collision[puzzle.barrierRow][c] = active ? 1 : 0;
+      scene.layers.decoration[puzzle.barrierRow][c] = -1;
+    }
+    puzzle.barrierActive = Boolean(active);
+    return true;
+  }
+
+  /**
+   * Inunda o drena el canal central de las Cloacas. Inundado es intransitable
+   * (solo se cruza por la pasarela de piedra); drenado deja el limo pisable.
+   */
+  setSewerCanal(flooded) {
+    const scene = this.scenes.sewers_puzzle;
+    const puzzle = this.sewersPuzzle;
+    if (!scene || !scene.layers || !puzzle) return false;
+    const { ground, collision } = scene.layers;
+
+    if (flooded) {
+      for (const [r, c] of puzzle.drainedCells || []) {
+        ground[r][c] = TILES.WATER_1;
+        collision[r][c] = 1;
+      }
+      puzzle.drainedCells = [];
+      puzzle.drained = false;
+      return true;
+    }
+
+    if (puzzle.drained) return true; // ya drenado: no perder la lista de celdas
+
+    puzzle.drainedCells = [];
+    for (let r = 0; r < scene.rows; r++) {
+      for (let c = 0; c < scene.cols; c++) {
+        const tile = ground[r][c];
+        if (tile === TILES.WATER_1 || tile === TILES.WATER_2) {
+          ground[r][c] = TILES.SEWER_SLIME_FLOOR;
+          collision[r][c] = 0;
+          puzzle.drainedCells.push([r, c]);
+        }
+      }
+    }
+    puzzle.drained = true;
+    return true;
+  }
+
+  /** Gira la válvula de presión. Al tercer giro drena el canal y abre la barrera. */
+  toggleSewersValve() {
+    const puzzle = this.sewersPuzzle;
+    if (puzzle.solved) return { solved: true, alreadySolved: true };
+
+    puzzle.valve.turns = Math.min(puzzle.valve.turnsRequired, puzzle.valve.turns + 1);
+    if (puzzle.valve.turns < puzzle.valve.turnsRequired) {
+      return {
+        solved: false,
+        turns: puzzle.valve.turns,
+        turnsRequired: puzzle.valve.turnsRequired
+      };
+    }
+
+    puzzle.solved = true;
+    this.setSewerCanal(false);
+    this.setDungeonBarrier('sewers_puzzle', false);
+    return {
+      solved: true,
+      justSolved: true,
+      turns: puzzle.valve.turns,
+      turnsRequired: puzzle.valve.turnsRequired
+    };
+  }
+
+  /**
+   * Golpea una runa de bit de las Minas. El orden correcto es MSB -> LSB (4 -> 2 -> 1).
+   * Un golpe fuera de orden reinicia la pila (desbordamiento de registro).
+   */
+  hitMinesMonolith(monolithId) {
+    const puzzle = this.minesPuzzle;
+    if (puzzle.solved) return { success: true, finished: true, alreadySolved: true };
+
+    const expected = puzzle.correctOrder[puzzle.stack.length];
+    if (monolithId === expected) {
+      puzzle.stack.push(monolithId);
+      if (puzzle.stack.length === puzzle.correctOrder.length) {
+        puzzle.solved = true;
+        this.setDungeonBarrier('mines_puzzle', false);
+        return { success: true, finished: true, stack: [...puzzle.stack] };
+      }
+      return {
+        success: true,
+        finished: false,
+        step: puzzle.stack.length,
+        total: puzzle.correctOrder.length,
+        stack: [...puzzle.stack]
+      };
+    }
+
+    puzzle.stack = [];
+    return {
+      success: false,
+      error: 'BIT_MISMATCH',
+      damage: 1,
+      expected
+    };
+  }
+
+  /** Conmuta un regulador térmico de la Forja. Con los dos activos se abre la barrera. */
+  toggleForgeRegulator(side) {
+    const puzzle = this.forgePuzzle;
+    if (puzzle.solved) return { solved: true, alreadySolved: true };
+    if (side !== 'LEFT' && side !== 'RIGHT') return null;
+    if (!puzzle.positions[side]) return null;
+
+    puzzle.regulators[side] = puzzle.regulators[side] === 1 ? 0 : 1;
+    const regulators = { ...puzzle.regulators };
+
+    if (regulators.LEFT === 1 && regulators.RIGHT === 1) {
+      puzzle.solved = true;
+      this.setDungeonBarrier('forge_puzzle', false);
+      return { solved: true, justSolved: true, regulators };
+    }
+    return { solved: false, justSolved: false, regulators };
+  }
+
+  /** Restaura los tres puzles a su estado inicial (nueva partida / reinicio de mundo). */
+  resetDungeonPuzzles() {
+    this.sewersPuzzle.solved = false;
+    this.sewersPuzzle.valve.turns = 0;
+    this.setSewerCanal(true);
+    this.setDungeonBarrier('sewers_puzzle', true);
+
+    this.minesPuzzle.solved = false;
+    this.minesPuzzle.stack = [];
+    this.setDungeonBarrier('mines_puzzle', true);
+
+    this.forgePuzzle.solved = false;
+    this.forgePuzzle.regulators = { LEFT: 0, RIGHT: 0 };
+    this.setDungeonBarrier('forge_puzzle', true);
+  }
+
+  /** Reaplica desde un guardado el estado de los tres puzles de mazmorra. */
+  applyDungeonPuzzleState(state = {}) {
+    if (!state || typeof state !== 'object') return;
+
+    if (state.sewers) {
+      if (Number.isFinite(state.sewers.valveTurns)) {
+        this.sewersPuzzle.valve.turns = Math.max(
+          0,
+          Math.min(this.sewersPuzzle.valve.turnsRequired, Math.floor(state.sewers.valveTurns))
+        );
+      }
+      if (state.sewers.solved) {
+        this.sewersPuzzle.solved = true;
+        this.sewersPuzzle.valve.turns = this.sewersPuzzle.valve.turnsRequired;
+        this.setSewerCanal(false);
+        this.setDungeonBarrier('sewers_puzzle', false);
+      }
+    }
+
+    if (state.mines) {
+      if (Array.isArray(state.mines.stack)) {
+        this.minesPuzzle.stack = state.mines.stack
+          .filter((id) => this.minesPuzzle.correctOrder.includes(id))
+          .slice(0, this.minesPuzzle.correctOrder.length);
+      }
+      if (state.mines.solved) {
+        this.minesPuzzle.solved = true;
+        this.minesPuzzle.stack = [...this.minesPuzzle.correctOrder];
+        this.setDungeonBarrier('mines_puzzle', false);
+      }
+    }
+
+    if (state.forge) {
+      if (state.forge.regulators) {
+        this.forgePuzzle.regulators.LEFT = state.forge.regulators.LEFT ? 1 : 0;
+        this.forgePuzzle.regulators.RIGHT = state.forge.regulators.RIGHT ? 1 : 0;
+      }
+      if (state.forge.solved) {
+        this.forgePuzzle.solved = true;
+        this.forgePuzzle.regulators = { LEFT: 1, RIGHT: 1 };
+        this.setDungeonBarrier('forge_puzzle', false);
+      }
     }
   }
 
@@ -489,7 +809,8 @@ export class Tilemap {
     } else if (this.currentSceneId === 'sewers_puzzle') {
       const northDoorY = 1.5 * this.tileSize;
       const northDoorX = 11.5 * this.tileSize;
-      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+      // (FIX 2.3) La puerta norte permanece sellada hasta resolver el mecanismo de la sala
+      if (this.sewersPuzzle.solved && Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
         return {
           type: 'stage_transition',
           targetScene: 'sewers_dungeon',
@@ -520,7 +841,8 @@ export class Tilemap {
     } else if (this.currentSceneId === 'mines_puzzle') {
       const northDoorY = 1.5 * this.tileSize;
       const northDoorX = 11.5 * this.tileSize;
-      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+      // (FIX 2.3) La puerta norte permanece sellada hasta resolver el mecanismo de la sala
+      if (this.minesPuzzle.solved && Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
         return {
           type: 'stage_transition',
           targetScene: 'sword_temple',
@@ -551,7 +873,8 @@ export class Tilemap {
     } else if (this.currentSceneId === 'forge_puzzle') {
       const northDoorY = 1.5 * this.tileSize;
       const northDoorX = 11.5 * this.tileSize;
-      if (Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
+      // (FIX 2.3) La puerta norte permanece sellada hasta resolver el mecanismo de la sala
+      if (this.forgePuzzle.solved && Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
         return {
           type: 'stage_transition',
           targetScene: 'ai_fortress_gate',
@@ -1075,7 +1398,6 @@ export class Tilemap {
 
   /**
    * ZONA SUR: Las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).
-   * Las sub-mazmorras se generan proceduralmente con DungeonGenerator.
    */
   _buildSouthSwampScene() {
     const cols = 36;
@@ -2701,9 +3023,16 @@ export class Tilemap {
     // Pasarela de adoquines que lleva a la válvula central
     fillRect(ground, 10, 5, 4, 8, TILES.STONE_FLOOR);
 
-    // Válvula central de bombeo
+    // Válvula central de bombeo (se acciona con [E] desde la pasarela)
     setDeco(11, 8, TILES.WELL, true);
     setDeco(12, 8, TILES.WELL, true);
+
+    // (FIX 2.3) El canal está inundado: solo se cruza por la pasarela de adoquines
+    for (let r = 4; r < 13; r++) {
+      for (let c = 4; c < 20; c++) {
+        if (ground[r][c] === TILES.WATER_1) collision[r][c] = 1;
+      }
+    }
 
     lightSources.push(
       { x: 11.5 * 16, y: 8.5 * 16, radius: 60, intensity: 0.95, color: '#34d399' },
@@ -2737,6 +3066,11 @@ export class Tilemap {
         returnScene: 'sewers_entry'
       }
     };
+
+    // (FIX 2.3) Barrera de presión: sella el paso norte hasta drenar el canal
+    this.sewersPuzzle.barrierRow = 3;
+    this.sewersPuzzle.barrierCols = Array.from({ length: cols - 4 }, (_, i) => i + 2);
+    this.setDungeonBarrier('sewers_puzzle', true);
   }
 
   /**
@@ -2954,6 +3288,7 @@ export class Tilemap {
     collision[1][11] = 0;
     collision[1][12] = 0;
 
+
     this.scenes.mines_puzzle = {
       title: 'Minas de la Recursión · Sala de Runas Recursivas',
       cols,
@@ -2968,6 +3303,11 @@ export class Tilemap {
         returnScene: 'mines_entry'
       }
     };
+
+    // (FIX 2.3) Barrera rúnica: se abre al golpear las 3 runas en orden MSB -> LSB
+    this.minesPuzzle.barrierRow = 3;
+    this.minesPuzzle.barrierCols = Array.from({ length: cols - 4 }, (_, i) => i + 2);
+    this.setDungeonBarrier('mines_puzzle', true);
   }
 
   /**
@@ -3127,6 +3467,11 @@ export class Tilemap {
         returnScene: 'forge_entry'
       }
     };
+
+    // (FIX 2.3) Barrera térmica: se abre al activar ambos reguladores
+    this.forgePuzzle.barrierRow = 3;
+    this.forgePuzzle.barrierCols = Array.from({ length: cols - 4 }, (_, i) => i + 2);
+    this.setDungeonBarrier('forge_puzzle', true);
   }
 
   /**
@@ -3367,25 +3712,6 @@ export class Tilemap {
   }
 
   /** Rango de tiles visibles (con 1 tile de margen para las copas/tejados que sobresalen). */
-  /**
-   * Genera una mazmorra procedural al estilo roguelike usando BSP.
-   * @param {string} theme - Tema de la mazmorra ('sewers', 'mines', 'forge', 'citadel', 'quantum')
-   * @param {number} cols - Columnas del mapa
-   * @param {number} rows - Filas del mapa
-   * @param {number} seed - Semilla determinista para reproducibilidad
-   * @returns {Object} Datos del mapa generado
-   */
-  async _generateDungeon(theme, cols, rows, seed) {
-    const { generateDungeon } = await import('./DungeonGenerator.js');
-    const dungeon = generateDungeon({
-      cols,
-      rows,
-      seed: seed || Date.now(),
-      theme
-    });
-    return dungeon;
-  }
-
   _visibleTileRange(camera) {
     const camX = camera.renderX;
     const camY = camera.renderY;
@@ -3439,7 +3765,86 @@ export class Tilemap {
       this.renderArmorPuzzle(ctx, camera, false);
     } else if (this.currentSceneId === 'sword_temple') {
       this.renderSwordPuzzle(ctx, camera, false);
+    } else if (this.currentSceneId === 'sewers_puzzle') {
+      this.renderDungeonPuzzle(ctx, camera, 'sewers');
+    } else if (this.currentSceneId === 'mines_puzzle') {
+      this.renderDungeonPuzzle(ctx, camera, 'mines');
+    } else if (this.currentSceneId === 'forge_puzzle') {
+      this.renderDungeonPuzzle(ctx, camera, 'forge');
     }
+  }
+
+  /**
+   * (FIX 2.3) Dibuja la barrera energética que sella la puerta norte y el indicador
+   * de estado del mecanismo de cada sala de mazmorra.
+   */
+  renderDungeonPuzzle(ctx, camera, kind) {
+    const cfg = kind === 'sewers'
+      ? { puzzle: this.sewersPuzzle, color: '#34d399', glow: 'rgba(52, 211, 153, 0.22)' }
+      : kind === 'mines'
+        ? { puzzle: this.minesPuzzle, color: '#38bdf8', glow: 'rgba(56, 189, 248, 0.22)' }
+        : { puzzle: this.forgePuzzle, color: '#f97316', glow: 'rgba(249, 115, 22, 0.22)' };
+    const puzzle = cfg.puzzle;
+    if (!puzzle) return;
+
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const t = performance.now() * 0.003;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // 1. Barrera energética
+    if (puzzle.barrierActive) {
+      const by = Math.round(puzzle.barrierRow * this.tileSize - camY);
+      for (const c of puzzle.barrierCols) {
+        const bx = Math.round(c * this.tileSize - camX);
+        const pulse = 0.45 + 0.55 * Math.abs(Math.sin(t * 2.2 + c * 0.55));
+        ctx.globalAlpha = 0.3 + 0.35 * pulse;
+        ctx.fillStyle = cfg.glow;
+        ctx.fillRect(bx, by, 16, 16);
+        ctx.globalAlpha = 0.55 + 0.45 * pulse;
+        ctx.fillStyle = cfg.color;
+        ctx.fillRect(bx, by + 6, 16, 2);
+        ctx.fillRect(bx + 6, by + 2, 2, 12);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.font = 'bold 5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 2. Indicador del mecanismo
+    if (kind === 'sewers') {
+      const v = this.sewersPuzzle.valve;
+      const vx = Math.round(v.col * this.tileSize - camX) + 16;
+      const vy = Math.round(v.row * this.tileSize - camY) - 4;
+      ctx.fillStyle = this.sewersPuzzle.solved ? '#34d399' : '#fde047';
+      ctx.fillText(
+        this.sewersPuzzle.solved ? 'DRENADO' : `${v.turns}/${v.turnsRequired}`,
+        vx,
+        vy
+      );
+    } else if (kind === 'mines') {
+      for (const mono of Object.values(this.minesPuzzle.monoliths)) {
+        const mx = Math.round(mono.col * this.tileSize - camX) + 8;
+        const my = Math.round(mono.row * this.tileSize - camY) - 8;
+        const struck = this.minesPuzzle.stack.includes(mono.id);
+        ctx.fillStyle = struck ? '#4ade80' : '#94a3b8';
+        ctx.fillText(struck ? '●' : '○', mx, my);
+      }
+    } else if (kind === 'forge') {
+      for (const reg of Object.values(this.forgePuzzle.positions)) {
+        const rx = Math.round(reg.col * this.tileSize - camX) + 8;
+        const ry = Math.round(reg.row * this.tileSize - camY) - 6;
+        const on = this.forgePuzzle.regulators[reg.side] === 1;
+        ctx.fillStyle = on ? '#4ade80' : '#fca5a5';
+        ctx.fillText(`P${on ? 1 : 0}`, rx, ry);
+      }
+    }
+
+    ctx.restore();
   }
 
   /** Ondulación del agua: dos destellos horizontales por tile que fluyen con una onda senoidal. */
@@ -3509,6 +3914,9 @@ export class Tilemap {
     } else if (this.currentSceneId === 'sword_temple' && this.swordPuzzle.monoliths) {
       monoliths = this.swordPuzzle.monoliths;
       puzzleKind = 'sword';
+    } else if (this.currentSceneId === 'mines_puzzle' && this.minesPuzzle.monoliths) {
+      monoliths = this.minesPuzzle.monoliths;
+      puzzleKind = 'mines';
     }
     if (monoliths) {
       for (const mono of Object.values(monoliths)) {
@@ -3530,6 +3938,8 @@ export class Tilemap {
       this.drawArmorMonolith(ctx, camera, prop.mono);
     } else if (prop.puzzle === 'sword') {
       this.drawSwordMonolith(ctx, camera, prop.mono);
+    } else if (prop.puzzle === 'mines') {
+      this.drawMinesMonolith(ctx, camera, prop.mono);
     } else {
       this._drawTile(ctx, prop.tileId, prop.sx, prop.sy);
     }
@@ -3859,6 +4269,33 @@ export class Tilemap {
 
     if (isActiveInStack) {
       ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+      ctx.strokeRect(mx, my - 4, 16, 22);
+    }
+    ctx.restore();
+  }
+
+  /** (FIX 2.3) Obelisco rúnico de las Minas: bit ya apilado en cian brillante. */
+  drawMinesMonolith(ctx, camera, mono) {
+    const struck = this.minesPuzzle.stack.includes(mono.id);
+    const mx = Math.round(mono.col * this.tileSize - camera.renderX);
+    const my = Math.round(mono.row * this.tileSize - camera.renderY);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#0b1220';
+    ctx.fillRect(mx + 2, my - 2, 12, 18);
+    ctx.strokeStyle = struck ? '#38bdf8' : '#475569';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx + 2.5, my - 1.5, 11, 17);
+
+    ctx.font = 'bold 6.5px monospace';
+    ctx.fillStyle = struck ? '#7dd3fc' : '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(mono.symbol, mx + 8, my + 6);
+
+    if (struck) {
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
       ctx.strokeRect(mx, my - 4, 16, 22);
     }
     ctx.restore();

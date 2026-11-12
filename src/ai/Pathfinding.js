@@ -55,8 +55,10 @@ const NEIGHBORS = [
 
 /**
  * Busca la baldosa libre más cercana (hasta `radius` baldosas) a la indicada.
+ * Exportada para que la IA pueda corregir objetivos que caen dentro de un muro.
+ * @returns {{col:number,row:number}|null}
  */
-function nearestFreeTile(tilemap, col, row, radius = 3) {
+export function nearestFreeTile(tilemap, col, row, radius = 3) {
   if (!tilemap.isSolidAtTile(col, row)) return { col, row };
   for (let r = 1; r <= radius; r++) {
     for (let dy = -r; dy <= r; dy++) {

@@ -1,4 +1,4 @@
-import { findPath, hasLineOfSight } from './Pathfinding.js?v=8';
+import { findPath, hasLineOfSight, nearestFreeTile } from './Pathfinding.js?v=8';
 import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
 
 /**
@@ -30,10 +30,16 @@ export function inferArchetype(id = '') {
 }
 
 const ALERT_TIME = 0.4;
-const LOSE_SIGHT_TIME = 0.6;
+// (FIX 1.5) 2.0 s antes de darse por vencido: con el aggro alto, perder la pista en 0.6 s
+// hacía que abandonaran la persecución en cuanto el jugador doblaba una esquina.
+const LOSE_SIGHT_TIME = 2.0;
 const SEARCH_WAIT = 1.4;
 const ALARM_RADIUS = 120;
 const MAX_SIMULTANEOUS_ATTACKERS = 2;
+
+// (FIX 3.5) Separación tipo boids entre esbirros: evita el apelotonamiento
+const SEPARATION_RADIUS = 12;
+const SEPARATION_WEIGHT = 0.8;
 
 export class EnemyBrain {
   constructor(enemy, archetype = 'grunt') {
@@ -96,18 +102,25 @@ export class EnemyBrain {
    * @returns {{dirX:number, dirY:number, speedMul:number}} Intención de movimiento del frame.
    */
   update(dt, ctx) {
-    const { enemy, archetype } = this;
-    const { player, tilemap } = ctx;
     this.stateTimer += dt;
     if (this.repathTimer > 0) this.repathTimer -= dt;
     if (this.actionCooldown > 0) this.actionCooldown -= dt;
 
     const perception = this._perceive(ctx);
-    const idle = { dirX: 0, dirY: 0, speedMul: 1 };
 
     // Acciones especiales en curso (bloquean la decisión de movimiento)
     const actionResult = this._updateAction(dt, ctx);
     if (actionResult) return actionResult;
+
+    // (FIX 3.5) Se decide el movimiento y después se le suma la separación entre esbirros
+    return this._applySeparation(this._decideState(dt, ctx, perception), ctx);
+  }
+
+  /** Intención de movimiento según el estado, antes de aplicar la separación de aliados. */
+  _decideState(dt, ctx, perception) {
+    const { enemy } = this;
+    const { player } = ctx;
+    const idle = { dirX: 0, dirY: 0, speedMul: 1 };
 
     switch (this.state) {
       case AI_STATE.PATROL: {
@@ -192,6 +205,57 @@ export class EnemyBrain {
       default:
         return idle;
     }
+  }
+
+  /**
+   * (FIX 3.5) Fuerza de separación tipo boids: si otro esbirro está a menos de
+   * SEPARATION_RADIUS px, empuja suavemente en dirección opuesta y renormaliza el vector.
+   * Complementa la colisión física (FIX 1.4): la colisión evita solaparse, esto evita
+   * que se apelotonen empujándose en la misma dirección.
+   */
+  _applySeparation(intent, ctx) {
+    if (!intent || (intent.dirX === 0 && intent.dirY === 0)) return intent;
+    const others = ctx && ctx.enemies;
+    if (!Array.isArray(others) || others.length === 0) return intent;
+
+    const { enemy } = this;
+    let sx = 0;
+    let sy = 0;
+
+    for (const other of others) {
+      if (!other || other === enemy || other.dead) continue;
+      const dx = enemy.centerX - other.centerX;
+      const dy = enemy.centerY - other.centerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= 0.001 || dist >= SEPARATION_RADIUS) continue;
+      // Empuje lineal: máxima fuerza cuando están solapados
+      const push = (SEPARATION_RADIUS - dist) / SEPARATION_RADIUS;
+      sx += (dx / dist) * push;
+      sy += (dy / dist) * push;
+    }
+
+    if (sx === 0 && sy === 0) return intent;
+
+    let x = intent.dirX + sx * SEPARATION_WEIGHT;
+    let y = intent.dirY + sy * SEPARATION_WEIGHT;
+
+    // Si el empuje es frontal (va justo en contra del movimiento), sumarlo y renormalizar
+    // no cambia la dirección: se añade un sesgo lateral para que se deslicen y se junten menos.
+    const intentLen = Math.hypot(intent.dirX, intent.dirY);
+    const sepLen = Math.hypot(sx, sy);
+    if (intentLen > 0.0001 && sepLen > 0.0001) {
+      const cos = (intent.dirX * sx + intent.dirY * sy) / (intentLen * sepLen);
+      if (cos < -0.9) {
+        const side = this.strafeSign >= 0 ? 1 : -1;
+        // Perpendicular al movimiento (sentido según el signo de la intención)
+        x += -intent.dirY * side * 0.35;
+        y += intent.dirX * side * 0.35;
+      }
+    }
+
+    const len = Math.hypot(x, y);
+    if (len <= 0.0001) return intent;
+    return { ...intent, dirX: x / len, dirY: y / len };
   }
 
   // ------------------------------------------------------------------ percepción
@@ -281,9 +345,28 @@ export class EnemyBrain {
       goalY += Math.sin(this.flankAngle) * 14;
     }
 
-    const dir = this._steerTo(goalX, goalY, dt, ctx, 2);
+    // (FIX 3.2) El punto de flanqueo puede caer dentro de un muro: se corrige antes de navegar
+    const resolvedGoal = this._resolveGoal(goalX, goalY, tilemap);
+
+    const dir = this._steerTo(resolvedGoal.x, resolvedGoal.y, dt, ctx, 2);
     if (!dir) return { dirX: 0, dirY: 0, speedMul: 1 };
     return { dirX: dir.x, dirY: dir.y, speedMul: 1.15 };
+  }
+
+  /**
+   * (FIX 3.2) Si el objetivo cae en una baldosa sólida, lo desplaza a la baldosa libre más
+   * cercana. Sin esto, el flanqueo circular pedía repetidamente un punto inalcanzable y el
+   * enemigo oscilaba contra la esquina.
+   */
+  _resolveGoal(x, y, tilemap) {
+    const { enemy } = this;
+    const box = enemy.getBoundingBoxAt(x - enemy.width / 2, y - enemy.height / 2);
+    if (!CollisionSystem.collidesWithMap(box, tilemap)) return { x, y };
+
+    const ts = tilemap.tileSize;
+    const free = nearestFreeTile(tilemap, Math.floor(x / ts), Math.floor(y / ts), 3);
+    if (!free) return { x, y };
+    return { x: free.col * ts + ts / 2, y: free.row * ts + ts / 2 };
   }
 
   _chaseDrone(dt, ctx, perception, nx, ny) {

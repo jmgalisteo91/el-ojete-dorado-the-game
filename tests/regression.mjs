@@ -1765,7 +1765,13 @@ test('Sistema de Niveles (1-10), Experiencia, Centinelas Guardianes y Desbloqueo
 
   const blockSouth = getDoorBlock('south_swamp', pLvl1);
   assert.ok(blockSouth);
-  assert.match(blockSouth.title, /GUARDIA VULCANO: NIVEL 6 REQUERIDO/);
+  assert.match(blockSouth.title, /GUARDIA VULCANO: NIVEL 3 REQUERIDO/);
+  // (FIX 2.1) El Sur entrega el Dash Asíncrono: debe abrirse antes que las Cumbres del Norte,
+  // cuyo abismo es intransitable sin Dash.
+  assert.ok(
+    ZONE_LEVEL_REQUIREMENTS.south_swamp < ZONE_LEVEL_REQUIREMENTS.north_peaks,
+    'El Sur (Dash) debe estar disponible antes que el Norte (abismo)'
+  );
 
   const blockWest = getDoorBlock('west_wastes', pLvl1);
   assert.ok(blockWest);
@@ -1777,8 +1783,9 @@ test('Sistema de Niveles (1-10), Experiencia, Centinelas Guardianes y Desbloqueo
   // Nivel 4: Paso permitido a Cumbres del Norte
   assert.equal(getDoorBlock('north_peaks', { level: 4 }), null);
 
-  // Nivel 6: Paso permitido a Marismas del Sur
-  assert.equal(getDoorBlock('south_swamp', { level: 6 }), null);
+  // Nivel 3: Paso permitido a Marismas del Sur (Dash Asíncrono antes del abismo norte)
+  assert.equal(getDoorBlock('south_swamp', { level: 3 }), null);
+  assert.equal(getDoorBlock('south_swamp', { level: 4 }), null);
 
   // Nivel 8: Paso permitido al Páramo de Alex
   assert.equal(getDoorBlock('west_wastes', { level: 8 }), null);
@@ -2007,20 +2014,26 @@ test('C1: una pasada por todo el contenido alcanza el nivel exigido por cada cen
   const bossXp = (...ids) => ids.reduce((sum, id) => sum + xpOf(enemies.find((e) => e.id === id)), 0);
   const xpForLevel = (lvl) => LEVEL_XP_THRESHOLDS[lvl - 1];
 
+  // (FIX 2.1) Orden de progresión: Este -> Sur (Dash) -> Norte (abismo) -> Oeste -> Ciudadela
   const afterEast = dayXpIn(['first_stage', 'sword_temple']) + bossXp('boss_stack_overflow');
-  assert.ok(afterEast >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.north_peaks), `Este: ${afterEast} XP`);
-  const afterNorth = afterEast + dayXpIn(['north_peaks']);
-  assert.ok(afterNorth >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.south_swamp), `Norte: ${afterNorth} XP`);
-  const afterSouth = afterNorth + dayXpIn(['south_swamp']) + bossXp('boss_garbage_collector', 'boss_prototype_microwave');
-  assert.ok(afterSouth >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.west_wastes), `Sur: ${afterSouth} XP`);
-  const afterWest = afterSouth + dayXpIn(['west_wastes']);
-  assert.ok(afterWest >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.ai_citadel), `Oeste: ${afterWest} XP`);
+  assert.ok(afterEast >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.south_swamp), `Este (Sur): ${afterEast} XP`);
+  assert.ok(afterEast >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.north_peaks), `Este (Norte): ${afterEast} XP`);
+  const afterSouth = afterEast + dayXpIn(['south_swamp']) + bossXp('boss_garbage_collector', 'boss_prototype_microwave');
+  assert.ok(afterSouth >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.north_peaks), `Sur (Norte): ${afterSouth} XP`);
+  const afterNorth = afterSouth + dayXpIn(['north_peaks']);
+  assert.ok(afterNorth >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.west_wastes), `Norte (Oeste): ${afterNorth} XP`);
+  const afterWest = afterNorth + dayXpIn(['west_wastes']);
+  assert.ok(afterWest >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.ai_citadel), `Oeste (Ciudadela): ${afterWest} XP`);
 });
 
 test('C1: las patrullas regionales nacen en suelo transitable y reaparecen limpias al volver a la región', () => {
   const enemies = makeFakeGame()._createFirstStageEnemies();
   const patrols = enemies.filter((e) => e.respawnOnEnter);
-  assert.equal(new Set(patrols.map((e) => e.sceneId)).size, 3, 'Norte, Sur y Oeste tienen patrullas');
+  // (FIX 2.2) Las salas de mazmorra también reaparecen: se comprueban las 3 regiones explícitamente
+  const patrolScenes = new Set(patrols.map((e) => e.sceneId));
+  for (const zone of ['north_peaks', 'south_swamp', 'west_wastes']) {
+    assert.ok(patrolScenes.has(zone), `La región ${zone} debe tener patrullas`);
+  }
   const tm = new Tilemap(null, 16);
   for (const e of patrols) {
     tm.loadScene(e.sceneId);

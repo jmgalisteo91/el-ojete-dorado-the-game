@@ -21,7 +21,7 @@ export const INITIAL_QUESTS = [
     category: 'MAIN',
     status: 'ACTIVE',
     description: 'Una anomalía de memoria corrupta y punteros huérfanos acecha en las Cloacas del Legacy, bajo las Marismas del Sur.',
-    currentStep: 'Viaja al sur hasta las Marismas del Hardware Legacy (Nivel 6), desciende a las Cloacas y erradica al Garbage Collector Furioso.',
+    currentStep: 'Viaja al sur hasta las Marismas del Hardware Legacy (Nivel 3), desciende a las Cloacas y erradica al Garbage Collector Furioso para obtener el Dash Asíncrono.',
     reward: 'Habilidad: Dash Asíncrono (0.2s invulnerabilidad)'
   },
   {

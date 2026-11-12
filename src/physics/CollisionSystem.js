@@ -83,7 +83,8 @@ export class CollisionSystem {
               entity.x = targetX;
               return true;
             }
-            if (typeof other.x === 'number' && !other.isBoss) {
+            // (FIX 1.4) El jugador nunca es desplazado por la separación de un enemigo
+            if (typeof other.x === 'number' && !other.isBoss && !other.isPlayer) {
               const otherTargetX = other.x - pushDirX * (ox + 0.5);
               const otherTestBox = other.getBoundingBoxAt ? other.getBoundingBoxAt(otherTargetX, other.y) : null;
               if (otherTestBox && (!tilemap || !CollisionSystem.collidesWithMap(otherTestBox, tilemap))) {
@@ -102,7 +103,8 @@ export class CollisionSystem {
               entity.y = targetY;
               return true;
             }
-            if (typeof other.y === 'number' && !other.isBoss) {
+            // (FIX 1.4) El jugador nunca es desplazado por la separación de un enemigo
+            if (typeof other.y === 'number' && !other.isBoss && !other.isPlayer) {
               const otherTargetY = other.y - pushDirY * (oy + 0.5);
               const otherTestBox = other.getBoundingBoxAt ? other.getBoundingBoxAt(other.x, otherTargetY) : null;
               if (otherTestBox && (!tilemap || !CollisionSystem.collidesWithMap(otherTestBox, tilemap))) {
@@ -155,7 +157,8 @@ export class CollisionSystem {
             }
 
             // Nudge / empuje suave de NPCs pacíficos para no quedar nunca atascado en puertas o pasillos
-            if (other && !other.isBoss && typeof other.x === 'number') {
+            // (FIX 1.4) El jugador nunca es empujado: tiene su propia lógica de movimiento y empuje
+            if (other && !other.isBoss && !other.isPlayer && typeof other.x === 'number') {
               const nudgeStep = dx * 0.45;
               const testOtherX = other.x + nudgeStep;
               const otherBoxCandidate = other.getBoundingBoxAt ? other.getBoundingBoxAt(testOtherX, other.y) : null;
@@ -201,7 +204,8 @@ export class CollisionSystem {
             }
 
             // Nudge / empuje suave de NPCs pacíficos para no quedar nunca atascado en puertas o pasillos
-            if (other && !other.isBoss && typeof other.y === 'number') {
+            // (FIX 1.4) El jugador nunca es empujado: tiene su propia lógica de movimiento y empuje
+            if (other && !other.isBoss && !other.isPlayer && typeof other.y === 'number') {
               const nudgeStep = dy * 0.45;
               const testOtherY = other.y + nudgeStep;
               const otherBoxCandidate = other.getBoundingBoxAt ? other.getBoundingBoxAt(other.x, testOtherY) : null;

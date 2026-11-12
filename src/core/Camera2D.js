@@ -12,6 +12,54 @@ export class Camera2D {
     this.x = 0;
     this.y = 0;
     this.lerpSpeed = 8.0;
+
+    // (FIX 1.2) Sacudida de pantalla en gameplay: offset temporal sumado a renderX/renderY
+    this.shakeTimer = 0;
+    this.shakeDuration = 0;
+    this.shakeIntensity = 0;
+    this.shakeOffsetX = 0;
+    this.shakeOffsetY = 0;
+  }
+
+  /**
+   * (FIX 1.2) Sacude la cámara del mundo. La intensidad está en píxeles lógicos
+   * (1 px lógico = RENDER_SCALE px en pantalla), así que 1-2 se lee como un golpe seco.
+   * La sacudida más intensa gana; la duración más larga se conserva.
+   */
+  shake(intensity = 2, duration = 0.25) {
+    const i = Math.max(0, Number(intensity) || 0);
+    const d = Math.max(0, Number(duration) || 0);
+    if (i <= 0 || d <= 0) return;
+    this.shakeIntensity = Math.max(this.shakeIntensity, i);
+    this.shakeDuration = Math.max(this.shakeDuration, d);
+    this.shakeTimer = Math.max(this.shakeTimer, d);
+  }
+
+  /** Decae la sacudida y recalcula el offset con ruido por frame. */
+  updateShake(dt) {
+    if (this.shakeTimer <= 0) {
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+      this.shakeIntensity = 0;
+      this.shakeDuration = 0;
+      return;
+    }
+
+    this.shakeTimer = Math.max(0, this.shakeTimer - dt);
+    // Amplitud con caída lineal: arranca fuerte y se apaga suave
+    const decay = this.shakeDuration > 0 ? this.shakeTimer / this.shakeDuration : 0;
+    const amp = this.shakeIntensity * decay;
+
+    if (this.shakeTimer <= 0) {
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+      this.shakeIntensity = 0;
+      this.shakeDuration = 0;
+      return;
+    }
+
+    this.shakeOffsetX = (Math.random() * 2 - 1) * amp;
+    this.shakeOffsetY = (Math.random() * 2 - 1) * amp;
   }
 
   setWorldBounds(worldWidth, worldHeight) {
@@ -40,14 +88,16 @@ export class Camera2D {
 
     this.x = this._clampX(this.x);
     this.y = this._clampY(this.y);
+
+    this.updateShake(dt);
   }
 
   get renderX() {
-    return Math.round(this.x);
+    return Math.round(this.x + this.shakeOffsetX);
   }
 
   get renderY() {
-    return Math.round(this.y);
+    return Math.round(this.y + this.shakeOffsetY);
   }
 
   _clampX(x) {
