@@ -274,10 +274,15 @@ test('Parry perfecto aturde al atacante; fuera de ventana solo absorbe', () => {
   q.takeHit(null, { stun: (s) => (stunned2 = s) });
   assert.equal(stunned2, 0);
 });
-test('Indefenso (sin armadura) muere de un golpe', () => {
+test('Daño por zona: sin armadura, 6 golpes de 0.5 en overworld para morir', () => {
+  // (FIX 3.6) Se sustituye la regla antigua de one-shot por daño escalado de 0.5
   const p = makePlayer(32, 32);
   p.hasArmor = false;
-  p.takeHit();
+  p.hp = p.maxHp;
+  for (let i = 0; i < 6; i++) {
+    p.invulnTimer = 0;
+    p.takeHit(null, { sceneId: 'overworld' });
+  }
   assert.equal(p.hp, 0);
 });
 test('Árbol de habilidades: compra y puntos', () => {
@@ -917,38 +922,72 @@ test('Motor de Texto y Paginación: DialogueBox divide textos largos en páginas
   }
 });
 
-test('Blindaje Metálico: Armadura Binaria absorbe 3 impactos antes de dañar HP y Poción de Blindaje la repone', () => {
+test('Blindaje Metálico: la coraza define i-frames (0.60/0.75) y la poción la repone', () => {
+  // (FIX 3.6/3.7) Con el daño por zona la coraza ya no absorbe HP; sigue siendo
+  // un recurso que marca la ventana de invulnerabilidad.
   const player = new Player(0, 0);
   player.equipArmor();
   assert.equal(player.armorPoints, 3, 'Debe iniciar con 3 puntos de blindaje');
   assert.equal(player.hp, 3);
 
-  // Impacto 1
-  player.takeHit({ direction: 'down', attackDamage: 1 });
+  // Impacto 1: 0.5 de daño, coraza 2, i-frames 0.60
+  player.takeHit(null, { sceneId: 'overworld' });
   assert.equal(player.armorPoints, 2);
-  assert.equal(player.hp, 3, 'El daño a la vida se absorbe completamente');
+  assert.equal(player.hp, 2.5);
+  assert.equal(player.invulnTimer, 0.60);
 
   // Impacto 2
   player.invulnTimer = 0;
-  player.takeHit({ direction: 'down', attackDamage: 1 });
+  player.takeHit(null, { sceneId: 'overworld' });
   assert.equal(player.armorPoints, 1);
-  assert.equal(player.hp, 3);
+  assert.equal(player.hp, 2.0);
 
-  // Impacto 3: agota la coraza
+  // Impacto 3: agota la coraza (el golpe aún usa 0.60)
   player.invulnTimer = 0;
-  player.takeHit({ direction: 'down', attackDamage: 1 });
+  player.takeHit(null, { sceneId: 'overworld' });
   assert.equal(player.armorPoints, 0);
-  assert.equal(player.hp, 3);
+  assert.equal(player.hp, 1.5);
+  assert.equal(player.invulnTimer, 0.60);
 
-  // Impacto 4: coraza agotada, daña HP
+  // Impacto 4: sin coraza, i-frames 0.75
   player.invulnTimer = 0;
-  player.takeHit({ direction: 'down', attackDamage: 1 });
-  assert.equal(player.hp, 2, 'Debe reducir 1 punto de HP tras romperse la coraza');
+  player.takeHit(null, { sceneId: 'overworld' });
+  assert.equal(player.hp, 1.0);
+  assert.equal(player.invulnTimer, 0.75);
 
   // Reponer coraza con Poción de Blindaje
   const potionSuccess = player.applyArmorPotion();
   assert.equal(potionSuccess, true);
   assert.equal(player.armorPoints, 3, 'La poción debe reconstituir los 3 puntos de coraza');
+});
+
+test('3.6: daño por zona en ai_citadel con armorLevel 0 deja maxHp - 2.0', () => {
+  const p = makePlayer(32, 32);
+  p.armorLevel = 0;
+  p.hasArmor = false;
+  p.hp = p.maxHp;
+  p.invulnTimer = 0;
+  p.takeHit(null, { sceneId: 'ai_citadel' });
+  assert.equal(p.hp, p.maxHp - 2.0);
+});
+
+test('3.7: tras takeHit, i-frames 0.70 sin armadura, 0.60 con coraza y 0.75 agotada', () => {
+  const noArmor = makePlayer(32, 32);
+  noArmor.hasArmor = false;
+  noArmor.hp = noArmor.maxHp;
+  noArmor.takeHit(null, { sceneId: 'overworld' });
+  assert.equal(noArmor.invulnTimer, 0.70);
+
+  const withArmor = makePlayer(32, 32);
+  withArmor.equipArmor();
+  withArmor.takeHit(null, { sceneId: 'overworld' });
+  assert.equal(withArmor.invulnTimer, 0.60);
+
+  const depleted = makePlayer(32, 32);
+  depleted.equipArmor();
+  depleted.armorPoints = 0;
+  depleted.takeHit(null, { sceneId: 'overworld' });
+  assert.equal(depleted.invulnTimer, 0.75);
 });
 
 test('Penalizaciones por Robotización: Daño de espada -30% si >50% y corazón bloqueado si >80%', () => {
@@ -2015,12 +2054,12 @@ test('C1: una pasada por todo el contenido alcanza el nivel exigido por cada cen
   const xpForLevel = (lvl) => LEVEL_XP_THRESHOLDS[lvl - 1];
 
   // (FIX 2.1) Orden de progresión: Este -> Sur (Dash) -> Norte (abismo) -> Oeste -> Ciudadela
-  const afterEast = dayXpIn(['first_stage', 'sword_temple']) + bossXp('boss_stack_overflow');
+  const afterEast = dayXpIn(['first_stage', 'sword_temple']);
   assert.ok(afterEast >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.south_swamp), `Este (Sur): ${afterEast} XP`);
   assert.ok(afterEast >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.north_peaks), `Este (Norte): ${afterEast} XP`);
   const afterSouth = afterEast + dayXpIn(['south_swamp']) + bossXp('boss_garbage_collector', 'boss_prototype_microwave');
   assert.ok(afterSouth >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.north_peaks), `Sur (Norte): ${afterSouth} XP`);
-  const afterNorth = afterSouth + dayXpIn(['north_peaks']);
+  const afterNorth = afterSouth + dayXpIn(['north_peaks']) + bossXp('boss_stack_overflow');
   assert.ok(afterNorth >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.west_wastes), `Norte (Oeste): ${afterNorth} XP`);
   const afterWest = afterNorth + dayXpIn(['west_wastes']);
   assert.ok(afterWest >= xpForLevel(ZONE_LEVEL_REQUIREMENTS.ai_citadel), `Oeste (Ciudadela): ${afterWest} XP`);

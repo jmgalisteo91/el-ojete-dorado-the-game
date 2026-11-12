@@ -96,7 +96,6 @@ export class Enemy extends Entity {
     // (FIX 1.3) Un único pool de partículas: chispas de impacto + estallido de muerte
     this.particles = [];
     this.shots = [];
-    this._lastTick = 0;
 
     // Los jefes (isBoss) gestionan su propia IA; los enemigos normales usan EnemyBrain
     this.archetype = archetype || inferArchetype(id || '');
@@ -273,13 +272,6 @@ export class Enemy extends Entity {
       this._updateParticles(dt);
       return { hitPlayer: false };
     }
-
-    // Proyectiles obsoletos de una escena en la que el jugador no estaba presente
-    const now = performance.now();
-    if (this._lastTick && now - this._lastTick > 500) {
-      this.shots.length = 0;
-    }
-    this._lastTick = now;
 
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);

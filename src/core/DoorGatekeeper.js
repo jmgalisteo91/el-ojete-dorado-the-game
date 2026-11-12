@@ -134,7 +134,8 @@ export function getDoorBlock(targetScene, player) {
     case 'forge_entry':
     case 'forge_puzzle':
     case 'ai_fortress_gate':
-      return fullyEquipped ? null : BLOCK_MESSAGES.fortress;
+      // (FIX H2) La Forja exige Nivel 6 además del equipo completo: evita saltarse las Minas
+      return (fullyEquipped && pLevel >= 6) ? null : BLOCK_MESSAGES.fortress;
     case 'ai_citadel': {
       if (!fullyEquipped) return BLOCK_MESSAGES.fortress;
       if (player?.gatesUnlocked !== undefined && player.gatesUnlocked < 3) {

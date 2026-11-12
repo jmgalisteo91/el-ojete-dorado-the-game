@@ -992,7 +992,8 @@ function getDoorBlock(targetScene, player) {
     case 'forge_entry':
     case 'forge_puzzle':
     case 'ai_fortress_gate':
-      return fullyEquipped ? null : BLOCK_MESSAGES.fortress;
+      // (FIX H2) La Forja exige Nivel 6 además del equipo completo: evita saltarse las Minas
+      return (fullyEquipped && pLevel >= 6) ? null : BLOCK_MESSAGES.fortress;
     case 'ai_citadel': {
       if (!fullyEquipped) return BLOCK_MESSAGES.fortress;
       if (player?.gatesUnlocked !== undefined && player.gatesUnlocked < 3) {
@@ -10826,7 +10827,7 @@ class Player extends Entity {
       y,
       width: 16,
       height: 16,
-      speed: 74,
+      speed: 86,
       boundingBox: { offsetX: 3, offsetY: 8, width: 10, height: 7 },
       animator
     });
@@ -11258,7 +11259,8 @@ class Player extends Entity {
     this.barrierActive = true;
     this.barrierTimer = 3.0;
     this.barrierCooldown = 8.0;
-    this.parryTimer = this.skills.reflejo ? 0.45 : 0.25;
+    // (FIX 3.7) Ventana de parry legible contra un windup de 0.30s
+    this.parryTimer = this.skills.reflejo ? 0.35 : 0.20;
     if (soundEngine && typeof soundEngine.playBarrier === 'function') {
       soundEngine.playBarrier();
     }
@@ -11299,10 +11301,11 @@ class Player extends Entity {
 
   /**
    * Recibe un impacto de combate.
-   * Si el jugador está INDEFENSO (sin armadura), cualquier ataque reduce su vida a 0 inmediatamente.
-   * Si porta la Armadura Binaria, los Corazones Blindados absorben hasta 3 impactos completos antes de pasar a corazones rojos.
+   * (FIX 3.6) El daño escala por zona en múltiplos de 0.5 corazones.
+   * (FIX 3.7) i-frames reducidos y parry más generoso.
+   * `attacker` se mantiene como 2º argumento: los tests y las llamadas existentes dependen de ello.
    */
-  takeHit(soundEngine = null, attacker = null) {
+  takeHit(soundEngine = null, attacker = null, customDamage = null) {
     if (this.invulnTimer > 0 || this.hp <= 0) return false;
 
     // Si la Barrera de Tipado Estricto está activa, absorbe completamente el daño
@@ -11333,18 +11336,39 @@ class Player extends Entity {
       soundEngine.playPlayerHurt();
     }
 
-    if (!this.hasArmor) {
-      // Indefenso: cualquier golpe le quita toda la vida llegando a 0
-      this.hp = 0;
-      this.invulnTimer = 1.0;
-    } else if (this.armorPoints > 0) {
-      // Coraza metálica absorbe el golpe completo
-      this.armorPoints = Math.max(0, this.armorPoints - 1);
-      this.invulnTimer = 0.9;
+    // (FIX 3.6) Daño por zona, en múltiplos de 0.5 corazones
+    let dmg;
+    if (customDamage !== null && customDamage !== undefined) {
+      dmg = customDamage;
     } else {
-      this.hp = Math.max(0, this.hp - 1);
-      this.invulnTimer = 1.1;
+      const sid = attacker?.sceneId || '';
+      if (sid === 'overworld' || sid === 'first_stage') dmg = 0.5;
+      else if (sid === 'north_peaks' || sid === 'south_swamp' || sid === 'west_wastes') dmg = 1.0;
+      else if (sid === 'ai_citadel') dmg = (this.armorLevel >= 2) ? 1.5 : 2.0;
+      else if (
+        sid.startsWith('sewers') ||
+        sid.startsWith('mines') ||
+        sid.startsWith('forge') ||
+        sid === 'sword_temple' ||
+        sid === 'ai_fortress_gate'
+      ) {
+        dmg = (this.armorLevel >= 2) ? 1.0 : 1.5;
+      } else {
+        dmg = 1.0;
+      }
+      if (attacker?.isBoss) dmg = Math.max(dmg, 1.0);
     }
+
+    // La coraza sigue siendo un recurso (y define los i-frames), pero ya no absorbe el golpe
+    const hadArmorPoints = this.hasArmor && this.armorPoints > 0;
+    if (hadArmorPoints) this.armorPoints = Math.max(0, this.armorPoints - 1);
+
+    this.hp = Math.max(0, this.hp - dmg);
+
+    // (FIX 3.7) i-frames: 0.70 sin armadura, 0.60 con coraza, 0.75 con armadura agotada
+    if (!this.hasArmor) this.invulnTimer = 0.70;
+    else if (hadArmorPoints) this.invulnTimer = 0.60;
+    else this.invulnTimer = 0.75;
     // (FIX 1.1) Freeze frames al recibir daño; (FIX 1.2) main.js lee este contador para el shake
     this.damageTakenCount += 1;
     GameLoop.triggerHitstop(4);
@@ -13069,7 +13093,7 @@ const ALARM_RADIUS = 120;
 const MAX_SIMULTANEOUS_ATTACKERS = 2;
 
 // (FIX 3.5) Separación tipo boids entre esbirros: evita el apelotonamiento
-const SEPARATION_RADIUS = 12;
+const SEPARATION_RADIUS = 18;
 const SEPARATION_WEIGHT = 0.8;
 
 class EnemyBrain {
@@ -13658,7 +13682,6 @@ class Enemy extends Entity {
     // (FIX 1.3) Un único pool de partículas: chispas de impacto + estallido de muerte
     this.particles = [];
     this.shots = [];
-    this._lastTick = 0;
 
     // Los jefes (isBoss) gestionan su propia IA; los enemigos normales usan EnemyBrain
     this.archetype = archetype || inferArchetype(id || '');
@@ -13835,13 +13858,6 @@ class Enemy extends Entity {
       this._updateParticles(dt);
       return { hitPlayer: false };
     }
-
-    // Proyectiles obsoletos de una escena en la que el jugador no estaba presente
-    const now = performance.now();
-    if (this._lastTick && now - this._lastTick > 500) {
-      this.shots.length = 0;
-    }
-    this._lastTick = now;
 
     if (this.hitFlashTimer > 0) {
       this.hitFlashTimer = Math.max(0, this.hitFlashTimer - dt);
@@ -14268,6 +14284,7 @@ class Boss extends Enemy {
 
     this.projectiles = [];
     this.hazardPuddles = [];
+    this._puddleCooldownUntil = 0;
     this.minions = [];
     this.defeatBannerTimer = 0;
   }
@@ -14493,7 +14510,7 @@ class Boss extends Enemy {
               soundEngine.playBarrier();
             }
           } else {
-            player.takeHit(soundEngine);
+            player.takeHit(soundEngine, this);
             p.life = 0;
           }
         }
@@ -14512,7 +14529,12 @@ class Boss extends Enemy {
         const d = Math.hypot(pud.x - player.centerX, pud.y - player.centerY);
         if (d <= pud.radius + 5) {
           if (!player.barrierActive) {
-            player.takeHit(soundEngine);
+            // (FIX 3.7) Un mismo charco solo impacta una vez por entrada
+            if (!this._puddleCooldownUntil || performance.now() > this._puddleCooldownUntil) {
+              if (player.takeHit(soundEngine, this)) {
+                this._puddleCooldownUntil = performance.now() + 750;
+              }
+            }
           }
         }
       }
@@ -14677,7 +14699,7 @@ class GarbageCollectorBoss extends Boss {
         // Contacto cuerpo a cuerpo
         if (dist <= 14 && this.attackCooldown <= 0) {
           this.attackCooldown = 0.85;
-          player.takeHit(soundEngine);
+          player.takeHit(soundEngine, this);
         }
       }
 
@@ -14717,7 +14739,7 @@ class GarbageCollectorBoss extends Boss {
 
       // Si golpea al jugador durante la embestida
       if (player && this.distanceTo(player) <= 15) {
-        player.takeHit(soundEngine);
+        player.takeHit(soundEngine, this);
       }
 
       // Si choca contra un muro de la sala: ¡queda aturdido 2.5s!
@@ -15005,7 +15027,7 @@ class StackOverflowBoss extends Boss {
         c.attackCooldown -= dt;
         if (dist <= 12 && c.attackCooldown <= 0) {
           c.attackCooldown = 0.9;
-          player.takeHit(soundEngine);
+          player.takeHit(soundEngine, this);
         }
 
         // Chequeo si la espada o corte en cascada del jugador golpea al clon
@@ -15119,7 +15141,7 @@ class StackOverflowBoss extends Boss {
         // Contacto cuerpo a cuerpo
         if (dist <= 14 && this.attackCooldown <= 0) {
           this.attackCooldown = 0.85;
-          player.takeHit(soundEngine);
+          player.takeHit(soundEngine, this);
         }
       }
     } else {
@@ -15155,7 +15177,7 @@ class StackOverflowBoss extends Boss {
         const dist = Math.hypot(player.centerX - sw.x, player.centerY - sw.y);
         if (Math.abs(dist - sw.radius) <= 8 && player.invulnTimer <= 0) {
           sw.hasHit = true;
-          player.takeHit(soundEngine);
+          player.takeHit(soundEngine, this);
         }
       }
 
@@ -27522,7 +27544,7 @@ class RPGGame {
     // El juego empieza en el pueblo (Valleverde), en la plaza junto al Sabio Aurelio
     this.player.x = 14 * 16;
     this.player.y = 12 * 16;
-    this.player.speed = 76;
+    this.player.speed = 86;
     this.player.direction = 'up';
     this.player.hasLanternEquipped = false;
     this.player.unequipAllForNewGame();
@@ -28138,7 +28160,8 @@ class RPGGame {
         }
       }
       this.player.direction = data.playerDir || 'down';
-      this.player.speed = data.playerSpeed || 76;
+      // (FIX H5) Velocidad base unificada; los saves antiguos se normalizan a 86
+      this.player.speed = 86;
       this.player.hasLanternEquipped = Boolean(data.hasLanternEquipped);
 
       // Si es un guardado antiguo en overworld (v1), dotar de armadura y espada por compatibilidad
@@ -28198,7 +28221,7 @@ class RPGGame {
       if (typeof data.playerCoins === 'number' && Number.isFinite(data.playerCoins)) {
         this.player.coins = Math.max(0, Math.floor(data.playerCoins));
       }
-      this.player.invulnerableTimer = 1.0;
+      this.player.invulnTimer = 1.0;
       this.player.knockbackTimer = 0;
 
       if (Array.isArray(data.inventoryItems)) {
@@ -31302,6 +31325,10 @@ class RPGGame {
       if (scene === 'sword_temple' && !this.player.hasSword) {
         return false;
       }
+      // (FIX H1) El Guardián del Stack Overflow solo se manifiesta tras resolver el puzle de las Minas
+      if (e.id === 'boss_stack_overflow' && Boolean(this.tilemap?.minesPuzzle?.solved) !== true) {
+        return false;
+      }
       return true;
     });
     const items = this.worldItems.filter((i) => {
@@ -31577,10 +31604,9 @@ class RPGGame {
         this.achievementManager.unlock('ach_bridge_pass');
       }
     } else if (item.id === 'potion') {
-      this.player.speed = 92;
       this.player.hp = this.player.effectiveMaxHp;
       this.inventory.consumeItem('potion', 1);
-      this.inventory.statusMessage = '¡Bebiste la Poción! Vida y velocidad restauradas.';
+      this.inventory.statusMessage = '¡Bebiste la Poción! Vida restaurada.';
     } else if (item.id === 'bread') {
       this.player.hp = this.player.effectiveMaxHp;
       this.inventory.consumeItem('bread', 1);
@@ -31594,7 +31620,6 @@ class RPGGame {
         return;
       }
       this._lastMicroRelicUse = now;
-      this.player.speed = 98;
       this.player.hp = this.player.effectiveMaxHp;
       this.player.cureRobotization();
       if (this.music && typeof this.music.playHealSound === 'function') {
@@ -31609,7 +31634,6 @@ class RPGGame {
       this.inventory.statusMessage = '¡Comiste una Manzana Crujiente! +1 Corazón.';
     } else if (item.id === 'berry_pie') {
       this.player.hp = this.player.effectiveMaxHp;
-      this.player.speed = 95;
       this.inventory.consumeItem('berry_pie', 1);
       this.inventory.statusMessage = '¡Devoraste el Pastel de Bayas! Salud al 100% y energía.';
     } else if (item.id === 'ointment') {
@@ -31755,7 +31779,6 @@ class RPGGame {
       if (this.music && typeof this.music.playHealSound === 'function') this.music.playHealSound();
       this.menuSystem.showNotice('💾 Hotfix aplicado (100% HP, 0% Robotización)', 2.5);
     } else if (item.id === 'potion') {
-      this.player.speed = 92;
       this.player.hp = this.player.effectiveMaxHp;
       this.inventory.consumeItem('potion', 1);
       if (this.music && typeof this.music.playHealSound === 'function') this.music.playHealSound();
@@ -31777,7 +31800,6 @@ class RPGGame {
       this.menuSystem.showNotice('🍎 Manzana consumida (+1 HP)', 2.5);
     } else if (item.id === 'berry_pie') {
       this.player.hp = this.player.effectiveMaxHp;
-      this.player.speed = 95;
       this.inventory.consumeItem('berry_pie', 1);
       if (this.music && typeof this.music.playHealSound === 'function') this.music.playHealSound();
       this.menuSystem.showNotice('🥧 Pastel de Bayas consumido (Salud al 100%)', 2.5);
@@ -32149,18 +32171,7 @@ class RPGGame {
             this.dialogueBox.showMessage('⚔ ¡Arma Consagrada: Espada de la Recursividad!', [
               '¡Has empuñado la [Espada de la Recursividad]! Cada tajo llama recursivamente al siguiente hasta alcanzar el caso base.',
               'Pulsa [ESPACIO] o [F] para atacar continuamente a los bugs y esbirros de Mister AI Alex sin desbordar el stack.',
-              '¡El despertar de la espada ha liberado al Guardián del Stack Overflow en el portal septentrional!'
-            ], [
-              {
-                label: '★ ¡Enfrentar al Guardián!',
-                onSelect: () => {
-                  this.dialogueBox.close();
-                  const boss = this.enemies.find((e) => e.id === 'boss_stack_overflow');
-                  if (boss && !boss.dead) {
-                    this._triggerBossIntroCutscene(boss);
-                  }
-                }
-              }
+              'El Guardián del Stack Overflow aguarda al otro lado del puzle de las Minas de la Recursión.'
             ]);
           });
           return;
@@ -32702,6 +32713,12 @@ class RPGGame {
         en.resetCombatState();
       }
     }
+    // (FIX H3) Nada de proyectiles del jugador ni de enemigos viaja entre escenas
+    this.player.thrownLogs = [];
+    this.player.energySlashes = [];
+    for (const e of this.enemies) {
+      if (e.shots) e.shots = [];
+    }
     // Si entramos a un templo, configurar su puerta de salida para regresar exactamente a la escena de origen
     // (FIX 2.4) El Templo de la Espada se alcanza desde first_stage y desde mines_puzzle: la salida
     // debe devolver a la sala de la que se viene, y ese origen se persiste en la partida.
@@ -32819,9 +32836,12 @@ class RPGGame {
     );
     if (!boss) return;
 
-    // En el Templo de la Espada, el Guardián del Stack Overflow SOLO se manifiesta
-    // cuando el héroe ya ha desenvainado la Espada de la Recursividad
-    if (boss.id === 'boss_stack_overflow' && !this.player.hasSword) {
+    // (FIX H1) El Guardián del Stack Overflow SOLO se manifiesta cuando el héroe ya
+    // desenvainó la Espada y además resolvió el puzle de las Minas (Nivel 4)
+    if (
+      boss.id === 'boss_stack_overflow' &&
+      (!this.player.hasSword || Boolean(this.tilemap?.minesPuzzle?.solved) !== true)
+    ) {
       return;
     }
 
@@ -34303,7 +34323,8 @@ class RPGGame {
         }
       } else if (this.player.hp >= i + 1) {
         char = '♥';
-      } else if (this.player.hp >= i + 0.5) {
+      } else if (this.player.hp > i) {
+        // (FIX 3.6) Cualquier fracción positiva pinta medio corazón (nunca ♡♡♡ estando vivo)
         char = '💔';
       } else {
         char = '♡';

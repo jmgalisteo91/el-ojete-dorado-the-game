@@ -38,7 +38,7 @@ const ALARM_RADIUS = 120;
 const MAX_SIMULTANEOUS_ATTACKERS = 2;
 
 // (FIX 3.5) Separación tipo boids entre esbirros: evita el apelotonamiento
-const SEPARATION_RADIUS = 12;
+const SEPARATION_RADIUS = 18;
 const SEPARATION_WEIGHT = 0.8;
 
 export class EnemyBrain {

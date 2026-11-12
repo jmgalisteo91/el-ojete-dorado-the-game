@@ -558,7 +558,7 @@ export class RPGGame {
     // El juego empieza en el pueblo (Valleverde), en la plaza junto al Sabio Aurelio
     this.player.x = 14 * 16;
     this.player.y = 12 * 16;
-    this.player.speed = 76;
+    this.player.speed = 86;
     this.player.direction = 'up';
     this.player.hasLanternEquipped = false;
     this.player.unequipAllForNewGame();
@@ -1174,7 +1174,8 @@ export class RPGGame {
         }
       }
       this.player.direction = data.playerDir || 'down';
-      this.player.speed = data.playerSpeed || 76;
+      // (FIX H5) Velocidad base unificada; los saves antiguos se normalizan a 86
+      this.player.speed = 86;
       this.player.hasLanternEquipped = Boolean(data.hasLanternEquipped);
 
       // Si es un guardado antiguo en overworld (v1), dotar de armadura y espada por compatibilidad
@@ -1234,7 +1235,7 @@ export class RPGGame {
       if (typeof data.playerCoins === 'number' && Number.isFinite(data.playerCoins)) {
         this.player.coins = Math.max(0, Math.floor(data.playerCoins));
       }
-      this.player.invulnerableTimer = 1.0;
+      this.player.invulnTimer = 1.0;
       this.player.knockbackTimer = 0;
 
       if (Array.isArray(data.inventoryItems)) {
@@ -4338,6 +4339,10 @@ export class RPGGame {
       if (scene === 'sword_temple' && !this.player.hasSword) {
         return false;
       }
+      // (FIX H1) El Guardián del Stack Overflow solo se manifiesta tras resolver el puzle de las Minas
+      if (e.id === 'boss_stack_overflow' && Boolean(this.tilemap?.minesPuzzle?.solved) !== true) {
+        return false;
+      }
       return true;
     });
     const items = this.worldItems.filter((i) => {
@@ -4613,10 +4618,9 @@ export class RPGGame {
         this.achievementManager.unlock('ach_bridge_pass');
       }
     } else if (item.id === 'potion') {
-      this.player.speed = 92;
       this.player.hp = this.player.effectiveMaxHp;
       this.inventory.consumeItem('potion', 1);
-      this.inventory.statusMessage = '¡Bebiste la Poción! Vida y velocidad restauradas.';
+      this.inventory.statusMessage = '¡Bebiste la Poción! Vida restaurada.';
     } else if (item.id === 'bread') {
       this.player.hp = this.player.effectiveMaxHp;
       this.inventory.consumeItem('bread', 1);
@@ -4630,7 +4634,6 @@ export class RPGGame {
         return;
       }
       this._lastMicroRelicUse = now;
-      this.player.speed = 98;
       this.player.hp = this.player.effectiveMaxHp;
       this.player.cureRobotization();
       if (this.music && typeof this.music.playHealSound === 'function') {
@@ -4645,7 +4648,6 @@ export class RPGGame {
       this.inventory.statusMessage = '¡Comiste una Manzana Crujiente! +1 Corazón.';
     } else if (item.id === 'berry_pie') {
       this.player.hp = this.player.effectiveMaxHp;
-      this.player.speed = 95;
       this.inventory.consumeItem('berry_pie', 1);
       this.inventory.statusMessage = '¡Devoraste el Pastel de Bayas! Salud al 100% y energía.';
     } else if (item.id === 'ointment') {
@@ -4791,7 +4793,6 @@ export class RPGGame {
       if (this.music && typeof this.music.playHealSound === 'function') this.music.playHealSound();
       this.menuSystem.showNotice('💾 Hotfix aplicado (100% HP, 0% Robotización)', 2.5);
     } else if (item.id === 'potion') {
-      this.player.speed = 92;
       this.player.hp = this.player.effectiveMaxHp;
       this.inventory.consumeItem('potion', 1);
       if (this.music && typeof this.music.playHealSound === 'function') this.music.playHealSound();
@@ -4813,7 +4814,6 @@ export class RPGGame {
       this.menuSystem.showNotice('🍎 Manzana consumida (+1 HP)', 2.5);
     } else if (item.id === 'berry_pie') {
       this.player.hp = this.player.effectiveMaxHp;
-      this.player.speed = 95;
       this.inventory.consumeItem('berry_pie', 1);
       if (this.music && typeof this.music.playHealSound === 'function') this.music.playHealSound();
       this.menuSystem.showNotice('🥧 Pastel de Bayas consumido (Salud al 100%)', 2.5);
@@ -5185,18 +5185,7 @@ export class RPGGame {
             this.dialogueBox.showMessage('⚔ ¡Arma Consagrada: Espada de la Recursividad!', [
               '¡Has empuñado la [Espada de la Recursividad]! Cada tajo llama recursivamente al siguiente hasta alcanzar el caso base.',
               'Pulsa [ESPACIO] o [F] para atacar continuamente a los bugs y esbirros de Mister AI Alex sin desbordar el stack.',
-              '¡El despertar de la espada ha liberado al Guardián del Stack Overflow en el portal septentrional!'
-            ], [
-              {
-                label: '★ ¡Enfrentar al Guardián!',
-                onSelect: () => {
-                  this.dialogueBox.close();
-                  const boss = this.enemies.find((e) => e.id === 'boss_stack_overflow');
-                  if (boss && !boss.dead) {
-                    this._triggerBossIntroCutscene(boss);
-                  }
-                }
-              }
+              'El Guardián del Stack Overflow aguarda al otro lado del puzle de las Minas de la Recursión.'
             ]);
           });
           return;
@@ -5738,6 +5727,12 @@ export class RPGGame {
         en.resetCombatState();
       }
     }
+    // (FIX H3) Nada de proyectiles del jugador ni de enemigos viaja entre escenas
+    this.player.thrownLogs = [];
+    this.player.energySlashes = [];
+    for (const e of this.enemies) {
+      if (e.shots) e.shots = [];
+    }
     // Si entramos a un templo, configurar su puerta de salida para regresar exactamente a la escena de origen
     // (FIX 2.4) El Templo de la Espada se alcanza desde first_stage y desde mines_puzzle: la salida
     // debe devolver a la sala de la que se viene, y ese origen se persiste en la partida.
@@ -5855,9 +5850,12 @@ export class RPGGame {
     );
     if (!boss) return;
 
-    // En el Templo de la Espada, el Guardián del Stack Overflow SOLO se manifiesta
-    // cuando el héroe ya ha desenvainado la Espada de la Recursividad
-    if (boss.id === 'boss_stack_overflow' && !this.player.hasSword) {
+    // (FIX H1) El Guardián del Stack Overflow SOLO se manifiesta cuando el héroe ya
+    // desenvainó la Espada y además resolvió el puzle de las Minas (Nivel 4)
+    if (
+      boss.id === 'boss_stack_overflow' &&
+      (!this.player.hasSword || Boolean(this.tilemap?.minesPuzzle?.solved) !== true)
+    ) {
       return;
     }
 
@@ -7339,7 +7337,8 @@ export class RPGGame {
         }
       } else if (this.player.hp >= i + 1) {
         char = '♥';
-      } else if (this.player.hp >= i + 0.5) {
+      } else if (this.player.hp > i) {
+        // (FIX 3.6) Cualquier fracción positiva pinta medio corazón (nunca ♡♡♡ estando vivo)
         char = '💔';
       } else {
         char = '♡';

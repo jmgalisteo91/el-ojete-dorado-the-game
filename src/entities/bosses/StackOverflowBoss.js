@@ -193,7 +193,7 @@ export class StackOverflowBoss extends Boss {
         c.attackCooldown -= dt;
         if (dist <= 12 && c.attackCooldown <= 0) {
           c.attackCooldown = 0.9;
-          player.takeHit(soundEngine);
+          player.takeHit(soundEngine, this);
         }
 
         // Chequeo si la espada o corte en cascada del jugador golpea al clon
@@ -307,7 +307,7 @@ export class StackOverflowBoss extends Boss {
         // Contacto cuerpo a cuerpo
         if (dist <= 14 && this.attackCooldown <= 0) {
           this.attackCooldown = 0.85;
-          player.takeHit(soundEngine);
+          player.takeHit(soundEngine, this);
         }
       }
     } else {
@@ -343,7 +343,7 @@ export class StackOverflowBoss extends Boss {
         const dist = Math.hypot(player.centerX - sw.x, player.centerY - sw.y);
         if (Math.abs(dist - sw.radius) <= 8 && player.invulnTimer <= 0) {
           sw.hasHit = true;
-          player.takeHit(soundEngine);
+          player.takeHit(soundEngine, this);
         }
       }
 

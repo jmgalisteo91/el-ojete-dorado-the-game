@@ -57,6 +57,7 @@ export class Boss extends Enemy {
 
     this.projectiles = [];
     this.hazardPuddles = [];
+    this._puddleCooldownUntil = 0;
     this.minions = [];
     this.defeatBannerTimer = 0;
   }
@@ -282,7 +283,7 @@ export class Boss extends Enemy {
               soundEngine.playBarrier();
             }
           } else {
-            player.takeHit(soundEngine);
+            player.takeHit(soundEngine, this);
             p.life = 0;
           }
         }
@@ -301,7 +302,12 @@ export class Boss extends Enemy {
         const d = Math.hypot(pud.x - player.centerX, pud.y - player.centerY);
         if (d <= pud.radius + 5) {
           if (!player.barrierActive) {
-            player.takeHit(soundEngine);
+            // (FIX 3.7) Un mismo charco solo impacta una vez por entrada
+            if (!this._puddleCooldownUntil || performance.now() > this._puddleCooldownUntil) {
+              if (player.takeHit(soundEngine, this)) {
+                this._puddleCooldownUntil = performance.now() + 750;
+              }
+            }
           }
         }
       }

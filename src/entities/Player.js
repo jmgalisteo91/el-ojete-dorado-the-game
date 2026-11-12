@@ -34,7 +34,7 @@ export class Player extends Entity {
       y,
       width: 16,
       height: 16,
-      speed: 74,
+      speed: 86,
       boundingBox: { offsetX: 3, offsetY: 8, width: 10, height: 7 },
       animator
     });
@@ -466,7 +466,8 @@ export class Player extends Entity {
     this.barrierActive = true;
     this.barrierTimer = 3.0;
     this.barrierCooldown = 8.0;
-    this.parryTimer = this.skills.reflejo ? 0.45 : 0.25;
+    // (FIX 3.7) Ventana de parry legible contra un windup de 0.30s
+    this.parryTimer = this.skills.reflejo ? 0.35 : 0.20;
     if (soundEngine && typeof soundEngine.playBarrier === 'function') {
       soundEngine.playBarrier();
     }
@@ -507,10 +508,11 @@ export class Player extends Entity {
 
   /**
    * Recibe un impacto de combate.
-   * Si el jugador está INDEFENSO (sin armadura), cualquier ataque reduce su vida a 0 inmediatamente.
-   * Si porta la Armadura Binaria, los Corazones Blindados absorben hasta 3 impactos completos antes de pasar a corazones rojos.
+   * (FIX 3.6) El daño escala por zona en múltiplos de 0.5 corazones.
+   * (FIX 3.7) i-frames reducidos y parry más generoso.
+   * `attacker` se mantiene como 2º argumento: los tests y las llamadas existentes dependen de ello.
    */
-  takeHit(soundEngine = null, attacker = null) {
+  takeHit(soundEngine = null, attacker = null, customDamage = null) {
     if (this.invulnTimer > 0 || this.hp <= 0) return false;
 
     // Si la Barrera de Tipado Estricto está activa, absorbe completamente el daño
@@ -541,18 +543,39 @@ export class Player extends Entity {
       soundEngine.playPlayerHurt();
     }
 
-    if (!this.hasArmor) {
-      // Indefenso: cualquier golpe le quita toda la vida llegando a 0
-      this.hp = 0;
-      this.invulnTimer = 1.0;
-    } else if (this.armorPoints > 0) {
-      // Coraza metálica absorbe el golpe completo
-      this.armorPoints = Math.max(0, this.armorPoints - 1);
-      this.invulnTimer = 0.9;
+    // (FIX 3.6) Daño por zona, en múltiplos de 0.5 corazones
+    let dmg;
+    if (customDamage !== null && customDamage !== undefined) {
+      dmg = customDamage;
     } else {
-      this.hp = Math.max(0, this.hp - 1);
-      this.invulnTimer = 1.1;
+      const sid = attacker?.sceneId || '';
+      if (sid === 'overworld' || sid === 'first_stage') dmg = 0.5;
+      else if (sid === 'north_peaks' || sid === 'south_swamp' || sid === 'west_wastes') dmg = 1.0;
+      else if (sid === 'ai_citadel') dmg = (this.armorLevel >= 2) ? 1.5 : 2.0;
+      else if (
+        sid.startsWith('sewers') ||
+        sid.startsWith('mines') ||
+        sid.startsWith('forge') ||
+        sid === 'sword_temple' ||
+        sid === 'ai_fortress_gate'
+      ) {
+        dmg = (this.armorLevel >= 2) ? 1.0 : 1.5;
+      } else {
+        dmg = 1.0;
+      }
+      if (attacker?.isBoss) dmg = Math.max(dmg, 1.0);
     }
+
+    // La coraza sigue siendo un recurso (y define los i-frames), pero ya no absorbe el golpe
+    const hadArmorPoints = this.hasArmor && this.armorPoints > 0;
+    if (hadArmorPoints) this.armorPoints = Math.max(0, this.armorPoints - 1);
+
+    this.hp = Math.max(0, this.hp - dmg);
+
+    // (FIX 3.7) i-frames: 0.70 sin armadura, 0.60 con coraza, 0.75 con armadura agotada
+    if (!this.hasArmor) this.invulnTimer = 0.70;
+    else if (hadArmorPoints) this.invulnTimer = 0.60;
+    else this.invulnTimer = 0.75;
     // (FIX 1.1) Freeze frames al recibir daño; (FIX 1.2) main.js lee este contador para el shake
     this.damageTakenCount += 1;
     GameLoop.triggerHitstop(4);

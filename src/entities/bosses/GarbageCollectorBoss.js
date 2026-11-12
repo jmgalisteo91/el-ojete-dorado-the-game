@@ -103,7 +103,7 @@ export class GarbageCollectorBoss extends Boss {
         // Contacto cuerpo a cuerpo
         if (dist <= 14 && this.attackCooldown <= 0) {
           this.attackCooldown = 0.85;
-          player.takeHit(soundEngine);
+          player.takeHit(soundEngine, this);
         }
       }
 
@@ -143,7 +143,7 @@ export class GarbageCollectorBoss extends Boss {
 
       // Si golpea al jugador durante la embestida
       if (player && this.distanceTo(player) <= 15) {
-        player.takeHit(soundEngine);
+        player.takeHit(soundEngine, this);
       }
 
       // Si choca contra un muro de la sala: ¡queda aturdido 2.5s!
