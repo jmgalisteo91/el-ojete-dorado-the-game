@@ -274,12 +274,12 @@ test('Parry perfecto aturde al atacante; fuera de ventana solo absorbe', () => {
   q.takeHit(null, { stun: (s) => (stunned2 = s) });
   assert.equal(stunned2, 0);
 });
-test('Daño por zona: sin armadura, 6 golpes de 0.5 en overworld para morir', () => {
-  // (FIX 3.6) Se sustituye la regla antigua de one-shot por daño escalado de 0.5
+test('Daño por zona: sin armadura, 3 golpes de 1.0 en overworld para morir', () => {
+  // (FIX C.2) Overworld vuelve a 1.0; 3 HP = 3 golpes
   const p = makePlayer(32, 32);
   p.hasArmor = false;
   p.hp = p.maxHp;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 3; i++) {
     p.invulnTimer = 0;
     p.takeHit(null, { sceneId: 'overworld' });
   }
@@ -922,38 +922,35 @@ test('Motor de Texto y Paginación: DialogueBox divide textos largos en páginas
   }
 });
 
-test('Blindaje Metálico: la coraza define i-frames (0.60/0.75) y la poción la repone', () => {
-  // (FIX 3.6/3.7) Con el daño por zona la coraza ya no absorbe HP; sigue siendo
-  // un recurso que marca la ventana de invulnerabilidad.
+test('Armadura Nivel 1 absorbe 1.0 por punto: 3 + 3 = 6 golpes en overworld', () => {
+  // (FIX C.1) Cada punto absorbe hasta 1.0 y se decrementa 1 por golpe.
   const player = new Player(0, 0);
   player.equipArmor();
   assert.equal(player.armorPoints, 3, 'Debe iniciar con 3 puntos de blindaje');
   assert.equal(player.hp, 3);
 
-  // Impacto 1: 0.5 de daño, coraza 2, i-frames 0.60
-  player.takeHit(null, { sceneId: 'overworld' });
-  assert.equal(player.armorPoints, 2);
-  assert.equal(player.hp, 2.5);
-  assert.equal(player.invulnTimer, 0.60);
+  // Golpes 1-3: 1.0 absorbido cada uno, 0 a HP, i-frames 0.60
+  for (let i = 0; i < 3; i++) {
+    player.invulnTimer = 0;
+    player.takeHit(null, { sceneId: 'overworld' });
+    assert.equal(player.hp, 3, `golpe ${i + 1}: absorbido`);
+    assert.equal(player.armorPoints, 2 - i);
+    assert.equal(player.invulnTimer, 0.60);
+  }
 
-  // Impacto 2
+  // Golpes 4-6: coraza agotada, 1.0 a HP, i-frames 0.75
   player.invulnTimer = 0;
   player.takeHit(null, { sceneId: 'overworld' });
-  assert.equal(player.armorPoints, 1);
-  assert.equal(player.hp, 2.0);
-
-  // Impacto 3: agota la coraza (el golpe aún usa 0.60)
-  player.invulnTimer = 0;
-  player.takeHit(null, { sceneId: 'overworld' });
-  assert.equal(player.armorPoints, 0);
-  assert.equal(player.hp, 1.5);
-  assert.equal(player.invulnTimer, 0.60);
-
-  // Impacto 4: sin coraza, i-frames 0.75
-  player.invulnTimer = 0;
-  player.takeHit(null, { sceneId: 'overworld' });
-  assert.equal(player.hp, 1.0);
+  assert.equal(player.hp, 2);
   assert.equal(player.invulnTimer, 0.75);
+
+  player.invulnTimer = 0;
+  player.takeHit(null, { sceneId: 'overworld' });
+  assert.equal(player.hp, 1);
+
+  player.invulnTimer = 0;
+  player.takeHit(null, { sceneId: 'overworld' });
+  assert.equal(player.hp, 0);
 
   // Reponer coraza con Poción de Blindaje
   const potionSuccess = player.applyArmorPotion();
@@ -961,14 +958,26 @@ test('Blindaje Metálico: la coraza define i-frames (0.60/0.75) y la poción la 
   assert.equal(player.armorPoints, 3, 'La poción debe reconstituir los 3 puntos de coraza');
 });
 
-test('3.6: daño por zona en ai_citadel con armorLevel 0 deja maxHp - 2.0', () => {
-  const p = makePlayer(32, 32);
-  p.armorLevel = 0;
-  p.hasArmor = false;
-  p.hp = p.maxHp;
-  p.invulnTimer = 0;
-  p.takeHit(null, { sceneId: 'ai_citadel' });
-  assert.equal(p.hp, p.maxHp - 2.0);
+test('3.6: matriz de daño por zona (overworld, norte, minas y ciudadela)', () => {
+  // (FIX C.2) Tabla completa: 1.0 / 1.5 / 2.0 (1.5 con armorLevel 2) / 2.5 (2.0 con armorLevel 2)
+  const cases = [
+    { scene: 'overworld', armorLevel: 0, dmg: 1.0 },
+    { scene: 'first_stage', armorLevel: 0, dmg: 1.0 },
+    { scene: 'north_peaks', armorLevel: 0, dmg: 1.5 },
+    { scene: 'mines_puzzle', armorLevel: 0, dmg: 2.0 },
+    { scene: 'mines_puzzle', armorLevel: 2, dmg: 1.5 },
+    { scene: 'ai_citadel', armorLevel: 0, dmg: 2.5 },
+    { scene: 'ai_citadel', armorLevel: 2, dmg: 2.0 }
+  ];
+  for (const c of cases) {
+    const p = makePlayer(32, 32);
+    p.armorLevel = c.armorLevel;
+    p.hasArmor = false;
+    p.hp = p.maxHp;
+    p.invulnTimer = 0;
+    p.takeHit(null, { sceneId: c.scene });
+    assert.equal(p.hp, Math.max(0, p.maxHp - c.dmg), `${c.scene} armorLevel ${c.armorLevel}`);
+  }
 });
 
 test('3.7: tras takeHit, i-frames 0.70 sin armadura, 0.60 con coraza y 0.75 agotada', () => {

@@ -11336,15 +11336,15 @@ class Player extends Entity {
       soundEngine.playPlayerHurt();
     }
 
-    // (FIX 3.6) Daño por zona, en múltiplos de 0.5 corazones
+    // (FIX 3.6 / C.2) Daño por zona, en múltiplos de 0.5 corazones
     let dmg;
     if (customDamage !== null && customDamage !== undefined) {
       dmg = customDamage;
     } else {
       const sid = attacker?.sceneId || '';
-      if (sid === 'overworld' || sid === 'first_stage') dmg = 0.5;
-      else if (sid === 'north_peaks' || sid === 'south_swamp' || sid === 'west_wastes') dmg = 1.0;
-      else if (sid === 'ai_citadel') dmg = (this.armorLevel >= 2) ? 1.5 : 2.0;
+      if (sid === 'overworld' || sid === 'first_stage') dmg = 1.0;
+      else if (sid === 'north_peaks' || sid === 'south_swamp' || sid === 'west_wastes') dmg = 1.5;
+      else if (sid === 'ai_citadel') dmg = (this.armorLevel >= 2) ? 2.0 : 2.5;
       else if (
         sid.startsWith('sewers') ||
         sid.startsWith('mines') ||
@@ -11352,23 +11352,27 @@ class Player extends Entity {
         sid === 'sword_temple' ||
         sid === 'ai_fortress_gate'
       ) {
-        dmg = (this.armorLevel >= 2) ? 1.0 : 1.5;
+        dmg = (this.armorLevel >= 2) ? 1.5 : 2.0;
       } else {
         dmg = 1.0;
       }
       if (attacker?.isBoss) dmg = Math.max(dmg, 1.0);
     }
 
-    // La coraza sigue siendo un recurso (y define los i-frames), pero ya no absorbe el golpe
-    const hadArmorPoints = this.hasArmor && this.armorPoints > 0;
-    if (hadArmorPoints) this.armorPoints = Math.max(0, this.armorPoints - 1);
+    // (FIX C.1) La coraza absorbe hasta 1.0 de daño por punto; el sobrante pasa a HP.
+    // armorPoints sigue siendo entero: se decrementa 1 por golpe absorbido.
+    if (this.hasArmor && this.armorPoints > 0) {
+      const absorbed = Math.min(1.0, dmg);
+      dmg = Math.max(0, dmg - absorbed);
+      this.armorPoints = Math.max(0, this.armorPoints - 1);
+      this.invulnTimer = 0.60;
+    } else if (this.hasArmor) {
+      this.invulnTimer = 0.75;
+    } else {
+      this.invulnTimer = 0.70;
+    }
 
     this.hp = Math.max(0, this.hp - dmg);
-
-    // (FIX 3.7) i-frames: 0.70 sin armadura, 0.60 con coraza, 0.75 con armadura agotada
-    if (!this.hasArmor) this.invulnTimer = 0.70;
-    else if (hadArmorPoints) this.invulnTimer = 0.60;
-    else this.invulnTimer = 0.75;
     // (FIX 1.1) Freeze frames al recibir daño; (FIX 1.2) main.js lee este contador para el shake
     this.damageTakenCount += 1;
     GameLoop.triggerHitstop(4);
