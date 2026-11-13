@@ -5,6 +5,7 @@ import { GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=8';
 import { getLocalLeaderboard, fetchGlobalLeaderboard } from '../core/ScoreSystem.js?v=8';
 import { LeaderboardView } from './LeaderboardView.js?v=8';
 import { UILayout, GAME_VERSION } from './UILayout.js?v=8';
+import { EXPANSION_INFO, EXPANSION_UNLOCK_KEY } from '../expansion/ExpansionData.js?v=8';
 
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art
@@ -43,6 +44,7 @@ export class MainMenuAndScenes {
     this.noticeText = '';
     this.noticeTimer = 0;
     this.animTime = 0;
+    this.expansionTeaserOpen = false;
     this._modalPopStart = -1;
 
     // Opciones persistentes
@@ -701,6 +703,15 @@ export class MainMenuAndScenes {
     ];
   }
 
+  _hasVictoryTrophy() {
+    try {
+      return typeof localStorage !== 'undefined' &&
+        Boolean(localStorage.getItem(EXPANSION_UNLOCK_KEY));
+    } catch {
+      return false;
+    }
+  }
+
   _getCurrentMenuItems() {
     if (this.state === 'title') {
       const saveInfo = this.callbacks.getSaveSummary ? this.callbacks.getSaveSummary() : null;
@@ -736,6 +747,21 @@ export class MainMenuAndScenes {
             } else {
               this.showNotice('No se pudo cargar la partida guardada.');
             }
+          }
+        },
+        {
+          label: EXPANSION_INFO.title,
+          subtext: EXPANSION_INFO.teaser,
+          expansion: true,
+          locked: !this._hasVictoryTrophy(),
+          action: () => {
+            if (!this._hasVictoryTrophy()) {
+              this.music.playCaughtSkipSound();
+              this.showNotice('Debes completar el juego base para desbloquear esto.');
+              return;
+            }
+            this.music.playMenuSelect();
+            this.expansionTeaserOpen = true;
           }
         },
         {
@@ -1019,6 +1045,21 @@ export class MainMenuAndScenes {
     }
 
     if (this.state === 'none') return;
+
+    // (EXPANSIÓN) Modal del teaser: se cierra con E/Enter/Espacio/Esc o clic.
+    if (this.state === 'title' && this.expansionTeaserOpen) {
+      if (
+        input.consumeKey('Escape') ||
+        input.consumeKey('Enter') ||
+        input.consumeKey('KeyE') ||
+        input.consumeKey('Space') ||
+        input.pointerJustClicked
+      ) {
+        this.expansionTeaserOpen = false;
+        this.music.playMenuMove();
+      }
+      return;
+    }
 
     // Modal de confirmación para abandonar el juego
     if (this.state === 'confirm_exit') {
@@ -1312,7 +1353,7 @@ export class MainMenuAndScenes {
       this.state === 'pause_sound';
     const closeBtn = isPauseModal ? this._getModalCloseButtonBounds(isPauseModal) : null;
 
-    const menuBounds = this._getMenuHitboxes(items.length);
+    const menuBounds = this._getMenuHitboxes(items.length, items);
     if (input.pointerX >= 0 && input.pointerY >= 0) {
       for (let i = 0; i < menuBounds.length; i++) {
         const b = menuBounds[i];
@@ -1410,7 +1451,7 @@ export class MainMenuAndScenes {
     };
   }
 
-  _getMenuHitboxes(count) {
+  _getMenuHitboxes(count, items = null) {
     const isTitle = this.state === 'title';
     const isGameOver = this.state === 'game_over';
     const isPauseModal =
@@ -1446,6 +1487,19 @@ export class MainMenuAndScenes {
     const itemH = isTitle ? 9 : isGameOver ? 15 : (count > 5 ? 13 : 15);
     const startX = Math.round((this.viewportWidth - boxW) / 2);
     let startY = isTitle ? 80 : isGameOver ? (count > 2 ? 96 : 108) : 56;
+
+    if (isTitle) {
+      // (EXPANSIÓN) La fila del teaser necesita altura extra para el subtexto.
+      const boxes = [];
+      let y = startY;
+      for (let i = 0; i < count; i++) {
+        const hasSub = Boolean(items && items[i] && items[i].subtext);
+        const h = hasSub ? 20 : 9;
+        boxes.push({ x: startX, y, w: boxW, h });
+        y += h + (hasSub ? 2 : 0);
+      }
+      return boxes;
+    }
     if (!isTitle && !isGameOver && count > 5) {
       const totalH = count * itemH;
       const winH = Math.min(160, totalH + 46);
@@ -1549,6 +1603,7 @@ export class MainMenuAndScenes {
     if (this.state === 'title') {
       this._renderTitleHeader(ctx);
       this._renderMenuList(ctx, this._getCurrentMenuItems(), true);
+      this._renderExpansionTeaser(ctx);
     } else if (this.state === 'pause') {
       this._renderModalPanel(ctx, 'PAUSA · EL OJETE DORADO', this._getCurrentMenuItems());
     } else if (this.state === 'options' || this.state === 'pause_sound') {
@@ -2252,7 +2307,7 @@ export class MainMenuAndScenes {
   }
 
   _renderMenuList(ctx, items, isTitle = false) {
-    const hitboxes = this._getMenuHitboxes(items.length);
+    const hitboxes = this._getMenuHitboxes(items.length, items);
 
     ctx.save();
     if (isTitle) {
@@ -2326,12 +2381,46 @@ export class MainMenuAndScenes {
     return 'star4';
   }
 
+  _renderExpansionTeaser(ctx) {
+    if (!this.expansionTeaserOpen) return;
+    const frame = UILayout.drawModalFrame(ctx, {
+      title: EXPANSION_INFO.title,
+      icon: '✦',
+      badge: `${EXPANSION_INFO.version} · ${EXPANSION_INFO.subtitle}`,
+      closeLabel: '[E / Esc] Cerrar'
+    });
+    const { content } = frame;
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    UILayout.drawText(ctx, EXPANSION_INFO.message, content.x + 5, content.y + 8, {
+      font: 'bold 6px monospace',
+      color: '#ffd700',
+      shadow: true,
+      maxWidth: content.w - 10
+    });
+    UILayout.drawText(ctx, EXPANSION_INFO.teaser, content.x + 5, content.y + 40, {
+      font: '5px monospace',
+      color: '#cbd5e1',
+      shadow: true,
+      maxWidth: content.w - 10
+    });
+    UILayout.drawText(ctx, '— FASE 1 · TEASER —', content.x + content.w / 2, content.y + content.h - 10, {
+      font: 'bold 4px monospace',
+      color: '#94a3b8',
+      align: 'center',
+      shadow: true
+    });
+    ctx.restore();
+  }
+
   _renderTitleMenu(ctx, items, hitboxes) {
     const t = this.animTime;
     const panelX = 70;
     const panelY = 74;
     const panelW = 180;
-    const panelH = 72;
+    const lastBox = hitboxes[hitboxes.length - 1];
+    const panelH = Math.max(72, (lastBox ? lastBox.y + lastBox.h : panelY + 72) - panelY + 8);
 
     // (DIRECTRIZ UI) Panel glass con sombra, borde dorado 2 px y brillo interior.
     ctx.save();
@@ -2358,10 +2447,13 @@ export class MainMenuAndScenes {
       const pointerX = this._lastPointerX;
       const pointerY = this._lastPointerY;
       const isHover = pointerX >= b.x && pointerX <= b.x + b.w && pointerY >= b.y && pointerY <= b.y + b.h;
+      const hasSubtext = Boolean(item.subtext);
       const cx = b.x + 20;
-      const cy = b.y + b.h / 2 + ((isHover && this._lastPointerDown) ? 1 : 0);
+      const sink = (isHover && this._lastPointerDown) ? 1 : 0;
+      const cy = (hasSubtext ? b.y + 7 : b.y + b.h / 2) + sink;
       const scale = selected ? 1.1 : (isHover ? 1.05 : 1);
       const label = UILayout.fitText(ctx, item.label, b.w - 28);
+      const locked = Boolean(item.locked);
 
       if (selected || isHover) {
         const row = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0);
@@ -2373,11 +2465,11 @@ export class MainMenuAndScenes {
 
       UILayout.drawIcon(
         ctx,
-        this._menuIcon(item.label),
+        locked ? 'lock' : this._menuIcon(item.label),
         b.x + 10,
-        cy,
+        b.y + b.h / 2,
         9,
-        selected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8')
+        locked ? '#64748b' : (selected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8'))
       );
 
       ctx.save();
@@ -2386,13 +2478,28 @@ export class MainMenuAndScenes {
       ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
       ctx.fillText(label, 1, 1);
-      if (item.disabled) {
+      if (item.disabled || locked) {
         ctx.fillStyle = '#64748b';
+      } else if (item.expansion) {
+        ctx.fillStyle = selected ? '#ffd700' : (isHover ? '#fde68a' : '#fbbf24');
       } else {
         ctx.fillStyle = selected ? '#ffd700' : (isHover ? '#ffd885' : '#f8fafc');
       }
       ctx.fillText(label, 0, 0);
       ctx.restore();
+
+      if (hasSubtext) {
+        ctx.save();
+        ctx.font = '3.1px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = locked ? '#475569' : (selected ? '#fde68a' : '#cbd5e1');
+        const subLines = UILayout.wrapText(ctx, item.subtext, b.w - 30).slice(0, 2);
+        subLines.forEach((line, li) => {
+          ctx.fillText(UILayout.fitText(ctx, line, b.w - 30), b.x + 20, b.y + 12 + sink + li * 4);
+        });
+        ctx.restore();
+      }
 
       // Puntero dorado animado a la izquierda de la opción seleccionada.
       if (selected) {

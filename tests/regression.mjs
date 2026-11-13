@@ -51,6 +51,10 @@ import { QuestLogView } from '../src/ui/QuestLogView.js';
 import { CharacterStats } from '../src/ui/CharacterStats.js';
 import { InputHandler } from '../src/core/InputHandler.js';
 import { WorldMap } from '../src/ui/WorldMap.js';
+import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY } from '../src/expansion/ExpansionData.js';
+import { TonyCuleiro } from '../src/expansion/entities/TonyCuleiro.js';
+import { FrancoPancho } from '../src/expansion/entities/FrancoPancho.js';
+import { IñakitoBoss } from '../src/expansion/entities/IñakitoBoss.js';
 
 let passed = 0;
 const failures = [];
@@ -2430,6 +2434,108 @@ test('M14/M17: la vida se ajusta al máximo efectivo y el Dash no acorta la invu
   p.invulnTimer = 1.1;
   p.tryDash(null, null);
   assert.equal(p.invulnTimer, 1.1);
+});
+
+test('Expansión v2.0: teaser bloqueado/desbloqueado, 5 NPCs y fases de Iñakito', () => {
+  // 1. Datos de la expansión.
+  const npcs = Object.values(EXPANSION_NPCS);
+  assert.equal(npcs.length, 5, 'La expansión debe registrar 5 NPCs');
+  for (const npc of npcs) {
+    assert.ok(npc.id && npc.name && npc.spriteColor && npc.role);
+    assert.equal(npc.dialogues.length, 3, `${npc.name} debe tener 3 diálogos iniciales`);
+    assert.ok(npc.lore && npc.lore.length > 20);
+  }
+  assert.equal(EXPANSION_INFO.title, 'El Resurgir de Mister Alex IA');
+
+  // 2. Clases placeholder de Tony y Franco.
+  const tony = new TonyCuleiro({ x: 32, y: 32 });
+  assert.ok(tony instanceof TonyCuleiro);
+  assert.equal(tony.name, 'Tony Culeiro');
+  assert.equal(tony.spriteColor, EXPANSION_NPCS.tony_culeiro.spriteColor);
+  assert.equal(tony.boundingBox.width, 10);
+  tony.update(0.016, null, [], false, null, null);
+  assert.equal(tony.isMoving, false);
+  const franco = new FrancoPancho({ x: 48, y: 48 });
+  assert.ok(franco instanceof FrancoPancho);
+  assert.equal(franco.name, 'Franco el Pancho');
+
+  // 3. Menú de título: bloqueado sin trofeo, desbloqueado con trofeo.
+  const previousStorage = globalThis.localStorage;
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k)
+  };
+  const fakeMusic = {
+    playMenuSelect() {},
+    playCaughtSkipSound() {},
+    playMenuMove() {},
+    stopTitleMusic() {},
+    setMode() {}
+  };
+  try {
+    const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, { getSaveSummary: () => null });
+    menu.state = 'title';
+    let items = menu._getCurrentMenuItems();
+    assert.equal(items.length, 8, 'El título debe incluir la opción de expansión');
+    const lockedItem = items[2];
+    assert.equal(lockedItem.label, EXPANSION_INFO.title);
+    assert.ok(lockedItem.subtext.includes('Prepárate'));
+    assert.equal(lockedItem.locked, true);
+    lockedItem.action();
+    assert.match(menu.noticeText, /completar el juego base/);
+
+    store.set(EXPANSION_UNLOCK_KEY, '{}');
+    items = menu._getCurrentMenuItems();
+    const unlockedItem = items[2];
+    assert.equal(unlockedItem.locked, false);
+    unlockedItem.action();
+    assert.equal(menu.expansionTeaserOpen, true);
+  } finally {
+    if (typeof previousStorage === 'undefined') delete globalThis.localStorage;
+    else globalThis.localStorage = previousStorage;
+  }
+
+  // 4. Jefe Iñakito: 3 fases, 3 bugs, bucle while(true) y parry.
+  const boss = new IñakitoBoss({ x: 100, y: 100 });
+  assert.equal(boss.maxHp, 80);
+  assert.equal(boss.hp, 80);
+  assert.equal(boss.phase, 1);
+  assert.equal(boss.sceneId, 'valleverde_corrupto');
+
+  boss.hp = 50;
+  boss.update(0.1, null, null, true);
+  assert.equal(boss.phase, 2);
+  assert.equal(boss.bugs.length, 3);
+
+  boss.hp = 20;
+  boss.update(0.1, null, null, true);
+  assert.equal(boss.phase, 3);
+  assert.equal(boss.inWhileLoop, true);
+  assert.equal(boss.invulnerable, true);
+
+  assert.equal(boss.takeSwordHit({ parryTimer: 0 }), false);
+  const hpBefore = boss.hp;
+  assert.equal(boss.takeSwordHit({ parryTimer: 0.2 }), true);
+  assert.equal(boss.inWhileLoop, false);
+  assert.equal(boss.hp, hpBefore - 1);
+
+  boss.hp = 1;
+  boss.hitFlashTimer = 0; // limpiar el i-frame del golpe anterior
+  boss.takeSwordHit({ parryTimer: 0.2 }, null, 5);
+  assert.equal(boss.dead, true);
+  assert.equal(boss.deathQuote, '¡Pero si el jefe me dijo que esto era un ascenso!');
+
+  const noop = () => {};
+  const mockCtx = {
+    save: noop, restore: noop, fillRect: noop, strokeRect: noop,
+    beginPath: noop, arc: noop, ellipse: noop, moveTo: noop, lineTo: noop,
+    quadraticCurveTo: noop, closePath: noop, fill: noop, stroke: noop,
+    fillText: noop, createRadialGradient: () => ({ addColorStop: noop }),
+    createLinearGradient: () => ({ addColorStop: noop })
+  };
+  assert.doesNotThrow(() => boss.render(mockCtx, { renderX: 0, renderY: 0 }));
 });
 
 await Promise.all(asyncQueue);

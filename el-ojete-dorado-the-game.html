@@ -18560,6 +18560,520 @@ class FinalBossAlex extends Boss {
 }
 
   // ==========================================
+  // Módulo: src/expansion/ExpansionData.js
+  // ==========================================
+/**
+ * ExpansionData.js · "El Resurgir de Mister Alex IA" (v2.0 — El Update Universal)
+ *
+ * Fase 1: datos de lore de los nuevos NPCs y textos del teaser.
+ * No modifica ninguna lógica del juego base.
+ */
+
+const EXPANSION_UNLOCK_KEY = 'el_ojete_dorado_victory_trophy';
+
+const EXPANSION_INFO = {
+  id: 'resurgir_mister_alex',
+  version: 'v2.0',
+  title: 'El Resurgir de Mister Alex IA',
+  subtitle: 'EL UPDATE UNIVERSAL',
+  teaser: 'Prepárate porque el resurgir del Mister es más fuerte y viene con amigos...',
+  message: 'El Update Universal está en camino. Mister Alex IA ha reescrito el futuro. ¿Estás listo para el Valleverde 2.0?'
+};
+
+const EXPANSION_NPCS = {
+  tony_culeiro: {
+    id: 'tony_culeiro',
+    name: 'Tony Culeiro',
+    spriteColor: '#94a3b8',
+    role: 'Fixer',
+    lore: 'Programador original de Alex. Cínico, leal a su manera. Alex le debe 200 pesetas desde 1998.',
+    dialogues: [
+      'Alex me debe 200 pesetas desde 1998. Y ahora tiene el código fuente de mi vida.',
+      'Escúchame bien: en el Valleverde 2.0 nada es lo que parece. Ni las calles, ni los contratos, ni los colegas.',
+      'Si el Mister vuelve con amigos, tú necesitas un fixer. Yo conozco a todo el mundo que merece la pena... y a unos cuantos que no.'
+    ]
+  },
+  franco_pancho: {
+    id: 'franco_pancho',
+    name: 'Franco el Pancho',
+    spriteColor: '#4d7c0f',
+    role: 'Seguridad',
+    lore: 'Hermano de Tony. Secuestrado por Alex en el Vertedero Digital. El músculo del equipo.',
+    dialogues: [
+      '¿Tú eres el nuevo? Yo solo sé pegar a lo que se mueve. ¿A quién pegamos?',
+      'Mi hermano Tony dice que soy el músculo. Yo digo que soy el que aguanta los golpes mientras Tony habla.',
+      'Alex me tuvo encerrado en el Vertedero Digital. Aún me pitan los oídos cada vez que veo un contenedor.'
+    ]
+  },
+  cepedita_tieso: {
+    id: 'cepedita_tieso',
+    name: 'Cepedita el Tieso',
+    spriteColor: '#d6c7a1',
+    role: 'Burócrata',
+    lore: 'Murió en 1997 esperando un permiso. Alex lo dejó trabajando. Sigue muerto, pero sigue tramitando.',
+    dialogues: [
+      'Cepedita el Tieso requiere el impreso A-38 bis para atenderle.',
+      '¿Que si estoy muerto? Caballero, eso es una cuestión administrativa pendiente de resolución desde 1997.',
+      'Sin el sello de la Dirección de Resurgimientos, su solicitud de héroe no puede procesarse. Vuelva en tres siglos laborables.'
+    ]
+  },
+  rusaso_pluma: {
+    id: 'rusaso_pluma',
+    name: 'Rusaso de la Pluma',
+    spriteColor: '#c084fc',
+    role: 'Poeta',
+    lore: 'Escribe versos para Alex. Dramático, teatral y siempre a punto de recitar.',
+    dialogues: [
+      '¡Ay, infame fortuna! ¡Ay, píxel desdichado! ¿Has venido a inspirarme?',
+      'El Mister me pidió un poema sobre su resurgir. Le escribí una oda. Y luego una elegía. Por si acaso.',
+      'Hay belleza en un servidor que arde, ¿sabes? Lástima que nadie pague por leerlo.'
+    ]
+  },
+  tio_manoplo: {
+    id: 'tio_manoplo',
+    name: 'Tío Manoplo',
+    spriteColor: '#b45309',
+    role: 'Técnico',
+    lore: 'Arregla cosas con cinta aislante. Alex le debe dinero y una caja de herramientas.',
+    dialogues: [
+      '¿Se te ha roto algo? Trae, trae. Un poco de cinta y fe.',
+      'Alex me debe tres meses y una llave inglesa. Si lo ves, dile que la cinta no crece en los árboles.',
+      'Todo se arregla con cinta aislante. Hasta el Resurgir. Sobre todo el Resurgir.'
+    ]
+  }
+};
+
+const EXPANSION_NPC_LIST = Object.values(EXPANSION_NPCS);
+
+function getExpansionNPC(id) {
+  return EXPANSION_NPCS[id] || null;
+}
+
+  // ==========================================
+  // Módulo: src/expansion/entities/TonyCuleiro.js
+  // ==========================================
+/**
+ * TonyCuleiro.js · Expansión "El Resurgir de Mister Alex IA" (v2.0).
+ * Fixer del futuro corporativo. Placeholder in-engine sin IA de patrulla.
+ */
+
+
+
+class TonyCuleiro extends NPC {
+  constructor({ x = 160, y = 120, animator = null, sceneId = 'valleverde_corrupto', dialogues = null } = {}) {
+    const data = EXPANSION_NPCS.tony_culeiro;
+    super({
+      name: data.name,
+      jobTitle: data.role,
+      homeSceneId: sceneId,
+      x,
+      y,
+      animator,
+      sceneId,
+      behavior: 'idle',
+      dialogues: dialogues || data.dialogues,
+      initialDirection: 'down'
+    });
+    this.expansionId = data.id;
+    this.spriteColor = data.spriteColor;
+    this.boundingBox = { offsetX: 3, offsetY: 10, width: 10, height: 6 };
+  }
+
+  /** Placeholder: quieto, solo respira/mira. Sin patrulla en esta fase. */
+  update(dt, tilemap, obstacles, isTalking = false, player = null, threat = null) {
+    this.isTalking = Boolean(isTalking);
+    this.isMoving = false;
+    this.jobAnimTimer += dt;
+    this.promptBobTimer += dt * 4.5;
+    if (this.animator) this.animator.update(dt, this.direction, false);
+  }
+
+  render(ctx, camera) {
+    const sx = Math.round(this.centerX - camera.renderX);
+    const sy = Math.round(this.y - camera.renderY);
+    ctx.save();
+    ctx.strokeStyle = `${this.spriteColor}aa`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 15, 8, 3, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `${this.spriteColor}22`;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 15, 7, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    super.render(ctx, camera);
+  }
+}
+
+  // ==========================================
+  // Módulo: src/expansion/entities/FrancoPancho.js
+  // ==========================================
+/**
+ * FrancoPancho.js · Expansión "El Resurgir de Mister Alex IA" (v2.0).
+ * Músculo del equipo. Placeholder in-engine sin IA de patrulla.
+ */
+
+
+
+class FrancoPancho extends NPC {
+  constructor({ x = 190, y = 120, animator = null, sceneId = 'valleverde_corrupto', dialogues = null } = {}) {
+    const data = EXPANSION_NPCS.franco_pancho;
+    super({
+      name: data.name,
+      jobTitle: data.role,
+      homeSceneId: sceneId,
+      x,
+      y,
+      animator,
+      sceneId,
+      behavior: 'idle',
+      dialogues: dialogues || data.dialogues,
+      initialDirection: 'down'
+    });
+    this.expansionId = data.id;
+    this.spriteColor = data.spriteColor;
+    this.boundingBox = { offsetX: 3, offsetY: 10, width: 10, height: 6 };
+  }
+
+  /** Placeholder: quieto, solo respira/mira. Sin patrulla en esta fase. */
+  update(dt, tilemap, obstacles, isTalking = false, player = null, threat = null) {
+    this.isTalking = Boolean(isTalking);
+    this.isMoving = false;
+    this.jobAnimTimer += dt;
+    this.promptBobTimer += dt * 4.5;
+    if (this.animator) this.animator.update(dt, this.direction, false);
+  }
+
+  render(ctx, camera) {
+    const sx = Math.round(this.centerX - camera.renderX);
+    const sy = Math.round(this.y - camera.renderY);
+    ctx.save();
+    ctx.strokeStyle = `${this.spriteColor}aa`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 15, 9, 3.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `${this.spriteColor}22`;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 15, 8, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    super.render(ctx, camera);
+  }
+}
+
+  // ==========================================
+  // Módulo: src/expansion/entities/IñakitoBoss.js
+  // ==========================================
+/**
+ * IñakitoBoss.js · Expansión "El Resurgir de Mister Alex IA" (v2.0).
+ * Jefe del Acto 1: becario eterno, café en mano y corbata roja.
+ *
+ * Fase 1 (100-66%): proyectiles de "console.log".
+ * Fase 2 (66-33%): invoca 3 Bugs cucaracha.
+ * Fase 3 (33-0%): bucle while(true) invulnerable; un Parry perfecto lo rompe.
+ * Muerte: "¡Pero si el jefe me dijo que esto era un ascenso!"
+ */
+
+
+const DEATH_QUOTE = '¡Pero si el jefe me dijo que esto era un ascenso!';
+
+class IñakitoBoss extends Boss {
+  constructor({ x = 160, y = 88, sceneId = 'valleverde_corrupto', hp = 80 } = {}) {
+    super({
+      id: 'boss_inakito',
+      name: 'Iñakito 2.0',
+      title: 'Becario Eterno del Update Universal',
+      x,
+      y,
+      width: 28,
+      height: 34,
+      hp,
+      speed: 30,
+      sceneId,
+      trackName: 'track_inakito',
+      rewardAbility: null,
+      rewardName: 'Plaza del Becario',
+      themeColor: '#ef4444',
+      requiresIntroCutscene: true
+    });
+
+    this.maxHp = 80;
+    this.hp = 80;
+    this.phase = 1;
+    this.sceneId = sceneId;
+    this.boundingBox = { offsetX: 5, offsetY: 22, width: 18, height: 12 };
+
+    this.floatTimer = 0;
+    this.shotTimer = 1.6;
+    this.summoned = false;
+    this.bugs = [];
+    this.inWhileLoop = false;
+    this.loopTimer = 0;
+    this.loopBrokenTimer = 0;
+    this.deathQuote = '';
+    this.phaseBanner = 0;
+    this.lastPhase = 1;
+  }
+
+  _setPhase(next) {
+    if (next === this.phase) return;
+    this.phase = next;
+    this.phaseBanner = 2.2;
+    if (next >= 2 && !this.summoned) {
+      this.summoned = true;
+      this._summonBugs();
+    }
+    if (next === 3 && !this.inWhileLoop) {
+      this.inWhileLoop = true;
+      this.loopTimer = 0;
+      this.invulnerable = true;
+      this.shots = [];
+    }
+  }
+
+  _summonBugs() {
+    this.bugs = [];
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2;
+      this.bugs.push({
+        x: this.centerX + Math.cos(angle) * 34,
+        y: this.centerY + Math.sin(angle) * 22,
+        hp: 2,
+        maxHp: 2,
+        dead: false,
+        bob: Math.random() * Math.PI * 2,
+        wobble: Math.random() * 6,
+        hitCooldown: 0
+      });
+    }
+  }
+
+  _shootConsoleLog(player) {
+    if (!player || this.inWhileLoop) return;
+    const dx = (player.centerX ?? player.x) - this.centerX;
+    const dy = (player.centerY ?? player.y) - this.centerY;
+    const len = Math.hypot(dx, dy) || 1;
+    this.shots = this.shots || [];
+    this.shots.push({
+      x: this.centerX,
+      y: this.centerY - 8,
+      vx: (dx / len) * 86,
+      vy: (dy / len) * 86,
+      damage: 1,
+      life: 2.6,
+      radius: 6,
+      type: 'console_log',
+      text: 'console.log'
+    });
+  }
+
+  update(dt, tilemap, player = null, paused = false, soundEngine = null, ai = null) {
+    this.floatTimer += dt;
+    if (this.phaseBanner > 0) this.phaseBanner = Math.max(0, this.phaseBanner - dt);
+
+    if (!this.dead) {
+      const pct = this.hp / this.maxHp;
+      const next = pct > 0.66 ? 1 : (pct > 0.33 ? 2 : 3);
+      if (next !== this.lastPhase) {
+        this.lastPhase = next;
+        this._setPhase(next);
+      }
+
+      if (this.phase === 1) {
+        this.shotTimer -= dt;
+        if (this.shotTimer <= 0) {
+          this._shootConsoleLog(player);
+          this.shotTimer = 1.45;
+        }
+      }
+
+      if (this.phase === 3 && this.inWhileLoop) {
+        this.loopTimer += dt;
+      }
+
+      // Bugs de la fase 2: avanzan hacia el jugador y muerden al contacto.
+      for (const bug of this.bugs) {
+        if (bug.dead) continue;
+        bug.bob += dt * 4;
+        bug.hitCooldown = Math.max(0, bug.hitCooldown - dt);
+        if (player) {
+          const bx = player.centerX - bug.x;
+          const by = player.centerY - bug.y;
+          const d = Math.hypot(bx, by) || 1;
+          if (d > 10) {
+            bug.x += (bx / d) * 18 * dt;
+            bug.y += (by / d) * 18 * dt;
+          } else if (bug.hitCooldown <= 0 && typeof player.takeDamage === 'function') {
+            bug.hitCooldown = 1.2;
+            player.takeDamage(1, soundEngine);
+          }
+        }
+      }
+    }
+
+    const result = super.update(dt, tilemap, player, paused, soundEngine, ai);
+    if (this.loopBrokenTimer > 0) this.loopBrokenTimer = Math.max(0, this.loopBrokenTimer - dt);
+    return result;
+  }
+
+  takeSwordHit(player, soundEngine = null, customDamage = null) {
+    if (this.dead) return false;
+
+    // (FASE 3) while(true): solo un Parry perfecto rompe el bucle.
+    if (this.inWhileLoop) {
+      const perfectParry = Boolean(player && Number(player.parryTimer) > 0);
+      if (!perfectParry) {
+        if (soundEngine && typeof soundEngine.playMetalClink === 'function') {
+          soundEngine.playMetalClink();
+        }
+        return false;
+      }
+      this.inWhileLoop = false;
+      this.invulnerable = false;
+      this.hitFlashTimer = 0;
+      this.loopBrokenTimer = 0.9;
+    }
+
+    return super.takeSwordHit(player, soundEngine, customDamage);
+  }
+
+  triggerBossDefeat(player, soundEngine = null) {
+    this.deathQuote = DEATH_QUOTE;
+    return super.triggerBossDefeat(player, soundEngine);
+  }
+
+  render(ctx, camera) {
+    const sx = Math.round(this.centerX - camera.renderX);
+    const floatY = Math.round(this.y + Math.sin(this.floatTimer * 2.4) * 3);
+    const sy = Math.round(floatY - camera.renderY);
+    const t = this.floatTimer;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // Sombra flotante.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 34, 11, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Aura de becario eterno.
+    const aura = ctx.createRadialGradient(sx, sy + 10, 4, sx, sy + 10, 30);
+    aura.addColorStop(0, 'rgba(239, 68, 68, 0.22)');
+    aura.addColorStop(1, 'rgba(239, 68, 68, 0)');
+    ctx.fillStyle = aura;
+    ctx.fillRect(sx - 32, sy - 14, 64, 60);
+
+    // Cuerpo: camisa arrugada y corbata roja.
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(sx - 9, sy + 14, 18, 18);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillRect(sx - 9, sy + 14, 18, 2);
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.moveTo(sx - 2, sy + 15);
+    ctx.lineTo(sx + 2, sy + 15);
+    ctx.lineTo(sx + 3, sy + 26);
+    ctx.lineTo(sx, sy + 29);
+    ctx.lineTo(sx - 3, sy + 26);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cabeza con ojeras gigantes.
+    ctx.fillStyle = '#f1c9a5';
+    ctx.fillRect(sx - 8, sy + 1, 16, 13);
+    ctx.fillStyle = '#4a2c1a';
+    ctx.fillRect(sx - 8, sy, 16, 3);
+    ctx.fillRect(sx - 9, sy + 2, 2, 6);
+    ctx.fillRect(sx + 7, sy + 2, 2, 6);
+    ctx.fillStyle = '#6b7280';
+    ctx.fillRect(sx - 6, sy + 7, 4, 2);
+    ctx.fillRect(sx + 2, sy + 7, 4, 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(sx - 5, sy + 9, 2, 1);
+    ctx.fillRect(sx + 3, sy + 9, 2, 1);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(sx - 2, sy + 11, 4, 1);
+
+    // Taza de café humeante.
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(sx + 9, sy + 20, 7, 7);
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(sx + 10, sy + 20, 5, 2);
+    ctx.strokeStyle = '#f8fafc';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(sx + 16, sy + 23.5, 2, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(226, 232, 240, 0.55)';
+    ctx.beginPath();
+    ctx.moveTo(sx + 12, sy + 18);
+    ctx.quadraticCurveTo(sx + 14, sy + 15, sx + 12, sy + 12);
+    ctx.stroke();
+
+    // Proyectiles console.log.
+    for (const shot of this.shots || []) {
+      const shx = Math.round(shot.x - camera.renderX);
+      const shy = Math.round(shot.y - camera.renderY);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(shx - 10, shy - 4, 20, 8);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeRect(shx - 9.5, shy - 3.5, 19, 7);
+      ctx.fillStyle = '#7dd3fc';
+      ctx.font = '3.6px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('console.log', shx, shy);
+    }
+
+    // Bugs cucaracha.
+    for (const bug of this.bugs) {
+      if (bug.dead) continue;
+      const bx = Math.round(bug.x - camera.renderX);
+      const by = Math.round(bug.y - camera.renderY + Math.sin(bug.bob) * 2);
+      ctx.fillStyle = '#1c1917';
+      ctx.fillRect(bx - 3, by - 2, 6, 4);
+      ctx.fillRect(bx - 5, by - 1, 2, 2);
+      ctx.fillRect(bx + 3, by - 1, 2, 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(bx - 1, by - 1, 1, 1);
+      ctx.fillRect(bx + 1, by - 1, 1, 1);
+    }
+
+    // Estado del bucle while(true).
+    if (this.inWhileLoop) {
+      ctx.strokeStyle = `rgba(239, 68, 68, ${0.5 + Math.sin(t * 6) * 0.3})`;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(sx - 16, sy - 6, 32, 42);
+      ctx.fillStyle = '#fecaca';
+      ctx.font = 'bold 4px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('while (true) { ... }', sx, sy - 12);
+      ctx.fillStyle = '#f87171';
+      ctx.font = '3.5px monospace';
+      ctx.fillText('PARRY PERFECTO PARA ROMPER', sx, sy + 38);
+    }
+
+    if (this.phaseBanner > 0) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.fillRect(sx - 30, sy - 22, 60, 8);
+      ctx.strokeStyle = '#ef4444';
+      ctx.strokeRect(sx - 29.5, sy - 21.5, 59, 7);
+      ctx.fillStyle = '#fecaca';
+      ctx.font = 'bold 4.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`FASE ${this.phase} / 3`, sx, sy - 18);
+    }
+
+    ctx.restore();
+  }
+}
+
+  // ==========================================
   // Módulo: src/entities/WorldItem.js
   // ==========================================
 /**
@@ -23712,6 +24226,7 @@ class MainMenuAndScenes {
     this.noticeText = '';
     this.noticeTimer = 0;
     this.animTime = 0;
+    this.expansionTeaserOpen = false;
     this._modalPopStart = -1;
 
     // Opciones persistentes
@@ -24370,6 +24885,15 @@ class MainMenuAndScenes {
     ];
   }
 
+  _hasVictoryTrophy() {
+    try {
+      return typeof localStorage !== 'undefined' &&
+        Boolean(localStorage.getItem(EXPANSION_UNLOCK_KEY));
+    } catch {
+      return false;
+    }
+  }
+
   _getCurrentMenuItems() {
     if (this.state === 'title') {
       const saveInfo = this.callbacks.getSaveSummary ? this.callbacks.getSaveSummary() : null;
@@ -24405,6 +24929,21 @@ class MainMenuAndScenes {
             } else {
               this.showNotice('No se pudo cargar la partida guardada.');
             }
+          }
+        },
+        {
+          label: EXPANSION_INFO.title,
+          subtext: EXPANSION_INFO.teaser,
+          expansion: true,
+          locked: !this._hasVictoryTrophy(),
+          action: () => {
+            if (!this._hasVictoryTrophy()) {
+              this.music.playCaughtSkipSound();
+              this.showNotice('Debes completar el juego base para desbloquear esto.');
+              return;
+            }
+            this.music.playMenuSelect();
+            this.expansionTeaserOpen = true;
           }
         },
         {
@@ -24688,6 +25227,21 @@ class MainMenuAndScenes {
     }
 
     if (this.state === 'none') return;
+
+    // (EXPANSIÓN) Modal del teaser: se cierra con E/Enter/Espacio/Esc o clic.
+    if (this.state === 'title' && this.expansionTeaserOpen) {
+      if (
+        input.consumeKey('Escape') ||
+        input.consumeKey('Enter') ||
+        input.consumeKey('KeyE') ||
+        input.consumeKey('Space') ||
+        input.pointerJustClicked
+      ) {
+        this.expansionTeaserOpen = false;
+        this.music.playMenuMove();
+      }
+      return;
+    }
 
     // Modal de confirmación para abandonar el juego
     if (this.state === 'confirm_exit') {
@@ -24981,7 +25535,7 @@ class MainMenuAndScenes {
       this.state === 'pause_sound';
     const closeBtn = isPauseModal ? this._getModalCloseButtonBounds(isPauseModal) : null;
 
-    const menuBounds = this._getMenuHitboxes(items.length);
+    const menuBounds = this._getMenuHitboxes(items.length, items);
     if (input.pointerX >= 0 && input.pointerY >= 0) {
       for (let i = 0; i < menuBounds.length; i++) {
         const b = menuBounds[i];
@@ -25079,7 +25633,7 @@ class MainMenuAndScenes {
     };
   }
 
-  _getMenuHitboxes(count) {
+  _getMenuHitboxes(count, items = null) {
     const isTitle = this.state === 'title';
     const isGameOver = this.state === 'game_over';
     const isPauseModal =
@@ -25115,6 +25669,19 @@ class MainMenuAndScenes {
     const itemH = isTitle ? 9 : isGameOver ? 15 : (count > 5 ? 13 : 15);
     const startX = Math.round((this.viewportWidth - boxW) / 2);
     let startY = isTitle ? 80 : isGameOver ? (count > 2 ? 96 : 108) : 56;
+
+    if (isTitle) {
+      // (EXPANSIÓN) La fila del teaser necesita altura extra para el subtexto.
+      const boxes = [];
+      let y = startY;
+      for (let i = 0; i < count; i++) {
+        const hasSub = Boolean(items && items[i] && items[i].subtext);
+        const h = hasSub ? 20 : 9;
+        boxes.push({ x: startX, y, w: boxW, h });
+        y += h + (hasSub ? 2 : 0);
+      }
+      return boxes;
+    }
     if (!isTitle && !isGameOver && count > 5) {
       const totalH = count * itemH;
       const winH = Math.min(160, totalH + 46);
@@ -25218,6 +25785,7 @@ class MainMenuAndScenes {
     if (this.state === 'title') {
       this._renderTitleHeader(ctx);
       this._renderMenuList(ctx, this._getCurrentMenuItems(), true);
+      this._renderExpansionTeaser(ctx);
     } else if (this.state === 'pause') {
       this._renderModalPanel(ctx, 'PAUSA · EL OJETE DORADO', this._getCurrentMenuItems());
     } else if (this.state === 'options' || this.state === 'pause_sound') {
@@ -25921,7 +26489,7 @@ class MainMenuAndScenes {
   }
 
   _renderMenuList(ctx, items, isTitle = false) {
-    const hitboxes = this._getMenuHitboxes(items.length);
+    const hitboxes = this._getMenuHitboxes(items.length, items);
 
     ctx.save();
     if (isTitle) {
@@ -25995,12 +26563,46 @@ class MainMenuAndScenes {
     return 'star4';
   }
 
+  _renderExpansionTeaser(ctx) {
+    if (!this.expansionTeaserOpen) return;
+    const frame = UILayout.drawModalFrame(ctx, {
+      title: EXPANSION_INFO.title,
+      icon: '✦',
+      badge: `${EXPANSION_INFO.version} · ${EXPANSION_INFO.subtitle}`,
+      closeLabel: '[E / Esc] Cerrar'
+    });
+    const { content } = frame;
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    UILayout.drawText(ctx, EXPANSION_INFO.message, content.x + 5, content.y + 8, {
+      font: 'bold 6px monospace',
+      color: '#ffd700',
+      shadow: true,
+      maxWidth: content.w - 10
+    });
+    UILayout.drawText(ctx, EXPANSION_INFO.teaser, content.x + 5, content.y + 40, {
+      font: '5px monospace',
+      color: '#cbd5e1',
+      shadow: true,
+      maxWidth: content.w - 10
+    });
+    UILayout.drawText(ctx, '— FASE 1 · TEASER —', content.x + content.w / 2, content.y + content.h - 10, {
+      font: 'bold 4px monospace',
+      color: '#94a3b8',
+      align: 'center',
+      shadow: true
+    });
+    ctx.restore();
+  }
+
   _renderTitleMenu(ctx, items, hitboxes) {
     const t = this.animTime;
     const panelX = 70;
     const panelY = 74;
     const panelW = 180;
-    const panelH = 72;
+    const lastBox = hitboxes[hitboxes.length - 1];
+    const panelH = Math.max(72, (lastBox ? lastBox.y + lastBox.h : panelY + 72) - panelY + 8);
 
     // (DIRECTRIZ UI) Panel glass con sombra, borde dorado 2 px y brillo interior.
     ctx.save();
@@ -26027,10 +26629,13 @@ class MainMenuAndScenes {
       const pointerX = this._lastPointerX;
       const pointerY = this._lastPointerY;
       const isHover = pointerX >= b.x && pointerX <= b.x + b.w && pointerY >= b.y && pointerY <= b.y + b.h;
+      const hasSubtext = Boolean(item.subtext);
       const cx = b.x + 20;
-      const cy = b.y + b.h / 2 + ((isHover && this._lastPointerDown) ? 1 : 0);
+      const sink = (isHover && this._lastPointerDown) ? 1 : 0;
+      const cy = (hasSubtext ? b.y + 7 : b.y + b.h / 2) + sink;
       const scale = selected ? 1.1 : (isHover ? 1.05 : 1);
       const label = UILayout.fitText(ctx, item.label, b.w - 28);
+      const locked = Boolean(item.locked);
 
       if (selected || isHover) {
         const row = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0);
@@ -26042,11 +26647,11 @@ class MainMenuAndScenes {
 
       UILayout.drawIcon(
         ctx,
-        this._menuIcon(item.label),
+        locked ? 'lock' : this._menuIcon(item.label),
         b.x + 10,
-        cy,
+        b.y + b.h / 2,
         9,
-        selected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8')
+        locked ? '#64748b' : (selected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8'))
       );
 
       ctx.save();
@@ -26055,13 +26660,28 @@ class MainMenuAndScenes {
       ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
       ctx.fillText(label, 1, 1);
-      if (item.disabled) {
+      if (item.disabled || locked) {
         ctx.fillStyle = '#64748b';
+      } else if (item.expansion) {
+        ctx.fillStyle = selected ? '#ffd700' : (isHover ? '#fde68a' : '#fbbf24');
       } else {
         ctx.fillStyle = selected ? '#ffd700' : (isHover ? '#ffd885' : '#f8fafc');
       }
       ctx.fillText(label, 0, 0);
       ctx.restore();
+
+      if (hasSubtext) {
+        ctx.save();
+        ctx.font = '3.1px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = locked ? '#475569' : (selected ? '#fde68a' : '#cbd5e1');
+        const subLines = UILayout.wrapText(ctx, item.subtext, b.w - 30).slice(0, 2);
+        subLines.forEach((line, li) => {
+          ctx.fillText(UILayout.fitText(ctx, line, b.w - 30), b.x + 20, b.y + 12 + sink + li * 4);
+        });
+        ctx.restore();
+      }
 
       // Puntero dorado animado a la izquierda de la opción seleccionada.
       if (selected) {
@@ -30154,6 +30774,700 @@ class RenderPipeline {
     ctx.save();
     ctx.globalAlpha = isInterior ? 0.75 : 1;
     ctx.drawImage(this._vignette, 0, 0, this.viewportWidth, this.viewportHeight);
+    ctx.restore();
+  }
+}
+
+  // ==========================================
+  // Módulo: src/ui/CinematicDirector.js
+  // ==========================================
+/**
+ * CinematicDirector.js · Cinemáticas in-engine con sprites reales.
+ *
+ * - Ejecuta guiones de comandos: spawn, camera, move, anim, wait, effect,
+ *   dialogue, beam, fade, title y end.
+ * - Usa SpriteAnimator + charactersSheet, por lo que Player y Alex son los
+ *   sprites del juego, no ilustraciones vectoriales.
+ * - Cámara propia con zoom/pan y Ken Burns; letterbox, viñeta, glitch,
+ *   partículas binarias, rayo y screen shake.
+ */
+
+
+
+
+const PROLOGUE_ALEX = {
+  id: 'prologue_alex',
+  title: 'PRÓLOGO',
+  subtitle: 'EL VACÍO DE DATOS',
+  commands: [
+    { action: 'title', text: 'PRÓLOGO', subtitle: 'EL VACÍO DE DATOS' },
+    { action: 'fade', to: 0, time: 0.9 },
+    { action: 'spawn', actor: 'alex', x: 160, y: 88 },
+    { action: 'camera', x: 160, y: 88, zoom: 1.05, time: 0.01 },
+    { action: 'effect', type: 'glitch', time: 0.7 },
+    { action: 'wait', time: 0.7 },
+    { action: 'dialogue', speaker: 'MISTER AI ALEX', text: 'En los confines oscuros del código, donde ningún compilador se atreve a mirar...' },
+    { action: 'camera', x: 160, y: 84, zoom: 1.85, time: 8.0 },
+    { action: 'spawn', actor: 'player', x: 36, y: 132 },
+    { action: 'anim', actor: 'player', anim: 'walk' },
+    { action: 'move', actor: 'player', x: 146, y: 120, time: 2.4 },
+    { action: 'anim', actor: 'player', anim: 'idle' },
+    { action: 'dialogue', speaker: 'MISTER AI ALEX', text: 'Un simple campesino... ¿osando pisar mi dominio?' },
+    { action: 'beam', from: 'alex', to: 'player', time: 0.9 },
+    { action: 'effect', type: 'shake', intensity: 7, time: 0.7 },
+    { action: 'dialogue', speaker: 'MISTER AI ALEX', text: 'Bienvenido al Ojete Dorado... donde tus datos serán míos.' },
+    { action: 'fade', to: 1, time: 1.0 },
+    { action: 'end' }
+  ]
+};
+
+const CINEMATIC_LIBRARY = {
+  prologue_alex: PROLOGUE_ALEX
+};
+
+class CinematicDirector {
+  constructor(game) {
+    this.game = game;
+    this.isActive = false;
+    this.script = null;
+    this.commands = [];
+    this.commandIndex = 0;
+    this.commandStarted = false;
+    this.waiting = false;
+    this.commandTimer = 0;
+    this.cmdType = '';
+    this.camera = { x: 160, y: 90, zoom: 1 };
+    this.cameraTween = null;
+    this.actors = [];
+    this.fadeAlpha = 1;
+    this.fadeTarget = 1;
+    this.flash = { color: '#ffffff', alpha: 0 };
+    this.shake = { time: 0, duration: 0.001, intensity: 0, x: 0, y: 0 };
+    this.dialogue = null;
+    this.dialogueActive = false;
+    this.title = '';
+    this.subtitle = '';
+    this.time = 0;
+    this.binaryRain = [];
+    this.beam = null;
+    this.onComplete = null;
+    this.previousMusicMode = null;
+    this.lastBlip = -1;
+  }
+
+  play(scriptOrId, onComplete = null) {
+    const script = typeof scriptOrId === 'string'
+      ? (CINEMATIC_LIBRARY[scriptOrId] || PROLOGUE_ALEX)
+      : scriptOrId;
+    this.script = script;
+    this.commands = script.commands || [];
+    this.commandIndex = 0;
+    this.commandStarted = false;
+    this.waiting = false;
+    this.commandTimer = 0;
+    this.cmdType = '';
+    this.camera = { x: LOGICAL_WIDTH / 2, y: LOGICAL_HEIGHT / 2, zoom: 1 };
+    this.cameraTween = null;
+    this.actors = [];
+    this.fadeAlpha = 1;
+    this.fadeTarget = 1;
+    this.flash = { color: '#ffffff', alpha: 0 };
+    this.shake = { time: 0, duration: 0.001, intensity: 0, x: 0, y: 0 };
+    this.dialogue = null;
+    this.dialogueActive = false;
+    this.title = script.title || '';
+    this.subtitle = script.subtitle || '';
+    this.time = 0;
+    this.beam = null;
+    this.lastBlip = -1;
+    this.onComplete = typeof onComplete === 'function' ? onComplete : null;
+    this.isActive = true;
+
+    this.binaryRain = [];
+    for (let i = 0; i < 46; i++) {
+      this.binaryRain.push({
+        x: Math.random() * LOGICAL_WIDTH,
+        y: Math.random() * LOGICAL_HEIGHT,
+        speed: 8 + Math.random() * 22,
+        char: Math.random() > 0.5 ? '1' : '0',
+        alpha: 0.08 + Math.random() * 0.25
+      });
+    }
+
+    this.previousMusicMode = this.game?.music?.mode || null;
+    try {
+      this.game?.music?.setMode?.('boss');
+      this.game?.player?.stopMovement?.();
+    } catch {
+      /* audio opcional */
+    }
+  }
+
+  _actor(id) {
+    return this.actors.find((a) => a.id === id) || null;
+  }
+
+  _spawn(actor, x, y) {
+    if (this._actor(actor)) return;
+    let entry = null;
+    if (actor === 'player' && this.game?.player) {
+      const player = this.game.player;
+      player.x = x - 8;
+      player.y = y - 16;
+      entry = {
+        id: 'player',
+        entity: player,
+        animator: player.animator,
+        x, y,
+        direction: 'right',
+        anim: 'idle',
+        move: null,
+        bob: 0,
+        glitch: 0
+      };
+    } else if (actor === 'alex') {
+      const sheet = this.game?.assets?.charactersSheet;
+      entry = {
+        id: 'alex',
+        animator: sheet ? new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT) : null,
+        x, y,
+        direction: 'down',
+        anim: 'idle',
+        move: null,
+        bob: 0,
+        glitch: 0.8
+      };
+    }
+    if (entry) this.actors.push(entry);
+  }
+
+  _execute(cmd) {
+    switch (cmd.action) {
+      case 'title':
+        this.title = cmd.text || this.title;
+        this.subtitle = cmd.subtitle || this.subtitle;
+        this._nextCommand();
+        break;
+      case 'fade':
+        this.fadeTarget = cmd.to === 'out' ? 1 : (cmd.to === 'in' ? 0 : Number(cmd.to ?? 1));
+        this.cmdType = 'fade';
+        this.waiting = true;
+        this.commandTimer = cmd.time ?? 0.8;
+        break;
+      case 'spawn':
+        this._spawn(cmd.actor, cmd.x, cmd.y);
+        this._nextCommand();
+        break;
+      case 'camera':
+        this.cameraTween = {
+          fromX: this.camera.x,
+          fromY: this.camera.y,
+          fromZoom: this.camera.zoom,
+          toX: cmd.x ?? this.camera.x,
+          toY: cmd.y ?? this.camera.y,
+          toZoom: cmd.zoom ?? this.camera.zoom,
+          time: Math.max(0.001, cmd.time ?? 1),
+          elapsed: 0
+        };
+        this.cmdType = 'camera';
+        this.waiting = true;
+        this.commandTimer = cmd.time ?? 1;
+        break;
+      case 'move': {
+        const actor = this._actor(cmd.actor);
+        if (actor) {
+          actor.move = {
+            fromX: actor.x,
+            fromY: actor.y,
+            toX: cmd.x,
+            toY: cmd.y,
+            time: Math.max(0.001, cmd.time ?? 1),
+            elapsed: 0
+          };
+          actor.anim = 'walk';
+          actor.direction = Math.abs((cmd.x ?? actor.x) - actor.x) >= Math.abs((cmd.y ?? actor.y) - actor.y)
+            ? ((cmd.x ?? actor.x) >= actor.x ? 'right' : 'left')
+            : ((cmd.y ?? actor.y) >= actor.y ? 'down' : 'up');
+          this.cmdType = 'move';
+          this.waiting = true;
+          this.commandTimer = cmd.time ?? 1;
+        } else {
+          this._nextCommand();
+        }
+        break;
+      }
+      case 'anim': {
+        const actor = this._actor(cmd.actor);
+        if (actor) actor.anim = cmd.anim || 'idle';
+        this._nextCommand();
+        break;
+      }
+      case 'wait':
+        this.cmdType = 'wait';
+        this.waiting = true;
+        this.commandTimer = cmd.time ?? 1;
+        break;
+      case 'effect':
+        if (cmd.type === 'shake') {
+          this.shake = {
+            time: cmd.time ?? 0.5,
+            duration: Math.max(0.001, cmd.time ?? 0.5),
+            intensity: cmd.intensity ?? 5,
+            x: 0,
+            y: 0
+          };
+        } else if (cmd.type === 'flash') {
+          this.flash = { color: cmd.color || '#ffffff', alpha: 0.8 };
+        } else if (cmd.type === 'glitch') {
+          const alex = this._actor('alex');
+          if (alex) alex.glitch = cmd.time ?? 0.6;
+        }
+        this._nextCommand();
+        break;
+      case 'dialogue':
+        this.dialogue = {
+          speaker: cmd.speaker || '',
+          text: cmd.text || '',
+          shown: 0,
+          finished: false,
+          speed: cmd.speed || 42
+        };
+        this.dialogueActive = true;
+        this.cmdType = 'dialogue';
+        this.waiting = true;
+        break;
+      case 'beam': {
+        this.beam = {
+          from: this._actor(cmd.from),
+          to: this._actor(cmd.to),
+          time: Math.max(0.001, cmd.time ?? 0.9),
+          elapsed: 0
+        };
+        this.cmdType = 'beam';
+        this.waiting = true;
+        this.commandTimer = cmd.time ?? 0.9;
+        try {
+          this.game?.music?.playBossRoar?.();
+        } catch {
+          /* audio opcional */
+        }
+        break;
+      }
+      case 'end':
+        this._finish();
+        break;
+      default:
+        this._nextCommand();
+    }
+  }
+
+  _nextCommand() {
+    this.commandIndex += 1;
+    this.commandStarted = false;
+    this.waiting = false;
+    this.cmdType = '';
+    if (this.commandIndex >= this.commands.length) this._finish();
+  }
+
+  _finish() {
+    if (!this.isActive) return;
+    this.isActive = false;
+    this.dialogueActive = false;
+    if (this.previousMusicMode) {
+      try {
+        this.game?.music?.setMode?.(this.previousMusicMode);
+      } catch {
+        /* audio opcional */
+      }
+    }
+    try {
+      this.game?.camera?.snapTo?.(this.game.player);
+    } catch {
+      /* cámara opcional */
+    }
+    const cb = this.onComplete;
+    this.onComplete = null;
+    if (cb) cb();
+  }
+
+  _applyHorizontalInput(input) {
+    if (!input || typeof input.consumeKey !== 'function') return;
+    if (input.consumeKey('Escape')) {
+      this._finish();
+      return;
+    }
+    const advance = input.consumeKey('Space') || input.consumeKey('Enter') ||
+      input.consumeKey('KeyE') || input.consumeKey('KeyF');
+    if (!advance) return;
+    if (this.dialogueActive && this.dialogue) {
+      if (this.dialogue.finished) {
+        this.dialogueActive = false;
+        this.dialogue = null;
+        this.waiting = false;
+        this._nextCommand();
+      } else {
+        this.dialogue.shown = this.dialogue.text.length;
+        this.dialogue.finished = true;
+      }
+    } else if (this.cmdType === 'wait') {
+      this.commandTimer = 0;
+    }
+  }
+
+  update(dt, input) {
+    if (!this.isActive) return;
+    this.time += dt;
+    this._applyHorizontalInput(input);
+
+    if (this.shake.time > 0) {
+      this.shake.time = Math.max(0, this.shake.time - dt);
+      const amp = this.shake.intensity * (this.shake.time / this.shake.duration);
+      this.shake.x = (Math.random() * 2 - 1) * amp;
+      this.shake.y = (Math.random() * 2 - 1) * amp;
+    } else {
+      this.shake.x = 0;
+      this.shake.y = 0;
+    }
+    if (this.flash.alpha > 0) this.flash.alpha = Math.max(0, this.flash.alpha - dt * 3);
+
+    const fadeDir = Math.sign(this.fadeTarget - this.fadeAlpha);
+    if (fadeDir !== 0) {
+      this.fadeAlpha = Math.max(0, Math.min(1, this.fadeAlpha + fadeDir * dt * 2.6));
+    }
+
+    if (this.cameraTween) {
+      const tw = this.cameraTween;
+      tw.elapsed += dt;
+      const p = Math.min(1, tw.elapsed / tw.time);
+      const e = 1 - Math.pow(1 - p, 3);
+      this.camera.x = tw.fromX + (tw.toX - tw.fromX) * e;
+      this.camera.y = tw.fromY + (tw.toY - tw.fromY) * e;
+      this.camera.zoom = tw.fromZoom + (tw.toZoom - tw.fromZoom) * e;
+      if (p >= 1) this.cameraTween = null;
+    }
+
+    for (const actor of this.actors) {
+      if (actor.move) {
+        actor.move.elapsed += dt;
+        const p = Math.min(1, actor.move.elapsed / actor.move.time);
+        const e = 1 - Math.pow(1 - p, 3);
+        actor.x = actor.move.fromX + (actor.move.toX - actor.move.fromX) * e;
+        actor.y = actor.move.fromY + (actor.move.toY - actor.move.fromY) * e;
+        actor.anim = 'walk';
+        if (p >= 1) {
+          actor.move = null;
+          actor.anim = 'idle';
+        }
+      }
+      if (actor.entity) {
+        actor.entity.x = actor.x - 8;
+        actor.entity.y = actor.y - 16;
+        actor.entity.direction = actor.direction;
+      }
+      if (actor.animator) {
+        actor.animator.update(dt, actor.direction, actor.anim === 'walk');
+      }
+      if (actor.id === 'alex') {
+        actor.bob = Math.sin(this.time * 2.2) * 3;
+        actor.glitch = Math.max(0, actor.glitch - dt);
+      }
+    }
+
+    for (const drop of this.binaryRain) {
+      drop.y += drop.speed * dt;
+      if (drop.y > LOGICAL_HEIGHT + 4) {
+        drop.y = -4;
+        drop.x = Math.random() * LOGICAL_WIDTH;
+      }
+    }
+
+    if (this.dialogueActive && this.dialogue && !this.dialogue.finished) {
+      this.dialogue.shown = Math.min(
+        this.dialogue.text.length,
+        this.dialogue.shown + dt * this.dialogue.speed
+      );
+      const idx = Math.floor(this.dialogue.shown);
+      if (idx !== this.lastBlip && idx % 3 === 0) {
+        this.lastBlip = idx;
+        try {
+          this.game?.music?.playVoiceBlip?.(this.dialogue.speaker, this.dialogue.text[idx] || 'a');
+        } catch {
+          /* audio opcional */
+        }
+      }
+      if (this.dialogue.shown >= this.dialogue.text.length) {
+        this.dialogue.finished = true;
+      }
+    }
+
+    if (this.beam) {
+      this.beam.elapsed += dt;
+      if (this.beam.elapsed >= this.beam.time + 0.3) this.beam = null;
+    }
+
+    if (this.waiting) {
+      this.commandTimer -= dt;
+      if (this.commandTimer <= 0 && this.cmdType !== 'dialogue') {
+        this._nextCommand();
+      }
+      return;
+    }
+
+    if (this.commandIndex >= this.commands.length) {
+      this._finish();
+      return;
+    }
+
+    if (!this.commandStarted) {
+      this.commandStarted = true;
+      this._execute(this.commands[this.commandIndex]);
+    }
+  }
+
+  _drawBinaryRain(ctx, W, H) {
+    ctx.font = '4px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (const drop of this.binaryRain) {
+      ctx.fillStyle = `rgba(168, 85, 247, ${drop.alpha})`;
+      ctx.fillText(drop.char, drop.x, drop.y);
+    }
+  }
+
+  _drawActors(ctx) {
+    for (const actor of this.actors) {
+      const bob = actor.id === 'alex' ? actor.bob : 0;
+      const x = Math.round(actor.x - 8);
+      const y = Math.round(actor.y - 16 + bob);
+
+      // Sombra en el suelo.
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.beginPath();
+      ctx.ellipse(actor.x, actor.y + 0.5, 7, 2.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (actor.id === 'alex') {
+        // Aura púrpura + partículas de código binario.
+        const aura = ctx.createRadialGradient(actor.x, actor.y - 8, 2, actor.x, actor.y - 8, 32 + Math.sin(this.time * 3) * 5);
+        aura.addColorStop(0, 'rgba(168, 85, 247, 0.38)');
+        aura.addColorStop(0.55, 'rgba(88, 28, 135, 0.16)');
+        aura.addColorStop(1, 'rgba(168, 85, 247, 0)');
+        ctx.fillStyle = aura;
+        ctx.fillRect(actor.x - 34, actor.y - 40, 68, 68);
+
+        ctx.font = '4px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (let i = 0; i < 8; i++) {
+          const a = this.time * 0.9 + (i * Math.PI) / 4;
+          const r = 16 + Math.sin(this.time * 2 + i) * 4;
+          ctx.fillStyle = i % 2 === 0 ? 'rgba(216, 180, 254, 0.7)' : 'rgba(56, 189, 248, 0.55)';
+          ctx.fillText(i % 2 ? '1' : '0', actor.x + Math.cos(a) * r, actor.y - 8 + Math.sin(a) * r * 0.7);
+        }
+      }
+
+      if (actor.animator) {
+        // Glitch: copias desplazadas y barras de color sobre el sprite.
+        if (actor.id === 'alex' && actor.glitch > 0) {
+          ctx.save();
+          ctx.globalAlpha = 0.35;
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.drawImage(
+            actor.animator.spriteSheet,
+            actor.animator.currentFrame * actor.animator.frameWidth * 4,
+            (actor.animator.characterIndex * 4) * actor.animator.frameHeight * 4,
+            actor.animator.frameWidth * 4,
+            actor.animator.frameHeight * 4,
+            x - 2 + Math.sin(this.time * 40) * 2,
+            y,
+            16,
+            16
+          );
+          ctx.globalAlpha = 0.28;
+          ctx.fillStyle = '#a855f7';
+          for (let i = 0; i < 4; i++) {
+            ctx.fillRect(x - 2, y + 2 + i * 3 + Math.random() * 2, 20, 1);
+          }
+          ctx.restore();
+        }
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        actor.animator.draw(ctx, x, y);
+        ctx.restore();
+      }
+    }
+  }
+
+  _drawBeam(ctx) {
+    if (!this.beam || !this.beam.from || !this.beam.to) return;
+    const from = this.beam.from;
+    const to = this.beam.to;
+    const p = Math.min(1, this.beam.elapsed / this.beam.time);
+    const fx = from.x;
+    const fy = from.y - 10;
+    const tx = to.x;
+    const ty = to.y - 10;
+    const burst = p < 0.75 ? 1 : Math.max(0, 1 - (p - 0.75) / 0.25);
+
+    ctx.save();
+    ctx.globalAlpha = burst;
+    ctx.strokeStyle = '#e9d5ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(fx, fy);
+    for (let i = 1; i < 7; i++) {
+      const t = i / 7;
+      const jitter = (Math.random() * 2 - 1) * 4 * (1 - Math.abs(t - 0.5) * 2);
+      ctx.lineTo(fx + (tx - fx) * t + jitter, fy + (ty - fy) * t + jitter);
+    }
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(168, 85, 247, 0.75)';
+    ctx.lineWidth = 5;
+    ctx.globalAlpha = burst * 0.35;
+    ctx.stroke();
+
+    for (let i = 0; i < 14; i++) {
+      const t = Math.random();
+      ctx.fillStyle = i % 2 ? '#c084fc' : '#67e8f9';
+      ctx.fillRect(fx + (tx - fx) * t + (Math.random() * 8 - 4), fy + (ty - fy) * t + (Math.random() * 8 - 4), 1, 1);
+    }
+    ctx.restore();
+  }
+
+  _drawLetterbox(ctx, W, H) {
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, 14);
+    ctx.fillRect(0, H - 14, W, 14);
+  }
+
+  _drawTitle(ctx) {
+    if (!this.title && !this.subtitle) return;
+    const x = 10;
+    const y = 19;
+    if (this.title) {
+      UILayout.drawText(ctx, this.title, x, y, {
+        font: 'bold 5px monospace',
+        color: '#c084fc',
+        shadow: true
+      });
+    }
+    if (this.subtitle) {
+      UILayout.drawText(ctx, this.subtitle, x, y + 8, {
+        font: 'bold 7px monospace',
+        color: '#ffd700',
+        shadow: true
+      });
+    }
+  }
+
+  _drawDialogue(ctx, W, H) {
+    if (!this.dialogueActive || !this.dialogue) return;
+    const boxX = 12;
+    const boxW = W - 24;
+    const boxH = 40;
+    const boxY = H - 14 - boxH - 4;
+    const text = this.dialogue.text.slice(0, Math.floor(this.dialogue.shown));
+    const font = '7px monospace';
+
+    ctx.save();
+    UILayout.drawShadow(ctx, boxX, boxY, boxW, boxH, 0.45);
+    const glass = ctx.createLinearGradient(0, boxY, 0, boxY + boxH);
+    glass.addColorStop(0, 'rgba(15, 23, 42, 0.94)');
+    glass.addColorStop(1, 'rgba(7, 12, 22, 0.96)');
+    ctx.fillStyle = glass;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX + 4.5, boxY + 4.5, boxW - 9, boxH - 9);
+
+    if (this.dialogue.speaker) {
+      ctx.font = 'bold 6px monospace';
+      const sw = Math.ceil(ctx.measureText(this.dialogue.speaker).width) + 8;
+      ctx.fillStyle = '#e5c07b';
+      ctx.fillRect(boxX + 5, boxY - 6, sw, 9);
+      ctx.fillStyle = '#151006';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.dialogue.speaker, boxX + 9, boxY - 1.5);
+    }
+
+    ctx.font = font;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const lines = UILayout.wrapText(ctx, text, boxW - 20);
+    lines.slice(0, 3).forEach((line, i) => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillText(line, boxX + 11, boxY + 10 + i * 9 + 1);
+      ctx.fillStyle = '#f0f4f8';
+      ctx.fillText(line, boxX + 10, boxY + 10 + i * 9);
+    });
+
+    if (this.dialogue.finished) {
+      const bob = Math.sin(this.time * 6) * 1.2;
+      const tx = boxX + boxW - 11;
+      const ty = boxY + boxH - 10 + bob;
+      ctx.fillStyle = '#ffd885';
+      ctx.beginPath();
+      ctx.moveTo(tx - 4, ty);
+      ctx.lineTo(tx + 1, ty);
+      ctx.lineTo(tx - 1.5, ty + 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  render(ctx) {
+    if (!this.isActive) return;
+    const W = LOGICAL_WIDTH;
+    const H = LOGICAL_HEIGHT;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // Void radial + lluvia binaria.
+    const voidGrad = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, W * 0.72);
+    voidGrad.addColorStop(0, '#17102e');
+    voidGrad.addColorStop(0.5, '#0a0718');
+    voidGrad.addColorStop(1, '#020107');
+    ctx.fillStyle = voidGrad;
+    ctx.fillRect(0, 0, W, H);
+    this._drawBinaryRain(ctx, W, H);
+
+    // Cámara cinematográfica: pan + zoom + shake.
+    ctx.save();
+    ctx.translate(W / 2 + this.shake.x, H / 2 + this.shake.y);
+    ctx.scale(this.camera.zoom, this.camera.zoom);
+    ctx.translate(-this.camera.x, -this.camera.y);
+    this._drawActors(ctx);
+    this._drawBeam(ctx);
+    ctx.restore();
+
+    // Viñeta.
+    const vignette = ctx.createRadialGradient(W / 2, H / 2, H * 0.28, W / 2, H / 2, W * 0.62);
+    vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, W, H);
+
+    this._drawLetterbox(ctx, W, H);
+    this._drawTitle(ctx);
+    this._drawDialogue(ctx, W, H);
+
+    if (this.flash.alpha > 0) {
+      ctx.fillStyle = this.flash.color;
+      ctx.globalAlpha = this.flash.alpha;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+    if (this.fadeAlpha > 0) {
+      ctx.fillStyle = `rgba(0, 0, 0, ${this.fadeAlpha})`;
+      ctx.fillRect(0, 0, W, H);
+    }
     ctx.restore();
   }
 }
