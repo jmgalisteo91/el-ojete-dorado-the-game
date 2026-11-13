@@ -6,6 +6,8 @@
  *   saltarse el monólogo de la vida del NPC, el NPC se da cuenta ("¿Te aburro? ¡Pues aún no
  *   he acabado!") y añade más páginas de chapa sobre su vida.
  */
+import { ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=8';
+
 export class DialogueBox {
   constructor(viewportWidth = 320, viewportHeight = 180, soundEngine = null) {
     this.viewportWidth = viewportWidth;
@@ -15,6 +17,8 @@ export class DialogueBox {
     this.active = false;
     this.speakerName = '';
     this.currentNPC = null;
+    this.portraitNPC = null;
+    this.npcRegistry = null;
     this.lines = [];
     this.currentLineIndex = 0;
 
@@ -109,6 +113,7 @@ export class DialogueBox {
   start(npc, customLines = null, customChoices = null) {
     this.active = true;
     this.currentNPC = npc;
+    this.portraitNPC = npc;
     this.speakerName = npc ? npc.name : '';
     this.isRantMode = false;
     this.charSpeed = this.baseCharSpeed;
@@ -149,7 +154,8 @@ export class DialogueBox {
     }
     this.onClose = typeof onClose === 'function' ? onClose : null;
     this.active = true;
-    this.currentNPC = null;
+    this.currentNPC = this._findPortraitNPC(title);
+    this.portraitNPC = this.currentNPC;
     this.speakerName = title || '';
     const rawLines = Array.isArray(lines) ? [...lines] : [lines];
     this.lines = this._paginateLines(rawLines);
@@ -299,6 +305,7 @@ export class DialogueBox {
   close() {
     this.active = false;
     this.currentNPC = null;
+    this.portraitNPC = null;
     this.speakerName = '';
     this.lines = [];
     this.choices = [];
@@ -349,54 +356,110 @@ export class DialogueBox {
     this.blinkTimer += dt * 5;
   }
 
+  _findPortraitNPC(name) {
+    if (!name) return null;
+    if (this.currentNPC) {
+      const n = this.currentNPC.name || '';
+      if (n === name || name.includes(n) || n.includes(name)) return this.currentNPC;
+    }
+    const list = this.npcRegistry;
+    if (!Array.isArray(list)) return null;
+    return (
+      list.find((npc) => npc && (npc.name === name || name.includes(npc.name) || npc.name.includes(name))) ||
+      null
+    );
+  }
+
+  _drawPortrait(ctx, npc, x, y, size) {
+    const animator = npc && npc.animator;
+    if (!animator || !animator.spriteSheet) return;
+    const cell = animator.frameWidth * ATLAS_SCALE;
+    const row = animator.characterIndex * 4; // mirada frontal
+    ctx.save();
+    ctx.fillStyle = 'rgba(6, 10, 18, 0.95)';
+    ctx.fillRect(x - 2, y - 2, size + 4, size + 4);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - 1, y - 1, size + 2, size + 2);
+    ctx.beginPath();
+    ctx.rect(x, y, size, size);
+    ctx.clip();
+    ctx.imageSmoothingEnabled = false;
+    // Recorte de cabeza y hombros (12 de 16 px) ampliado.
+    ctx.drawImage(
+      animator.spriteSheet,
+      0,
+      row * cell,
+      cell,
+      Math.round(cell * 0.78),
+      x,
+      y,
+      size,
+      size
+    );
+    const fade = ctx.createLinearGradient(0, y + size - 8, 0, y + size);
+    fade.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    fade.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+    ctx.fillStyle = fade;
+    ctx.fillRect(x, y + size - 8, size, 8);
+    ctx.restore();
+  }
+
   render(ctx) {
     if (!this.active) return;
 
-    // (FIX M3.1) Caja más alta y tipografía 1.5x en táctil
     const isTouch = Boolean(this.isTouchDevice);
+    const portraitNPC = this.portraitNPC || this._findPortraitNPC(this.speakerName);
+    const hasPortrait = Boolean(portraitNPC && portraitNPC.animator && portraitNPC.animator.spriteSheet);
     const boxX = 12;
-    const boxH = isTouch ? 54 : 48;
+    const boxH = hasPortrait ? (isTouch ? 64 : 56) : (isTouch ? 54 : 48);
     const boxY = this.viewportHeight - boxH - 8;
     const boxW = this.viewportWidth - 24;
+    const portraitSize = Math.min(44, boxH - 10);
+    const textX = boxX + (hasPortrait ? portraitSize + 12 : 9);
+    const textW = boxW - (hasPortrait ? portraitSize + 20 : 20);
     const textFont = isTouch ? 'bold 12px monospace' : '8px monospace';
     const lineHeight = isTouch ? 16 : 11;
     const maxVisibleLines = isTouch ? 2 : 3;
 
     ctx.save();
 
+    // Sombra y caja JRPG: fondo azul noche 90 % + borde dorado de 2 px.
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.fillRect(boxX + 2, boxY + 2, boxW, boxH);
-
-    ctx.fillStyle = '#121624';
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = this.caughtBannerTimer > 0 ? '#ff6b6b' : '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX + 3.5, boxY + 3.5, boxW - 7, boxH - 7);
 
-    ctx.fillStyle = this.caughtBannerTimer > 0 ? '#ff6b6b' : '#e5c07b';
-    ctx.fillRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
+    // Retrato ampliado del NPC (recorte de su spritesheet).
+    if (hasPortrait) {
+      this._drawPortrait(ctx, portraitNPC, boxX + 5, boxY + 5, portraitSize);
+    }
 
-    ctx.fillStyle = '#1b2236';
-    ctx.fillRect(boxX + 3, boxY + 3, boxW - 6, boxH - 6);
-
+    // Etiqueta de nombre: fondo dorado, texto negro.
     if (this.speakerName) {
       ctx.font = isTouch ? 'bold 12px monospace' : 'bold 8px monospace';
       const nameW = Math.ceil(ctx.measureText(this.speakerName).width) + (isTouch ? 16 : 12);
       const nameH = isTouch ? 18 : 12;
-      const nameX = boxX + 6;
+      const nameX = boxX + (hasPortrait ? 4 : 6);
       const nameY = boxY - nameH + 4;
 
-      ctx.fillStyle = '#121624';
+      ctx.fillStyle = 'rgba(10, 8, 6, 0.9)';
       ctx.fillRect(nameX, nameY, nameW, nameH);
       ctx.fillStyle = '#e5c07b';
       ctx.fillRect(nameX + 1, nameY + 1, nameW - 2, nameH - 2);
-      ctx.fillStyle = '#252f4a';
-      ctx.fillRect(nameX + 2, nameY + 2, nameW - 4, nameH - 4);
-
-      ctx.fillStyle = '#ffd885';
+      ctx.fillStyle = '#151006';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
       ctx.fillText(this.speakerName, nameX + 6, nameY + (isTouch ? 3 : 2));
     }
 
-    // Si está en modo charla coñazo, mostrar aviso tentador o alerta de "¡PILLADO!"
+    // Modo charla coñazo
     if (this.isRantMode && !this.isShowingChoices()) {
       ctx.font = isTouch ? 'bold 9px monospace' : 'bold 6px monospace';
       ctx.textAlign = 'right';
@@ -418,11 +481,10 @@ export class DialogueBox {
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
 
-    const wrappedLines = this._wrapText(ctx, shownText, boxW - 20);
+    const wrappedLines = this._wrapText(ctx, shownText, textW);
     const startTextY = boxY + (isTouch ? 8 : 9);
-
     wrappedLines.slice(0, maxVisibleLines).forEach((line, idx) => {
-      ctx.fillText(line, boxX + 9, startTextY + idx * lineHeight);
+      ctx.fillText(line, textX, startTextY + idx * lineHeight);
     });
 
     const pageInfo = `${this.currentLineIndex + 1}/${this.lines.length}`;
@@ -431,12 +493,18 @@ export class DialogueBox {
     ctx.textAlign = 'right';
     ctx.fillText(pageInfo, boxX + boxW - (isTouch ? 28 : 20), boxY + boxH - (isTouch ? 13 : 11));
 
+    // Triángulo de continuar con Math.sin(clock * 5).
     if (Math.floor(this.visibleChars) >= fullText.length) {
-      const bounce = Math.sin(this.blinkTimer) > 0 ? 0 : 1;
+      const bob = Math.sin(this.blinkTimer) * 1.5;
+      const tx = boxX + boxW - (isTouch ? 14 : 9);
+      const ty = boxY + boxH - (isTouch ? 16 : 10) + bob;
       ctx.fillStyle = '#ffd885';
-      // (FIX M3.1) Indicador de avance más grande en táctil
-      ctx.font = isTouch ? 'bold 14px monospace' : '7px monospace';
-      ctx.fillText('▶', boxX + boxW - (isTouch ? 13 : 8), boxY + boxH - (isTouch ? 17 : 11) + bounce);
+      ctx.beginPath();
+      ctx.moveTo(tx - 4, ty);
+      ctx.lineTo(tx + 1, ty);
+      ctx.lineTo(tx - 1.5, ty + 4);
+      ctx.closePath();
+      ctx.fill();
     }
 
     if (this.isShowingChoices()) {

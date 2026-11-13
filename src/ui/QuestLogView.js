@@ -28,6 +28,12 @@ export class QuestLogView {
     this._dragStartY = 0;
     this._dragStartScroll = 0;
     this._dragging = false;
+
+    // (BLOQUE 4.C) Pestañas y animaciones.
+    this.activeTab = 'main';
+    this._tabRects = [];
+    this._tabSlideStart = 0;
+    this._popStart = null;
   }
 
   setTouchMode(isTouch) {
@@ -47,6 +53,10 @@ export class QuestLogView {
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
     const list = this._listRect;
+
+    if (input.pointerJustClicked && this.handleClick(px, py)) {
+      return true;
+    }
 
     if (down && !this._touchWasDown) {
       this._touchWasDown = true;
@@ -81,7 +91,30 @@ export class QuestLogView {
 
   open() {
     this.isOpen = true;
+    this._popStart = null;
+    this._tabSlideStart = performance.now();
     this._clampSelection();
+  }
+
+  switchTab(tab) {
+    if (tab !== 'main' && tab !== 'side') return;
+    if (this.activeTab === tab) return;
+    this.activeTab = tab;
+    this.selectedIndex = 0;
+    this.scrollOffset = 0;
+    this._tabSlideStart = performance.now();
+  }
+
+  /** Clic de ratón/táctil en las pestañas. */
+  handleClick(px, py) {
+    if (!this.isOpen) return false;
+    for (const tab of this._tabRects) {
+      if (px >= tab.x && px <= tab.x + tab.w && py >= tab.y && py <= tab.y + tab.h) {
+        this.switchTab(tab.id);
+        return true;
+      }
+    }
+    return false;
   }
 
   close() {
@@ -101,7 +134,7 @@ export class QuestLogView {
     // Ordenar primero misiones principales (MAIN) y luego encargos secundarios (SIDE)
     const main = all.filter((q) => q.category === 'MAIN');
     const side = all.filter((q) => q.category !== 'MAIN');
-    return [...main, ...side];
+    return this.activeTab === 'side' ? side : main;
   }
 
   _clampSelection() {
@@ -137,92 +170,147 @@ export class QuestLogView {
   render(ctx) {
     if (!this.isOpen || !this.questLog) return;
 
+    const now = performance.now();
+    if (this._popStart == null) this._popStart = now;
     const quests = this._getQuestList();
     this._clampSelection();
-
     const completedCount = quests.filter((q) => q.status === 'COMPLETED').length;
+
+    // Velo + pop 0.9 → 1.0 de la ventana glass.
+    ctx.fillStyle = 'rgba(3, 5, 10, 0.6)';
+    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+    const scale = UILayout.popScale(this._popStart, now);
+    ctx.save();
+    ctx.translate(160, 90);
+    ctx.scale(scale, scale);
+    ctx.translate(-160, -90);
 
     const frame = UILayout.drawModalFrame(ctx, {
       title: 'DIARIO DE MISIONES',
       icon: '📜',
       badge: `${completedCount}/${quests.length} COMPLETADAS`,
-      closeLabel: '[Esc] Cerrar'
+      closeLabel: '[Esc] Cerrar',
+      veil: false
     });
 
     const { content } = frame;
-
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
 
-    // =========================================================================
-    // COLUMNA IZQUIERDA: Lista de Misiones (máximo 4 simultáneas visibles + scroll)
-    // =========================================================================
-    const leftW = 114;
-    const leftRect = {
-      x: content.x,
-      y: content.y,
-      w: leftW,
-      h: content.h
-    };
+    // (BLOQUE 4.C) Pestañas Principal / Secundarias.
+    const tabH = this.isTouchDevice ? 18 : 11;
+    const tabGap = 3;
+    const tabW = Math.floor((content.w - tabGap) / 2);
+    this._tabRects = [];
+    const tabs = [
+      { id: 'main', label: 'PRINCIPAL' },
+      { id: 'side', label: 'SECUNDARIAS' }
+    ];
+    tabs.forEach((tab, i) => {
+      const tx = content.x + i * (tabW + tabGap);
+      this._tabRects.push({ x: tx, y: content.y, w: tabW, h: tabH, id: tab.id });
+      const active = this.activeTab === tab.id;
+      if (active) {
+        const g = ctx.createLinearGradient(tx, content.y, tx, content.y + tabH);
+        g.addColorStop(0, 'rgba(253, 224, 71, 0.28)');
+        g.addColorStop(1, 'rgba(253, 224, 71, 0.06)');
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = UI_COLORS.panelBg;
+      }
+      ctx.fillRect(tx, content.y, tabW, tabH);
+      ctx.strokeStyle = active ? UI_COLORS.gold : UI_COLORS.borderInner;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(tx + 0.5, content.y + 0.5, tabW - 1, tabH - 1);
+      if (active) {
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.fillRect(tx + 2, content.y + tabH - 2, tabW - 4, 2);
+      }
+      ctx.font = `bold ${this.isTouchDevice ? '5.4' : '4.4'}px ${UI_FONT}`;
+      ctx.fillStyle = active ? UI_COLORS.gold : UI_COLORS.textSecondary;
+      const lw = ctx.measureText(tab.label).width;
+      ctx.fillText(tab.label, tx + Math.floor((tabW - lw) / 2), content.y + (this.isTouchDevice ? 5.5 : 3.5));
+    });
 
+    // Transición de diapositiva al cambiar de pestaña.
+    const slideT = Math.min(1, (now - this._tabSlideStart) / 180);
+    const slideOff = (1 - slideT) * 8 * (this.activeTab === 'side' ? 1 : -1);
+    ctx.translate(slideOff, 0);
+    ctx.globalAlpha = 0.55 + 0.45 * slideT;
+
+    const bodyY = content.y + tabH + 2;
+    const bodyH = content.h - tabH - 2;
+
+    // Columna izquierda: tarjetas de misión.
+    const leftW = 114;
+    const leftRect = { x: content.x, y: bodyY, w: leftW, h: bodyH };
     UILayout.drawPanel(ctx, leftRect, {
       bg: UI_COLORS.panelBg,
       border: UI_COLORS.borderInner,
-      headerText: `ENCARGOS (${this.selectedIndex + 1}/${Math.max(1, quests.length)})`
+      headerText: `${this.activeTab === 'main' ? 'HISTORIA' : 'ENCARGOS'} (${this.selectedIndex + 1}/${Math.max(1, quests.length)})`
     });
 
     const listStartX = leftRect.x + 4;
-    const listStartY = leftRect.y + 16;
+    const listStartY = leftRect.y + 15;
     const rowH = this.rowH;
     const rowW = leftRect.w - 12;
     this._listRect = { x: listStartX, y: listStartY, w: rowW, h: this.maxVisibleQuests * (rowH + 2) };
     this._rowRects = [];
-
     const visibleQuests = quests.slice(this.scrollOffset, this.scrollOffset + this.maxVisibleQuests);
 
     visibleQuests.forEach((q, idx) => {
       const fullIndex = this.scrollOffset + idx;
       const isSelected = fullIndex === this.selectedIndex;
       const isCompleted = q.status === 'COMPLETED';
-      const isMain = q.category === 'MAIN';
       const ry = listStartY + idx * (rowH + 2);
       this._rowRects.push({ x: listStartX, y: ry, w: rowW, h: rowH, index: fullIndex });
 
-      // Caja de la fila
-      ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+      // Tarjeta con gradiente sutil.
+      const g = ctx.createLinearGradient(listStartX, ry, listStartX + rowW, ry);
+      if (isSelected) {
+        g.addColorStop(0, 'rgba(253, 224, 71, 0.20)');
+        g.addColorStop(1, 'rgba(253, 224, 71, 0.04)');
+      } else {
+        g.addColorStop(0, 'rgba(30, 41, 59, 0.75)');
+        g.addColorStop(1, 'rgba(15, 23, 42, 0.75)');
+      }
+      ctx.fillStyle = g;
       ctx.fillRect(listStartX, ry, rowW, rowH);
-
-      ctx.strokeStyle = isSelected
-        ? UI_COLORS.slotSelectedBorder
-        : (isCompleted ? 'rgba(74, 222, 128, 0.35)' : UI_COLORS.slotBorder);
+      ctx.strokeStyle = isSelected ? UI_COLORS.gold : (isCompleted ? 'rgba(74, 222, 128, 0.4)' : UI_COLORS.slotBorder);
       ctx.lineWidth = 1;
       ctx.strokeRect(listStartX + 0.5, ry + 0.5, rowW - 1, rowH - 1);
 
-      // Etiqueta superior de categoría y estado
-      ctx.font = `bold 3.8px ${UI_FONT}`;
-      ctx.fillStyle = isMain ? UI_COLORS.cyan : UI_COLORS.gold;
-      ctx.fillText(isMain ? '★ PRINCIPAL' : '◆ SECUNDARIA', listStartX + 3, ry + 2.5);
+      // Icono de estado: check verde / círculo amarillo.
+      const iconX = listStartX + 6;
+      const iconY = ry + rowH / 2;
+      if (isCompleted) {
+        ctx.strokeStyle = UI_COLORS.emerald;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(iconX - 2.5, iconY);
+        ctx.lineTo(iconX - 0.5, iconY + 2);
+        ctx.lineTo(iconX + 3, iconY - 2.5);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = UI_COLORS.warn;
+        ctx.beginPath();
+        ctx.arc(iconX, iconY, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+      }
 
-      ctx.fillStyle = isCompleted ? UI_COLORS.emerald : UI_COLORS.textSecondary;
-      const stateIcon = isCompleted ? '✓ HECHA' : '▶ ACTIVA';
-      const sw = ctx.measureText(stateIcon).width;
-      ctx.fillText(stateIcon, listStartX + rowW - sw - 3, ry + 2.5);
-
-      // Título de la misión ajustado al ancho
-      ctx.font = `bold 4.4px ${UI_FONT}`;
-      ctx.fillStyle = isSelected
-        ? UI_COLORS.textPrimary
-        : (isCompleted ? UI_COLORS.textMuted : UI_COLORS.textSecondary);
-      ctx.fillText(
-        UILayout.fitText(ctx, q.title, rowW - 6),
-        listStartX + 3,
-        ry + 11.5
-      );
+      ctx.font = `bold ${this.isTouchDevice ? '5.6' : '4.4'}px ${UI_FONT}`;
+      ctx.fillStyle = isSelected ? UI_COLORS.textPrimary : (isCompleted ? UI_COLORS.textMuted : UI_COLORS.textSecondary);
+      ctx.fillText(UILayout.fitText(ctx, q.title, rowW - 22), listStartX + 12, ry + 4);
+      ctx.font = `3.9px ${UI_FONT}`;
+      ctx.fillStyle = isSelected ? UI_COLORS.gold : UI_COLORS.textDim;
+      ctx.fillText(q.category === 'MAIN' ? '★ Principal' : '◆ Secundaria', listStartX + 12, ry + 13);
     });
 
-    // Scrollbar vertical discreto para la lista de 4 visibles
     UILayout.drawScrollbar(
       ctx,
       leftRect.x + leftRect.w - 5,
@@ -233,23 +321,20 @@ export class QuestLogView {
       this.scrollOffset
     );
 
-    // =========================================================================
-    // COLUMNA DERECHA: Detalles, Objetivos y Recompensas en Bytes
-    // =========================================================================
+    // Columna derecha: detalle con pasos y recompensa.
     const rightRect = {
       x: leftRect.x + leftRect.w + 4,
-      y: content.y,
+      y: bodyY,
       w: content.w - leftRect.w - 4,
-      h: content.h
+      h: bodyH
     };
-
     const selectedQuest = quests[this.selectedIndex] || quests[0];
 
     UILayout.drawPanel(ctx, rightRect, {
       bg: UI_COLORS.panelBgAlt,
       border: UI_COLORS.borderInner,
       headerText: selectedQuest
-        ? (selectedQuest.category === 'MAIN' ? '★ HISTORIA PRINCIPAL' : '◆ ENCARGO DE ALDEA')
+        ? (selectedQuest.category === 'MAIN' ? '★ HISTORIA PRINCIPAL' : '◆ ENCARGO SECUNDARIO')
         : 'DETALLE DE MISIÓN'
     });
 
@@ -258,7 +343,6 @@ export class QuestLogView {
       const innerW = rightRect.w - 12;
       let ry = rightRect.y + 15;
 
-      // Título y badge de estado
       ctx.font = `bold 5px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.gold;
       ctx.fillText(UILayout.fitText(ctx, selectedQuest.title, innerW - 38), padX, ry);
@@ -271,49 +355,59 @@ export class QuestLogView {
       ctx.fillText(badgeStr, padX + innerW - bw, ry + 0.5);
       ry += 9;
 
-      // Descripción narrativa con wrapText estricto (máximo 3 líneas)
       ctx.font = `4.2px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.textSecondary;
       const descLines = UILayout.wrapText(ctx, selectedQuest.description || '', innerW);
-      descLines.slice(0, 3).forEach((line, idx) => {
+      descLines.slice(0, 2).forEach((line, idx) => {
         ctx.fillText(line, padX, ry + idx * 6.5);
       });
-      ry += Math.min(3, descLines.length) * 6.5 + 4;
+      ry += Math.min(2, descLines.length) * 6.5 + 3;
 
-      // Caja de Objetivo Actual
+      // Pasos con viñetas; los completados se tachan.
       ctx.font = `bold 4.2px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.gold;
-      ctx.fillText('⚡ OBJETIVO ACTUAL:', padX, ry);
+      ctx.fillText('PASOS A SEGUIR:', padX, ry);
       ry += 6;
-
-      ctx.font = `4.2px ${UI_FONT}`;
-      const stepLines = UILayout.wrapText(ctx, selectedQuest.currentStep || '', innerW - 8);
-      const stepSlice = stepLines.slice(0, 3);
-      const stepBoxH = Math.max(15, stepSlice.length * 6.5 + 5);
-
-      ctx.fillStyle = 'rgba(10, 15, 28, 0.92)';
-      ctx.fillRect(padX, ry, innerW, stepBoxH);
-      ctx.strokeStyle = isDone ? UI_COLORS.emerald : UI_COLORS.goldDim;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(padX + 0.5, ry + 0.5, innerW - 1, stepBoxH - 1);
-
-      ctx.fillStyle = isDone ? UI_COLORS.emerald : UI_COLORS.textPrimary;
-      stepSlice.forEach((line, idx) => {
-        ctx.fillText(line, padX + 4, ry + 3 + idx * 6.5);
+      const steps = Array.isArray(selectedQuest.steps) && selectedQuest.steps.length > 0
+        ? selectedQuest.steps
+        : [selectedQuest.currentStep || 'Continúa la aventura.'];
+      const completedSteps = Number(selectedQuest.completedSteps || 0);
+      ctx.font = `4.1px ${UI_FONT}`;
+      steps.slice(0, 3).forEach((step, idx) => {
+        const done = isDone || idx < completedSteps;
+        const lines = UILayout.wrapText(ctx, step, innerW - 10);
+        const stepLines = lines.slice(0, 2);
+        stepLines.forEach((line, li) => {
+          const shown = UILayout.fitText(ctx, line, innerW - 10);
+          ctx.fillStyle = done ? UI_COLORS.emerald : UI_COLORS.textPrimary;
+          if (li === 0) ctx.fillText('•', padX, ry);
+          ctx.fillText(shown, padX + 6, ry);
+          if (done) {
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.8)';
+            ctx.lineWidth = 0.7;
+            ctx.beginPath();
+            ctx.moveTo(padX + 6, ry + 2.2);
+            ctx.lineTo(padX + 6 + Math.min(innerW - 10, ctx.measureText(shown).width), ry + 2.2);
+            ctx.stroke();
+          }
+          ry += 6.5;
+        });
       });
-      ry += stepBoxH + 5;
+      ry += 2;
 
-      // Caja de Recompensa en Bytes / Objetos
+      // Recompensa.
       const rewardY = Math.min(ry, rightRect.y + rightRect.h - 22);
-      ctx.fillStyle = 'rgba(16, 26, 42, 0.9)';
+      const g = ctx.createLinearGradient(padX, rewardY, padX, rewardY + 18);
+      g.addColorStop(0, 'rgba(16, 26, 42, 0.95)');
+      g.addColorStop(1, 'rgba(9, 16, 28, 0.95)');
+      ctx.fillStyle = g;
       ctx.fillRect(padX, rewardY, innerW, 18);
       ctx.strokeStyle = 'rgba(74, 222, 128, 0.45)';
       ctx.strokeRect(padX + 0.5, rewardY + 0.5, innerW - 1, 17);
 
       ctx.font = `bold 4px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.emerald;
-      ctx.fillText('🎁 RECOMPENSA (BYTES & BOTÍN):', padX + 4, rewardY + 2.5);
-
+      ctx.fillText('🎁 RECOMPENSA:', padX + 4, rewardY + 2.5);
       ctx.font = `4.1px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.gold;
       ctx.fillText(
@@ -323,6 +417,8 @@ export class QuestLogView {
       );
     }
 
+    ctx.globalAlpha = 1;
+    ctx.restore();
     ctx.restore();
   }
 

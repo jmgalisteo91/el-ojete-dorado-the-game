@@ -318,7 +318,7 @@ export class Enemy extends Entity {
           }
         }
       }
-      if (Array.isArray(player.energySlashes)) {
+      if (player.hasSword && Array.isArray(player.energySlashes)) {
         for (const slash of player.energySlashes) {
           if (slash.life > 0 && Math.hypot(this.centerX - slash.x, this.centerY - slash.y) <= 13) {
             slash.life = 0;

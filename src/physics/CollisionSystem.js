@@ -17,7 +17,7 @@ export class CollisionSystem {
     return CollisionSystem.checkAABB(a, b);
   }
 
-  static collidesWithMap(box, tilemap) {
+  static collidesWithMap(box, tilemap, options = {}) {
     const tileSize = tilemap.tileSize;
     const epsilon = 0.001;
     const leftCol = Math.floor(box.x / tileSize);
@@ -27,7 +27,7 @@ export class CollisionSystem {
 
     for (let r = topRow; r <= bottomRow; r++) {
       for (let c = leftCol; c <= rightCol; c++) {
-        if (tilemap.isSolidAtTile(c, r)) {
+        if (tilemap.isSolidAtTile(c, r, options)) {
           return true;
         }
       }
@@ -141,6 +141,7 @@ export class CollisionSystem {
   static moveWithCollisions(entity, dx, dy, tilemap, obstacles = []) {
     let blockedX = false;
     let blockedY = false;
+    const mapOptions = entity && entity.ignoreSmallProps ? { ignoreSmallProps: true } : undefined;
 
     // 1. Separación preventiva previa para no quedar nunca atascado dentro de otro personaje
     if (obstacles && obstacles.length > 0) {
@@ -152,7 +153,7 @@ export class CollisionSystem {
     if (dx !== 0) {
       const nextX = entity.x + dx;
       const testBoxX = entity.getBoundingBoxAt(nextX, entity.y);
-      let blockedByMap = tilemap ? CollisionSystem.collidesWithMap(testBoxX, tilemap) : false;
+      let blockedByMap = tilemap ? CollisionSystem.collidesWithMap(testBoxX, tilemap, mapOptions) : false;
       let blockedByEntity = false;
 
       if (!blockedByMap && obstacles && obstacles.length > 0) {
@@ -175,7 +176,7 @@ export class CollisionSystem {
               const nudgeStep = dx * 0.45;
               const testOtherX = other.x + nudgeStep;
               const otherBoxCandidate = other.getBoundingBoxAt ? other.getBoundingBoxAt(testOtherX, other.y) : null;
-              if (otherBoxCandidate && (!tilemap || !CollisionSystem.collidesWithMap(otherBoxCandidate, tilemap))) {
+              if (otherBoxCandidate && (!tilemap || !CollisionSystem.collidesWithMap(otherBoxCandidate, tilemap, mapOptions))) {
                 other.x = testOtherX;
                 const updatedOtherBox = other.worldBoundingBox;
                 if (!CollisionSystem.checkAABB(testBoxX, updatedOtherBox)) {
@@ -200,7 +201,7 @@ export class CollisionSystem {
     if (dy !== 0) {
       const nextY = entity.y + dy;
       const testBoxY = entity.getBoundingBoxAt(entity.x, nextY);
-      let blockedByMap = tilemap ? CollisionSystem.collidesWithMap(testBoxY, tilemap) : false;
+      let blockedByMap = tilemap ? CollisionSystem.collidesWithMap(testBoxY, tilemap, mapOptions) : false;
       let blockedByEntity = false;
 
       if (!blockedByMap && obstacles && obstacles.length > 0) {
@@ -222,7 +223,7 @@ export class CollisionSystem {
               const nudgeStep = dy * 0.45;
               const testOtherY = other.y + nudgeStep;
               const otherBoxCandidate = other.getBoundingBoxAt ? other.getBoundingBoxAt(other.x, testOtherY) : null;
-              if (otherBoxCandidate && (!tilemap || !CollisionSystem.collidesWithMap(otherBoxCandidate, tilemap))) {
+              if (otherBoxCandidate && (!tilemap || !CollisionSystem.collidesWithMap(otherBoxCandidate, tilemap, mapOptions))) {
                 other.y = testOtherY;
                 const updatedOtherBox = other.worldBoundingBox;
                 if (!CollisionSystem.checkAABB(testBoxY, updatedOtherBox)) {
@@ -245,7 +246,7 @@ export class CollisionSystem {
     }
 
     // 2. Deslizamiento suave en esquinas (Corner Sliding estilo Zelda)
-    if (blockedX && dy === 0 && dx !== 0 && (!tilemap || !CollisionSystem.collidesWithMap(currentBox, tilemap))) {
+    if (blockedX && dy === 0 && dx !== 0 && (!tilemap || !CollisionSystem.collidesWithMap(currentBox, tilemap, mapOptions))) {
       for (const other of obstacles) {
         if (!other || other === entity || other.isSleeping) continue;
         const otherBox = other.worldBoundingBox;
@@ -254,7 +255,7 @@ export class CollisionSystem {
           const nudgeY = entity.centerY < other.centerY ? -1 : 1;
           const slideBoxY = entity.getBoundingBoxAt(entity.x, entity.y + nudgeY);
           if (
-            (!tilemap || !CollisionSystem.collidesWithMap(slideBoxY, tilemap)) &&
+            (!tilemap || !CollisionSystem.collidesWithMap(slideBoxY, tilemap, mapOptions)) &&
             !CollisionSystem.collidesWithEntities(slideBoxY, obstacles, entity)
           ) {
             entity.y += nudgeY;
@@ -262,7 +263,7 @@ export class CollisionSystem {
           break;
         }
       }
-    } else if (blockedY && dx === 0 && dy !== 0 && (!tilemap || !CollisionSystem.collidesWithMap(currentBox, tilemap))) {
+    } else if (blockedY && dx === 0 && dy !== 0 && (!tilemap || !CollisionSystem.collidesWithMap(currentBox, tilemap, mapOptions))) {
       for (const other of obstacles) {
         if (!other || other === entity || other.isSleeping) continue;
         const otherBox = other.worldBoundingBox;
@@ -271,7 +272,7 @@ export class CollisionSystem {
           const nudgeX = entity.centerX < other.centerX ? -1 : 1;
           const slideBoxX = entity.getBoundingBoxAt(entity.x + nudgeX, entity.y);
           if (
-            (!tilemap || !CollisionSystem.collidesWithMap(slideBoxX, tilemap)) &&
+            (!tilemap || !CollisionSystem.collidesWithMap(slideBoxX, tilemap, mapOptions)) &&
             !CollisionSystem.collidesWithEntities(slideBoxX, obstacles, entity)
           ) {
             entity.x += nudgeX;

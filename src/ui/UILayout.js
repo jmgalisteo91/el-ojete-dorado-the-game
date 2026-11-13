@@ -23,7 +23,7 @@ export const MODAL_HEIGHT = 150;
 export const MODAL_HEADER_HEIGHT = 15;
 
 export const UI_COLORS = {
-  glass: 'rgba(13, 17, 23, 0.94)',
+  glass: 'rgba(15, 23, 42, 0.92)',
   glassSoft: 'rgba(22, 28, 40, 0.92)',
   veil: 'rgba(3, 5, 10, 0.55)',
   bevelLight: 'rgba(255, 255, 255, 0.16)',
@@ -188,6 +188,12 @@ export class UILayout {
     return lines;
   }
 
+  /** (BLOQUE 4.A) Escala de pop 0.9 → 1.0 en 200 ms con ease-out. */
+  static popScale(openAtMs, nowMs = performance.now(), from = 0.9) {
+    const t = Math.min(1, Math.max(0, (nowMs - openAtMs) / 200));
+    return from + (1 - from) * (1 - Math.pow(1 - t, 3));
+  }
+
   /** Divide una lista de líneas en páginas de `linesPerPage` líneas. */
   static paginate(lines, linesPerPage) {
     const pages = [];
@@ -225,7 +231,9 @@ export class UILayout {
       ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     }
 
-    // Sombra de elevación
+    // (BLOQUE 4.A) Sombra de elevación en dos capas (sin blur costoso).
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+    ctx.fillRect(m.x + 4, m.y + 6, m.w, m.h);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.fillRect(m.x + 2, m.y + 3, m.w, m.h);
 
@@ -242,10 +250,13 @@ export class UILayout {
       ctx.fillRect(m.x, m.y, m.w, m.h * 0.45);
     }
 
-    // Borde exterior + bisel de 1 px
-    ctx.strokeStyle = UI_COLORS.border;
+    // (BLOQUE 4.A) Borde dorado de 2 px + brillo interior sutil.
+    ctx.strokeStyle = UI_COLORS.accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(m.x + 1, m.y + 1, m.w - 2, m.h - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(m.x + 0.5, m.y + 0.5, m.w - 1, m.h - 1);
+    ctx.strokeRect(m.x + 3.5, m.y + 3.5, m.w - 7, m.h - 7);
     ctx.fillStyle = UI_COLORS.bevelLight;
     ctx.fillRect(m.x + 1, m.y + 1, m.w - 2, 1);
     ctx.fillRect(m.x + 1, m.y + 1, 1, m.h - 2);
@@ -343,6 +354,14 @@ export class UILayout {
     ctx.save();
     ctx.fillStyle = bg;
     ctx.fillRect(px, py, pw, ph);
+    // (BLOQUE 4) Brillo superior de tarjeta.
+    if (typeof ctx.createLinearGradient === 'function') {
+      const sheen = ctx.createLinearGradient(0, py, 0, py + Math.min(18, ph));
+      sheen.addColorStop(0, 'rgba(255, 255, 255, 0.055)');
+      sheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = sheen;
+      ctx.fillRect(px + 1, py + 1, pw - 2, Math.min(18, ph - 2));
+    }
     if (border) {
       ctx.strokeStyle = border;
       ctx.lineWidth = 1;
@@ -376,6 +395,8 @@ export class UILayout {
       valueText = arg1.valueText || null;
       back = arg1.back || '#111827';
       border = arg1.border || '#334155';
+      var gradient = arg1.gradient || null;
+      var insideText = arg1.insideText || null;
     } else {
       bx = arg1;
       by = arg2;
@@ -388,6 +409,8 @@ export class UILayout {
       border = o.border || '#334155';
       label = o.label || null;
       valueText = o.valueText || null;
+      var gradient = o.gradient || null;
+      var insideText = o.insideText || null;
     }
 
     const p = Math.max(0, Math.min(1, Number.isFinite(pct) ? pct : 0));
@@ -412,10 +435,29 @@ export class UILayout {
     ctx.fillRect(bx, by, bw, bh);
     const fillW = Math.round((bw - 2) * p);
     if (fillW > 0) {
-      ctx.fillStyle = color;
+      // (BLOQUE 4.D) Relleno con gradiente opcional (salud, stamina, XP…).
+      if (Array.isArray(gradient) && gradient.length >= 2 && typeof ctx.createLinearGradient === 'function') {
+        const g = ctx.createLinearGradient(bx + 1, by, bx + 1 + fillW, by);
+        g.addColorStop(0, gradient[0]);
+        g.addColorStop(1, gradient[1]);
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = color;
+      }
       ctx.fillRect(bx + 1, by + 1, fillW, bh - 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
       ctx.fillRect(bx + 1, by + 1, fillW, 1);
+    }
+    if (insideText) {
+      ctx.font = `bold 3.7px ${UI_FONT}`;
+      const tw = ctx.measureText(insideText).width;
+      // Pastilla clara para que el nivel se lea incluso con la barra vacía.
+      ctx.fillStyle = 'rgba(255, 243, 176, 0.9)';
+      ctx.fillRect(bx + bw / 2 - tw / 2 - 1, by + 1, tw + 2, bh - 2);
+      ctx.fillStyle = '#151006';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(insideText, bx + bw / 2, by + bh / 2 + 0.4);
     }
     ctx.strokeStyle = border;
     ctx.lineWidth = 1;

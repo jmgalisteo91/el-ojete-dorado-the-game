@@ -5,6 +5,10 @@ import { SpeechBubble } from '../ui/SpeechBubble.js?v=8';
  * Tiles de la CAPA 2 (estructuras elevadas) del pipeline 2.5D: se dibujan siempre por encima
  * de las entidades (copas de árboles y tejados).
  */
+const NPC_PASSABLE_PROPS = new Set([
+  TILES.FENCE_H, TILES.FENCE_POST, TILES.CRATE, TILES.BUSH, TILES.TABLE, TILES.ANVIL
+]);
+
 const OVERHEAD_TILE_IDS = new Set([
   TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE,
   TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM
@@ -661,12 +665,20 @@ export class Tilemap {
     }
   }
 
-  isSolidAtTile(col, row) {
+  isSolidAtTile(col, row, options = {}) {
     if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) {
       return true;
     }
     // (FIX 1) Un cartel es siempre pisable, aunque alguna escena lo marcara sólido
     if (this.layers.decoration && this.layers.decoration[row][col] === TILES.SIGNPOST) {
+      return false;
+    }
+    // (FIX 4) Los NPCs no deben engancharse con vallas, bancos, cajas o arbustos.
+    if (
+      options.ignoreSmallProps &&
+      this.layers.decoration &&
+      NPC_PASSABLE_PROPS.has(this.layers.decoration[row][col])
+    ) {
       return false;
     }
     const value = this.layers.collision[row][col];
@@ -3893,9 +3905,16 @@ export class Tilemap {
         if (groundTile === TILES.WATER_1 && waterFrame % 2 === 1) {
           groundTile = TILES.WATER_2;
         }
-        this._drawTile(ctx, groundTile, screenX, screenY);
         if (isWater) {
+          // (FIX 5) Offset de textura del agua, tapando el hueco con el tono base.
+          const flowX = Math.round(Math.sin(this.animationClock * 1.8 + c * 0.6 + r * 0.3));
+          const flowY = Math.round(Math.cos(this.animationClock * 1.2 + c * 0.2 + r * 0.5));
+          ctx.fillStyle = '#286494';
+          ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
+          this._drawTile(ctx, groundTile, screenX, screenY, flowX, flowY);
           this._drawWaterRipple(ctx, screenX, screenY, c, r, waterFrame);
+        } else {
+          this._drawTile(ctx, groundTile, screenX, screenY);
         }
         this._drawAnimatedTileFx(ctx, groundTile, screenX, screenY);
 
@@ -4023,18 +4042,21 @@ export class Tilemap {
   _drawAnimatedTileFx(ctx, tileId, screenX, screenY) {
     if (tileId === undefined || tileId === null || tileId < 0) return;
     const t = this.animationClock;
-    const cx = screenX + 8;
-    const cy = screenY + 8;
+    // (FIX 1) Redondear evita costuras antialias entre overlays de tiles.
+    const fx = Math.round(screenX);
+    const fy = Math.round(screenY);
+    const cx = fx + 8;
+    const cy = fy + 8;
 
     if (tileId === TILES.FORGE_LAVA_FLOOR) {
-      const pulse = 0.5 + 0.5 * Math.sin(t * 3 + screenX * 0.05 + screenY * 0.04);
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3 + fx * 0.05 + fy * 0.04);
       ctx.fillStyle = `rgba(249, 115, 22, ${(0.10 + pulse * 0.20).toFixed(3)})`;
-      ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
+      ctx.fillRect(fx, fy, this.tileSize, this.tileSize);
       ctx.fillStyle = `rgba(127, 29, 29, ${(0.08 + (1 - pulse) * 0.14).toFixed(3)})`;
-      ctx.fillRect(screenX + 1, screenY + 1, this.tileSize - 2, this.tileSize - 2);
+      ctx.fillRect(fx + 1, fy + 1, this.tileSize - 2, this.tileSize - 2);
       for (let i = 0; i < 2; i++) {
-        const bx = screenX + 3 + ((i * 7 + Math.floor(t * 2)) % 10);
-        const by = screenY + 6 + Math.sin(t * 2.2 + i * 2 + screenX * 0.03) * 4;
+        const bx = fx + 3 + ((i * 7 + Math.floor(t * 2)) % 10);
+        const by = fy + 6 + Math.sin(t * 2.2 + i * 2 + fx * 0.03) * 4;
         ctx.fillStyle = 'rgba(253, 224, 71, 0.65)';
         ctx.fillRect(Math.round(bx), Math.round(by), 1, 1);
       }
@@ -4043,8 +4065,8 @@ export class Tilemap {
     }
 
     if (tileId === TILES.LAMPPOST || tileId === TILES.FIREPLACE) {
-      const flicker = Math.sin(t * 10 + screenX * 0.12 + screenY * 0.07);
-      const flameY = tileId === TILES.LAMPPOST ? screenY + 4 : screenY + 9;
+      const flicker = Math.sin(t * 10 + fx * 0.12 + fy * 0.07);
+      const flameY = tileId === TILES.LAMPPOST ? fy + 4 : fy + 9;
       this._drawLightHalo(ctx, cx, flameY, 20, '255, 170, 60', 0.18 + 0.05 * (flicker * 0.5 + 0.5));
       ctx.fillStyle = 'rgba(249, 115, 22, 0.9)';
       ctx.fillRect(cx - 1 + Math.round(flicker), flameY - 2, 2, 4);
@@ -4054,15 +4076,15 @@ export class Tilemap {
     }
 
     if (tileId === TILES.MINE_CRYSTAL_FLOOR || tileId === TILES.MINE_CRYSTAL_WALL || tileId === TILES.CRYSTAL_BARRIER) {
-      const pulse = 0.5 + 0.5 * Math.sin(t * 2 + screenX * 0.05 + screenY * 0.03);
+      const pulse = 0.5 + 0.5 * Math.sin(t * 2 + fx * 0.05 + fy * 0.03);
       ctx.fillStyle = `rgba(56, 189, 248, ${(0.06 + pulse * 0.14).toFixed(3)})`;
-      ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
+      ctx.fillRect(fx, fy, this.tileSize, this.tileSize);
       ctx.strokeStyle = `rgba(186, 230, 253, ${(0.25 + pulse * 0.5).toFixed(3)})`;
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(cx, screenY + 3);
-      ctx.lineTo(screenX + 11, screenY + 9);
-      ctx.lineTo(screenX + 5, screenY + 13);
+      ctx.moveTo(cx, fy + 3);
+      ctx.lineTo(fx + 11, fy + 9);
+      ctx.lineTo(fx + 5, fy + 13);
       ctx.stroke();
       if (tileId !== TILES.MINE_CRYSTAL_FLOOR) {
         this._drawLightHalo(ctx, cx, cy, 18, '56, 189, 248', 0.10 + pulse * 0.12);
@@ -4120,6 +4142,7 @@ export class Tilemap {
       scene.houseShadows = this._generateHouseShadows(sceneId, scene);
       scene.caveProps = this._generateCaveProps(sceneId, scene, seed);
       scene.chimneys = [];
+      this._pruneSignposts(sceneId, scene);
     }
     this._addVillageChimneys(this.scenes.overworld);
   }
@@ -4232,6 +4255,41 @@ export class Tilemap {
       scene.layers.collision[r][c] = 1;
       scene.chimneys.push({ x: c * this.tileSize + 8, y: r * this.tileSize + 2 });
     }
+  }
+
+  /** (FIX 2) Máximo 2 carteles por zona; el resto se retira y su dato de lectura se elimina. */
+  _pruneSignposts(sceneId, scene) {
+    const deco = scene.layers.decoration;
+    const collision = scene.layers.collision;
+    const cells = [];
+    for (let r = 0; r < scene.rows; r++) {
+      for (let c = 0; c < scene.cols; c++) {
+        if (deco[r][c] === TILES.SIGNPOST) cells.push({ r, c });
+      }
+    }
+    if (cells.length <= 2) return;
+    const signAt = (cell) =>
+      (scene.signposts || []).find(
+        (sp) => (sp.r ?? sp.row) === cell.r && (sp.c ?? sp.col) === cell.c
+      );
+    const priority = ['Entrenamiento', 'Forja de Brom', 'Camino a Valleverde', 'Templo'];
+    const priorityCells = cells.filter((cell) => {
+      const sp = signAt(cell);
+      return sp && priority.some((p) => (sp.shortName || '').includes(p));
+    });
+    const ordered = [...priorityCells, ...cells.filter((c) => !priorityCells.includes(c))];
+    const kept = new Set(ordered.slice(0, 2).map((x) => `${x.r},${x.c}`));
+    for (const { r, c } of cells) {
+      if (!kept.has(`${r},${c}`)) {
+        deco[r][c] = -1;
+        collision[r][c] = 0;
+      }
+    }
+    scene.signposts = (scene.signposts || []).filter((sp) => {
+      const sr = sp.r ?? sp.row;
+      const sc = sp.c ?? sp.col;
+      return kept.has(`${sr},${sc}`);
+    });
   }
 
   _drawFloorDecals(ctx, camera) {
@@ -4458,8 +4516,12 @@ export class Tilemap {
 
         const screenX = c * this.tileSize - camX;
         const screenY = r * this.tileSize - camY;
-        this._drawTile(ctx, decoTile, screenX, screenY);
-        this._drawAnimatedTileFx(ctx, decoTile, screenX, screenY);
+        // (FIX 5) Balanceo de copas de árbol con el viento.
+        const treeSway = decoTile === TILES.TREE_TOP
+          ? Math.round(Math.sin(this.animationClock * 1.6 + c * 0.7 + r * 0.3))
+          : 0;
+        this._drawTile(ctx, decoTile, screenX + treeSway, screenY);
+        this._drawAnimatedTileFx(ctx, decoTile, screenX + treeSway, screenY);
 
         // Sombra de alero proyectada sobre el muro situado justo debajo del tejado
         if (decoTile !== TILES.TREE_TOP && r + 1 < this.rows) {
@@ -4803,7 +4865,7 @@ export class Tilemap {
     ctx.restore();
   }
 
-  _drawTile(ctx, tileId, screenX, screenY) {
+  _drawTile(ctx, tileId, screenX, screenY, offsetX = 0, offsetY = 0) {
     const sx = (tileId % this.tilesetCols) * this.tileSize * ATLAS_SCALE;
     const sy = Math.floor(tileId / this.tilesetCols) * this.tileSize * ATLAS_SCALE;
     ctx.drawImage(
@@ -4812,8 +4874,8 @@ export class Tilemap {
       sy,
       this.tileSize * ATLAS_SCALE,
       this.tileSize * ATLAS_SCALE,
-      screenX,
-      screenY,
+      screenX + offsetX,
+      screenY + offsetY,
       this.tileSize,
       this.tileSize
     );

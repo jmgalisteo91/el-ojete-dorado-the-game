@@ -1273,12 +1273,12 @@ test('Modales modulares (Inventory 2x4 22x22, QuestLogView max 4, CharacterStats
   qlv.open();
   qlv.render(ctx);
 
-  // 3. CharacterStats ([Tab] alterna entre stats, achievements y skills)
+  // 3. CharacterStats ([Tab] alterna entre stats, skills y achievements)
   const cs = new CharacterStats(320, 180);
   cs.open();
   assert.equal(cs.activeTab, 'stats');
   cs.cycleTab();
-  assert.equal(cs.activeTab, 'achievements');
+  assert.equal(cs.activeTab, 'skills');
   cs.render(ctx, new Player({ x: 0, y: 0 }), null);
 
   // 4. LeaderboardView (Top 10 dentro de contenedor 290x150)
@@ -2007,7 +2007,16 @@ test('Entrenamiento en Valleverde, Combate Desarmado, Huellas Protegidas de Casa
   assert.equal(unarmedPlayer.getSwordDamage(), 1, 'Daño de puñetazo desarmado = 1');
   const fistHitbox = unarmedPlayer.getSwordHitbox();
   assert.ok(fistHitbox, 'Debe generar hitbox para el golpe');
-  assert.equal(fistHitbox.width, 14);
+  assert.equal(fistHitbox.width, 18, 'El puñetazo usa la misma caja que el primer espadazo');
+  assert.equal(unarmedPlayer.energySlashes.length, 0, 'Sin espada no debe crear proyectiles');
+
+  // (FIX 6) La bola de energía solo existe con Espada Overclockeada y vida llena.
+  const swordPlayer = new Player({ x: 100, y: 100 });
+  swordPlayer.hasSword = true;
+  swordPlayer.swordLevel = 3;
+  swordPlayer.hp = swordPlayer.effectiveMaxHp;
+  swordPlayer.tryAttack();
+  assert.equal(swordPlayer.energySlashes.length, 1, 'Con espada nivel 3 y vida llena sí aparece el tajo de energía');
 
   // 2. Progreso de Entrenamiento y Experiencia
   unarmedPlayer.reset();
@@ -2047,16 +2056,11 @@ test('Entrenamiento en Valleverde, Combate Desarmado, Huellas Protegidas de Casa
   assert.equal(deco[6][26], TILES.ANVIL, 'El yunque debe estar en col 26, row 6');
 
   // Verificar que existen letreros comerciales para las tiendas
+  // (FIX 2) Máximo 2 carteles por zona: se conservan los cruciales/misión.
   const signposts = overworld.signposts;
-  assert.ok(signposts.length >= 10, 'Deben existir letreros de señalización y tiendas');
-  const claraSign = signposts.find((s) => s.shortName.includes('Clara'));
-  assert.ok(claraSign, 'Letrero de Panadería de Clara presente');
-  const byteSign = signposts.find((s) => s.shortName.includes('Byte'));
-  assert.ok(byteSign, 'Letrero de Almacén de Byte presente');
+  assert.ok(signposts.length >= 1 && signposts.length <= 2, 'Valleverde debe tener como máximo 2 carteles');
   const smithSign = signposts.find((s) => s.shortName.includes('Brom'));
   assert.ok(smithSign, 'Letrero de Forja de Brom presente');
-  const herbSign = signposts.find((s) => s.shortName.includes('Lyra'));
-  assert.ok(herbSign, 'Letrero de Invernadero de Lyra presente');
   const trainingSign = signposts.find((s) => s.shortName.includes('Entrenamiento'));
   assert.ok(trainingSign, 'Letrero del Campo de Entrenamiento presente');
 });

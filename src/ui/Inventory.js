@@ -78,6 +78,8 @@ export class Inventory {
     this.gridCols = 4;
     this.gridRows = 2;
     this._lastSlots = [];
+    this._lastSelected = -1;
+    this._detailBobStart = 0;
     this._touchActions = [];
     this._pageButtons = [];
     this._pointerWasDown = false;
@@ -146,7 +148,7 @@ export class Inventory {
    *  - botones contextuales grandes → usar / tirar
    */
   handleTouchInput(input) {
-    if (!this.isOpen || !this.isTouchDevice || !input) return null;
+    if (!this.isOpen || !input) return null;
     const px = input.pointerX;
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
@@ -193,6 +195,7 @@ export class Inventory {
 
   open() {
     this.isOpen = true;
+    this._popStart = null;
     this.statusMessage = '';
     this._resetTouch();
   }
@@ -204,6 +207,7 @@ export class Inventory {
 
   close() {
     this.isOpen = false;
+    this._popStart = null;
     this.statusMessage = '';
     this._resetTouch();
   }
@@ -366,6 +370,22 @@ export class Inventory {
   render(ctx, player = null) {
     if (!this.isOpen) return;
 
+    // (BLOQUE 2.3) Pop de apertura del inventario.
+    const now = performance.now();
+    if (this._popStart == null) this._popStart = now;
+    const popScale = UILayout.popScale(this._popStart, now, 0.9);
+    ctx.save();
+    ctx.translate(160, 90);
+    ctx.scale(popScale, popScale);
+    ctx.translate(-160, -90);
+
+    if (this._lastSelected !== this.selectedIndex) {
+      this._lastSelected = this.selectedIndex;
+      this._detailBobStart = now;
+    }
+    const bobT = Math.min(1, (now - (this._detailBobStart || now)) / 260);
+    const detailBob = Math.sin(bobT * Math.PI) * 2;
+
     const totalItems = this.items.length;
     const currentPage = Math.floor(this.selectedIndex / this.visibleSlots);
     const totalPages = Math.max(1, Math.ceil(Math.max(totalItems, this.selectedIndex + 1) / this.visibleSlots));
@@ -447,8 +467,15 @@ export class Inventory {
         const item = this.items[slotIndex];
         this._lastSlots.push({ x: sx, y: sy, w: slotSize, h: slotSize, index: slotIndex });
 
-        // Fondo y bisel de ranura
-        ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+        // Fondo y bisel de ranura; la seleccionada recibe un gradiente dorado.
+        if (isSelected) {
+          const grad = ctx.createLinearGradient(sx, sy, sx + slotSize, sy + slotSize);
+          grad.addColorStop(0, 'rgba(253, 224, 71, 0.30)');
+          grad.addColorStop(1, 'rgba(253, 224, 71, 0.04)');
+          ctx.fillStyle = grad;
+        } else {
+          ctx.fillStyle = UI_COLORS.slotBg;
+        }
         ctx.fillRect(sx, sy, slotSize, slotSize);
 
         ctx.strokeStyle = isSelected ? UI_COLORS.slotSelectedBorder : UI_COLORS.slotBorder;
@@ -548,7 +575,7 @@ export class Inventory {
       ctx.strokeStyle = UI_COLORS.goldDim;
       ctx.strokeRect(iconBoxX + 0.5, iconBoxY + 0.5, 23, 23);
 
-      UILayout.drawItemIcon(ctx, this.itemsSheet, selected.iconIndex, iconBoxX + 4, iconBoxY + 4, 16);
+      UILayout.drawItemIcon(ctx, this.itemsSheet, selected.iconIndex, iconBoxX + 4, iconBoxY + 4 + detailBob, 16);
 
       // Nombre del objeto
       const titleX = iconBoxX + 29;
@@ -583,49 +610,34 @@ export class Inventory {
         ctx.fillText(line, padX, sepY + 5 + idx * 7);
       });
 
-      // (FIX M3.2) Acciones contextuales: botones grandes en táctil
+      // (BLOQUE 4.B) Botones de acción clicables para ratón y táctil.
       this._touchActions = [];
-      if (this.isTouchDevice) {
-        const gap = 4;
-        const btnW = (innerW - gap) / 2;
-        const btnH = 17;
-        const actY = rightRect.y + rightRect.h - btnH - 4;
-        const useRect = { id: 'use', x: padX, y: actY, w: btnW, h: btnH };
-        const dropRect = { id: 'drop', x: padX + btnW + gap, y: actY, w: btnW, h: btnH };
+      const gap = 4;
+      const btnW = (innerW - gap) / 2;
+      const btnH = 17;
+      const actY = rightRect.y + rightRect.h - btnH - 4;
+      const useRect = { id: 'use', x: padX, y: actY, w: btnW, h: btnH };
+      const dropRect = { id: 'drop', x: padX + btnW + gap, y: actY, w: btnW, h: btnH };
 
-        ctx.fillStyle = 'rgba(20, 60, 45, 0.95)';
-        ctx.fillRect(useRect.x, useRect.y, useRect.w, useRect.h);
-        ctx.strokeStyle = UI_COLORS.emerald;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(useRect.x + 0.5, useRect.y + 0.5, useRect.w - 1, useRect.h - 1);
-        ctx.font = `bold 6px ${UI_FONT}`;
-        ctx.fillStyle = UI_COLORS.emerald;
-        ctx.textAlign = 'center';
-        ctx.fillText('USAR / EQUIPAR', useRect.x + useRect.w / 2, useRect.y + 5);
+      ctx.fillStyle = 'rgba(20, 60, 45, 0.95)';
+      ctx.fillRect(useRect.x, useRect.y, useRect.w, useRect.h);
+      ctx.strokeStyle = UI_COLORS.emerald;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(useRect.x + 0.5, useRect.y + 0.5, useRect.w - 1, useRect.h - 1);
+      ctx.font = `bold 6px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.emerald;
+      ctx.textAlign = 'center';
+      ctx.fillText('USAR / EQUIPAR', useRect.x + useRect.w / 2, useRect.y + 5);
 
-        ctx.fillStyle = 'rgba(70, 20, 26, 0.95)';
-        ctx.fillRect(dropRect.x, dropRect.y, dropRect.w, dropRect.h);
-        ctx.strokeStyle = UI_COLORS.crimson;
-        ctx.strokeRect(dropRect.x + 0.5, dropRect.y + 0.5, dropRect.w - 1, dropRect.h - 1);
-        ctx.fillStyle = UI_COLORS.crimson;
-        ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5);
+      ctx.fillStyle = 'rgba(70, 20, 26, 0.95)';
+      ctx.fillRect(dropRect.x, dropRect.y, dropRect.w, dropRect.h);
+      ctx.strokeStyle = UI_COLORS.crimson;
+      ctx.strokeRect(dropRect.x + 0.5, dropRect.y + 0.5, dropRect.w - 1, dropRect.h - 1);
+      ctx.fillStyle = UI_COLORS.crimson;
+      ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5);
 
-        ctx.textAlign = 'left';
-        this._touchActions = [useRect, dropRect];
-      } else {
-        const actY = rightRect.y + rightRect.h - 15;
-        ctx.fillStyle = 'rgba(20, 29, 47, 0.92)';
-        ctx.fillRect(padX, actY, innerW, 11);
-        ctx.strokeStyle = UI_COLORS.borderInner;
-        ctx.strokeRect(padX + 0.5, actY + 0.5, innerW - 1, 10);
-
-        ctx.font = `bold 4px ${UI_FONT}`;
-        ctx.fillStyle = UI_COLORS.cyan;
-        ctx.fillText('[E] Usar / Equipar', padX + 4, actY + 3.5);
-
-        ctx.fillStyle = UI_COLORS.crimson;
-        ctx.fillText('[X] Descartar', padX + innerW - 48, actY + 3.5);
-      }
+      ctx.textAlign = 'left';
+      this._touchActions = [useRect, dropRect];
     } else {
       ctx.font = `bold 4.5px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.textMuted;
@@ -643,6 +655,7 @@ export class Inventory {
       });
     }
 
+    ctx.restore();
     ctx.restore();
   }
 

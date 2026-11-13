@@ -373,7 +373,9 @@ export class Player extends Entity {
       this.attackDuration = 0.18;
       this.attackCooldown = 0.28;
       this.attackTimer = this.attackDuration;
-      if (soundEngine && typeof soundEngine.playAttackSound === 'function') {
+      if (soundEngine && typeof soundEngine.playPunch === 'function') {
+        soundEngine.playPunch();
+      } else if (soundEngine && typeof soundEngine.playAttackSound === 'function') {
         soundEngine.playAttackSound();
       } else if (soundEngine && typeof soundEngine.playSwordSlash === 'function') {
         soundEngine.playSwordSlash();
@@ -493,8 +495,9 @@ export class Player extends Entity {
   getSwordHitbox() {
     if (!this.isAttacking) return null;
     const bigSwing = this.attackIsFinisher || this.attackIsDashStrike;
-    const reach = !this.hasSword ? 12 : (bigSwing ? 18 : 15);
-    const size = !this.hasSword ? 14 : (bigSwing ? 24 : 18);
+    // (FIX 6) El puñetazo usa la misma caja que el primer golpe de espada.
+    const reach = bigSwing ? 18 : 15;
+    const size = bigSwing ? 24 : 18;
     let hx = this.centerX - size / 2;
     let hy = this.centerY - size / 2;
 
@@ -1050,24 +1053,55 @@ export class Player extends Entity {
     // 6. Renderizar ataque: golpe desarmado o tajo luminoso de la Espada de la Recursividad
     if (this.attackTimer > 0) {
       if (!this.hasSword) {
-        // Golpe o puñetazo desarmado de entrenamiento
+        // (FIX 6) Puñetazo: puño, líneas de movimiento y estrella de impacto. Sin orbe.
         const progress = 1 - this.attackTimer / this.attackDuration;
-        const dirOffsets = {
-          right: [12, 0],
-          left: [-12, 0],
-          down: [0, 12],
-          up: [0, -12]
-        };
-        const [ox, oy] = dirOffsets[this.direction] || [12, 0];
-        const px = cx + ox * progress;
-        const py = cy + oy * progress;
+        let baseAngle = 0;
+        if (this.direction === 'right') baseAngle = 0;
+        else if (this.direction === 'down') baseAngle = Math.PI / 2;
+        else if (this.direction === 'left') baseAngle = Math.PI;
+        else baseAngle = -Math.PI / 2;
+        const reach = 8 + progress * 8;
+        const fx = cx + Math.cos(baseAngle) * reach;
+        const fy = cy + Math.sin(baseAngle) * reach;
         ctx.save();
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(px, py, 2.5 + progress * 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#f59e0b';
+        // Líneas de movimiento detrás del puño.
+        ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+        ctx.lineWidth = 1;
+        for (let i = -1; i <= 1; i++) {
+          const off = i * 3;
+          const sx = cx - Math.cos(baseAngle) * 4 - Math.sin(baseAngle) * off;
+          const sy = cy - Math.sin(baseAngle) * 4 + Math.cos(baseAngle) * off;
+          const ex = fx - Math.cos(baseAngle) * 4 - Math.sin(baseAngle) * off;
+          const ey = fy - Math.sin(baseAngle) * 4 + Math.cos(baseAngle) * off;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+        }
+        // Puño/guantelete.
+        ctx.fillStyle = '#e8c39e';
+        ctx.fillRect(Math.round(fx) - 1, Math.round(fy) - 1, 3, 3);
+        ctx.fillStyle = '#b8860b';
+        ctx.fillRect(Math.round(fx) - 2, Math.round(fy) - 2, 4, 1);
+        // Estrella de impacto delante del puño.
+        const ix = cx + Math.cos(baseAngle) * (reach + 3);
+        const iy = cy + Math.sin(baseAngle) * (reach + 3);
+        ctx.strokeStyle = '#ffd166';
         ctx.lineWidth = 1.2;
+        for (let i = 0; i < 4; i++) {
+          const a = baseAngle + Math.PI / 4 + (i * Math.PI) / 2;
+          ctx.beginPath();
+          ctx.moveTo(ix - Math.cos(a) * 3, iy - Math.sin(a) * 3);
+          ctx.lineTo(ix + Math.cos(a) * 3, iy + Math.sin(a) * 3);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#fff3b0';
+        ctx.fillRect(Math.round(ix) - 1, Math.round(iy) - 1, 2, 2);
+        // Arco de velocidad (no relleno).
+        ctx.strokeStyle = 'rgba(251,191,36,0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, reach + 2, baseAngle - 0.5, baseAngle + 0.5);
         ctx.stroke();
         ctx.restore();
       } else {

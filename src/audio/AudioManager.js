@@ -1225,6 +1225,19 @@ export class AudioManager {
     });
   }
 
+  playPunch() {
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({
+      freq: 95,
+      type: 'triangle',
+      startTime: now,
+      duration: 0.1,
+      peakGain: 0.16
+    });
+  }
+
   playEnemyHit() {
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;

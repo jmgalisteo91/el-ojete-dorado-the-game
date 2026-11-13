@@ -43,6 +43,7 @@ export class MainMenuAndScenes {
     this.noticeText = '';
     this.noticeTimer = 0;
     this.animTime = 0;
+    this._modalPopStart = -1;
 
     // Opciones persistentes
     this.options = {
@@ -145,6 +146,7 @@ export class MainMenuAndScenes {
   }
 
   openPauseMenu() {
+    this._modalPopStart = this.animTime;
     this.state = 'pause';
     this.selectedIndex = 0;
     this.noticeText = '';
@@ -219,6 +221,7 @@ export class MainMenuAndScenes {
   }
 
   openOptionsScreen(returnState = 'title') {
+    this._modalPopStart = this.animTime;
     this.previousStateBeforeOptions = returnState === 'pause' ? 'pause' : 'title';
     this.previousState = this.previousStateBeforeOptions;
     this.state = 'options';
@@ -1538,7 +1541,7 @@ export class MainMenuAndScenes {
       this._renderTitleBackdropPixelArt(ctx);
     } else {
       // Fondo semitransparente sobre la partida en pausa
-      ctx.fillStyle = 'rgba(8, 11, 20, 0.76)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
     }
 
@@ -2256,39 +2259,68 @@ export class MainMenuAndScenes {
       ctx.restore();
       return;
     }
-    ctx.font = 'bold 7px monospace';
-    ctx.textBaseline = 'top';
+    ctx.textBaseline = 'middle';
 
     items.forEach((item, idx) => {
       const b = hitboxes[idx];
       const isSelected = idx === this.selectedIndex;
+      const cy = b.y + b.h / 2;
 
-      // Marco del botón
-      ctx.fillStyle = isSelected ? '#ffd166' : '#2d3b55';
-      ctx.fillRect(b.x, b.y, b.w, b.h);
+      // (BLOQUE 2) Fila glass: gradiente dorado sutil en la seleccionada.
+      if (isSelected) {
+        const grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y);
+        grad.addColorStop(0, 'rgba(253, 224, 71, 0.24)');
+        grad.addColorStop(0.6, 'rgba(253, 224, 71, 0.08)');
+        grad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+      } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+      }
 
-      ctx.fillStyle = isSelected ? '#243154' : 'rgba(16, 21, 36, 0.88)';
-      ctx.fillRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+      const icon = this._menuIcon(item.label);
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = isSelected ? '#ffd700' : '#94a3b8';
+      ctx.fillText(icon, b.x + 7, cy);
 
-      ctx.textAlign = 'center';
+      const scale = isSelected ? 1.1 : 1;
+      ctx.save();
+      ctx.translate(b.x + 18, cy);
+      ctx.scale(scale, scale);
+      ctx.font = 'bold 7px monospace';
       if (item.disabled) {
         ctx.fillStyle = '#636e85';
       } else {
-        ctx.fillStyle = isSelected ? '#ffd885' : '#e2e8f0';
+        ctx.fillStyle = isSelected ? '#ffd700' : '#e2e8f0';
       }
-
-      const prefix = isSelected ? '▶ ' : '';
-      const suffix = isSelected ? ' ◀' : '';
-      ctx.fillText(
-        `${prefix}${item.label}${suffix}`,
-        b.x + Math.round(b.w / 2),
-        b.y + (isTitle ? 3 : 4)
-      );
+      ctx.fillText(item.label, 0, 0);
+      ctx.restore();
     });
 
     ctx.restore();
   }
 
+  _menuIcon(label) {
+    const l = String(label).toLowerCase();
+    if (l.includes('continuar')) return '▶';
+    if (l.includes('guardar') || l.includes('nube')) return '💾';
+    if (l.includes('salón') || l.includes('récord')) return '🏆';
+    if (l.includes('ajuste') || l.includes('opciones')) return '⚙';
+    if (l.includes('volumen') || l.includes('efectos')) return '🔊';
+    if (l.includes('música')) return '🎵';
+    if (l.includes('control')) return '🎮';
+    if (l.includes('volver') || l.includes('salir')) return '↩';
+    if (l.includes('nueva')) return '✦';
+    if (l.includes('cargar')) return '📂';
+    if (l.includes('equipo')) return '🛡';
+    if (l.includes('habilidad')) return '⚔';
+    return '◆';
+  }
 
   _renderTitleMenu(ctx, items, hitboxes) {
     const t = this.animTime;
@@ -2362,15 +2394,23 @@ export class MainMenuAndScenes {
     const winY = Math.round((this.viewportHeight - winH) / 2);
 
     ctx.save();
-    ctx.fillStyle = '#121624';
-    ctx.fillRect(winX, winY, winW, winH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
-    ctx.fillStyle = '#192136';
-    ctx.fillRect(winX + 3, winY + 3, winW - 6, winH - 6);
+    // (BLOQUE 2.3) Pop de apertura 0.8 → 1.0 en 200 ms.
+    const popElapsed = Math.max(0, this.animTime - (this._modalPopStart >= 0 ? this._modalPopStart : this.animTime - 0.2));
+    const popT = Math.min(1, popElapsed / 0.2);
+    const popScale = 0.8 + 0.2 * (1 - Math.pow(1 - popT, 3));
+    const pivotX = this.viewportWidth / 2;
+    const pivotY = this.viewportHeight / 2;
+    ctx.translate(pivotX, pivotY);
+    ctx.scale(popScale, popScale);
+    ctx.translate(-pivotX, -pivotY);
 
-    // Marco interior decorativo
-    ctx.strokeStyle = '#2d3b55';
+    // Glassmorphism azul noche + borde dorado 2 px.
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+    ctx.fillRect(winX, winY, winW, winH);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(winX + 1, winY + 1, winW - 2, winH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
     ctx.strokeRect(winX + 4.5, winY + 4.5, winW - 9, winH - 9);
 
@@ -2565,12 +2605,14 @@ export class MainMenuAndScenes {
     ctx.strokeStyle = '#2d3748';
     ctx.strokeRect(artX - 1.5, artY - 1.5, artW + 3, artH + 3);
 
-    // Cinta superior con el título del capítulo
+    // (FIX 3) Cinta superior con fondo oscuro y ancho limitado.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(artX, 0, artW, 13);
     ctx.font = 'bold 7px monospace';
     ctx.fillStyle = '#ffd166';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(slide.chapter, artX, 4);
+    ctx.fillText(slide.chapter, artX, 4, artW - 82);
 
     ctx.font = '6px monospace';
     ctx.fillStyle = '#9aa5b8';
@@ -3052,13 +3094,13 @@ export class MainMenuAndScenes {
     ctx.stroke();
 
     // Tres pedestales de los tesoros sagrados en la parte inferior
-    const pedY = y + 58;
+    const pedY = y + 34;
     const p1X = cx - 72;
     const p2X = cx;
     const p3X = cx + 72;
 
     const drawPedestal = (px, label, iconType, desc) => {
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = 'rgba(4, 8, 16, 0.7)';
       ctx.fillRect(px - 22, pedY + 12, 44, 18);
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 1;
@@ -3098,8 +3140,10 @@ export class MainMenuAndScenes {
     drawPedestal(p2X, 'Armadura', ITEM_ICONS.ARMOR, 'Binaria');
     drawPedestal(p3X, 'Reliquia', ITEM_ICONS.GOLDEN_APPLE, 'Little');
 
-    // Cartel superior
-    ctx.font = 'bold 7px monospace';
+    // (FIX 3) Cartel inferior con fondo oscuro y 10 px de margen sobre las cajas.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(x + 4, y + h - 14, w - 8, 14);
+    ctx.font = 'bold 6.5px monospace';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffd166';
     ctx.fillText('【 三種の神器 · LOS 3 ARTEFACTOS SAGRADOS 】', cx, y + h - 5);

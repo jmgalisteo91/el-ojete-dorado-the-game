@@ -733,6 +733,9 @@ export class AnimeCutsceneManager {
     ctx.save();
     ctx.fillStyle = 'rgba(7, 10, 20, 0.94)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
+    // (FIX 3) Panel semitransparente extra detrás del bloque de texto.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(boxX + 6, boxY + 6, boxW - 12, boxH - 12);
 
     // Borde exterior
     ctx.strokeStyle = borderColor;

@@ -374,6 +374,7 @@ export class RPGGame {
     this._setupAIChatDOM();
 
     this.npcs = this._createVillageNPCs();
+    this.dialogueBox.npcRegistry = this.npcs;
     this.animals = this._createVillageAnimals();
     this.enemies = this._createFirstStageEnemies();
     this.worldItems = this._createWorldItems();
@@ -5348,7 +5349,7 @@ export class RPGGame {
       const swordBox = this.player.getSwordHitbox();
       if (swordBox) attackBoxes.push({ box: swordBox, fromSlash: false });
     }
-    if (this.player.energySlashes && this.player.energySlashes.length > 0) {
+    if (this.player.hasSword && this.player.energySlashes && this.player.energySlashes.length > 0) {
       for (const slash of this.player.energySlashes) {
         if (!slash.active) continue;
         attackBoxes.push({
@@ -6013,6 +6014,10 @@ export class RPGGame {
     if (this.questLogView && this.questLogView.isOpen) {
       // (FIX M3.4) Toque para seleccionar y arrastre para scroll
       this.questLogView.handleTouchInput(this.input);
+      // (BLOQUE 4.C) Clic de ratón en las pestañas Principal / Secundarias.
+      if (this.input.pointerJustClicked) {
+        this.questLogView.handleClick(this.input.pointerX, this.input.pointerY);
+      }
       if (this.input.consumeKey('KeyM')) {
         this.questLogView.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
@@ -6193,7 +6198,13 @@ export class RPGGame {
         }
       }
       if (this.player.tryAttack()) {
-        this.music.playSwordSlash();
+        if (this.player.hasSword) {
+          this.music.playSwordSlash();
+        } else if (typeof this.music.playPunch === 'function') {
+          this.music.playPunch();
+        } else {
+          this.music.playSwordSlash();
+        }
       }
     }
 

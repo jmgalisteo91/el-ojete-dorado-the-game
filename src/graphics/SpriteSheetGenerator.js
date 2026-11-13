@@ -752,16 +752,31 @@ async function generateTilesetSheet() {
     oy: Math.floor(id / cols) * TILE_SIZE
   });
 
+  const tileNoise = (x, y, seed = 0) => {
+    let h = (x * 374761393 + y * 668265263 + seed * 69069) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+
+  const fillNoise = (ox, oy, seed, colors, density = 0.42) => {
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) {
+        const n = tileNoise(x, y, seed);
+        if (n < density) {
+          const c = colors[Math.floor(tileNoise(x + 7, y + 3, seed + 19) * colors.length)];
+          px(ctx, ox + x, oy + y, 1, 1, c);
+        }
+      }
+    }
+  };
+
   const fillGrass = (ox, oy, variant = 0) => {
     px(ctx, ox, oy, 16, 16, '#3f7d3c');
-    px(ctx, ox + 2, oy + 3, 2, 1, '#4f9649');
-    px(ctx, ox + 10, oy + 7, 2, 1, '#4f9649');
-    px(ctx, ox + 5, oy + 12, 2, 1, '#326630');
-    if (variant === 1) {
-      px(ctx, ox + 3, oy + 8, 1, 2, '#5cb054');
-      px(ctx, ox + 4, oy + 9, 1, 1, '#5cb054');
-      px(ctx, ox + 12, oy + 3, 1, 2, '#5cb054');
-      px(ctx, ox + 11, oy + 13, 2, 1, '#326630');
+    fillNoise(ox, oy, 31 + variant * 7, ['#4f9649', '#326630', '#5cb054', '#3a7238'], 0.2);
+    for (let i = 0; i < 5; i++) {
+      const x = 1 + Math.floor(tileNoise(i, variant, 91) * 14);
+      const y = 1 + Math.floor(tileNoise(i, variant, 47) * 14);
+      px(ctx, ox + x, oy + y, 1, 2, i % 2 ? '#5cb054' : '#326630');
     }
   };
 
@@ -776,30 +791,37 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.PATH);
     px(ctx, ox, oy, 16, 16, '#b88b5a');
-    px(ctx, ox + 2, oy + 2, 3, 2, '#a37748');
-    px(ctx, ox + 10, oy + 5, 2, 2, '#c99e6e');
-    px(ctx, ox + 5, oy + 11, 3, 2, '#a37748');
-    px(ctx, ox + 12, oy + 13, 2, 1, '#8c6238');
+    fillNoise(ox, oy, 73, ['#a37748', '#c99e6e', '#8c6238', '#bd9463'], 0.2);
+    for (let i = 0; i < 4; i++) {
+      const x = 1 + Math.floor(tileNoise(i, 0, 17) * 14);
+      const y = 1 + Math.floor(tileNoise(i, 0, 29) * 14);
+      px(ctx, ox + x, oy + y, 1, 1, '#8c6238');
+    }
   }
   {
     const { ox, oy } = cellOrigin(TILES.COBBLE);
     px(ctx, ox, oy, 16, 16, '#6f7987');
+    fillNoise(ox, oy, 101, ['#7c8695', '#646e7c', '#8b95a5', '#59616d'], 0.26);
     const stones = [
-      [1, 1, 6, 6], [8, 1, 7, 6],
-      [1, 8, 4, 7], [6, 8, 5, 7], [12, 8, 3, 7]
+      [1, 2, 5, 4], [8, 1, 6, 5],
+      [2, 9, 4, 5], [7, 8, 5, 4], [12, 10, 3, 4]
     ];
     for (const [sx, sy, sw, sh] of stones) {
       px(ctx, ox + sx, oy + sy, sw, sh, '#8b95a5');
-      px(ctx, ox + sx, oy + sy, sw - 1, 1, '#a3adbd');
+      px(ctx, ox + sx + 1, oy + sy + 1, Math.max(1, sw - 2), 1, '#a3adbd');
     }
   }
   [TILES.WATER_1, TILES.WATER_2].forEach((id, idx) => {
     const { ox, oy } = cellOrigin(id);
     px(ctx, ox, oy, 16, 16, '#286494');
+    fillNoise(ox, oy, 211 + idx * 13, ['#2d6f9f', '#245b87', '#3274a3'], 0.24);
     const shift = idx * 3;
-    px(ctx, ox + ((2 + shift) % 13), oy + 4, 4, 1, '#4ca0d9');
-    px(ctx, ox + ((8 - shift + 13) % 13), oy + 10, 5, 1, '#4ca0d9');
-    px(ctx, ox + ((5 + shift) % 13), oy + 14, 3, 1, '#1e4c73');
+    for (let i = 0; i < 3; i++) {
+      const yy = 3 + i * 5;
+      const xx = (2 + shift + i * 4) % 12;
+      px(ctx, ox + xx, oy + yy, 4, 1, 'rgba(120, 205, 235, 0.55)');
+      px(ctx, ox + xx + 1, oy + yy + 1, 2, 1, 'rgba(30, 76, 115, 0.35)');
+    }
   });
   {
     const { ox, oy } = cellOrigin(TILES.BRIDGE);
@@ -863,8 +885,8 @@ async function generateTilesetSheet() {
   }
   {
     const { ox, oy } = cellOrigin(TILES.WALL_WINDOW);
-    px(ctx, ox, oy, 16, 16, '#dfd3c3');
-    px(ctx, ox, oy, 16, 2, '#5c3d28');
+    px(ctx, ox, oy, 16, 16, '#b7a88f');
+    px(ctx, ox, oy, 16, 2, '#4a3020');
     px(ctx, ox, oy + 13, 16, 3, '#6e737b');
     // Marco grueso de 2 px y brillo de vela en el interior.
     px(ctx, ox + 3, oy + 3, 10, 9, '#3b2416');
@@ -877,8 +899,8 @@ async function generateTilesetSheet() {
   }
   {
     const { ox, oy } = cellOrigin(TILES.WALL_DOOR);
-    px(ctx, ox, oy, 16, 16, '#dfd3c3');
-    px(ctx, ox, oy, 16, 2, '#5c3d28');
+    px(ctx, ox, oy, 16, 16, '#b7a88f');
+    px(ctx, ox, oy, 16, 2, '#4a3020');
     px(ctx, ox, oy + 13, 16, 3, '#6e737b');
     px(ctx, ox + 3, oy + 2, 10, 12, '#4a2c18');
     px(ctx, ox + 4, oy + 3, 8, 10, '#7c4a2b');
@@ -1052,14 +1074,17 @@ async function generateTilesetSheet() {
       px(ctx, ox + x, oy, 1, 16, '#81a1c1');
     }
   }
-  // 36: STONE_FLOOR (Suelo frío de piedra del calabozo)
+  // 36: STONE_FLOOR (piedra irregular del calabozo, sin retícula)
   {
     const { ox, oy } = cellOrigin(TILES.STONE_FLOOR);
     px(ctx, ox, oy, 16, 16, '#3b4252');
-    px(ctx, ox + 1, oy + 1, 6, 6, '#434c5e');
-    px(ctx, ox + 8, oy + 1, 7, 6, '#4c566a');
-    px(ctx, ox + 1, oy + 8, 8, 7, '#4c566a');
-    px(ctx, ox + 10, oy + 8, 5, 7, '#434c5e');
+    fillNoise(ox, oy, 307, ['#434c5e', '#4c566a', '#323844', '#465067'], 0.3);
+    for (let i = 0; i < 2; i++) {
+      const x = 2 + Math.floor(tileNoise(i, 0, 401) * 10);
+      const y = 2 + Math.floor(tileNoise(i, 0, 409) * 10);
+      px(ctx, ox + x, oy + y, 2, 1, '#2a303d');
+      px(ctx, ox + x + 1, oy + y + 1, 1, 2, '#2a303d');
+    }
   }
   // 37: ALTAR_PEDESTAL (Pedestal sagrado para el arma y la armadura)
   {
@@ -1093,11 +1118,9 @@ async function generateTilesetSheet() {
     px(ctx, ox, oy, 16, 16, '#0f2416');
     px(ctx, ox + 1, oy + 2, 6, 5, '#163d23');
     px(ctx, ox + 8, oy + 7, 7, 6, '#13331d');
+    fillNoise(ox, oy, 503, ['#163d23', '#13331d', '#1b4a2b', '#0d1f12'], 0.3);
     px(ctx, ox + 3, oy + 10, 4, 3, '#10b981');
     px(ctx, ox + 11, oy + 3, 3, 2, '#34d399');
-    // Rejilla de hierro corrosiva
-    px(ctx, ox, oy + 7, 16, 1, '#1e293b');
-    px(ctx, ox + 7, oy, 1, 16, '#1e293b');
   }
   // 41: SEWER_PIPE_WALL (Pared de tuberías de fango)
   {
@@ -1110,14 +1133,16 @@ async function generateTilesetSheet() {
     px(ctx, ox + 5, oy + 9, 2, 4, '#10b981'); // Gota de ácido verde
     px(ctx, ox + 12, oy + 9, 1, 3, '#059669');
   }
-  // 42: MINE_CRYSTAL_FLOOR (Suelo de silicio de las Minas de la Recursión)
+  // 42: MINE_CRYSTAL_FLOOR (silicio irregular, sin retícula visible)
   {
     const { ox, oy } = cellOrigin(TILES.MINE_CRYSTAL_FLOOR);
     px(ctx, ox, oy, 16, 16, '#181528');
-    px(ctx, ox + 2, oy + 3, 5, 4, '#241e3d');
-    px(ctx, ox + 9, oy + 8, 6, 5, '#2e274e');
-    px(ctx, ox + 5, oy + 4, 3, 2, '#818cf8'); // Veta luminiscente de silicio
-    px(ctx, ox + 12, oy + 11, 2, 3, '#38bdf8');
+    fillNoise(ox, oy, 421, ['#241e3d', '#2e274e', '#1e1a33', '#2a2447'], 0.34);
+    for (let i = 0; i < 3; i++) {
+      const x = 2 + Math.floor(tileNoise(i, 0, 431) * 12);
+      const y = 2 + Math.floor(tileNoise(i, 0, 439) * 12);
+      px(ctx, ox + x, oy + y, 1, 1, i % 2 ? '#818cf8' : '#38bdf8');
+    }
   }
   // 43: MINE_CHASM (Gran Abismo que exige Dash Asíncrono)
   {
@@ -1142,11 +1167,9 @@ async function generateTilesetSheet() {
     const { ox, oy } = cellOrigin(TILES.FORGE_LAVA_FLOOR);
     px(ctx, ox, oy, 16, 16, '#450a0a'); // Magma profundo
     px(ctx, ox + 1, oy + 1, 14, 14, '#b91c1c');
-    px(ctx, ox + 4, oy + 4, 8, 8, '#f97316');
-    px(ctx, ox + 6, oy + 6, 4, 4, '#fde047'); // Núcleo ígneo
-    // Rejilla de hierro fundido
-    px(ctx, ox, oy + 7, 16, 2, '#1c1917');
-    px(ctx, ox + 7, oy, 2, 16, '#1c1917');
+    fillNoise(ox, oy, 601, ['#991b1b', '#dc2626', '#f97316', '#7f1d1d'], 0.32);
+    px(ctx, ox + 5, oy + 5, 6, 6, '#f97316');
+    px(ctx, ox + 7, oy + 7, 2, 2, '#fde047');
   }
   // 46: FORGE_BOILER_WALL (Caldera de bronce y vapor a presión)
   {
@@ -1204,7 +1227,7 @@ async function generateTilesetSheet() {
   // 51: WALL_FRONT (muro frontal con borde superior oscuro y zócalo)
   {
     const { ox, oy } = cellOrigin(TILES.WALL_FRONT);
-    px(ctx, ox, oy, 16, 16, '#c7b394');
+    px(ctx, ox, oy, 16, 16, '#8b7b63');
     px(ctx, ox, oy, 16, 3, '#3a2a1e');
     px(ctx, ox, oy + 1, 16, 1, '#20150f');
     for (let y = 4; y < 13; y += 3) {

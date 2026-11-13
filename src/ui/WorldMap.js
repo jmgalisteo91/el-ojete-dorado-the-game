@@ -202,8 +202,6 @@ export class WorldMap {
     this._drawTopographyBackground(ctx, mapX, mapY, mapW, mapH);
 
     // 3. Senderos y conexiones viales entre provincias
-    this._drawInterconnectingRoads(ctx);
-
     // 4. Determinar estado de progreso (Núcleos, Reliquias y Bosses)
     const status = this._computeProgressStatus(player, enemies);
 
@@ -218,6 +216,9 @@ export class WorldMap {
     this._drawCenterVillageRegion(ctx, locInfo.zone === 'center', status, t);
     this._drawEastSanctuaryRegion(ctx, locInfo.zone === 'east', status, t);
     this._drawSouthSwampRegion(ctx, locInfo.zone === 'south', status, t);
+
+    // (BLOQUE 3.3) Conexiones discontinuas por encima de las islas.
+    this._drawInterconnectingRoads(ctx);
 
     // 7. Decoraciones cartográficas (Rosa de los Vientos)
     this._drawCompassRose(ctx, 22, 140);
@@ -404,11 +405,14 @@ export class WorldMap {
    * Fondo cartográfico: mar antiguo y cuadrícula náutica tenue.
    */
   _drawTopographyBackground(ctx, mapX, mapY, mapW, mapH) {
-    ctx.fillStyle = '#1d3345';
+    // (BLOQUE 3) Noche profunda + retícula estelar sutil.
+    const night = ctx.createLinearGradient(0, mapY, 0, mapY + mapH);
+    night.addColorStop(0, '#0a1626');
+    night.addColorStop(1, '#050b14');
+    ctx.fillStyle = night;
     ctx.fillRect(mapX, mapY, mapW, mapH);
 
-    // Rejilla cartográfica
-    ctx.strokeStyle = 'rgba(148, 197, 224, 0.08)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.07)';
     ctx.lineWidth = 0.5;
     for (let x = mapX + 20; x < mapX + mapW; x += 32) {
       ctx.beginPath();
@@ -422,32 +426,46 @@ export class WorldMap {
       ctx.lineTo(mapX + mapW, y);
       ctx.stroke();
     }
+
+    const vignette = ctx.createRadialGradient(
+      mapX + mapW / 2, mapY + mapH / 2, mapH * 0.25,
+      mapX + mapW / 2, mapY + mapH / 2, mapW * 0.65
+    );
+    vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(mapX, mapY, mapW, mapH);
   }
 
   /**
    * Traza los caminos adoquinados y puentes que comunican Valleverde con las 4 direcciones.
    */
   _drawInterconnectingRoads(ctx) {
+    const t = performance.now() * 0.001;
     ctx.save();
-    // Camino Norte: Valleverde a Cumbres
-    ctx.fillStyle = '#8f7b59';
-    ctx.fillRect(158, 54, 4, 10);
-
-    // Camino Sur: Valleverde a Marismas
-    ctx.fillRect(158, 104, 4, 10);
-
-    // Camino Oeste: Valleverde a Páramo de AI Alex
-    ctx.fillRect(98, 82, 14, 4);
-
-    // Camino Este: Valleverde al Valle de la Consagración (Puente de madera)
+    // (BLOQUE 3.3) Rutas discontinuas animadas entre provincias.
+    ctx.strokeStyle = 'rgba(229, 192, 123, 0.8)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 3]);
+    ctx.lineDashOffset = -(t * 14) % 7;
+    const routes = [
+      [160, 54, 160, 76],
+      [160, 96, 160, 116],
+      [100, 84, 144, 84],
+      [176, 84, 208, 84]
+    ];
+    for (const [x1, y1, x2, y2] of routes) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // Puente de madera del camino este.
     ctx.fillStyle = '#5c3a21';
     ctx.fillRect(208, 81, 14, 6);
     ctx.fillStyle = '#b38243';
     ctx.fillRect(209, 82, 12, 4);
-    for (let bx = 210; bx <= 219; bx += 3) {
-      ctx.fillStyle = '#3a2210';
-      ctx.fillRect(bx, 81, 1, 6);
-    }
     ctx.restore();
   }
 
@@ -733,22 +751,37 @@ export class WorldMap {
    */
   _drawRegionCard(ctx, x, y, w, h, isActive, bgColor, borderColor, title, t) {
     ctx.save();
-    // Fondo de la provincia
+    // (BLOQUE 3.2) Silueta orgánica tipo isla en lugar de rectángulo.
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const blob = () => {
+      ctx.beginPath();
+      for (let i = 0; i <= 28; i++) {
+        const a = (i / 28) * Math.PI * 2;
+        const wob = 1 + Math.sin(a * 3 + x * 0.04) * 0.055 + Math.sin(a * 5 + y * 0.05) * 0.035;
+        const px = cx + Math.cos(a) * (w / 2) * wob;
+        const py = cy + Math.sin(a) * (h / 2) * wob;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    };
+
     ctx.fillStyle = bgColor;
-    ctx.fillRect(x, y, w, h);
+    blob();
+    ctx.fill();
 
     if (isActive) {
-      // Halo pulsante Zelda de Zona Activa
       const pulse = 0.65 + Math.sin(t * 6) * 0.35;
       ctx.strokeStyle = `rgba(255, 215, 0, ${pulse})`;
       ctx.lineWidth = 1.8;
-      ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+      blob();
+      ctx.stroke();
 
-      // Resplandor interior
       ctx.fillStyle = 'rgba(255, 230, 100, 0.08)';
-      ctx.fillRect(x, y, w, h);
+      blob();
+      ctx.fill();
 
-      // Pastilla animada superior "► ZONA ACTUAL ◄"
       ctx.fillStyle = '#ffd700';
       ctx.fillRect(x + w / 2 - 24, y - 4, 48, 7);
       ctx.fillStyle = '#0f172a';
@@ -758,13 +791,16 @@ export class WorldMap {
     } else {
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      blob();
+      ctx.stroke();
     }
 
-    // Título de la provincia
-    ctx.fillStyle = isActive ? '#fffbeb' : '#cbd5e1';
+    // Título con sombra negra.
     ctx.font = 'bold 5px monospace';
     ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillText(title, x + w / 2 + 1, y + 7);
+    ctx.fillStyle = isActive ? '#fffbeb' : '#cbd5e1';
     ctx.fillText(title, x + w / 2, y + 6);
 
     ctx.restore();
@@ -782,9 +818,11 @@ export class WorldMap {
     ctx.lineWidth = 0.5;
     ctx.strokeRect(cx - tw / 2 - 2.5, cy - 3, tw + 5, 6);
 
-    ctx.fillStyle = color;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx + 1, cy + 1.5);
+    ctx.fillStyle = color;
     ctx.fillText(text, cx, cy + 0.5);
   }
 
@@ -805,31 +843,31 @@ export class WorldMap {
     ctx.arc(px, py, ringRadius, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 2. Icono de Héroe (capucha verde y pluma/espada estilo Link)
+    // 2. (BLOQUE 3.2) Estrella dorada pulsante que representa al héroe.
     const bob = Math.sin(t * 6) * 1.5;
     const hy = py - 4 + bob;
-
-    // Cabeza / gorro verde
-    ctx.fillStyle = '#15803d';
+    const pulse = 1 + Math.sin(t * 5) * 0.18;
+    const glow = ctx.createRadialGradient(px, hy, 1, px, hy, 9 * pulse);
+    glow.addColorStop(0, 'rgba(253, 224, 71, 0.45)');
+    glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(px - 10, hy - 10, 20, 20);
+    ctx.fillStyle = '#ffd700';
     ctx.beginPath();
-    ctx.moveTo(px, hy - 4);
-    ctx.lineTo(px - 3.5, hy + 2);
-    ctx.lineTo(px + 3.5, hy + 2);
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const r = (i % 2 === 0 ? 5.5 : 2.3) * pulse;
+      const sx = px + Math.cos(a) * r;
+      const sy = hy + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    }
     ctx.closePath();
     ctx.fill();
-
-    // Cara
-    ctx.fillStyle = '#fed7aa';
-    ctx.fillRect(px - 2, hy + 1, 4, 3);
-
-    // Ojos
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(px - 1, hy + 2, 1, 1);
-    ctx.fillRect(px + 1, hy + 2, 1, 1);
-
-    // Túnica verde
-    ctx.fillStyle = '#16a34a';
-    ctx.fillRect(px - 2.5, hy + 4, 5, 3);
+    ctx.fillStyle = '#fff3b0';
+    ctx.beginPath();
+    ctx.arc(px, hy, 1.3, 0, Math.PI * 2);
+    ctx.fill();
 
     // 3. Cartel "★ TÚ" flotante
     ctx.fillStyle = '#090705';

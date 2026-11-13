@@ -22,6 +22,7 @@ export class CharacterStats {
     this.isTouchDevice = false;
     this._skillRowRects = [];
     this._tabRects = [];
+    this._popStart = null;
   }
 
   setTouchMode(isTouch) {
@@ -30,6 +31,7 @@ export class CharacterStats {
 
   open() {
     this.isOpen = true;
+    this._popStart = null;
   }
 
   close() {
@@ -47,7 +49,7 @@ export class CharacterStats {
   }
 
   cycleTab() {
-    const order = ['stats', 'achievements', 'skills'];
+    const order = ['stats', 'skills', 'achievements'];
     this.activeTab = order[(order.indexOf(this.activeTab) + 1) % order.length];
   }
 
@@ -119,11 +121,11 @@ export class CharacterStats {
       return true;
     }
     if (input.consumeKey('Digit2') || input.consumeKey('Numpad2')) {
-      this.switchTab('achievements');
+      this.switchTab('skills');
       return true;
     }
     if (input.consumeKey('Digit3') || input.consumeKey('Numpad3')) {
-      this.switchTab('skills');
+      this.switchTab('achievements');
       return true;
     }
 
@@ -140,10 +142,10 @@ export class CharacterStats {
           this.switchTab('stats');
           return true;
         } else if (px >= modal.x + 100 && px <= modal.x + 196) {
-          this.switchTab('achievements');
+          this.switchTab('skills');
           return true;
         } else if (px >= modal.x + 198 && px <= modal.x + modal.w - 5) {
-          this.switchTab('skills');
+          this.switchTab('achievements');
           return true;
         }
       }
@@ -181,15 +183,27 @@ export class CharacterStats {
   render(ctx, player = null, achievementManager = null) {
     if (!this.isOpen) return;
 
+    const now = performance.now();
+    if (this._popStart == null) this._popStart = now;
+    const pop = UILayout.popScale(this._popStart, now);
+
     const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;
     const totalCount = achievementManager ? achievementManager.getTotalCount() : 11;
     const skillPts = player ? (player.skillPoints || 0) : 0;
 
+    ctx.fillStyle = 'rgba(3, 5, 10, 0.6)';
+    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+    ctx.save();
+    ctx.translate(160, 90);
+    ctx.scale(pop, pop);
+    ctx.translate(-160, -90);
+
     const frame = UILayout.drawModalFrame(ctx, {
-      title: 'FICHA DEL DESARROLLADOR',
+      title: 'FICHA DEL HÉROE',
       icon: '⚙️',
       badge: '[Tab] Cambiar Vista',
-      closeLabel: '[Esc] Cerrar'
+      closeLabel: '[Esc] Cerrar',
+      veil: false
     });
 
     const { content } = frame;
@@ -211,20 +225,31 @@ export class CharacterStats {
     const tabW = Math.floor((content.w - tabGap * 2) / 3);
 
     const tabs = [
-      { id: 'stats', label: '[1] PERFIL & ATRIBUTOS' },
-      { id: 'achievements', label: `[2] LOGROS (${unlockedCount}/${totalCount})` },
-      { id: 'skills', label: `[3] HABILIDADES (${skillPts}pt)` }
+      { id: 'stats', label: '[1] ATRIBUTOS' },
+      { id: 'skills', label: `[2] HABILIDADES (${skillPts}pt)` },
+      { id: 'achievements', label: `[3] LOGROS (${unlockedCount}/${totalCount})` }
     ];
 
     tabs.forEach((tab, idx) => {
       const tx = content.x + idx * (tabW + tabGap);
       this._tabRects.push({ x: tx, y: tabBarY, w: tabW, h: tabH, id: tab.id });
       const isActive = this.activeTab === tab.id;
-      ctx.fillStyle = isActive ? UI_COLORS.slotSelectedBg : UI_COLORS.panelBg;
+      if (isActive) {
+        const g = ctx.createLinearGradient(tx, tabBarY, tx, tabBarY + tabH);
+        g.addColorStop(0, 'rgba(253, 224, 71, 0.28)');
+        g.addColorStop(1, 'rgba(253, 224, 71, 0.06)');
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = UI_COLORS.panelBg;
+      }
       ctx.fillRect(tx, tabBarY, tabW, tabH);
       ctx.strokeStyle = isActive ? UI_COLORS.gold : UI_COLORS.borderInner;
       ctx.lineWidth = 1;
       ctx.strokeRect(tx + 0.5, tabBarY + 0.5, tabW - 1, tabH - 1);
+      if (isActive) {
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.fillRect(tx + 2, tabBarY + tabH - 2, tabW - 4, 2);
+      }
 
       ctx.font = `bold ${this.isTouchDevice ? '5.4' : '4.1'}px ${UI_FONT}`;
       ctx.fillStyle = isActive ? UI_COLORS.gold : UI_COLORS.textSecondary;
@@ -251,6 +276,7 @@ export class CharacterStats {
       this._renderAchievementsTab(ctx, bodyRect, achievementManager);
     }
 
+    ctx.restore();
     ctx.restore();
   }
 
@@ -303,7 +329,7 @@ export class CharacterStats {
     // 2. Barras de progreso compactas (Salud, Blindaje, Robotización, Experiencia, Ataque)
     const barX = leftRect.x + 5;
     const barW = leftRect.w - 10;
-    let by = leftRect.y + 47;
+    let by = leftRect.y + 50;
     const barSpacing = 14;
 
     const hpCur = player ? Math.max(0, player.hp) : 6;
@@ -316,8 +342,26 @@ export class CharacterStats {
       value: hpCur,
       max: hpMax,
       color: UI_COLORS.crimson,
+      gradient: ['#ef4444', '#f97316'],
       label: 'SALUD VITAL',
       valueText: `${hpCur.toFixed(1).replace('.0', '')}/${hpMax} ♥`
+    });
+    by += barSpacing;
+
+    // (BLOQUE 4.D) Stamina con gradiente verde.
+    const staminaCur = player ? Math.max(0, player.stamina ?? 100) : 100;
+    const staminaMax = player ? (player.maxStamina || 100) : 100;
+    UILayout.drawBar(ctx, {
+      x: barX,
+      y: by,
+      w: barW,
+      h: 5,
+      value: staminaCur,
+      max: staminaMax,
+      color: UI_COLORS.emerald,
+      gradient: ['#22c55e', '#84cc16'],
+      label: 'STAMINA DE COMBATE',
+      valueText: `${Math.round(staminaCur)}/${staminaMax}`
     });
     by += barSpacing;
 
@@ -332,6 +376,7 @@ export class CharacterStats {
       value: hasArmor ? armorPts : 0,
       max: maxArmorPts,
       color: UI_COLORS.cyan,
+      gradient: ['#0ea5e9', '#67e8f9'],
       label: 'BLINDAJE BINARIO',
       valueText: hasArmor ? `${armorPts}/${maxArmorPts} 🛡️` : 'SIN CORAZA'
     });
@@ -349,6 +394,7 @@ export class CharacterStats {
       value: robotVal,
       max: 100,
       color: robotColor,
+      gradient: robotVal > 50 ? ['#f59e0b', '#ef4444'] : ['#10b981', '#a3e635'],
       label: 'ROBOTIZACIÓN IA',
       valueText: `${robotVal}% 🤖`
     });
@@ -374,25 +420,13 @@ export class CharacterStats {
         value: xpProgress,
         max: xpRange,
         color: UI_COLORS.gold,
+        gradient: ['#f59e0b', '#fde047'],
+        insideText: `Nv. ${playerLvl}`,
         label: 'EXP. PROGRAMADOR',
-        valueText: `NV ${playerLvl} (${xpPct}%)`
+        valueText: `${xpPct}%`
       });
     }
     by += barSpacing;
-
-    const hasSword = Boolean(player && player.hasSword);
-    const atkPower = hasSword ? (robotVal > 50 ? 70 : 100) : 25;
-    UILayout.drawBar(ctx, {
-      x: barX,
-      y: by,
-      w: barW,
-      h: 5,
-      value: atkPower,
-      max: 100,
-      color: hasSword ? UI_COLORS.gold : UI_COLORS.textMuted,
-      label: 'POTENCIA RECURSIVA',
-      valueText: hasSword ? (robotVal > 50 ? '-30% PENAL.' : '100% ⚔️') : 'DESARMADO'
-    });
 
     // =========================================================================
     // PANEL DERECHO: Habilidades de Combate y Reliquias
@@ -464,49 +498,107 @@ export class CharacterStats {
     UILayout.drawPanel(ctx, rect, {
       bg: UI_COLORS.panelBg,
       border: UI_COLORS.borderInner,
-      headerText: `ÁRBOL DE ESPECIALIZACIÓN · PUNTOS DISPONIBLES: ${player ? player.skillPoints : 0}`
+      headerText: `HABILIDADES · PUNTOS: ${player ? (player.skillPoints || 0) : 0}`
     });
 
-    const x = rect.x + 6;
-    const w = rect.w - 12;
-    let y = rect.y + 16;
+    const pad = 6;
+    const gap = 4;
+    const cardW = Math.floor((rect.w - pad * 2 - gap) / 2);
+    const cardH = 30;
+    const startX = rect.x + pad;
+    const startY = rect.y + 15;
     this._skillRowRects = [];
+    const icons = { vigor: '❤', filo: '⚔', reflejo: '✦', log: '📜' };
 
     SKILL_DEFS.forEach((def, i) => {
-      const owned = Boolean(player && player.skills[def.key]);
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = startX + col * (cardW + gap);
+      const y = startY + row * (cardH + gap);
+      const owned = Boolean(player && player.skills && player.skills[def.key]);
       const selected = i === this.skillCursor;
-      const rowH = 22;
-      this._skillRowRects.push({ x, y, w, h: rowH - 2, index: i });
+      this._skillRowRects.push({ x, y, w: cardW, h: cardH, index: i });
 
-      ctx.fillStyle = selected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
-      ctx.fillRect(x, y, w, rowH - 2);
-      ctx.strokeStyle = owned ? UI_COLORS.emerald : (selected ? UI_COLORS.gold : UI_COLORS.slotBorder);
+      // Tarjeta: brillante si está desbloqueada, oscura si está bloqueada.
+      const g = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
+      if (owned) {
+        g.addColorStop(0, 'rgba(16, 45, 38, 0.95)');
+        g.addColorStop(1, 'rgba(20, 83, 45, 0.55)');
+      } else {
+        g.addColorStop(0, 'rgba(11, 16, 28, 0.96)');
+        g.addColorStop(1, 'rgba(6, 10, 18, 0.96)');
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, cardW, cardH);
+      ctx.strokeStyle = selected ? UI_COLORS.gold : (owned ? 'rgba(74, 222, 128, 0.7)' : UI_COLORS.slotBorder);
+      ctx.lineWidth = selected ? 1.4 : 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, cardW - 1, cardH - 1);
+      if (selected) {
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.fillRect(x + 2, y + 1, cardW - 4, 1);
+      }
+
+      // Icono circular.
+      const ix = x + 10;
+      const iy = y + 11;
+      ctx.fillStyle = owned ? 'rgba(74, 222, 128, 0.18)' : 'rgba(100, 116, 139, 0.14)';
+      ctx.beginPath();
+      ctx.arc(ix, iy, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = owned ? UI_COLORS.emerald : UI_COLORS.slotBorder;
       ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, rowH - 3);
+      ctx.stroke();
+      ctx.font = '6px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = owned ? UI_COLORS.gold : UI_COLORS.textDim;
+      ctx.fillText(icons[def.key] || '◆', ix, iy + 0.5);
 
-      ctx.font = `bold 4.8px ${UI_FONT}`;
-      ctx.fillStyle = owned ? UI_COLORS.emerald : UI_COLORS.textPrimary;
-      ctx.fillText(`${selected ? '▶ ' : ''}${def.name}`, x + 4, y + 3);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.font = 'bold 4.7px monospace';
+      ctx.fillStyle = owned ? UI_COLORS.textPrimary : UI_COLORS.textMuted;
+      ctx.fillText(def.name, x + 19, y + 4);
 
-      ctx.font = `4.1px ${UI_FONT}`;
-      ctx.fillStyle = UI_COLORS.textSecondary;
-      ctx.fillText(UILayout.fitText(ctx, def.desc, w - 55), x + 8, y + 11);
-
-      const statusStr = owned
-        ? '✓ ACTIVA'
-        : (this.isTouchDevice ? `TOCA 2x · ${def.cost}pt` : `[Enter] ${def.cost}pt`);
-      ctx.font = `bold 4.2px ${UI_FONT}`;
-      ctx.fillStyle = owned ? UI_COLORS.emerald : (player && player.skillPoints >= def.cost ? UI_COLORS.gold : UI_COLORS.textMuted);
-      const sw = ctx.measureText(statusStr).width;
-      ctx.fillText(statusStr, x + w - sw - 4, y + 3.5);
-
-      y += rowH;
+      ctx.font = '3.9px monospace';
+      ctx.fillStyle = owned ? UI_COLORS.emerald : UI_COLORS.textDim;
+      if (owned) {
+        ctx.fillText('✓ ACTIVA', x + 19, y + 11);
+      } else {
+        ctx.fillText(`🔒 Coste: ${def.cost} Puntos`, x + 19, y + 11);
+      }
+      ctx.fillStyle = UI_COLORS.textMuted;
+      ctx.fillText(UILayout.fitText(ctx, def.desc, cardW - 24), x + 4, y + 20);
     });
 
-    if (this.skillMessage) {
-      ctx.font = `bold 4.4px ${UI_FONT}`;
-      ctx.fillStyle = UI_COLORS.gold;
-      ctx.fillText(this.skillMessage, x, rect.y + rect.h - 10);
+    // Detalle completo de la habilidad seleccionada.
+    const def = SKILL_DEFS[this.skillCursor] || SKILL_DEFS[0];
+    if (def) {
+      const owned = Boolean(player && player.skills && player.skills[def.key]);
+      const detailY = Math.min(startY + 2 * (cardH + gap) + 1, rect.y + rect.h - 32);
+      const detailH = Math.max(24, rect.y + rect.h - detailY - 2);
+      const g = ctx.createLinearGradient(rect.x + pad, detailY, rect.x + pad, detailY + detailH);
+      g.addColorStop(0, 'rgba(20, 30, 48, 0.95)');
+      g.addColorStop(1, 'rgba(9, 15, 26, 0.95)');
+      ctx.fillStyle = g;
+      ctx.fillRect(rect.x + pad, detailY, rect.w - pad * 2, detailH);
+      ctx.strokeStyle = owned ? 'rgba(74, 222, 128, 0.45)' : 'rgba(229, 192, 123, 0.4)';
+      ctx.strokeRect(rect.x + pad + 0.5, detailY + 0.5, rect.w - pad * 2 - 1, detailH - 1);
+
+      ctx.font = 'bold 4.3px monospace';
+      ctx.fillStyle = owned ? UI_COLORS.emerald : UI_COLORS.gold;
+      ctx.fillText(`${def.name} · ${owned ? 'DESBLOQUEADA' : `BLOQUEADA (${def.cost} pt)`}`, rect.x + pad + 4, detailY + 3);
+      ctx.font = '4px monospace';
+      ctx.fillStyle = UI_COLORS.textSecondary;
+      const lines = UILayout.wrapText(ctx, def.desc, rect.w - pad * 2 - 8);
+      lines.slice(0, 3).forEach((line, idx) => {
+        ctx.fillText(line, rect.x + pad + 4, detailY + 10 + idx * 6);
+      });
+      if (this.skillMessage) {
+        ctx.font = 'bold 4px monospace';
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.fillText(UILayout.fitText(ctx, this.skillMessage, rect.w - pad * 2 - 8), rect.x + pad + 4, detailY + detailH - 7);
+      }
     }
   }
 
@@ -516,7 +608,7 @@ export class CharacterStats {
   _renderAchievementsTab(ctx, rect, achievementManager) {
     const list = achievementManager ? achievementManager.getAll() : [];
     const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;
-    const totalCount = achievementManager ? achievementManager.getTotalCount() : list.length;
+    const totalCount = achievementManager ? achievementManager.getTotalCount() : Math.max(1, list.length);
 
     UILayout.drawPanel(ctx, rect, {
       bg: UI_COLORS.panelBg,
@@ -531,36 +623,76 @@ export class CharacterStats {
       value: unlockedCount,
       max: Math.max(1, totalCount),
       color: UI_COLORS.gold,
+      gradient: ['#f59e0b', '#fde047'],
       label: 'PROGRESO DE TROFEOS',
       valueText: `${unlockedCount}/${totalCount}`
     });
 
-    const colW = Math.floor((rect.w - 16) / 2);
-    const rowH = 15;
-    const startY = rect.y + 18;
+    // (BLOQUE 4.D) Cuadrícula de medallas 4×3.
+    const cols = 4;
+    const rows = 3;
+    const gapX = 4;
+    const gapY = 3;
+    const cellW = Math.floor((rect.w - 12 - gapX * (cols - 1)) / cols);
+    const cellH = Math.floor((rect.h - 16 - gapY * (rows - 1)) / rows);
+    const startX = rect.x + 6;
+    const startY = rect.y + 15;
 
-    list.slice(0, 12).forEach((ach, index) => {
-      const isRightCol = index >= 6;
-      const rowIndex = isRightCol ? index - 6 : index;
-      const x = isRightCol ? rect.x + colW + 10 : rect.x + 6;
-      const y = startY + rowIndex * (rowH + 1);
+    list.slice(0, cols * rows).forEach((ach, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const x = startX + col * (cellW + gapX);
+      const y = startY + row * (cellH + gapY);
       const isUnlocked = Boolean(ach.unlocked);
 
-      ctx.fillStyle = isUnlocked ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
-      ctx.fillRect(x, y, colW, rowH);
-      ctx.strokeStyle = isUnlocked ? UI_COLORS.emerald : UI_COLORS.slotBorder;
+      // Celda glass.
+      const g = ctx.createLinearGradient(x, y, x, y + cellH);
+      if (isUnlocked) {
+        g.addColorStop(0, 'rgba(45, 36, 12, 0.95)');
+        g.addColorStop(1, 'rgba(20, 30, 48, 0.95)');
+      } else {
+        g.addColorStop(0, 'rgba(8, 12, 20, 0.95)');
+        g.addColorStop(1, 'rgba(5, 8, 14, 0.95)');
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, cellW, cellH);
+      ctx.strokeStyle = isUnlocked ? 'rgba(253, 224, 71, 0.6)' : 'rgba(51, 65, 85, 0.7)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, y + 0.5, colW - 1, rowH - 1);
+      ctx.strokeRect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
 
-      ctx.font = `bold 4.2px ${UI_FONT}`;
+      // Medalla circular con glow si está desbloqueada.
+      const mx = x + cellW / 2;
+      const my = y + cellH * 0.38;
+      if (isUnlocked) {
+        const glow = ctx.createRadialGradient(mx, my, 1, mx, my, 10);
+        glow.addColorStop(0, 'rgba(253, 224, 71, 0.45)');
+        glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(mx - 10, my - 10, 20, 20);
+      }
+      ctx.fillStyle = isUnlocked ? 'rgba(253, 224, 71, 0.2)' : 'rgba(15, 23, 42, 0.95)';
+      ctx.beginPath();
+      ctx.arc(mx, my, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = isUnlocked ? UI_COLORS.gold : UI_COLORS.slotBorder;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.font = '6.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillStyle = isUnlocked ? UI_COLORS.gold : UI_COLORS.textMuted;
-      const prefix = isUnlocked ? '✓ ' : '🔒 ';
-      ctx.fillText(UILayout.fitText(ctx, `${prefix}${ach.title}`, colW - 6), x + 3, y + 2);
+      ctx.fillText(isUnlocked ? '🏅' : '🔒', mx, my + 0.5);
 
-      ctx.font = `3.8px ${UI_FONT}`;
-      ctx.fillStyle = isUnlocked ? UI_COLORS.textSecondary : UI_COLORS.textMuted;
-      ctx.fillText(UILayout.fitText(ctx, ach.description || '', colW - 6), x + 3, y + 8.5);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.font = 'bold 3.5px monospace';
+      ctx.fillStyle = isUnlocked ? UI_COLORS.gold : UI_COLORS.textDim;
+      const title = ach.title || 'Logro';
+      ctx.fillText(UILayout.fitText(ctx, title, cellW - 4), mx, my + 9);
     });
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
   }
 
   _drawSkillCard(ctx, x, y, w, h, name, keyPrompt, unlocked, description, source, themeColor) {

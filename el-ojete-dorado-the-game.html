@@ -3281,7 +3281,7 @@ const MODAL_HEIGHT = 150;
 const MODAL_HEADER_HEIGHT = 15;
 
 const UI_COLORS = {
-  glass: 'rgba(13, 17, 23, 0.94)',
+  glass: 'rgba(15, 23, 42, 0.92)',
   glassSoft: 'rgba(22, 28, 40, 0.92)',
   veil: 'rgba(3, 5, 10, 0.55)',
   bevelLight: 'rgba(255, 255, 255, 0.16)',
@@ -3446,6 +3446,12 @@ class UILayout {
     return lines;
   }
 
+  /** (BLOQUE 4.A) Escala de pop 0.9 → 1.0 en 200 ms con ease-out. */
+  static popScale(openAtMs, nowMs = performance.now(), from = 0.9) {
+    const t = Math.min(1, Math.max(0, (nowMs - openAtMs) / 200));
+    return from + (1 - from) * (1 - Math.pow(1 - t, 3));
+  }
+
   /** Divide una lista de líneas en páginas de `linesPerPage` líneas. */
   static paginate(lines, linesPerPage) {
     const pages = [];
@@ -3483,7 +3489,9 @@ class UILayout {
       ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
     }
 
-    // Sombra de elevación
+    // (BLOQUE 4.A) Sombra de elevación en dos capas (sin blur costoso).
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+    ctx.fillRect(m.x + 4, m.y + 6, m.w, m.h);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.fillRect(m.x + 2, m.y + 3, m.w, m.h);
 
@@ -3500,10 +3508,13 @@ class UILayout {
       ctx.fillRect(m.x, m.y, m.w, m.h * 0.45);
     }
 
-    // Borde exterior + bisel de 1 px
-    ctx.strokeStyle = UI_COLORS.border;
+    // (BLOQUE 4.A) Borde dorado de 2 px + brillo interior sutil.
+    ctx.strokeStyle = UI_COLORS.accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(m.x + 1, m.y + 1, m.w - 2, m.h - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(m.x + 0.5, m.y + 0.5, m.w - 1, m.h - 1);
+    ctx.strokeRect(m.x + 3.5, m.y + 3.5, m.w - 7, m.h - 7);
     ctx.fillStyle = UI_COLORS.bevelLight;
     ctx.fillRect(m.x + 1, m.y + 1, m.w - 2, 1);
     ctx.fillRect(m.x + 1, m.y + 1, 1, m.h - 2);
@@ -3601,6 +3612,14 @@ class UILayout {
     ctx.save();
     ctx.fillStyle = bg;
     ctx.fillRect(px, py, pw, ph);
+    // (BLOQUE 4) Brillo superior de tarjeta.
+    if (typeof ctx.createLinearGradient === 'function') {
+      const sheen = ctx.createLinearGradient(0, py, 0, py + Math.min(18, ph));
+      sheen.addColorStop(0, 'rgba(255, 255, 255, 0.055)');
+      sheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = sheen;
+      ctx.fillRect(px + 1, py + 1, pw - 2, Math.min(18, ph - 2));
+    }
     if (border) {
       ctx.strokeStyle = border;
       ctx.lineWidth = 1;
@@ -3634,6 +3653,8 @@ class UILayout {
       valueText = arg1.valueText || null;
       back = arg1.back || '#111827';
       border = arg1.border || '#334155';
+      var gradient = arg1.gradient || null;
+      var insideText = arg1.insideText || null;
     } else {
       bx = arg1;
       by = arg2;
@@ -3646,6 +3667,8 @@ class UILayout {
       border = o.border || '#334155';
       label = o.label || null;
       valueText = o.valueText || null;
+      var gradient = o.gradient || null;
+      var insideText = o.insideText || null;
     }
 
     const p = Math.max(0, Math.min(1, Number.isFinite(pct) ? pct : 0));
@@ -3670,10 +3693,29 @@ class UILayout {
     ctx.fillRect(bx, by, bw, bh);
     const fillW = Math.round((bw - 2) * p);
     if (fillW > 0) {
-      ctx.fillStyle = color;
+      // (BLOQUE 4.D) Relleno con gradiente opcional (salud, stamina, XP…).
+      if (Array.isArray(gradient) && gradient.length >= 2 && typeof ctx.createLinearGradient === 'function') {
+        const g = ctx.createLinearGradient(bx + 1, by, bx + 1 + fillW, by);
+        g.addColorStop(0, gradient[0]);
+        g.addColorStop(1, gradient[1]);
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = color;
+      }
       ctx.fillRect(bx + 1, by + 1, fillW, bh - 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
       ctx.fillRect(bx + 1, by + 1, fillW, 1);
+    }
+    if (insideText) {
+      ctx.font = `bold 3.7px ${UI_FONT}`;
+      const tw = ctx.measureText(insideText).width;
+      // Pastilla clara para que el nivel se lea incluso con la barra vacía.
+      ctx.fillStyle = 'rgba(255, 243, 176, 0.9)';
+      ctx.fillRect(bx + bw / 2 - tw / 2 - 1, by + 1, tw + 2, bh - 2);
+      ctx.fillStyle = '#151006';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(insideText, bx + bw / 2, by + bh / 2 + 0.4);
     }
     ctx.strokeStyle = border;
     ctx.lineWidth = 1;
@@ -4949,16 +4991,31 @@ async function generateTilesetSheet() {
     oy: Math.floor(id / cols) * TILE_SIZE
   });
 
+  const tileNoise = (x, y, seed = 0) => {
+    let h = (x * 374761393 + y * 668265263 + seed * 69069) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+
+  const fillNoise = (ox, oy, seed, colors, density = 0.42) => {
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) {
+        const n = tileNoise(x, y, seed);
+        if (n < density) {
+          const c = colors[Math.floor(tileNoise(x + 7, y + 3, seed + 19) * colors.length)];
+          px(ctx, ox + x, oy + y, 1, 1, c);
+        }
+      }
+    }
+  };
+
   const fillGrass = (ox, oy, variant = 0) => {
     px(ctx, ox, oy, 16, 16, '#3f7d3c');
-    px(ctx, ox + 2, oy + 3, 2, 1, '#4f9649');
-    px(ctx, ox + 10, oy + 7, 2, 1, '#4f9649');
-    px(ctx, ox + 5, oy + 12, 2, 1, '#326630');
-    if (variant === 1) {
-      px(ctx, ox + 3, oy + 8, 1, 2, '#5cb054');
-      px(ctx, ox + 4, oy + 9, 1, 1, '#5cb054');
-      px(ctx, ox + 12, oy + 3, 1, 2, '#5cb054');
-      px(ctx, ox + 11, oy + 13, 2, 1, '#326630');
+    fillNoise(ox, oy, 31 + variant * 7, ['#4f9649', '#326630', '#5cb054', '#3a7238'], 0.2);
+    for (let i = 0; i < 5; i++) {
+      const x = 1 + Math.floor(tileNoise(i, variant, 91) * 14);
+      const y = 1 + Math.floor(tileNoise(i, variant, 47) * 14);
+      px(ctx, ox + x, oy + y, 1, 2, i % 2 ? '#5cb054' : '#326630');
     }
   };
 
@@ -4973,30 +5030,37 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.PATH);
     px(ctx, ox, oy, 16, 16, '#b88b5a');
-    px(ctx, ox + 2, oy + 2, 3, 2, '#a37748');
-    px(ctx, ox + 10, oy + 5, 2, 2, '#c99e6e');
-    px(ctx, ox + 5, oy + 11, 3, 2, '#a37748');
-    px(ctx, ox + 12, oy + 13, 2, 1, '#8c6238');
+    fillNoise(ox, oy, 73, ['#a37748', '#c99e6e', '#8c6238', '#bd9463'], 0.2);
+    for (let i = 0; i < 4; i++) {
+      const x = 1 + Math.floor(tileNoise(i, 0, 17) * 14);
+      const y = 1 + Math.floor(tileNoise(i, 0, 29) * 14);
+      px(ctx, ox + x, oy + y, 1, 1, '#8c6238');
+    }
   }
   {
     const { ox, oy } = cellOrigin(TILES.COBBLE);
     px(ctx, ox, oy, 16, 16, '#6f7987');
+    fillNoise(ox, oy, 101, ['#7c8695', '#646e7c', '#8b95a5', '#59616d'], 0.26);
     const stones = [
-      [1, 1, 6, 6], [8, 1, 7, 6],
-      [1, 8, 4, 7], [6, 8, 5, 7], [12, 8, 3, 7]
+      [1, 2, 5, 4], [8, 1, 6, 5],
+      [2, 9, 4, 5], [7, 8, 5, 4], [12, 10, 3, 4]
     ];
     for (const [sx, sy, sw, sh] of stones) {
       px(ctx, ox + sx, oy + sy, sw, sh, '#8b95a5');
-      px(ctx, ox + sx, oy + sy, sw - 1, 1, '#a3adbd');
+      px(ctx, ox + sx + 1, oy + sy + 1, Math.max(1, sw - 2), 1, '#a3adbd');
     }
   }
   [TILES.WATER_1, TILES.WATER_2].forEach((id, idx) => {
     const { ox, oy } = cellOrigin(id);
     px(ctx, ox, oy, 16, 16, '#286494');
+    fillNoise(ox, oy, 211 + idx * 13, ['#2d6f9f', '#245b87', '#3274a3'], 0.24);
     const shift = idx * 3;
-    px(ctx, ox + ((2 + shift) % 13), oy + 4, 4, 1, '#4ca0d9');
-    px(ctx, ox + ((8 - shift + 13) % 13), oy + 10, 5, 1, '#4ca0d9');
-    px(ctx, ox + ((5 + shift) % 13), oy + 14, 3, 1, '#1e4c73');
+    for (let i = 0; i < 3; i++) {
+      const yy = 3 + i * 5;
+      const xx = (2 + shift + i * 4) % 12;
+      px(ctx, ox + xx, oy + yy, 4, 1, 'rgba(120, 205, 235, 0.55)');
+      px(ctx, ox + xx + 1, oy + yy + 1, 2, 1, 'rgba(30, 76, 115, 0.35)');
+    }
   });
   {
     const { ox, oy } = cellOrigin(TILES.BRIDGE);
@@ -5060,8 +5124,8 @@ async function generateTilesetSheet() {
   }
   {
     const { ox, oy } = cellOrigin(TILES.WALL_WINDOW);
-    px(ctx, ox, oy, 16, 16, '#dfd3c3');
-    px(ctx, ox, oy, 16, 2, '#5c3d28');
+    px(ctx, ox, oy, 16, 16, '#b7a88f');
+    px(ctx, ox, oy, 16, 2, '#4a3020');
     px(ctx, ox, oy + 13, 16, 3, '#6e737b');
     // Marco grueso de 2 px y brillo de vela en el interior.
     px(ctx, ox + 3, oy + 3, 10, 9, '#3b2416');
@@ -5074,8 +5138,8 @@ async function generateTilesetSheet() {
   }
   {
     const { ox, oy } = cellOrigin(TILES.WALL_DOOR);
-    px(ctx, ox, oy, 16, 16, '#dfd3c3');
-    px(ctx, ox, oy, 16, 2, '#5c3d28');
+    px(ctx, ox, oy, 16, 16, '#b7a88f');
+    px(ctx, ox, oy, 16, 2, '#4a3020');
     px(ctx, ox, oy + 13, 16, 3, '#6e737b');
     px(ctx, ox + 3, oy + 2, 10, 12, '#4a2c18');
     px(ctx, ox + 4, oy + 3, 8, 10, '#7c4a2b');
@@ -5249,14 +5313,17 @@ async function generateTilesetSheet() {
       px(ctx, ox + x, oy, 1, 16, '#81a1c1');
     }
   }
-  // 36: STONE_FLOOR (Suelo frío de piedra del calabozo)
+  // 36: STONE_FLOOR (piedra irregular del calabozo, sin retícula)
   {
     const { ox, oy } = cellOrigin(TILES.STONE_FLOOR);
     px(ctx, ox, oy, 16, 16, '#3b4252');
-    px(ctx, ox + 1, oy + 1, 6, 6, '#434c5e');
-    px(ctx, ox + 8, oy + 1, 7, 6, '#4c566a');
-    px(ctx, ox + 1, oy + 8, 8, 7, '#4c566a');
-    px(ctx, ox + 10, oy + 8, 5, 7, '#434c5e');
+    fillNoise(ox, oy, 307, ['#434c5e', '#4c566a', '#323844', '#465067'], 0.3);
+    for (let i = 0; i < 2; i++) {
+      const x = 2 + Math.floor(tileNoise(i, 0, 401) * 10);
+      const y = 2 + Math.floor(tileNoise(i, 0, 409) * 10);
+      px(ctx, ox + x, oy + y, 2, 1, '#2a303d');
+      px(ctx, ox + x + 1, oy + y + 1, 1, 2, '#2a303d');
+    }
   }
   // 37: ALTAR_PEDESTAL (Pedestal sagrado para el arma y la armadura)
   {
@@ -5290,11 +5357,9 @@ async function generateTilesetSheet() {
     px(ctx, ox, oy, 16, 16, '#0f2416');
     px(ctx, ox + 1, oy + 2, 6, 5, '#163d23');
     px(ctx, ox + 8, oy + 7, 7, 6, '#13331d');
+    fillNoise(ox, oy, 503, ['#163d23', '#13331d', '#1b4a2b', '#0d1f12'], 0.3);
     px(ctx, ox + 3, oy + 10, 4, 3, '#10b981');
     px(ctx, ox + 11, oy + 3, 3, 2, '#34d399');
-    // Rejilla de hierro corrosiva
-    px(ctx, ox, oy + 7, 16, 1, '#1e293b');
-    px(ctx, ox + 7, oy, 1, 16, '#1e293b');
   }
   // 41: SEWER_PIPE_WALL (Pared de tuberías de fango)
   {
@@ -5307,14 +5372,16 @@ async function generateTilesetSheet() {
     px(ctx, ox + 5, oy + 9, 2, 4, '#10b981'); // Gota de ácido verde
     px(ctx, ox + 12, oy + 9, 1, 3, '#059669');
   }
-  // 42: MINE_CRYSTAL_FLOOR (Suelo de silicio de las Minas de la Recursión)
+  // 42: MINE_CRYSTAL_FLOOR (silicio irregular, sin retícula visible)
   {
     const { ox, oy } = cellOrigin(TILES.MINE_CRYSTAL_FLOOR);
     px(ctx, ox, oy, 16, 16, '#181528');
-    px(ctx, ox + 2, oy + 3, 5, 4, '#241e3d');
-    px(ctx, ox + 9, oy + 8, 6, 5, '#2e274e');
-    px(ctx, ox + 5, oy + 4, 3, 2, '#818cf8'); // Veta luminiscente de silicio
-    px(ctx, ox + 12, oy + 11, 2, 3, '#38bdf8');
+    fillNoise(ox, oy, 421, ['#241e3d', '#2e274e', '#1e1a33', '#2a2447'], 0.34);
+    for (let i = 0; i < 3; i++) {
+      const x = 2 + Math.floor(tileNoise(i, 0, 431) * 12);
+      const y = 2 + Math.floor(tileNoise(i, 0, 439) * 12);
+      px(ctx, ox + x, oy + y, 1, 1, i % 2 ? '#818cf8' : '#38bdf8');
+    }
   }
   // 43: MINE_CHASM (Gran Abismo que exige Dash Asíncrono)
   {
@@ -5339,11 +5406,9 @@ async function generateTilesetSheet() {
     const { ox, oy } = cellOrigin(TILES.FORGE_LAVA_FLOOR);
     px(ctx, ox, oy, 16, 16, '#450a0a'); // Magma profundo
     px(ctx, ox + 1, oy + 1, 14, 14, '#b91c1c');
-    px(ctx, ox + 4, oy + 4, 8, 8, '#f97316');
-    px(ctx, ox + 6, oy + 6, 4, 4, '#fde047'); // Núcleo ígneo
-    // Rejilla de hierro fundido
-    px(ctx, ox, oy + 7, 16, 2, '#1c1917');
-    px(ctx, ox + 7, oy, 2, 16, '#1c1917');
+    fillNoise(ox, oy, 601, ['#991b1b', '#dc2626', '#f97316', '#7f1d1d'], 0.32);
+    px(ctx, ox + 5, oy + 5, 6, 6, '#f97316');
+    px(ctx, ox + 7, oy + 7, 2, 2, '#fde047');
   }
   // 46: FORGE_BOILER_WALL (Caldera de bronce y vapor a presión)
   {
@@ -5401,7 +5466,7 @@ async function generateTilesetSheet() {
   // 51: WALL_FRONT (muro frontal con borde superior oscuro y zócalo)
   {
     const { ox, oy } = cellOrigin(TILES.WALL_FRONT);
-    px(ctx, ox, oy, 16, 16, '#c7b394');
+    px(ctx, ox, oy, 16, 16, '#8b7b63');
     px(ctx, ox, oy, 16, 3, '#3a2a1e');
     px(ctx, ox, oy + 1, 16, 1, '#20150f');
     for (let y = 4; y < 13; y += 3) {
@@ -6371,6 +6436,10 @@ function renderCombatBanner(ctx, text, x, y, color = '#fde047') {
  * Tiles de la CAPA 2 (estructuras elevadas) del pipeline 2.5D: se dibujan siempre por encima
  * de las entidades (copas de árboles y tejados).
  */
+const NPC_PASSABLE_PROPS = new Set([
+  TILES.FENCE_H, TILES.FENCE_POST, TILES.CRATE, TILES.BUSH, TILES.TABLE, TILES.ANVIL
+]);
+
 const OVERHEAD_TILE_IDS = new Set([
   TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE,
   TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM
@@ -7027,12 +7096,20 @@ class Tilemap {
     }
   }
 
-  isSolidAtTile(col, row) {
+  isSolidAtTile(col, row, options = {}) {
     if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) {
       return true;
     }
     // (FIX 1) Un cartel es siempre pisable, aunque alguna escena lo marcara sólido
     if (this.layers.decoration && this.layers.decoration[row][col] === TILES.SIGNPOST) {
+      return false;
+    }
+    // (FIX 4) Los NPCs no deben engancharse con vallas, bancos, cajas o arbustos.
+    if (
+      options.ignoreSmallProps &&
+      this.layers.decoration &&
+      NPC_PASSABLE_PROPS.has(this.layers.decoration[row][col])
+    ) {
       return false;
     }
     const value = this.layers.collision[row][col];
@@ -10259,9 +10336,16 @@ class Tilemap {
         if (groundTile === TILES.WATER_1 && waterFrame % 2 === 1) {
           groundTile = TILES.WATER_2;
         }
-        this._drawTile(ctx, groundTile, screenX, screenY);
         if (isWater) {
+          // (FIX 5) Offset de textura del agua, tapando el hueco con el tono base.
+          const flowX = Math.round(Math.sin(this.animationClock * 1.8 + c * 0.6 + r * 0.3));
+          const flowY = Math.round(Math.cos(this.animationClock * 1.2 + c * 0.2 + r * 0.5));
+          ctx.fillStyle = '#286494';
+          ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
+          this._drawTile(ctx, groundTile, screenX, screenY, flowX, flowY);
           this._drawWaterRipple(ctx, screenX, screenY, c, r, waterFrame);
+        } else {
+          this._drawTile(ctx, groundTile, screenX, screenY);
         }
         this._drawAnimatedTileFx(ctx, groundTile, screenX, screenY);
 
@@ -10389,18 +10473,21 @@ class Tilemap {
   _drawAnimatedTileFx(ctx, tileId, screenX, screenY) {
     if (tileId === undefined || tileId === null || tileId < 0) return;
     const t = this.animationClock;
-    const cx = screenX + 8;
-    const cy = screenY + 8;
+    // (FIX 1) Redondear evita costuras antialias entre overlays de tiles.
+    const fx = Math.round(screenX);
+    const fy = Math.round(screenY);
+    const cx = fx + 8;
+    const cy = fy + 8;
 
     if (tileId === TILES.FORGE_LAVA_FLOOR) {
-      const pulse = 0.5 + 0.5 * Math.sin(t * 3 + screenX * 0.05 + screenY * 0.04);
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3 + fx * 0.05 + fy * 0.04);
       ctx.fillStyle = `rgba(249, 115, 22, ${(0.10 + pulse * 0.20).toFixed(3)})`;
-      ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
+      ctx.fillRect(fx, fy, this.tileSize, this.tileSize);
       ctx.fillStyle = `rgba(127, 29, 29, ${(0.08 + (1 - pulse) * 0.14).toFixed(3)})`;
-      ctx.fillRect(screenX + 1, screenY + 1, this.tileSize - 2, this.tileSize - 2);
+      ctx.fillRect(fx + 1, fy + 1, this.tileSize - 2, this.tileSize - 2);
       for (let i = 0; i < 2; i++) {
-        const bx = screenX + 3 + ((i * 7 + Math.floor(t * 2)) % 10);
-        const by = screenY + 6 + Math.sin(t * 2.2 + i * 2 + screenX * 0.03) * 4;
+        const bx = fx + 3 + ((i * 7 + Math.floor(t * 2)) % 10);
+        const by = fy + 6 + Math.sin(t * 2.2 + i * 2 + fx * 0.03) * 4;
         ctx.fillStyle = 'rgba(253, 224, 71, 0.65)';
         ctx.fillRect(Math.round(bx), Math.round(by), 1, 1);
       }
@@ -10409,8 +10496,8 @@ class Tilemap {
     }
 
     if (tileId === TILES.LAMPPOST || tileId === TILES.FIREPLACE) {
-      const flicker = Math.sin(t * 10 + screenX * 0.12 + screenY * 0.07);
-      const flameY = tileId === TILES.LAMPPOST ? screenY + 4 : screenY + 9;
+      const flicker = Math.sin(t * 10 + fx * 0.12 + fy * 0.07);
+      const flameY = tileId === TILES.LAMPPOST ? fy + 4 : fy + 9;
       this._drawLightHalo(ctx, cx, flameY, 20, '255, 170, 60', 0.18 + 0.05 * (flicker * 0.5 + 0.5));
       ctx.fillStyle = 'rgba(249, 115, 22, 0.9)';
       ctx.fillRect(cx - 1 + Math.round(flicker), flameY - 2, 2, 4);
@@ -10420,15 +10507,15 @@ class Tilemap {
     }
 
     if (tileId === TILES.MINE_CRYSTAL_FLOOR || tileId === TILES.MINE_CRYSTAL_WALL || tileId === TILES.CRYSTAL_BARRIER) {
-      const pulse = 0.5 + 0.5 * Math.sin(t * 2 + screenX * 0.05 + screenY * 0.03);
+      const pulse = 0.5 + 0.5 * Math.sin(t * 2 + fx * 0.05 + fy * 0.03);
       ctx.fillStyle = `rgba(56, 189, 248, ${(0.06 + pulse * 0.14).toFixed(3)})`;
-      ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
+      ctx.fillRect(fx, fy, this.tileSize, this.tileSize);
       ctx.strokeStyle = `rgba(186, 230, 253, ${(0.25 + pulse * 0.5).toFixed(3)})`;
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(cx, screenY + 3);
-      ctx.lineTo(screenX + 11, screenY + 9);
-      ctx.lineTo(screenX + 5, screenY + 13);
+      ctx.moveTo(cx, fy + 3);
+      ctx.lineTo(fx + 11, fy + 9);
+      ctx.lineTo(fx + 5, fy + 13);
       ctx.stroke();
       if (tileId !== TILES.MINE_CRYSTAL_FLOOR) {
         this._drawLightHalo(ctx, cx, cy, 18, '56, 189, 248', 0.10 + pulse * 0.12);
@@ -10486,6 +10573,7 @@ class Tilemap {
       scene.houseShadows = this._generateHouseShadows(sceneId, scene);
       scene.caveProps = this._generateCaveProps(sceneId, scene, seed);
       scene.chimneys = [];
+      this._pruneSignposts(sceneId, scene);
     }
     this._addVillageChimneys(this.scenes.overworld);
   }
@@ -10598,6 +10686,41 @@ class Tilemap {
       scene.layers.collision[r][c] = 1;
       scene.chimneys.push({ x: c * this.tileSize + 8, y: r * this.tileSize + 2 });
     }
+  }
+
+  /** (FIX 2) Máximo 2 carteles por zona; el resto se retira y su dato de lectura se elimina. */
+  _pruneSignposts(sceneId, scene) {
+    const deco = scene.layers.decoration;
+    const collision = scene.layers.collision;
+    const cells = [];
+    for (let r = 0; r < scene.rows; r++) {
+      for (let c = 0; c < scene.cols; c++) {
+        if (deco[r][c] === TILES.SIGNPOST) cells.push({ r, c });
+      }
+    }
+    if (cells.length <= 2) return;
+    const signAt = (cell) =>
+      (scene.signposts || []).find(
+        (sp) => (sp.r ?? sp.row) === cell.r && (sp.c ?? sp.col) === cell.c
+      );
+    const priority = ['Entrenamiento', 'Forja de Brom', 'Camino a Valleverde', 'Templo'];
+    const priorityCells = cells.filter((cell) => {
+      const sp = signAt(cell);
+      return sp && priority.some((p) => (sp.shortName || '').includes(p));
+    });
+    const ordered = [...priorityCells, ...cells.filter((c) => !priorityCells.includes(c))];
+    const kept = new Set(ordered.slice(0, 2).map((x) => `${x.r},${x.c}`));
+    for (const { r, c } of cells) {
+      if (!kept.has(`${r},${c}`)) {
+        deco[r][c] = -1;
+        collision[r][c] = 0;
+      }
+    }
+    scene.signposts = (scene.signposts || []).filter((sp) => {
+      const sr = sp.r ?? sp.row;
+      const sc = sp.c ?? sp.col;
+      return kept.has(`${sr},${sc}`);
+    });
   }
 
   _drawFloorDecals(ctx, camera) {
@@ -10824,8 +10947,12 @@ class Tilemap {
 
         const screenX = c * this.tileSize - camX;
         const screenY = r * this.tileSize - camY;
-        this._drawTile(ctx, decoTile, screenX, screenY);
-        this._drawAnimatedTileFx(ctx, decoTile, screenX, screenY);
+        // (FIX 5) Balanceo de copas de árbol con el viento.
+        const treeSway = decoTile === TILES.TREE_TOP
+          ? Math.round(Math.sin(this.animationClock * 1.6 + c * 0.7 + r * 0.3))
+          : 0;
+        this._drawTile(ctx, decoTile, screenX + treeSway, screenY);
+        this._drawAnimatedTileFx(ctx, decoTile, screenX + treeSway, screenY);
 
         // Sombra de alero proyectada sobre el muro situado justo debajo del tejado
         if (decoTile !== TILES.TREE_TOP && r + 1 < this.rows) {
@@ -11169,7 +11296,7 @@ class Tilemap {
     ctx.restore();
   }
 
-  _drawTile(ctx, tileId, screenX, screenY) {
+  _drawTile(ctx, tileId, screenX, screenY, offsetX = 0, offsetY = 0) {
     const sx = (tileId % this.tilesetCols) * this.tileSize * ATLAS_SCALE;
     const sy = Math.floor(tileId / this.tilesetCols) * this.tileSize * ATLAS_SCALE;
     ctx.drawImage(
@@ -11178,8 +11305,8 @@ class Tilemap {
       sy,
       this.tileSize * ATLAS_SCALE,
       this.tileSize * ATLAS_SCALE,
-      screenX,
-      screenY,
+      screenX + offsetX,
+      screenY + offsetY,
       this.tileSize,
       this.tileSize
     );
@@ -11208,7 +11335,7 @@ class CollisionSystem {
     return CollisionSystem.checkAABB(a, b);
   }
 
-  static collidesWithMap(box, tilemap) {
+  static collidesWithMap(box, tilemap, options = {}) {
     const tileSize = tilemap.tileSize;
     const epsilon = 0.001;
     const leftCol = Math.floor(box.x / tileSize);
@@ -11218,7 +11345,7 @@ class CollisionSystem {
 
     for (let r = topRow; r <= bottomRow; r++) {
       for (let c = leftCol; c <= rightCol; c++) {
-        if (tilemap.isSolidAtTile(c, r)) {
+        if (tilemap.isSolidAtTile(c, r, options)) {
           return true;
         }
       }
@@ -11332,6 +11459,7 @@ class CollisionSystem {
   static moveWithCollisions(entity, dx, dy, tilemap, obstacles = []) {
     let blockedX = false;
     let blockedY = false;
+    const mapOptions = entity && entity.ignoreSmallProps ? { ignoreSmallProps: true } : undefined;
 
     // 1. Separación preventiva previa para no quedar nunca atascado dentro de otro personaje
     if (obstacles && obstacles.length > 0) {
@@ -11343,7 +11471,7 @@ class CollisionSystem {
     if (dx !== 0) {
       const nextX = entity.x + dx;
       const testBoxX = entity.getBoundingBoxAt(nextX, entity.y);
-      let blockedByMap = tilemap ? CollisionSystem.collidesWithMap(testBoxX, tilemap) : false;
+      let blockedByMap = tilemap ? CollisionSystem.collidesWithMap(testBoxX, tilemap, mapOptions) : false;
       let blockedByEntity = false;
 
       if (!blockedByMap && obstacles && obstacles.length > 0) {
@@ -11366,7 +11494,7 @@ class CollisionSystem {
               const nudgeStep = dx * 0.45;
               const testOtherX = other.x + nudgeStep;
               const otherBoxCandidate = other.getBoundingBoxAt ? other.getBoundingBoxAt(testOtherX, other.y) : null;
-              if (otherBoxCandidate && (!tilemap || !CollisionSystem.collidesWithMap(otherBoxCandidate, tilemap))) {
+              if (otherBoxCandidate && (!tilemap || !CollisionSystem.collidesWithMap(otherBoxCandidate, tilemap, mapOptions))) {
                 other.x = testOtherX;
                 const updatedOtherBox = other.worldBoundingBox;
                 if (!CollisionSystem.checkAABB(testBoxX, updatedOtherBox)) {
@@ -11391,7 +11519,7 @@ class CollisionSystem {
     if (dy !== 0) {
       const nextY = entity.y + dy;
       const testBoxY = entity.getBoundingBoxAt(entity.x, nextY);
-      let blockedByMap = tilemap ? CollisionSystem.collidesWithMap(testBoxY, tilemap) : false;
+      let blockedByMap = tilemap ? CollisionSystem.collidesWithMap(testBoxY, tilemap, mapOptions) : false;
       let blockedByEntity = false;
 
       if (!blockedByMap && obstacles && obstacles.length > 0) {
@@ -11413,7 +11541,7 @@ class CollisionSystem {
               const nudgeStep = dy * 0.45;
               const testOtherY = other.y + nudgeStep;
               const otherBoxCandidate = other.getBoundingBoxAt ? other.getBoundingBoxAt(other.x, testOtherY) : null;
-              if (otherBoxCandidate && (!tilemap || !CollisionSystem.collidesWithMap(otherBoxCandidate, tilemap))) {
+              if (otherBoxCandidate && (!tilemap || !CollisionSystem.collidesWithMap(otherBoxCandidate, tilemap, mapOptions))) {
                 other.y = testOtherY;
                 const updatedOtherBox = other.worldBoundingBox;
                 if (!CollisionSystem.checkAABB(testBoxY, updatedOtherBox)) {
@@ -11436,7 +11564,7 @@ class CollisionSystem {
     }
 
     // 2. Deslizamiento suave en esquinas (Corner Sliding estilo Zelda)
-    if (blockedX && dy === 0 && dx !== 0 && (!tilemap || !CollisionSystem.collidesWithMap(currentBox, tilemap))) {
+    if (blockedX && dy === 0 && dx !== 0 && (!tilemap || !CollisionSystem.collidesWithMap(currentBox, tilemap, mapOptions))) {
       for (const other of obstacles) {
         if (!other || other === entity || other.isSleeping) continue;
         const otherBox = other.worldBoundingBox;
@@ -11445,7 +11573,7 @@ class CollisionSystem {
           const nudgeY = entity.centerY < other.centerY ? -1 : 1;
           const slideBoxY = entity.getBoundingBoxAt(entity.x, entity.y + nudgeY);
           if (
-            (!tilemap || !CollisionSystem.collidesWithMap(slideBoxY, tilemap)) &&
+            (!tilemap || !CollisionSystem.collidesWithMap(slideBoxY, tilemap, mapOptions)) &&
             !CollisionSystem.collidesWithEntities(slideBoxY, obstacles, entity)
           ) {
             entity.y += nudgeY;
@@ -11453,7 +11581,7 @@ class CollisionSystem {
           break;
         }
       }
-    } else if (blockedY && dx === 0 && dy !== 0 && (!tilemap || !CollisionSystem.collidesWithMap(currentBox, tilemap))) {
+    } else if (blockedY && dx === 0 && dy !== 0 && (!tilemap || !CollisionSystem.collidesWithMap(currentBox, tilemap, mapOptions))) {
       for (const other of obstacles) {
         if (!other || other === entity || other.isSleeping) continue;
         const otherBox = other.worldBoundingBox;
@@ -11462,7 +11590,7 @@ class CollisionSystem {
           const nudgeX = entity.centerX < other.centerX ? -1 : 1;
           const slideBoxX = entity.getBoundingBoxAt(entity.x + nudgeX, entity.y);
           if (
-            (!tilemap || !CollisionSystem.collidesWithMap(slideBoxX, tilemap)) &&
+            (!tilemap || !CollisionSystem.collidesWithMap(slideBoxX, tilemap, mapOptions)) &&
             !CollisionSystem.collidesWithEntities(slideBoxX, obstacles, entity)
           ) {
             entity.x += nudgeX;
@@ -11984,7 +12112,9 @@ class Player extends Entity {
       this.attackDuration = 0.18;
       this.attackCooldown = 0.28;
       this.attackTimer = this.attackDuration;
-      if (soundEngine && typeof soundEngine.playAttackSound === 'function') {
+      if (soundEngine && typeof soundEngine.playPunch === 'function') {
+        soundEngine.playPunch();
+      } else if (soundEngine && typeof soundEngine.playAttackSound === 'function') {
         soundEngine.playAttackSound();
       } else if (soundEngine && typeof soundEngine.playSwordSlash === 'function') {
         soundEngine.playSwordSlash();
@@ -12104,8 +12234,9 @@ class Player extends Entity {
   getSwordHitbox() {
     if (!this.isAttacking) return null;
     const bigSwing = this.attackIsFinisher || this.attackIsDashStrike;
-    const reach = !this.hasSword ? 12 : (bigSwing ? 18 : 15);
-    const size = !this.hasSword ? 14 : (bigSwing ? 24 : 18);
+    // (FIX 6) El puñetazo usa la misma caja que el primer golpe de espada.
+    const reach = bigSwing ? 18 : 15;
+    const size = bigSwing ? 24 : 18;
     let hx = this.centerX - size / 2;
     let hy = this.centerY - size / 2;
 
@@ -12661,24 +12792,55 @@ class Player extends Entity {
     // 6. Renderizar ataque: golpe desarmado o tajo luminoso de la Espada de la Recursividad
     if (this.attackTimer > 0) {
       if (!this.hasSword) {
-        // Golpe o puñetazo desarmado de entrenamiento
+        // (FIX 6) Puñetazo: puño, líneas de movimiento y estrella de impacto. Sin orbe.
         const progress = 1 - this.attackTimer / this.attackDuration;
-        const dirOffsets = {
-          right: [12, 0],
-          left: [-12, 0],
-          down: [0, 12],
-          up: [0, -12]
-        };
-        const [ox, oy] = dirOffsets[this.direction] || [12, 0];
-        const px = cx + ox * progress;
-        const py = cy + oy * progress;
+        let baseAngle = 0;
+        if (this.direction === 'right') baseAngle = 0;
+        else if (this.direction === 'down') baseAngle = Math.PI / 2;
+        else if (this.direction === 'left') baseAngle = Math.PI;
+        else baseAngle = -Math.PI / 2;
+        const reach = 8 + progress * 8;
+        const fx = cx + Math.cos(baseAngle) * reach;
+        const fy = cy + Math.sin(baseAngle) * reach;
         ctx.save();
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(px, py, 2.5 + progress * 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#f59e0b';
+        // Líneas de movimiento detrás del puño.
+        ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+        ctx.lineWidth = 1;
+        for (let i = -1; i <= 1; i++) {
+          const off = i * 3;
+          const sx = cx - Math.cos(baseAngle) * 4 - Math.sin(baseAngle) * off;
+          const sy = cy - Math.sin(baseAngle) * 4 + Math.cos(baseAngle) * off;
+          const ex = fx - Math.cos(baseAngle) * 4 - Math.sin(baseAngle) * off;
+          const ey = fy - Math.sin(baseAngle) * 4 + Math.cos(baseAngle) * off;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+        }
+        // Puño/guantelete.
+        ctx.fillStyle = '#e8c39e';
+        ctx.fillRect(Math.round(fx) - 1, Math.round(fy) - 1, 3, 3);
+        ctx.fillStyle = '#b8860b';
+        ctx.fillRect(Math.round(fx) - 2, Math.round(fy) - 2, 4, 1);
+        // Estrella de impacto delante del puño.
+        const ix = cx + Math.cos(baseAngle) * (reach + 3);
+        const iy = cy + Math.sin(baseAngle) * (reach + 3);
+        ctx.strokeStyle = '#ffd166';
         ctx.lineWidth = 1.2;
+        for (let i = 0; i < 4; i++) {
+          const a = baseAngle + Math.PI / 4 + (i * Math.PI) / 2;
+          ctx.beginPath();
+          ctx.moveTo(ix - Math.cos(a) * 3, iy - Math.sin(a) * 3);
+          ctx.lineTo(ix + Math.cos(a) * 3, iy + Math.sin(a) * 3);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#fff3b0';
+        ctx.fillRect(Math.round(ix) - 1, Math.round(iy) - 1, 2, 2);
+        // Arco de velocidad (no relleno).
+        ctx.strokeStyle = 'rgba(251,191,36,0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, reach + 2, baseAngle - 0.5, baseAngle + 0.5);
         ctx.stroke();
         ctx.restore();
       } else {
@@ -12790,7 +12952,7 @@ class NPC extends Entity {
       width: 16,
       height: 16,
       speed,
-      boundingBox: { offsetX: 3, offsetY: 8, width: 10, height: 7 },
+      boundingBox: { offsetX: 4, offsetY: 9, width: 8, height: 6 },
       animator,
       sceneId
     });
@@ -12814,6 +12976,8 @@ class NPC extends Entity {
     this.waitTimer = 1.2 + Math.random() * 2.0;
     this.lookTimer = 1.0 + Math.random() * 1.8;
     this.stuckTimer = 0;
+    this.isNpc = true;
+    this.ignoreSmallProps = true;
     this.currentActivityIcon = '';
     this.isSleeping = false;
     this.jobAnimTimer = Math.random() * 5.0;
@@ -12875,6 +13039,7 @@ class NPC extends Entity {
 
   update(dt, tilemap, obstacles, isTalking = false, player = null, threat = null) {
     this.promptBobTimer += dt * 4.5;
+    this.isTalking = Boolean(isTalking);
     this.inCombat = Boolean(threat);
     this.jobAnimTimer += dt;
 
@@ -13069,9 +13234,20 @@ class NPC extends Entity {
       if (blockedX && blockedY) {
         this.stuckTimer += dt;
         this.isMoving = false;
-        // Si lleva más de 0.45s bloqueado, avanza suavemente al siguiente waypoint sin quedarse congelado
-        if (this.stuckTimer > 0.45) {
+        // (FIX 4) Si lleva >0.5 s bloqueado, salta al tile libre más cercano y cambia de rumbo.
+        if (this.stuckTimer > 0.5) {
           this.stuckTimer = 0;
+          const ts = tilemap.tileSize;
+          const free = nearestFreeTile(
+            tilemap,
+            Math.floor(this.centerX / ts),
+            Math.floor(this.centerY / ts),
+            3
+          );
+          if (free) {
+            this.x = free.col * ts;
+            this.y = free.row * ts;
+          }
           this.currentWaypointIndex = (this.currentWaypointIndex + 1) % this.patrolPoints.length;
           this.waitTimer = 0.8;
         }
@@ -13118,7 +13294,7 @@ class NPC extends Entity {
    */
   _resolveNavTarget(target, tilemap) {
     if (!tilemap || !target) return target;
-    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(target.x, target.y), tilemap)) {
+    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(target.x, target.y), tilemap, { ignoreSmallProps: true })) {
       return target;
     }
     const ts = tilemap.tileSize;
@@ -13161,7 +13337,9 @@ class NPC extends Entity {
 
   render(ctx, camera) {
     const sx = Math.round(this.centerX - camera.renderX);
-    const sy = Math.round(this.y - camera.renderY);
+    // (BLOQUE 1.6) Bob de 1 px mientras el NPC habla.
+    const talkBob = this.isTalking ? Math.round(Math.sin(this.jobAnimTimer * 6)) : 0;
+    const sy = Math.round(this.y - camera.renderY) + talkBob;
 
     if (this.isSleeping) {
       // Estado durmiendo en cama: silueta en reposo y zZz animados
@@ -14735,7 +14913,7 @@ class Enemy extends Entity {
           }
         }
       }
-      if (Array.isArray(player.energySlashes)) {
+      if (player.hasSword && Array.isArray(player.energySlashes)) {
         for (const slash of player.energySlashes) {
           if (slash.life > 0 && Math.hypot(this.centerX - slash.x, this.centerY - slash.y) <= 13) {
             slash.life = 0;
@@ -18390,6 +18568,8 @@ class WorldItem extends Entity {
  *   saltarse el monólogo de la vida del NPC, el NPC se da cuenta ("¿Te aburro? ¡Pues aún no
  *   he acabado!") y añade más páginas de chapa sobre su vida.
  */
+
+
 class DialogueBox {
   constructor(viewportWidth = 320, viewportHeight = 180, soundEngine = null) {
     this.viewportWidth = viewportWidth;
@@ -18399,6 +18579,8 @@ class DialogueBox {
     this.active = false;
     this.speakerName = '';
     this.currentNPC = null;
+    this.portraitNPC = null;
+    this.npcRegistry = null;
     this.lines = [];
     this.currentLineIndex = 0;
 
@@ -18493,6 +18675,7 @@ class DialogueBox {
   start(npc, customLines = null, customChoices = null) {
     this.active = true;
     this.currentNPC = npc;
+    this.portraitNPC = npc;
     this.speakerName = npc ? npc.name : '';
     this.isRantMode = false;
     this.charSpeed = this.baseCharSpeed;
@@ -18533,7 +18716,8 @@ class DialogueBox {
     }
     this.onClose = typeof onClose === 'function' ? onClose : null;
     this.active = true;
-    this.currentNPC = null;
+    this.currentNPC = this._findPortraitNPC(title);
+    this.portraitNPC = this.currentNPC;
     this.speakerName = title || '';
     const rawLines = Array.isArray(lines) ? [...lines] : [lines];
     this.lines = this._paginateLines(rawLines);
@@ -18683,6 +18867,7 @@ class DialogueBox {
   close() {
     this.active = false;
     this.currentNPC = null;
+    this.portraitNPC = null;
     this.speakerName = '';
     this.lines = [];
     this.choices = [];
@@ -18733,54 +18918,110 @@ class DialogueBox {
     this.blinkTimer += dt * 5;
   }
 
+  _findPortraitNPC(name) {
+    if (!name) return null;
+    if (this.currentNPC) {
+      const n = this.currentNPC.name || '';
+      if (n === name || name.includes(n) || n.includes(name)) return this.currentNPC;
+    }
+    const list = this.npcRegistry;
+    if (!Array.isArray(list)) return null;
+    return (
+      list.find((npc) => npc && (npc.name === name || name.includes(npc.name) || npc.name.includes(name))) ||
+      null
+    );
+  }
+
+  _drawPortrait(ctx, npc, x, y, size) {
+    const animator = npc && npc.animator;
+    if (!animator || !animator.spriteSheet) return;
+    const cell = animator.frameWidth * ATLAS_SCALE;
+    const row = animator.characterIndex * 4; // mirada frontal
+    ctx.save();
+    ctx.fillStyle = 'rgba(6, 10, 18, 0.95)';
+    ctx.fillRect(x - 2, y - 2, size + 4, size + 4);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - 1, y - 1, size + 2, size + 2);
+    ctx.beginPath();
+    ctx.rect(x, y, size, size);
+    ctx.clip();
+    ctx.imageSmoothingEnabled = false;
+    // Recorte de cabeza y hombros (12 de 16 px) ampliado.
+    ctx.drawImage(
+      animator.spriteSheet,
+      0,
+      row * cell,
+      cell,
+      Math.round(cell * 0.78),
+      x,
+      y,
+      size,
+      size
+    );
+    const fade = ctx.createLinearGradient(0, y + size - 8, 0, y + size);
+    fade.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    fade.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+    ctx.fillStyle = fade;
+    ctx.fillRect(x, y + size - 8, size, 8);
+    ctx.restore();
+  }
+
   render(ctx) {
     if (!this.active) return;
 
-    // (FIX M3.1) Caja más alta y tipografía 1.5x en táctil
     const isTouch = Boolean(this.isTouchDevice);
+    const portraitNPC = this.portraitNPC || this._findPortraitNPC(this.speakerName);
+    const hasPortrait = Boolean(portraitNPC && portraitNPC.animator && portraitNPC.animator.spriteSheet);
     const boxX = 12;
-    const boxH = isTouch ? 54 : 48;
+    const boxH = hasPortrait ? (isTouch ? 64 : 56) : (isTouch ? 54 : 48);
     const boxY = this.viewportHeight - boxH - 8;
     const boxW = this.viewportWidth - 24;
+    const portraitSize = Math.min(44, boxH - 10);
+    const textX = boxX + (hasPortrait ? portraitSize + 12 : 9);
+    const textW = boxW - (hasPortrait ? portraitSize + 20 : 20);
     const textFont = isTouch ? 'bold 12px monospace' : '8px monospace';
     const lineHeight = isTouch ? 16 : 11;
     const maxVisibleLines = isTouch ? 2 : 3;
 
     ctx.save();
 
+    // Sombra y caja JRPG: fondo azul noche 90 % + borde dorado de 2 px.
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.fillRect(boxX + 2, boxY + 2, boxW, boxH);
-
-    ctx.fillStyle = '#121624';
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = this.caughtBannerTimer > 0 ? '#ff6b6b' : '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX + 3.5, boxY + 3.5, boxW - 7, boxH - 7);
 
-    ctx.fillStyle = this.caughtBannerTimer > 0 ? '#ff6b6b' : '#e5c07b';
-    ctx.fillRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
+    // Retrato ampliado del NPC (recorte de su spritesheet).
+    if (hasPortrait) {
+      this._drawPortrait(ctx, portraitNPC, boxX + 5, boxY + 5, portraitSize);
+    }
 
-    ctx.fillStyle = '#1b2236';
-    ctx.fillRect(boxX + 3, boxY + 3, boxW - 6, boxH - 6);
-
+    // Etiqueta de nombre: fondo dorado, texto negro.
     if (this.speakerName) {
       ctx.font = isTouch ? 'bold 12px monospace' : 'bold 8px monospace';
       const nameW = Math.ceil(ctx.measureText(this.speakerName).width) + (isTouch ? 16 : 12);
       const nameH = isTouch ? 18 : 12;
-      const nameX = boxX + 6;
+      const nameX = boxX + (hasPortrait ? 4 : 6);
       const nameY = boxY - nameH + 4;
 
-      ctx.fillStyle = '#121624';
+      ctx.fillStyle = 'rgba(10, 8, 6, 0.9)';
       ctx.fillRect(nameX, nameY, nameW, nameH);
       ctx.fillStyle = '#e5c07b';
       ctx.fillRect(nameX + 1, nameY + 1, nameW - 2, nameH - 2);
-      ctx.fillStyle = '#252f4a';
-      ctx.fillRect(nameX + 2, nameY + 2, nameW - 4, nameH - 4);
-
-      ctx.fillStyle = '#ffd885';
+      ctx.fillStyle = '#151006';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
       ctx.fillText(this.speakerName, nameX + 6, nameY + (isTouch ? 3 : 2));
     }
 
-    // Si está en modo charla coñazo, mostrar aviso tentador o alerta de "¡PILLADO!"
+    // Modo charla coñazo
     if (this.isRantMode && !this.isShowingChoices()) {
       ctx.font = isTouch ? 'bold 9px monospace' : 'bold 6px monospace';
       ctx.textAlign = 'right';
@@ -18802,11 +19043,10 @@ class DialogueBox {
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
 
-    const wrappedLines = this._wrapText(ctx, shownText, boxW - 20);
+    const wrappedLines = this._wrapText(ctx, shownText, textW);
     const startTextY = boxY + (isTouch ? 8 : 9);
-
     wrappedLines.slice(0, maxVisibleLines).forEach((line, idx) => {
-      ctx.fillText(line, boxX + 9, startTextY + idx * lineHeight);
+      ctx.fillText(line, textX, startTextY + idx * lineHeight);
     });
 
     const pageInfo = `${this.currentLineIndex + 1}/${this.lines.length}`;
@@ -18815,12 +19055,18 @@ class DialogueBox {
     ctx.textAlign = 'right';
     ctx.fillText(pageInfo, boxX + boxW - (isTouch ? 28 : 20), boxY + boxH - (isTouch ? 13 : 11));
 
+    // Triángulo de continuar con Math.sin(clock * 5).
     if (Math.floor(this.visibleChars) >= fullText.length) {
-      const bounce = Math.sin(this.blinkTimer) > 0 ? 0 : 1;
+      const bob = Math.sin(this.blinkTimer) * 1.5;
+      const tx = boxX + boxW - (isTouch ? 14 : 9);
+      const ty = boxY + boxH - (isTouch ? 16 : 10) + bob;
       ctx.fillStyle = '#ffd885';
-      // (FIX M3.1) Indicador de avance más grande en táctil
-      ctx.font = isTouch ? 'bold 14px monospace' : '7px monospace';
-      ctx.fillText('▶', boxX + boxW - (isTouch ? 13 : 8), boxY + boxH - (isTouch ? 17 : 11) + bounce);
+      ctx.beginPath();
+      ctx.moveTo(tx - 4, ty);
+      ctx.lineTo(tx + 1, ty);
+      ctx.lineTo(tx - 1.5, ty + 4);
+      ctx.closePath();
+      ctx.fill();
     }
 
     if (this.isShowingChoices()) {
@@ -18986,6 +19232,8 @@ class Inventory {
     this.gridCols = 4;
     this.gridRows = 2;
     this._lastSlots = [];
+    this._lastSelected = -1;
+    this._detailBobStart = 0;
     this._touchActions = [];
     this._pageButtons = [];
     this._pointerWasDown = false;
@@ -19054,7 +19302,7 @@ class Inventory {
    *  - botones contextuales grandes → usar / tirar
    */
   handleTouchInput(input) {
-    if (!this.isOpen || !this.isTouchDevice || !input) return null;
+    if (!this.isOpen || !input) return null;
     const px = input.pointerX;
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
@@ -19101,6 +19349,7 @@ class Inventory {
 
   open() {
     this.isOpen = true;
+    this._popStart = null;
     this.statusMessage = '';
     this._resetTouch();
   }
@@ -19112,6 +19361,7 @@ class Inventory {
 
   close() {
     this.isOpen = false;
+    this._popStart = null;
     this.statusMessage = '';
     this._resetTouch();
   }
@@ -19274,6 +19524,22 @@ class Inventory {
   render(ctx, player = null) {
     if (!this.isOpen) return;
 
+    // (BLOQUE 2.3) Pop de apertura del inventario.
+    const now = performance.now();
+    if (this._popStart == null) this._popStart = now;
+    const popScale = UILayout.popScale(this._popStart, now, 0.9);
+    ctx.save();
+    ctx.translate(160, 90);
+    ctx.scale(popScale, popScale);
+    ctx.translate(-160, -90);
+
+    if (this._lastSelected !== this.selectedIndex) {
+      this._lastSelected = this.selectedIndex;
+      this._detailBobStart = now;
+    }
+    const bobT = Math.min(1, (now - (this._detailBobStart || now)) / 260);
+    const detailBob = Math.sin(bobT * Math.PI) * 2;
+
     const totalItems = this.items.length;
     const currentPage = Math.floor(this.selectedIndex / this.visibleSlots);
     const totalPages = Math.max(1, Math.ceil(Math.max(totalItems, this.selectedIndex + 1) / this.visibleSlots));
@@ -19355,8 +19621,15 @@ class Inventory {
         const item = this.items[slotIndex];
         this._lastSlots.push({ x: sx, y: sy, w: slotSize, h: slotSize, index: slotIndex });
 
-        // Fondo y bisel de ranura
-        ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+        // Fondo y bisel de ranura; la seleccionada recibe un gradiente dorado.
+        if (isSelected) {
+          const grad = ctx.createLinearGradient(sx, sy, sx + slotSize, sy + slotSize);
+          grad.addColorStop(0, 'rgba(253, 224, 71, 0.30)');
+          grad.addColorStop(1, 'rgba(253, 224, 71, 0.04)');
+          ctx.fillStyle = grad;
+        } else {
+          ctx.fillStyle = UI_COLORS.slotBg;
+        }
         ctx.fillRect(sx, sy, slotSize, slotSize);
 
         ctx.strokeStyle = isSelected ? UI_COLORS.slotSelectedBorder : UI_COLORS.slotBorder;
@@ -19456,7 +19729,7 @@ class Inventory {
       ctx.strokeStyle = UI_COLORS.goldDim;
       ctx.strokeRect(iconBoxX + 0.5, iconBoxY + 0.5, 23, 23);
 
-      UILayout.drawItemIcon(ctx, this.itemsSheet, selected.iconIndex, iconBoxX + 4, iconBoxY + 4, 16);
+      UILayout.drawItemIcon(ctx, this.itemsSheet, selected.iconIndex, iconBoxX + 4, iconBoxY + 4 + detailBob, 16);
 
       // Nombre del objeto
       const titleX = iconBoxX + 29;
@@ -19491,49 +19764,34 @@ class Inventory {
         ctx.fillText(line, padX, sepY + 5 + idx * 7);
       });
 
-      // (FIX M3.2) Acciones contextuales: botones grandes en táctil
+      // (BLOQUE 4.B) Botones de acción clicables para ratón y táctil.
       this._touchActions = [];
-      if (this.isTouchDevice) {
-        const gap = 4;
-        const btnW = (innerW - gap) / 2;
-        const btnH = 17;
-        const actY = rightRect.y + rightRect.h - btnH - 4;
-        const useRect = { id: 'use', x: padX, y: actY, w: btnW, h: btnH };
-        const dropRect = { id: 'drop', x: padX + btnW + gap, y: actY, w: btnW, h: btnH };
+      const gap = 4;
+      const btnW = (innerW - gap) / 2;
+      const btnH = 17;
+      const actY = rightRect.y + rightRect.h - btnH - 4;
+      const useRect = { id: 'use', x: padX, y: actY, w: btnW, h: btnH };
+      const dropRect = { id: 'drop', x: padX + btnW + gap, y: actY, w: btnW, h: btnH };
 
-        ctx.fillStyle = 'rgba(20, 60, 45, 0.95)';
-        ctx.fillRect(useRect.x, useRect.y, useRect.w, useRect.h);
-        ctx.strokeStyle = UI_COLORS.emerald;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(useRect.x + 0.5, useRect.y + 0.5, useRect.w - 1, useRect.h - 1);
-        ctx.font = `bold 6px ${UI_FONT}`;
-        ctx.fillStyle = UI_COLORS.emerald;
-        ctx.textAlign = 'center';
-        ctx.fillText('USAR / EQUIPAR', useRect.x + useRect.w / 2, useRect.y + 5);
+      ctx.fillStyle = 'rgba(20, 60, 45, 0.95)';
+      ctx.fillRect(useRect.x, useRect.y, useRect.w, useRect.h);
+      ctx.strokeStyle = UI_COLORS.emerald;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(useRect.x + 0.5, useRect.y + 0.5, useRect.w - 1, useRect.h - 1);
+      ctx.font = `bold 6px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.emerald;
+      ctx.textAlign = 'center';
+      ctx.fillText('USAR / EQUIPAR', useRect.x + useRect.w / 2, useRect.y + 5);
 
-        ctx.fillStyle = 'rgba(70, 20, 26, 0.95)';
-        ctx.fillRect(dropRect.x, dropRect.y, dropRect.w, dropRect.h);
-        ctx.strokeStyle = UI_COLORS.crimson;
-        ctx.strokeRect(dropRect.x + 0.5, dropRect.y + 0.5, dropRect.w - 1, dropRect.h - 1);
-        ctx.fillStyle = UI_COLORS.crimson;
-        ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5);
+      ctx.fillStyle = 'rgba(70, 20, 26, 0.95)';
+      ctx.fillRect(dropRect.x, dropRect.y, dropRect.w, dropRect.h);
+      ctx.strokeStyle = UI_COLORS.crimson;
+      ctx.strokeRect(dropRect.x + 0.5, dropRect.y + 0.5, dropRect.w - 1, dropRect.h - 1);
+      ctx.fillStyle = UI_COLORS.crimson;
+      ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5);
 
-        ctx.textAlign = 'left';
-        this._touchActions = [useRect, dropRect];
-      } else {
-        const actY = rightRect.y + rightRect.h - 15;
-        ctx.fillStyle = 'rgba(20, 29, 47, 0.92)';
-        ctx.fillRect(padX, actY, innerW, 11);
-        ctx.strokeStyle = UI_COLORS.borderInner;
-        ctx.strokeRect(padX + 0.5, actY + 0.5, innerW - 1, 10);
-
-        ctx.font = `bold 4px ${UI_FONT}`;
-        ctx.fillStyle = UI_COLORS.cyan;
-        ctx.fillText('[E] Usar / Equipar', padX + 4, actY + 3.5);
-
-        ctx.fillStyle = UI_COLORS.crimson;
-        ctx.fillText('[X] Descartar', padX + innerW - 48, actY + 3.5);
-      }
+      ctx.textAlign = 'left';
+      this._touchActions = [useRect, dropRect];
     } else {
       ctx.font = `bold 4.5px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.textMuted;
@@ -19551,6 +19809,7 @@ class Inventory {
       });
     }
 
+    ctx.restore();
     ctx.restore();
   }
 
@@ -19585,6 +19844,7 @@ class CharacterStats {
     this.isTouchDevice = false;
     this._skillRowRects = [];
     this._tabRects = [];
+    this._popStart = null;
   }
 
   setTouchMode(isTouch) {
@@ -19593,6 +19853,7 @@ class CharacterStats {
 
   open() {
     this.isOpen = true;
+    this._popStart = null;
   }
 
   close() {
@@ -19610,7 +19871,7 @@ class CharacterStats {
   }
 
   cycleTab() {
-    const order = ['stats', 'achievements', 'skills'];
+    const order = ['stats', 'skills', 'achievements'];
     this.activeTab = order[(order.indexOf(this.activeTab) + 1) % order.length];
   }
 
@@ -19682,11 +19943,11 @@ class CharacterStats {
       return true;
     }
     if (input.consumeKey('Digit2') || input.consumeKey('Numpad2')) {
-      this.switchTab('achievements');
+      this.switchTab('skills');
       return true;
     }
     if (input.consumeKey('Digit3') || input.consumeKey('Numpad3')) {
-      this.switchTab('skills');
+      this.switchTab('achievements');
       return true;
     }
 
@@ -19703,10 +19964,10 @@ class CharacterStats {
           this.switchTab('stats');
           return true;
         } else if (px >= modal.x + 100 && px <= modal.x + 196) {
-          this.switchTab('achievements');
+          this.switchTab('skills');
           return true;
         } else if (px >= modal.x + 198 && px <= modal.x + modal.w - 5) {
-          this.switchTab('skills');
+          this.switchTab('achievements');
           return true;
         }
       }
@@ -19744,15 +20005,27 @@ class CharacterStats {
   render(ctx, player = null, achievementManager = null) {
     if (!this.isOpen) return;
 
+    const now = performance.now();
+    if (this._popStart == null) this._popStart = now;
+    const pop = UILayout.popScale(this._popStart, now);
+
     const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;
     const totalCount = achievementManager ? achievementManager.getTotalCount() : 11;
     const skillPts = player ? (player.skillPoints || 0) : 0;
 
+    ctx.fillStyle = 'rgba(3, 5, 10, 0.6)';
+    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+    ctx.save();
+    ctx.translate(160, 90);
+    ctx.scale(pop, pop);
+    ctx.translate(-160, -90);
+
     const frame = UILayout.drawModalFrame(ctx, {
-      title: 'FICHA DEL DESARROLLADOR',
+      title: 'FICHA DEL HÉROE',
       icon: '⚙️',
       badge: '[Tab] Cambiar Vista',
-      closeLabel: '[Esc] Cerrar'
+      closeLabel: '[Esc] Cerrar',
+      veil: false
     });
 
     const { content } = frame;
@@ -19774,20 +20047,31 @@ class CharacterStats {
     const tabW = Math.floor((content.w - tabGap * 2) / 3);
 
     const tabs = [
-      { id: 'stats', label: '[1] PERFIL & ATRIBUTOS' },
-      { id: 'achievements', label: `[2] LOGROS (${unlockedCount}/${totalCount})` },
-      { id: 'skills', label: `[3] HABILIDADES (${skillPts}pt)` }
+      { id: 'stats', label: '[1] ATRIBUTOS' },
+      { id: 'skills', label: `[2] HABILIDADES (${skillPts}pt)` },
+      { id: 'achievements', label: `[3] LOGROS (${unlockedCount}/${totalCount})` }
     ];
 
     tabs.forEach((tab, idx) => {
       const tx = content.x + idx * (tabW + tabGap);
       this._tabRects.push({ x: tx, y: tabBarY, w: tabW, h: tabH, id: tab.id });
       const isActive = this.activeTab === tab.id;
-      ctx.fillStyle = isActive ? UI_COLORS.slotSelectedBg : UI_COLORS.panelBg;
+      if (isActive) {
+        const g = ctx.createLinearGradient(tx, tabBarY, tx, tabBarY + tabH);
+        g.addColorStop(0, 'rgba(253, 224, 71, 0.28)');
+        g.addColorStop(1, 'rgba(253, 224, 71, 0.06)');
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = UI_COLORS.panelBg;
+      }
       ctx.fillRect(tx, tabBarY, tabW, tabH);
       ctx.strokeStyle = isActive ? UI_COLORS.gold : UI_COLORS.borderInner;
       ctx.lineWidth = 1;
       ctx.strokeRect(tx + 0.5, tabBarY + 0.5, tabW - 1, tabH - 1);
+      if (isActive) {
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.fillRect(tx + 2, tabBarY + tabH - 2, tabW - 4, 2);
+      }
 
       ctx.font = `bold ${this.isTouchDevice ? '5.4' : '4.1'}px ${UI_FONT}`;
       ctx.fillStyle = isActive ? UI_COLORS.gold : UI_COLORS.textSecondary;
@@ -19814,6 +20098,7 @@ class CharacterStats {
       this._renderAchievementsTab(ctx, bodyRect, achievementManager);
     }
 
+    ctx.restore();
     ctx.restore();
   }
 
@@ -19866,7 +20151,7 @@ class CharacterStats {
     // 2. Barras de progreso compactas (Salud, Blindaje, Robotización, Experiencia, Ataque)
     const barX = leftRect.x + 5;
     const barW = leftRect.w - 10;
-    let by = leftRect.y + 47;
+    let by = leftRect.y + 50;
     const barSpacing = 14;
 
     const hpCur = player ? Math.max(0, player.hp) : 6;
@@ -19879,8 +20164,26 @@ class CharacterStats {
       value: hpCur,
       max: hpMax,
       color: UI_COLORS.crimson,
+      gradient: ['#ef4444', '#f97316'],
       label: 'SALUD VITAL',
       valueText: `${hpCur.toFixed(1).replace('.0', '')}/${hpMax} ♥`
+    });
+    by += barSpacing;
+
+    // (BLOQUE 4.D) Stamina con gradiente verde.
+    const staminaCur = player ? Math.max(0, player.stamina ?? 100) : 100;
+    const staminaMax = player ? (player.maxStamina || 100) : 100;
+    UILayout.drawBar(ctx, {
+      x: barX,
+      y: by,
+      w: barW,
+      h: 5,
+      value: staminaCur,
+      max: staminaMax,
+      color: UI_COLORS.emerald,
+      gradient: ['#22c55e', '#84cc16'],
+      label: 'STAMINA DE COMBATE',
+      valueText: `${Math.round(staminaCur)}/${staminaMax}`
     });
     by += barSpacing;
 
@@ -19895,6 +20198,7 @@ class CharacterStats {
       value: hasArmor ? armorPts : 0,
       max: maxArmorPts,
       color: UI_COLORS.cyan,
+      gradient: ['#0ea5e9', '#67e8f9'],
       label: 'BLINDAJE BINARIO',
       valueText: hasArmor ? `${armorPts}/${maxArmorPts} 🛡️` : 'SIN CORAZA'
     });
@@ -19912,6 +20216,7 @@ class CharacterStats {
       value: robotVal,
       max: 100,
       color: robotColor,
+      gradient: robotVal > 50 ? ['#f59e0b', '#ef4444'] : ['#10b981', '#a3e635'],
       label: 'ROBOTIZACIÓN IA',
       valueText: `${robotVal}% 🤖`
     });
@@ -19937,25 +20242,13 @@ class CharacterStats {
         value: xpProgress,
         max: xpRange,
         color: UI_COLORS.gold,
+        gradient: ['#f59e0b', '#fde047'],
+        insideText: `Nv. ${playerLvl}`,
         label: 'EXP. PROGRAMADOR',
-        valueText: `NV ${playerLvl} (${xpPct}%)`
+        valueText: `${xpPct}%`
       });
     }
     by += barSpacing;
-
-    const hasSword = Boolean(player && player.hasSword);
-    const atkPower = hasSword ? (robotVal > 50 ? 70 : 100) : 25;
-    UILayout.drawBar(ctx, {
-      x: barX,
-      y: by,
-      w: barW,
-      h: 5,
-      value: atkPower,
-      max: 100,
-      color: hasSword ? UI_COLORS.gold : UI_COLORS.textMuted,
-      label: 'POTENCIA RECURSIVA',
-      valueText: hasSword ? (robotVal > 50 ? '-30% PENAL.' : '100% ⚔️') : 'DESARMADO'
-    });
 
     // =========================================================================
     // PANEL DERECHO: Habilidades de Combate y Reliquias
@@ -20027,49 +20320,107 @@ class CharacterStats {
     UILayout.drawPanel(ctx, rect, {
       bg: UI_COLORS.panelBg,
       border: UI_COLORS.borderInner,
-      headerText: `ÁRBOL DE ESPECIALIZACIÓN · PUNTOS DISPONIBLES: ${player ? player.skillPoints : 0}`
+      headerText: `HABILIDADES · PUNTOS: ${player ? (player.skillPoints || 0) : 0}`
     });
 
-    const x = rect.x + 6;
-    const w = rect.w - 12;
-    let y = rect.y + 16;
+    const pad = 6;
+    const gap = 4;
+    const cardW = Math.floor((rect.w - pad * 2 - gap) / 2);
+    const cardH = 30;
+    const startX = rect.x + pad;
+    const startY = rect.y + 15;
     this._skillRowRects = [];
+    const icons = { vigor: '❤', filo: '⚔', reflejo: '✦', log: '📜' };
 
     SKILL_DEFS.forEach((def, i) => {
-      const owned = Boolean(player && player.skills[def.key]);
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = startX + col * (cardW + gap);
+      const y = startY + row * (cardH + gap);
+      const owned = Boolean(player && player.skills && player.skills[def.key]);
       const selected = i === this.skillCursor;
-      const rowH = 22;
-      this._skillRowRects.push({ x, y, w, h: rowH - 2, index: i });
+      this._skillRowRects.push({ x, y, w: cardW, h: cardH, index: i });
 
-      ctx.fillStyle = selected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
-      ctx.fillRect(x, y, w, rowH - 2);
-      ctx.strokeStyle = owned ? UI_COLORS.emerald : (selected ? UI_COLORS.gold : UI_COLORS.slotBorder);
+      // Tarjeta: brillante si está desbloqueada, oscura si está bloqueada.
+      const g = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
+      if (owned) {
+        g.addColorStop(0, 'rgba(16, 45, 38, 0.95)');
+        g.addColorStop(1, 'rgba(20, 83, 45, 0.55)');
+      } else {
+        g.addColorStop(0, 'rgba(11, 16, 28, 0.96)');
+        g.addColorStop(1, 'rgba(6, 10, 18, 0.96)');
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, cardW, cardH);
+      ctx.strokeStyle = selected ? UI_COLORS.gold : (owned ? 'rgba(74, 222, 128, 0.7)' : UI_COLORS.slotBorder);
+      ctx.lineWidth = selected ? 1.4 : 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, cardW - 1, cardH - 1);
+      if (selected) {
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.fillRect(x + 2, y + 1, cardW - 4, 1);
+      }
+
+      // Icono circular.
+      const ix = x + 10;
+      const iy = y + 11;
+      ctx.fillStyle = owned ? 'rgba(74, 222, 128, 0.18)' : 'rgba(100, 116, 139, 0.14)';
+      ctx.beginPath();
+      ctx.arc(ix, iy, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = owned ? UI_COLORS.emerald : UI_COLORS.slotBorder;
       ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, rowH - 3);
+      ctx.stroke();
+      ctx.font = '6px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = owned ? UI_COLORS.gold : UI_COLORS.textDim;
+      ctx.fillText(icons[def.key] || '◆', ix, iy + 0.5);
 
-      ctx.font = `bold 4.8px ${UI_FONT}`;
-      ctx.fillStyle = owned ? UI_COLORS.emerald : UI_COLORS.textPrimary;
-      ctx.fillText(`${selected ? '▶ ' : ''}${def.name}`, x + 4, y + 3);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.font = 'bold 4.7px monospace';
+      ctx.fillStyle = owned ? UI_COLORS.textPrimary : UI_COLORS.textMuted;
+      ctx.fillText(def.name, x + 19, y + 4);
 
-      ctx.font = `4.1px ${UI_FONT}`;
-      ctx.fillStyle = UI_COLORS.textSecondary;
-      ctx.fillText(UILayout.fitText(ctx, def.desc, w - 55), x + 8, y + 11);
-
-      const statusStr = owned
-        ? '✓ ACTIVA'
-        : (this.isTouchDevice ? `TOCA 2x · ${def.cost}pt` : `[Enter] ${def.cost}pt`);
-      ctx.font = `bold 4.2px ${UI_FONT}`;
-      ctx.fillStyle = owned ? UI_COLORS.emerald : (player && player.skillPoints >= def.cost ? UI_COLORS.gold : UI_COLORS.textMuted);
-      const sw = ctx.measureText(statusStr).width;
-      ctx.fillText(statusStr, x + w - sw - 4, y + 3.5);
-
-      y += rowH;
+      ctx.font = '3.9px monospace';
+      ctx.fillStyle = owned ? UI_COLORS.emerald : UI_COLORS.textDim;
+      if (owned) {
+        ctx.fillText('✓ ACTIVA', x + 19, y + 11);
+      } else {
+        ctx.fillText(`🔒 Coste: ${def.cost} Puntos`, x + 19, y + 11);
+      }
+      ctx.fillStyle = UI_COLORS.textMuted;
+      ctx.fillText(UILayout.fitText(ctx, def.desc, cardW - 24), x + 4, y + 20);
     });
 
-    if (this.skillMessage) {
-      ctx.font = `bold 4.4px ${UI_FONT}`;
-      ctx.fillStyle = UI_COLORS.gold;
-      ctx.fillText(this.skillMessage, x, rect.y + rect.h - 10);
+    // Detalle completo de la habilidad seleccionada.
+    const def = SKILL_DEFS[this.skillCursor] || SKILL_DEFS[0];
+    if (def) {
+      const owned = Boolean(player && player.skills && player.skills[def.key]);
+      const detailY = Math.min(startY + 2 * (cardH + gap) + 1, rect.y + rect.h - 32);
+      const detailH = Math.max(24, rect.y + rect.h - detailY - 2);
+      const g = ctx.createLinearGradient(rect.x + pad, detailY, rect.x + pad, detailY + detailH);
+      g.addColorStop(0, 'rgba(20, 30, 48, 0.95)');
+      g.addColorStop(1, 'rgba(9, 15, 26, 0.95)');
+      ctx.fillStyle = g;
+      ctx.fillRect(rect.x + pad, detailY, rect.w - pad * 2, detailH);
+      ctx.strokeStyle = owned ? 'rgba(74, 222, 128, 0.45)' : 'rgba(229, 192, 123, 0.4)';
+      ctx.strokeRect(rect.x + pad + 0.5, detailY + 0.5, rect.w - pad * 2 - 1, detailH - 1);
+
+      ctx.font = 'bold 4.3px monospace';
+      ctx.fillStyle = owned ? UI_COLORS.emerald : UI_COLORS.gold;
+      ctx.fillText(`${def.name} · ${owned ? 'DESBLOQUEADA' : `BLOQUEADA (${def.cost} pt)`}`, rect.x + pad + 4, detailY + 3);
+      ctx.font = '4px monospace';
+      ctx.fillStyle = UI_COLORS.textSecondary;
+      const lines = UILayout.wrapText(ctx, def.desc, rect.w - pad * 2 - 8);
+      lines.slice(0, 3).forEach((line, idx) => {
+        ctx.fillText(line, rect.x + pad + 4, detailY + 10 + idx * 6);
+      });
+      if (this.skillMessage) {
+        ctx.font = 'bold 4px monospace';
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.fillText(UILayout.fitText(ctx, this.skillMessage, rect.w - pad * 2 - 8), rect.x + pad + 4, detailY + detailH - 7);
+      }
     }
   }
 
@@ -20079,7 +20430,7 @@ class CharacterStats {
   _renderAchievementsTab(ctx, rect, achievementManager) {
     const list = achievementManager ? achievementManager.getAll() : [];
     const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;
-    const totalCount = achievementManager ? achievementManager.getTotalCount() : list.length;
+    const totalCount = achievementManager ? achievementManager.getTotalCount() : Math.max(1, list.length);
 
     UILayout.drawPanel(ctx, rect, {
       bg: UI_COLORS.panelBg,
@@ -20094,36 +20445,76 @@ class CharacterStats {
       value: unlockedCount,
       max: Math.max(1, totalCount),
       color: UI_COLORS.gold,
+      gradient: ['#f59e0b', '#fde047'],
       label: 'PROGRESO DE TROFEOS',
       valueText: `${unlockedCount}/${totalCount}`
     });
 
-    const colW = Math.floor((rect.w - 16) / 2);
-    const rowH = 15;
-    const startY = rect.y + 18;
+    // (BLOQUE 4.D) Cuadrícula de medallas 4×3.
+    const cols = 4;
+    const rows = 3;
+    const gapX = 4;
+    const gapY = 3;
+    const cellW = Math.floor((rect.w - 12 - gapX * (cols - 1)) / cols);
+    const cellH = Math.floor((rect.h - 16 - gapY * (rows - 1)) / rows);
+    const startX = rect.x + 6;
+    const startY = rect.y + 15;
 
-    list.slice(0, 12).forEach((ach, index) => {
-      const isRightCol = index >= 6;
-      const rowIndex = isRightCol ? index - 6 : index;
-      const x = isRightCol ? rect.x + colW + 10 : rect.x + 6;
-      const y = startY + rowIndex * (rowH + 1);
+    list.slice(0, cols * rows).forEach((ach, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const x = startX + col * (cellW + gapX);
+      const y = startY + row * (cellH + gapY);
       const isUnlocked = Boolean(ach.unlocked);
 
-      ctx.fillStyle = isUnlocked ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
-      ctx.fillRect(x, y, colW, rowH);
-      ctx.strokeStyle = isUnlocked ? UI_COLORS.emerald : UI_COLORS.slotBorder;
+      // Celda glass.
+      const g = ctx.createLinearGradient(x, y, x, y + cellH);
+      if (isUnlocked) {
+        g.addColorStop(0, 'rgba(45, 36, 12, 0.95)');
+        g.addColorStop(1, 'rgba(20, 30, 48, 0.95)');
+      } else {
+        g.addColorStop(0, 'rgba(8, 12, 20, 0.95)');
+        g.addColorStop(1, 'rgba(5, 8, 14, 0.95)');
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, cellW, cellH);
+      ctx.strokeStyle = isUnlocked ? 'rgba(253, 224, 71, 0.6)' : 'rgba(51, 65, 85, 0.7)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, y + 0.5, colW - 1, rowH - 1);
+      ctx.strokeRect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
 
-      ctx.font = `bold 4.2px ${UI_FONT}`;
+      // Medalla circular con glow si está desbloqueada.
+      const mx = x + cellW / 2;
+      const my = y + cellH * 0.38;
+      if (isUnlocked) {
+        const glow = ctx.createRadialGradient(mx, my, 1, mx, my, 10);
+        glow.addColorStop(0, 'rgba(253, 224, 71, 0.45)');
+        glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(mx - 10, my - 10, 20, 20);
+      }
+      ctx.fillStyle = isUnlocked ? 'rgba(253, 224, 71, 0.2)' : 'rgba(15, 23, 42, 0.95)';
+      ctx.beginPath();
+      ctx.arc(mx, my, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = isUnlocked ? UI_COLORS.gold : UI_COLORS.slotBorder;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.font = '6.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillStyle = isUnlocked ? UI_COLORS.gold : UI_COLORS.textMuted;
-      const prefix = isUnlocked ? '✓ ' : '🔒 ';
-      ctx.fillText(UILayout.fitText(ctx, `${prefix}${ach.title}`, colW - 6), x + 3, y + 2);
+      ctx.fillText(isUnlocked ? '🏅' : '🔒', mx, my + 0.5);
 
-      ctx.font = `3.8px ${UI_FONT}`;
-      ctx.fillStyle = isUnlocked ? UI_COLORS.textSecondary : UI_COLORS.textMuted;
-      ctx.fillText(UILayout.fitText(ctx, ach.description || '', colW - 6), x + 3, y + 8.5);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.font = 'bold 3.5px monospace';
+      ctx.fillStyle = isUnlocked ? UI_COLORS.gold : UI_COLORS.textDim;
+      const title = ach.title || 'Logro';
+      ctx.fillText(UILayout.fitText(ctx, title, cellW - 4), mx, my + 9);
     });
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
   }
 
   _drawSkillCard(ctx, x, y, w, h, name, keyPrompt, unlocked, description, source, themeColor) {
@@ -20752,8 +21143,6 @@ class WorldMap {
     this._drawTopographyBackground(ctx, mapX, mapY, mapW, mapH);
 
     // 3. Senderos y conexiones viales entre provincias
-    this._drawInterconnectingRoads(ctx);
-
     // 4. Determinar estado de progreso (Núcleos, Reliquias y Bosses)
     const status = this._computeProgressStatus(player, enemies);
 
@@ -20768,6 +21157,9 @@ class WorldMap {
     this._drawCenterVillageRegion(ctx, locInfo.zone === 'center', status, t);
     this._drawEastSanctuaryRegion(ctx, locInfo.zone === 'east', status, t);
     this._drawSouthSwampRegion(ctx, locInfo.zone === 'south', status, t);
+
+    // (BLOQUE 3.3) Conexiones discontinuas por encima de las islas.
+    this._drawInterconnectingRoads(ctx);
 
     // 7. Decoraciones cartográficas (Rosa de los Vientos)
     this._drawCompassRose(ctx, 22, 140);
@@ -20954,11 +21346,14 @@ class WorldMap {
    * Fondo cartográfico: mar antiguo y cuadrícula náutica tenue.
    */
   _drawTopographyBackground(ctx, mapX, mapY, mapW, mapH) {
-    ctx.fillStyle = '#1d3345';
+    // (BLOQUE 3) Noche profunda + retícula estelar sutil.
+    const night = ctx.createLinearGradient(0, mapY, 0, mapY + mapH);
+    night.addColorStop(0, '#0a1626');
+    night.addColorStop(1, '#050b14');
+    ctx.fillStyle = night;
     ctx.fillRect(mapX, mapY, mapW, mapH);
 
-    // Rejilla cartográfica
-    ctx.strokeStyle = 'rgba(148, 197, 224, 0.08)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.07)';
     ctx.lineWidth = 0.5;
     for (let x = mapX + 20; x < mapX + mapW; x += 32) {
       ctx.beginPath();
@@ -20972,32 +21367,46 @@ class WorldMap {
       ctx.lineTo(mapX + mapW, y);
       ctx.stroke();
     }
+
+    const vignette = ctx.createRadialGradient(
+      mapX + mapW / 2, mapY + mapH / 2, mapH * 0.25,
+      mapX + mapW / 2, mapY + mapH / 2, mapW * 0.65
+    );
+    vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(mapX, mapY, mapW, mapH);
   }
 
   /**
    * Traza los caminos adoquinados y puentes que comunican Valleverde con las 4 direcciones.
    */
   _drawInterconnectingRoads(ctx) {
+    const t = performance.now() * 0.001;
     ctx.save();
-    // Camino Norte: Valleverde a Cumbres
-    ctx.fillStyle = '#8f7b59';
-    ctx.fillRect(158, 54, 4, 10);
-
-    // Camino Sur: Valleverde a Marismas
-    ctx.fillRect(158, 104, 4, 10);
-
-    // Camino Oeste: Valleverde a Páramo de AI Alex
-    ctx.fillRect(98, 82, 14, 4);
-
-    // Camino Este: Valleverde al Valle de la Consagración (Puente de madera)
+    // (BLOQUE 3.3) Rutas discontinuas animadas entre provincias.
+    ctx.strokeStyle = 'rgba(229, 192, 123, 0.8)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 3]);
+    ctx.lineDashOffset = -(t * 14) % 7;
+    const routes = [
+      [160, 54, 160, 76],
+      [160, 96, 160, 116],
+      [100, 84, 144, 84],
+      [176, 84, 208, 84]
+    ];
+    for (const [x1, y1, x2, y2] of routes) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // Puente de madera del camino este.
     ctx.fillStyle = '#5c3a21';
     ctx.fillRect(208, 81, 14, 6);
     ctx.fillStyle = '#b38243';
     ctx.fillRect(209, 82, 12, 4);
-    for (let bx = 210; bx <= 219; bx += 3) {
-      ctx.fillStyle = '#3a2210';
-      ctx.fillRect(bx, 81, 1, 6);
-    }
     ctx.restore();
   }
 
@@ -21283,22 +21692,37 @@ class WorldMap {
    */
   _drawRegionCard(ctx, x, y, w, h, isActive, bgColor, borderColor, title, t) {
     ctx.save();
-    // Fondo de la provincia
+    // (BLOQUE 3.2) Silueta orgánica tipo isla en lugar de rectángulo.
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const blob = () => {
+      ctx.beginPath();
+      for (let i = 0; i <= 28; i++) {
+        const a = (i / 28) * Math.PI * 2;
+        const wob = 1 + Math.sin(a * 3 + x * 0.04) * 0.055 + Math.sin(a * 5 + y * 0.05) * 0.035;
+        const px = cx + Math.cos(a) * (w / 2) * wob;
+        const py = cy + Math.sin(a) * (h / 2) * wob;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    };
+
     ctx.fillStyle = bgColor;
-    ctx.fillRect(x, y, w, h);
+    blob();
+    ctx.fill();
 
     if (isActive) {
-      // Halo pulsante Zelda de Zona Activa
       const pulse = 0.65 + Math.sin(t * 6) * 0.35;
       ctx.strokeStyle = `rgba(255, 215, 0, ${pulse})`;
       ctx.lineWidth = 1.8;
-      ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+      blob();
+      ctx.stroke();
 
-      // Resplandor interior
       ctx.fillStyle = 'rgba(255, 230, 100, 0.08)';
-      ctx.fillRect(x, y, w, h);
+      blob();
+      ctx.fill();
 
-      // Pastilla animada superior "► ZONA ACTUAL ◄"
       ctx.fillStyle = '#ffd700';
       ctx.fillRect(x + w / 2 - 24, y - 4, 48, 7);
       ctx.fillStyle = '#0f172a';
@@ -21308,13 +21732,16 @@ class WorldMap {
     } else {
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      blob();
+      ctx.stroke();
     }
 
-    // Título de la provincia
-    ctx.fillStyle = isActive ? '#fffbeb' : '#cbd5e1';
+    // Título con sombra negra.
     ctx.font = 'bold 5px monospace';
     ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillText(title, x + w / 2 + 1, y + 7);
+    ctx.fillStyle = isActive ? '#fffbeb' : '#cbd5e1';
     ctx.fillText(title, x + w / 2, y + 6);
 
     ctx.restore();
@@ -21332,9 +21759,11 @@ class WorldMap {
     ctx.lineWidth = 0.5;
     ctx.strokeRect(cx - tw / 2 - 2.5, cy - 3, tw + 5, 6);
 
-    ctx.fillStyle = color;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx + 1, cy + 1.5);
+    ctx.fillStyle = color;
     ctx.fillText(text, cx, cy + 0.5);
   }
 
@@ -21355,31 +21784,31 @@ class WorldMap {
     ctx.arc(px, py, ringRadius, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 2. Icono de Héroe (capucha verde y pluma/espada estilo Link)
+    // 2. (BLOQUE 3.2) Estrella dorada pulsante que representa al héroe.
     const bob = Math.sin(t * 6) * 1.5;
     const hy = py - 4 + bob;
-
-    // Cabeza / gorro verde
-    ctx.fillStyle = '#15803d';
+    const pulse = 1 + Math.sin(t * 5) * 0.18;
+    const glow = ctx.createRadialGradient(px, hy, 1, px, hy, 9 * pulse);
+    glow.addColorStop(0, 'rgba(253, 224, 71, 0.45)');
+    glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(px - 10, hy - 10, 20, 20);
+    ctx.fillStyle = '#ffd700';
     ctx.beginPath();
-    ctx.moveTo(px, hy - 4);
-    ctx.lineTo(px - 3.5, hy + 2);
-    ctx.lineTo(px + 3.5, hy + 2);
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const r = (i % 2 === 0 ? 5.5 : 2.3) * pulse;
+      const sx = px + Math.cos(a) * r;
+      const sy = hy + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    }
     ctx.closePath();
     ctx.fill();
-
-    // Cara
-    ctx.fillStyle = '#fed7aa';
-    ctx.fillRect(px - 2, hy + 1, 4, 3);
-
-    // Ojos
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(px - 1, hy + 2, 1, 1);
-    ctx.fillRect(px + 1, hy + 2, 1, 1);
-
-    // Túnica verde
-    ctx.fillStyle = '#16a34a';
-    ctx.fillRect(px - 2.5, hy + 4, 5, 3);
+    ctx.fillStyle = '#fff3b0';
+    ctx.beginPath();
+    ctx.arc(px, hy, 1.3, 0, Math.PI * 2);
+    ctx.fill();
 
     // 3. Cartel "★ TÚ" flotante
     ctx.fillStyle = '#090705';
@@ -21706,6 +22135,12 @@ class QuestLogView {
     this._dragStartY = 0;
     this._dragStartScroll = 0;
     this._dragging = false;
+
+    // (BLOQUE 4.C) Pestañas y animaciones.
+    this.activeTab = 'main';
+    this._tabRects = [];
+    this._tabSlideStart = 0;
+    this._popStart = null;
   }
 
   setTouchMode(isTouch) {
@@ -21725,6 +22160,10 @@ class QuestLogView {
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
     const list = this._listRect;
+
+    if (input.pointerJustClicked && this.handleClick(px, py)) {
+      return true;
+    }
 
     if (down && !this._touchWasDown) {
       this._touchWasDown = true;
@@ -21759,7 +22198,30 @@ class QuestLogView {
 
   open() {
     this.isOpen = true;
+    this._popStart = null;
+    this._tabSlideStart = performance.now();
     this._clampSelection();
+  }
+
+  switchTab(tab) {
+    if (tab !== 'main' && tab !== 'side') return;
+    if (this.activeTab === tab) return;
+    this.activeTab = tab;
+    this.selectedIndex = 0;
+    this.scrollOffset = 0;
+    this._tabSlideStart = performance.now();
+  }
+
+  /** Clic de ratón/táctil en las pestañas. */
+  handleClick(px, py) {
+    if (!this.isOpen) return false;
+    for (const tab of this._tabRects) {
+      if (px >= tab.x && px <= tab.x + tab.w && py >= tab.y && py <= tab.y + tab.h) {
+        this.switchTab(tab.id);
+        return true;
+      }
+    }
+    return false;
   }
 
   close() {
@@ -21779,7 +22241,7 @@ class QuestLogView {
     // Ordenar primero misiones principales (MAIN) y luego encargos secundarios (SIDE)
     const main = all.filter((q) => q.category === 'MAIN');
     const side = all.filter((q) => q.category !== 'MAIN');
-    return [...main, ...side];
+    return this.activeTab === 'side' ? side : main;
   }
 
   _clampSelection() {
@@ -21815,92 +22277,147 @@ class QuestLogView {
   render(ctx) {
     if (!this.isOpen || !this.questLog) return;
 
+    const now = performance.now();
+    if (this._popStart == null) this._popStart = now;
     const quests = this._getQuestList();
     this._clampSelection();
-
     const completedCount = quests.filter((q) => q.status === 'COMPLETED').length;
+
+    // Velo + pop 0.9 → 1.0 de la ventana glass.
+    ctx.fillStyle = 'rgba(3, 5, 10, 0.6)';
+    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+    const scale = UILayout.popScale(this._popStart, now);
+    ctx.save();
+    ctx.translate(160, 90);
+    ctx.scale(scale, scale);
+    ctx.translate(-160, -90);
 
     const frame = UILayout.drawModalFrame(ctx, {
       title: 'DIARIO DE MISIONES',
       icon: '📜',
       badge: `${completedCount}/${quests.length} COMPLETADAS`,
-      closeLabel: '[Esc] Cerrar'
+      closeLabel: '[Esc] Cerrar',
+      veil: false
     });
 
     const { content } = frame;
-
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
 
-    // =========================================================================
-    // COLUMNA IZQUIERDA: Lista de Misiones (máximo 4 simultáneas visibles + scroll)
-    // =========================================================================
-    const leftW = 114;
-    const leftRect = {
-      x: content.x,
-      y: content.y,
-      w: leftW,
-      h: content.h
-    };
+    // (BLOQUE 4.C) Pestañas Principal / Secundarias.
+    const tabH = this.isTouchDevice ? 18 : 11;
+    const tabGap = 3;
+    const tabW = Math.floor((content.w - tabGap) / 2);
+    this._tabRects = [];
+    const tabs = [
+      { id: 'main', label: 'PRINCIPAL' },
+      { id: 'side', label: 'SECUNDARIAS' }
+    ];
+    tabs.forEach((tab, i) => {
+      const tx = content.x + i * (tabW + tabGap);
+      this._tabRects.push({ x: tx, y: content.y, w: tabW, h: tabH, id: tab.id });
+      const active = this.activeTab === tab.id;
+      if (active) {
+        const g = ctx.createLinearGradient(tx, content.y, tx, content.y + tabH);
+        g.addColorStop(0, 'rgba(253, 224, 71, 0.28)');
+        g.addColorStop(1, 'rgba(253, 224, 71, 0.06)');
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = UI_COLORS.panelBg;
+      }
+      ctx.fillRect(tx, content.y, tabW, tabH);
+      ctx.strokeStyle = active ? UI_COLORS.gold : UI_COLORS.borderInner;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(tx + 0.5, content.y + 0.5, tabW - 1, tabH - 1);
+      if (active) {
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.fillRect(tx + 2, content.y + tabH - 2, tabW - 4, 2);
+      }
+      ctx.font = `bold ${this.isTouchDevice ? '5.4' : '4.4'}px ${UI_FONT}`;
+      ctx.fillStyle = active ? UI_COLORS.gold : UI_COLORS.textSecondary;
+      const lw = ctx.measureText(tab.label).width;
+      ctx.fillText(tab.label, tx + Math.floor((tabW - lw) / 2), content.y + (this.isTouchDevice ? 5.5 : 3.5));
+    });
 
+    // Transición de diapositiva al cambiar de pestaña.
+    const slideT = Math.min(1, (now - this._tabSlideStart) / 180);
+    const slideOff = (1 - slideT) * 8 * (this.activeTab === 'side' ? 1 : -1);
+    ctx.translate(slideOff, 0);
+    ctx.globalAlpha = 0.55 + 0.45 * slideT;
+
+    const bodyY = content.y + tabH + 2;
+    const bodyH = content.h - tabH - 2;
+
+    // Columna izquierda: tarjetas de misión.
+    const leftW = 114;
+    const leftRect = { x: content.x, y: bodyY, w: leftW, h: bodyH };
     UILayout.drawPanel(ctx, leftRect, {
       bg: UI_COLORS.panelBg,
       border: UI_COLORS.borderInner,
-      headerText: `ENCARGOS (${this.selectedIndex + 1}/${Math.max(1, quests.length)})`
+      headerText: `${this.activeTab === 'main' ? 'HISTORIA' : 'ENCARGOS'} (${this.selectedIndex + 1}/${Math.max(1, quests.length)})`
     });
 
     const listStartX = leftRect.x + 4;
-    const listStartY = leftRect.y + 16;
+    const listStartY = leftRect.y + 15;
     const rowH = this.rowH;
     const rowW = leftRect.w - 12;
     this._listRect = { x: listStartX, y: listStartY, w: rowW, h: this.maxVisibleQuests * (rowH + 2) };
     this._rowRects = [];
-
     const visibleQuests = quests.slice(this.scrollOffset, this.scrollOffset + this.maxVisibleQuests);
 
     visibleQuests.forEach((q, idx) => {
       const fullIndex = this.scrollOffset + idx;
       const isSelected = fullIndex === this.selectedIndex;
       const isCompleted = q.status === 'COMPLETED';
-      const isMain = q.category === 'MAIN';
       const ry = listStartY + idx * (rowH + 2);
       this._rowRects.push({ x: listStartX, y: ry, w: rowW, h: rowH, index: fullIndex });
 
-      // Caja de la fila
-      ctx.fillStyle = isSelected ? UI_COLORS.slotSelectedBg : UI_COLORS.slotBg;
+      // Tarjeta con gradiente sutil.
+      const g = ctx.createLinearGradient(listStartX, ry, listStartX + rowW, ry);
+      if (isSelected) {
+        g.addColorStop(0, 'rgba(253, 224, 71, 0.20)');
+        g.addColorStop(1, 'rgba(253, 224, 71, 0.04)');
+      } else {
+        g.addColorStop(0, 'rgba(30, 41, 59, 0.75)');
+        g.addColorStop(1, 'rgba(15, 23, 42, 0.75)');
+      }
+      ctx.fillStyle = g;
       ctx.fillRect(listStartX, ry, rowW, rowH);
-
-      ctx.strokeStyle = isSelected
-        ? UI_COLORS.slotSelectedBorder
-        : (isCompleted ? 'rgba(74, 222, 128, 0.35)' : UI_COLORS.slotBorder);
+      ctx.strokeStyle = isSelected ? UI_COLORS.gold : (isCompleted ? 'rgba(74, 222, 128, 0.4)' : UI_COLORS.slotBorder);
       ctx.lineWidth = 1;
       ctx.strokeRect(listStartX + 0.5, ry + 0.5, rowW - 1, rowH - 1);
 
-      // Etiqueta superior de categoría y estado
-      ctx.font = `bold 3.8px ${UI_FONT}`;
-      ctx.fillStyle = isMain ? UI_COLORS.cyan : UI_COLORS.gold;
-      ctx.fillText(isMain ? '★ PRINCIPAL' : '◆ SECUNDARIA', listStartX + 3, ry + 2.5);
+      // Icono de estado: check verde / círculo amarillo.
+      const iconX = listStartX + 6;
+      const iconY = ry + rowH / 2;
+      if (isCompleted) {
+        ctx.strokeStyle = UI_COLORS.emerald;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(iconX - 2.5, iconY);
+        ctx.lineTo(iconX - 0.5, iconY + 2);
+        ctx.lineTo(iconX + 3, iconY - 2.5);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = UI_COLORS.warn;
+        ctx.beginPath();
+        ctx.arc(iconX, iconY, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+      }
 
-      ctx.fillStyle = isCompleted ? UI_COLORS.emerald : UI_COLORS.textSecondary;
-      const stateIcon = isCompleted ? '✓ HECHA' : '▶ ACTIVA';
-      const sw = ctx.measureText(stateIcon).width;
-      ctx.fillText(stateIcon, listStartX + rowW - sw - 3, ry + 2.5);
-
-      // Título de la misión ajustado al ancho
-      ctx.font = `bold 4.4px ${UI_FONT}`;
-      ctx.fillStyle = isSelected
-        ? UI_COLORS.textPrimary
-        : (isCompleted ? UI_COLORS.textMuted : UI_COLORS.textSecondary);
-      ctx.fillText(
-        UILayout.fitText(ctx, q.title, rowW - 6),
-        listStartX + 3,
-        ry + 11.5
-      );
+      ctx.font = `bold ${this.isTouchDevice ? '5.6' : '4.4'}px ${UI_FONT}`;
+      ctx.fillStyle = isSelected ? UI_COLORS.textPrimary : (isCompleted ? UI_COLORS.textMuted : UI_COLORS.textSecondary);
+      ctx.fillText(UILayout.fitText(ctx, q.title, rowW - 22), listStartX + 12, ry + 4);
+      ctx.font = `3.9px ${UI_FONT}`;
+      ctx.fillStyle = isSelected ? UI_COLORS.gold : UI_COLORS.textDim;
+      ctx.fillText(q.category === 'MAIN' ? '★ Principal' : '◆ Secundaria', listStartX + 12, ry + 13);
     });
 
-    // Scrollbar vertical discreto para la lista de 4 visibles
     UILayout.drawScrollbar(
       ctx,
       leftRect.x + leftRect.w - 5,
@@ -21911,23 +22428,20 @@ class QuestLogView {
       this.scrollOffset
     );
 
-    // =========================================================================
-    // COLUMNA DERECHA: Detalles, Objetivos y Recompensas en Bytes
-    // =========================================================================
+    // Columna derecha: detalle con pasos y recompensa.
     const rightRect = {
       x: leftRect.x + leftRect.w + 4,
-      y: content.y,
+      y: bodyY,
       w: content.w - leftRect.w - 4,
-      h: content.h
+      h: bodyH
     };
-
     const selectedQuest = quests[this.selectedIndex] || quests[0];
 
     UILayout.drawPanel(ctx, rightRect, {
       bg: UI_COLORS.panelBgAlt,
       border: UI_COLORS.borderInner,
       headerText: selectedQuest
-        ? (selectedQuest.category === 'MAIN' ? '★ HISTORIA PRINCIPAL' : '◆ ENCARGO DE ALDEA')
+        ? (selectedQuest.category === 'MAIN' ? '★ HISTORIA PRINCIPAL' : '◆ ENCARGO SECUNDARIO')
         : 'DETALLE DE MISIÓN'
     });
 
@@ -21936,7 +22450,6 @@ class QuestLogView {
       const innerW = rightRect.w - 12;
       let ry = rightRect.y + 15;
 
-      // Título y badge de estado
       ctx.font = `bold 5px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.gold;
       ctx.fillText(UILayout.fitText(ctx, selectedQuest.title, innerW - 38), padX, ry);
@@ -21949,49 +22462,59 @@ class QuestLogView {
       ctx.fillText(badgeStr, padX + innerW - bw, ry + 0.5);
       ry += 9;
 
-      // Descripción narrativa con wrapText estricto (máximo 3 líneas)
       ctx.font = `4.2px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.textSecondary;
       const descLines = UILayout.wrapText(ctx, selectedQuest.description || '', innerW);
-      descLines.slice(0, 3).forEach((line, idx) => {
+      descLines.slice(0, 2).forEach((line, idx) => {
         ctx.fillText(line, padX, ry + idx * 6.5);
       });
-      ry += Math.min(3, descLines.length) * 6.5 + 4;
+      ry += Math.min(2, descLines.length) * 6.5 + 3;
 
-      // Caja de Objetivo Actual
+      // Pasos con viñetas; los completados se tachan.
       ctx.font = `bold 4.2px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.gold;
-      ctx.fillText('⚡ OBJETIVO ACTUAL:', padX, ry);
+      ctx.fillText('PASOS A SEGUIR:', padX, ry);
       ry += 6;
-
-      ctx.font = `4.2px ${UI_FONT}`;
-      const stepLines = UILayout.wrapText(ctx, selectedQuest.currentStep || '', innerW - 8);
-      const stepSlice = stepLines.slice(0, 3);
-      const stepBoxH = Math.max(15, stepSlice.length * 6.5 + 5);
-
-      ctx.fillStyle = 'rgba(10, 15, 28, 0.92)';
-      ctx.fillRect(padX, ry, innerW, stepBoxH);
-      ctx.strokeStyle = isDone ? UI_COLORS.emerald : UI_COLORS.goldDim;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(padX + 0.5, ry + 0.5, innerW - 1, stepBoxH - 1);
-
-      ctx.fillStyle = isDone ? UI_COLORS.emerald : UI_COLORS.textPrimary;
-      stepSlice.forEach((line, idx) => {
-        ctx.fillText(line, padX + 4, ry + 3 + idx * 6.5);
+      const steps = Array.isArray(selectedQuest.steps) && selectedQuest.steps.length > 0
+        ? selectedQuest.steps
+        : [selectedQuest.currentStep || 'Continúa la aventura.'];
+      const completedSteps = Number(selectedQuest.completedSteps || 0);
+      ctx.font = `4.1px ${UI_FONT}`;
+      steps.slice(0, 3).forEach((step, idx) => {
+        const done = isDone || idx < completedSteps;
+        const lines = UILayout.wrapText(ctx, step, innerW - 10);
+        const stepLines = lines.slice(0, 2);
+        stepLines.forEach((line, li) => {
+          const shown = UILayout.fitText(ctx, line, innerW - 10);
+          ctx.fillStyle = done ? UI_COLORS.emerald : UI_COLORS.textPrimary;
+          if (li === 0) ctx.fillText('•', padX, ry);
+          ctx.fillText(shown, padX + 6, ry);
+          if (done) {
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.8)';
+            ctx.lineWidth = 0.7;
+            ctx.beginPath();
+            ctx.moveTo(padX + 6, ry + 2.2);
+            ctx.lineTo(padX + 6 + Math.min(innerW - 10, ctx.measureText(shown).width), ry + 2.2);
+            ctx.stroke();
+          }
+          ry += 6.5;
+        });
       });
-      ry += stepBoxH + 5;
+      ry += 2;
 
-      // Caja de Recompensa en Bytes / Objetos
+      // Recompensa.
       const rewardY = Math.min(ry, rightRect.y + rightRect.h - 22);
-      ctx.fillStyle = 'rgba(16, 26, 42, 0.9)';
+      const g = ctx.createLinearGradient(padX, rewardY, padX, rewardY + 18);
+      g.addColorStop(0, 'rgba(16, 26, 42, 0.95)');
+      g.addColorStop(1, 'rgba(9, 16, 28, 0.95)');
+      ctx.fillStyle = g;
       ctx.fillRect(padX, rewardY, innerW, 18);
       ctx.strokeStyle = 'rgba(74, 222, 128, 0.45)';
       ctx.strokeRect(padX + 0.5, rewardY + 0.5, innerW - 1, 17);
 
       ctx.font = `bold 4px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.emerald;
-      ctx.fillText('🎁 RECOMPENSA (BYTES & BOTÍN):', padX + 4, rewardY + 2.5);
-
+      ctx.fillText('🎁 RECOMPENSA:', padX + 4, rewardY + 2.5);
       ctx.font = `4.1px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.gold;
       ctx.fillText(
@@ -22001,6 +22524,8 @@ class QuestLogView {
       );
     }
 
+    ctx.globalAlpha = 1;
+    ctx.restore();
     ctx.restore();
   }
 
@@ -22781,6 +23306,7 @@ class MainMenuAndScenes {
     this.noticeText = '';
     this.noticeTimer = 0;
     this.animTime = 0;
+    this._modalPopStart = -1;
 
     // Opciones persistentes
     this.options = {
@@ -22883,6 +23409,7 @@ class MainMenuAndScenes {
   }
 
   openPauseMenu() {
+    this._modalPopStart = this.animTime;
     this.state = 'pause';
     this.selectedIndex = 0;
     this.noticeText = '';
@@ -22957,6 +23484,7 @@ class MainMenuAndScenes {
   }
 
   openOptionsScreen(returnState = 'title') {
+    this._modalPopStart = this.animTime;
     this.previousStateBeforeOptions = returnState === 'pause' ? 'pause' : 'title';
     this.previousState = this.previousStateBeforeOptions;
     this.state = 'options';
@@ -24276,7 +24804,7 @@ class MainMenuAndScenes {
       this._renderTitleBackdropPixelArt(ctx);
     } else {
       // Fondo semitransparente sobre la partida en pausa
-      ctx.fillStyle = 'rgba(8, 11, 20, 0.76)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
     }
 
@@ -24994,39 +25522,68 @@ class MainMenuAndScenes {
       ctx.restore();
       return;
     }
-    ctx.font = 'bold 7px monospace';
-    ctx.textBaseline = 'top';
+    ctx.textBaseline = 'middle';
 
     items.forEach((item, idx) => {
       const b = hitboxes[idx];
       const isSelected = idx === this.selectedIndex;
+      const cy = b.y + b.h / 2;
 
-      // Marco del botón
-      ctx.fillStyle = isSelected ? '#ffd166' : '#2d3b55';
-      ctx.fillRect(b.x, b.y, b.w, b.h);
+      // (BLOQUE 2) Fila glass: gradiente dorado sutil en la seleccionada.
+      if (isSelected) {
+        const grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y);
+        grad.addColorStop(0, 'rgba(253, 224, 71, 0.24)');
+        grad.addColorStop(0.6, 'rgba(253, 224, 71, 0.08)');
+        grad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+      } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+      }
 
-      ctx.fillStyle = isSelected ? '#243154' : 'rgba(16, 21, 36, 0.88)';
-      ctx.fillRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+      const icon = this._menuIcon(item.label);
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = isSelected ? '#ffd700' : '#94a3b8';
+      ctx.fillText(icon, b.x + 7, cy);
 
-      ctx.textAlign = 'center';
+      const scale = isSelected ? 1.1 : 1;
+      ctx.save();
+      ctx.translate(b.x + 18, cy);
+      ctx.scale(scale, scale);
+      ctx.font = 'bold 7px monospace';
       if (item.disabled) {
         ctx.fillStyle = '#636e85';
       } else {
-        ctx.fillStyle = isSelected ? '#ffd885' : '#e2e8f0';
+        ctx.fillStyle = isSelected ? '#ffd700' : '#e2e8f0';
       }
-
-      const prefix = isSelected ? '▶ ' : '';
-      const suffix = isSelected ? ' ◀' : '';
-      ctx.fillText(
-        `${prefix}${item.label}${suffix}`,
-        b.x + Math.round(b.w / 2),
-        b.y + (isTitle ? 3 : 4)
-      );
+      ctx.fillText(item.label, 0, 0);
+      ctx.restore();
     });
 
     ctx.restore();
   }
 
+  _menuIcon(label) {
+    const l = String(label).toLowerCase();
+    if (l.includes('continuar')) return '▶';
+    if (l.includes('guardar') || l.includes('nube')) return '💾';
+    if (l.includes('salón') || l.includes('récord')) return '🏆';
+    if (l.includes('ajuste') || l.includes('opciones')) return '⚙';
+    if (l.includes('volumen') || l.includes('efectos')) return '🔊';
+    if (l.includes('música')) return '🎵';
+    if (l.includes('control')) return '🎮';
+    if (l.includes('volver') || l.includes('salir')) return '↩';
+    if (l.includes('nueva')) return '✦';
+    if (l.includes('cargar')) return '📂';
+    if (l.includes('equipo')) return '🛡';
+    if (l.includes('habilidad')) return '⚔';
+    return '◆';
+  }
 
   _renderTitleMenu(ctx, items, hitboxes) {
     const t = this.animTime;
@@ -25100,15 +25657,23 @@ class MainMenuAndScenes {
     const winY = Math.round((this.viewportHeight - winH) / 2);
 
     ctx.save();
-    ctx.fillStyle = '#121624';
-    ctx.fillRect(winX, winY, winW, winH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(winX + 1, winY + 1, winW - 2, winH - 2);
-    ctx.fillStyle = '#192136';
-    ctx.fillRect(winX + 3, winY + 3, winW - 6, winH - 6);
+    // (BLOQUE 2.3) Pop de apertura 0.8 → 1.0 en 200 ms.
+    const popElapsed = Math.max(0, this.animTime - (this._modalPopStart >= 0 ? this._modalPopStart : this.animTime - 0.2));
+    const popT = Math.min(1, popElapsed / 0.2);
+    const popScale = 0.8 + 0.2 * (1 - Math.pow(1 - popT, 3));
+    const pivotX = this.viewportWidth / 2;
+    const pivotY = this.viewportHeight / 2;
+    ctx.translate(pivotX, pivotY);
+    ctx.scale(popScale, popScale);
+    ctx.translate(-pivotX, -pivotY);
 
-    // Marco interior decorativo
-    ctx.strokeStyle = '#2d3b55';
+    // Glassmorphism azul noche + borde dorado 2 px.
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+    ctx.fillRect(winX, winY, winW, winH);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(winX + 1, winY + 1, winW - 2, winH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
     ctx.strokeRect(winX + 4.5, winY + 4.5, winW - 9, winH - 9);
 
@@ -25303,12 +25868,14 @@ class MainMenuAndScenes {
     ctx.strokeStyle = '#2d3748';
     ctx.strokeRect(artX - 1.5, artY - 1.5, artW + 3, artH + 3);
 
-    // Cinta superior con el título del capítulo
+    // (FIX 3) Cinta superior con fondo oscuro y ancho limitado.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(artX, 0, artW, 13);
     ctx.font = 'bold 7px monospace';
     ctx.fillStyle = '#ffd166';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(slide.chapter, artX, 4);
+    ctx.fillText(slide.chapter, artX, 4, artW - 82);
 
     ctx.font = '6px monospace';
     ctx.fillStyle = '#9aa5b8';
@@ -25790,13 +26357,13 @@ class MainMenuAndScenes {
     ctx.stroke();
 
     // Tres pedestales de los tesoros sagrados en la parte inferior
-    const pedY = y + 58;
+    const pedY = y + 34;
     const p1X = cx - 72;
     const p2X = cx;
     const p3X = cx + 72;
 
     const drawPedestal = (px, label, iconType, desc) => {
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = 'rgba(4, 8, 16, 0.7)';
       ctx.fillRect(px - 22, pedY + 12, 44, 18);
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 1;
@@ -25836,8 +26403,10 @@ class MainMenuAndScenes {
     drawPedestal(p2X, 'Armadura', ITEM_ICONS.ARMOR, 'Binaria');
     drawPedestal(p3X, 'Reliquia', ITEM_ICONS.GOLDEN_APPLE, 'Little');
 
-    // Cartel superior
-    ctx.font = 'bold 7px monospace';
+    // (FIX 3) Cartel inferior con fondo oscuro y 10 px de margen sobre las cajas.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(x + 4, y + h - 14, w - 8, 14);
+    ctx.font = 'bold 6.5px monospace';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffd166';
     ctx.fillText('【 三種の神器 · LOS 3 ARTEFACTOS SAGRADOS 】', cx, y + h - 5);
@@ -27695,6 +28264,9 @@ class AnimeCutsceneManager {
     ctx.save();
     ctx.fillStyle = 'rgba(7, 10, 20, 0.94)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
+    // (FIX 3) Panel semitransparente extra detrás del bloque de texto.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(boxX + 6, boxY + 6, boxW - 12, boxH - 12);
 
     // Borde exterior
     ctx.strokeStyle = borderColor;
@@ -30795,6 +31367,19 @@ class AudioManager {
     });
   }
 
+  playPunch() {
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({
+      freq: 95,
+      type: 'triangle',
+      startTime: now,
+      duration: 0.1,
+      peakGain: 0.16
+    });
+  }
+
   playEnemyHit() {
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
@@ -31389,6 +31974,7 @@ class RPGGame {
     this._setupAIChatDOM();
 
     this.npcs = this._createVillageNPCs();
+    this.dialogueBox.npcRegistry = this.npcs;
     this.animals = this._createVillageAnimals();
     this.enemies = this._createFirstStageEnemies();
     this.worldItems = this._createWorldItems();
@@ -36363,7 +36949,7 @@ class RPGGame {
       const swordBox = this.player.getSwordHitbox();
       if (swordBox) attackBoxes.push({ box: swordBox, fromSlash: false });
     }
-    if (this.player.energySlashes && this.player.energySlashes.length > 0) {
+    if (this.player.hasSword && this.player.energySlashes && this.player.energySlashes.length > 0) {
       for (const slash of this.player.energySlashes) {
         if (!slash.active) continue;
         attackBoxes.push({
@@ -37028,6 +37614,10 @@ class RPGGame {
     if (this.questLogView && this.questLogView.isOpen) {
       // (FIX M3.4) Toque para seleccionar y arrastre para scroll
       this.questLogView.handleTouchInput(this.input);
+      // (BLOQUE 4.C) Clic de ratón en las pestañas Principal / Secundarias.
+      if (this.input.pointerJustClicked) {
+        this.questLogView.handleClick(this.input.pointerX, this.input.pointerY);
+      }
       if (this.input.consumeKey('KeyM')) {
         this.questLogView.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
@@ -37208,7 +37798,13 @@ class RPGGame {
         }
       }
       if (this.player.tryAttack()) {
-        this.music.playSwordSlash();
+        if (this.player.hasSword) {
+          this.music.playSwordSlash();
+        } else if (typeof this.music.playPunch === 'function') {
+          this.music.playPunch();
+        } else {
+          this.music.playSwordSlash();
+        }
       }
     }
 

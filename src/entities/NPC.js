@@ -37,7 +37,7 @@ export class NPC extends Entity {
       width: 16,
       height: 16,
       speed,
-      boundingBox: { offsetX: 3, offsetY: 8, width: 10, height: 7 },
+      boundingBox: { offsetX: 4, offsetY: 9, width: 8, height: 6 },
       animator,
       sceneId
     });
@@ -61,6 +61,8 @@ export class NPC extends Entity {
     this.waitTimer = 1.2 + Math.random() * 2.0;
     this.lookTimer = 1.0 + Math.random() * 1.8;
     this.stuckTimer = 0;
+    this.isNpc = true;
+    this.ignoreSmallProps = true;
     this.currentActivityIcon = '';
     this.isSleeping = false;
     this.jobAnimTimer = Math.random() * 5.0;
@@ -122,6 +124,7 @@ export class NPC extends Entity {
 
   update(dt, tilemap, obstacles, isTalking = false, player = null, threat = null) {
     this.promptBobTimer += dt * 4.5;
+    this.isTalking = Boolean(isTalking);
     this.inCombat = Boolean(threat);
     this.jobAnimTimer += dt;
 
@@ -316,9 +319,20 @@ export class NPC extends Entity {
       if (blockedX && blockedY) {
         this.stuckTimer += dt;
         this.isMoving = false;
-        // Si lleva más de 0.45s bloqueado, avanza suavemente al siguiente waypoint sin quedarse congelado
-        if (this.stuckTimer > 0.45) {
+        // (FIX 4) Si lleva >0.5 s bloqueado, salta al tile libre más cercano y cambia de rumbo.
+        if (this.stuckTimer > 0.5) {
           this.stuckTimer = 0;
+          const ts = tilemap.tileSize;
+          const free = nearestFreeTile(
+            tilemap,
+            Math.floor(this.centerX / ts),
+            Math.floor(this.centerY / ts),
+            3
+          );
+          if (free) {
+            this.x = free.col * ts;
+            this.y = free.row * ts;
+          }
           this.currentWaypointIndex = (this.currentWaypointIndex + 1) % this.patrolPoints.length;
           this.waitTimer = 0.8;
         }
@@ -365,7 +379,7 @@ export class NPC extends Entity {
    */
   _resolveNavTarget(target, tilemap) {
     if (!tilemap || !target) return target;
-    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(target.x, target.y), tilemap)) {
+    if (!CollisionSystem.collidesWithMap(this.getBoundingBoxAt(target.x, target.y), tilemap, { ignoreSmallProps: true })) {
       return target;
     }
     const ts = tilemap.tileSize;
@@ -408,7 +422,9 @@ export class NPC extends Entity {
 
   render(ctx, camera) {
     const sx = Math.round(this.centerX - camera.renderX);
-    const sy = Math.round(this.y - camera.renderY);
+    // (BLOQUE 1.6) Bob de 1 px mientras el NPC habla.
+    const talkBob = this.isTalking ? Math.round(Math.sin(this.jobAnimTimer * 6)) : 0;
+    const sy = Math.round(this.y - camera.renderY) + talkBob;
 
     if (this.isSleeping) {
       // Estado durmiendo en cama: silueta en reposo y zZz animados
