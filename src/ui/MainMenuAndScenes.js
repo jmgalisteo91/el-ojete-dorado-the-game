@@ -586,7 +586,9 @@ export class MainMenuAndScenes {
    * la profecía de El Ojete Dorado y la transición suave al pueblo de Valleverde.
    */
   startAnimeIntroCutscene(onComplete) {
-    // (FIX CINEMÁTICAS) La intro del prólogo se ejecuta in-engine desde main._startNewGame().
+    // (FIX FLUJO) La intro es in-engine y el gameplay debe arrancar, no volver al título.
+    this.state = 'none';
+    this.fadeAlpha = 0;
     if (typeof onComplete === 'function') onComplete();
   }
 

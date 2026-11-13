@@ -13,6 +13,8 @@ export class CinematicTimeline {
     this.events = [...events].sort((a, b) => a.time - b.time);
     this.time = 0;
     this.cursor = 0;
+    this.currentEventIndex = 0;
+    this.currentEventTimer = 0;
     this.finished = false;
     this.fired = [];
   }
@@ -30,6 +32,13 @@ export class CinematicTimeline {
       this.fired.push(event);
       if (typeof onEvent === 'function') onEvent(event, this.time);
     }
+
+    // Reloj del evento actual: nunca se adelanta al siguiente antes de tiempo.
+    this.currentEventIndex = this.cursor;
+    const nextEvent = this.events[this.cursor];
+    this.currentEventTimer = nextEvent
+      ? Math.max(0, nextEvent.time - this.time)
+      : Math.max(0, this.duration - this.time);
 
     if (this.time >= this.duration - 1e-6) {
       this.finished = true;

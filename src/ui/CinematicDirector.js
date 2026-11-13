@@ -170,6 +170,8 @@ export class CinematicDirector {
     this.particleAccumulator = 0;
     this.beam = null;
     this.onComplete = null;
+    this.ending = false;
+    this.endingTimer = 0;
     this.previousMusicMode = null;
     this.lastBlip = -1;
   }
@@ -218,6 +220,9 @@ export class CinematicDirector {
     this.particles = [];
     this.particleAccumulator = 0;
     this.isActive = true;
+    this.ending = false;
+    this.endingTimer = 0;
+    try { this.game?.camera?.resetCinematic?.(); } catch { /* cámara opcional */ }
 
     this.binaryRain = [];
     for (let i = 0; i < 46; i++) {
@@ -237,6 +242,20 @@ export class CinematicDirector {
     } catch {
       /* audio opcional */
     }
+  }
+
+  _syncGameCamera() {
+    const cam = this.game?.camera;
+    if (!cam || typeof cam.setCinematicTarget !== 'function') return;
+    const player = this.game?.player;
+    const px = player ? player.x + player.width / 2 : this.camera.x;
+    const py = player ? player.y + player.height / 2 : this.camera.y;
+    // La cámara del juego interpola hacia este objetivo; nada de saltos bruscos.
+    cam.setCinematicTarget(
+      this.camera.zoom,
+      this.camera.x - px,
+      this.camera.y - py
+    );
   }
 
   _actor(id) {
@@ -405,6 +424,14 @@ export class CinematicDirector {
 
   _timelineEvent(ev) {
     if (!ev) return;
+    try {
+      this._timelineEventRaw(ev);
+    } catch (err) {
+      console.warn('Evento de cinemática fallido', ev.action, err);
+    }
+  }
+
+  _timelineEventRaw(ev) {
     switch (ev.action) {
       case 'title':
         this.title = ev.text || this.title;
@@ -570,7 +597,18 @@ export class CinematicDirector {
   }
 
   _finish() {
-    if (!this.isActive) return;
+    if (!this.isActive || this.ending) return;
+    // Fade out limpio; la escena NO termina hasta que el fundido acaba.
+    this.ending = true;
+    this.endingTimer = 0.7;
+    this.fadeTarget = 1;
+    this.dialogueActive = false;
+    this.dialogue = null;
+  }
+
+  _finalize() {
+    this.ending = false;
+    this.endingTimer = 0;
     this.isActive = false;
     this.dialogueActive = false;
     if (this.previousMusicMode) {
@@ -581,6 +619,7 @@ export class CinematicDirector {
       }
     }
     try {
+      this.game?.camera?.resetCinematic?.();
       this.game?.camera?.snapTo?.(this.game.player);
     } catch {
       /* cámara opcional */
@@ -616,11 +655,23 @@ export class CinematicDirector {
 
   update(dt, input) {
     if (!this.isActive) return;
-    this.time += dt;
+    // Clamp: un frame largo tras una carga no debe saltarse eventos.
+    const step = Math.min(Math.max(0, Number(dt) || 0), 0.05);
+
+    if (this.ending) {
+      this.endingTimer -= step;
+      this.fadeTarget = 1;
+      this.fadeAlpha = Math.min(1, this.fadeAlpha + step * 3.2);
+      this._syncGameCamera();
+      if (this.endingTimer <= 0) this._finalize();
+      return;
+    }
+
+    this.time += step;
     this._applyHorizontalInput(input);
 
     if (this.timeline) {
-      const done = this.timeline.update(dt, (ev) => this._timelineEvent(ev));
+      const done = this.timeline.update(step, (ev) => this._timelineEvent(ev));
       this.time = this.timeline.time;
       if (done) {
         this._finish();
@@ -654,6 +705,7 @@ export class CinematicDirector {
       this.camera.zoom = tw.fromZoom + (tw.toZoom - tw.fromZoom) * e;
       if (p >= 1) this.cameraTween = null;
     }
+    this._syncGameCamera();
 
     for (const actor of this.actors) {
       if (actor.move) {
@@ -905,6 +957,8 @@ export class CinematicDirector {
 
   _drawActors(ctx) {
     for (const actor of this.actors) {
+      if (!actor) continue;
+      try {
       const bob = actor.bob || 0;
       const x = Math.round(actor.x - 8);
       const y = Math.round(actor.y - 16 + bob);
@@ -968,6 +1022,10 @@ export class CinematicDirector {
         ctx.restore();
       }
       ctx.restore();
+      } catch (err) {
+        // Un actor ausente o un sprite no cargado nunca debe romper la cinemática.
+        console.warn('[CinematicDirector] Actor omitido:', err?.message || err);
+      }
     }
   }
 
@@ -1279,7 +1337,6 @@ export class CinematicDirector {
 
     this._drawLetterbox(ctx, W, H);
     this._drawTitle(ctx);
-    this._drawCaption(ctx, W, H);
     this._drawSpotlight(ctx, W, H);
     this._drawDialogue(ctx, W, H);
 
@@ -1293,6 +1350,8 @@ export class CinematicDirector {
       ctx.fillStyle = `rgba(0, 0, 0, ${this.fadeAlpha})`;
       ctx.fillRect(0, 0, W, H);
     }
+    // La caption final (CAPÍTULO I) va SOBRE el fundido para que no desaparezca.
+    this._drawCaption(ctx, W, H);
     ctx.restore();
   }
 }

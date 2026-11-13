@@ -1635,6 +1635,12 @@ class Camera2D {
     this.shakeIntensity = 0;
     this.shakeOffsetX = 0;
     this.shakeOffsetY = 0;
+
+    // (FIX CÁMARA) Capa cinematográfica suavizada; NUNCA se toca x/y a lo bruto.
+    this.cinematicZoom = 1.0;
+    this.targetCinematicZoom = 1.0;
+    this.cinematicOffset = { x: 0, y: 0 };
+    this.targetCinematicOffset = { x: 0, y: 0 };
   }
 
   /**
@@ -1705,15 +1711,45 @@ class Camera2D {
     this.x = this._clampX(this.x);
     this.y = this._clampY(this.y);
 
+    // Suavizado cinematográfico (5/s) independiente del seguimiento normal.
+    const cineFactor = 1 - Math.exp(-5 * Math.max(0, dt));
+    this.cinematicZoom += (this.targetCinematicZoom - this.cinematicZoom) * cineFactor;
+    this.cinematicOffset.x += (this.targetCinematicOffset.x - this.cinematicOffset.x) * cineFactor;
+    this.cinematicOffset.y += (this.targetCinematicOffset.y - this.cinematicOffset.y) * cineFactor;
+    if (Math.abs(this.targetCinematicZoom - this.cinematicZoom) < 0.0005) {
+      this.cinematicZoom = this.targetCinematicZoom;
+    }
+    if (Math.abs(this.targetCinematicOffset.x - this.cinematicOffset.x) < 0.05) {
+      this.cinematicOffset.x = this.targetCinematicOffset.x;
+    }
+    if (Math.abs(this.targetCinematicOffset.y - this.cinematicOffset.y) < 0.05) {
+      this.cinematicOffset.y = this.targetCinematicOffset.y;
+    }
+
     this.updateShake(dt);
   }
 
+  /** Fija el objetivo cinematográfico; el update lo interpola suavemente. */
+  setCinematicTarget(zoom = 1, offsetX = 0, offsetY = 0) {
+    this.targetCinematicZoom = Math.max(0.5, Math.min(3, Number(zoom) || 1));
+    this.targetCinematicOffset.x = Number(offsetX) || 0;
+    this.targetCinematicOffset.y = Number(offsetY) || 0;
+  }
+
+  /** Vuelve a la cámara de gameplay normal (zoom 1, sin offset). */
+  resetCinematic() {
+    this.cinematicZoom = 1.0;
+    this.targetCinematicZoom = 1.0;
+    this.cinematicOffset = { x: 0, y: 0 };
+    this.targetCinematicOffset = { x: 0, y: 0 };
+  }
+
   get renderX() {
-    return Math.round(this.x + this.shakeOffsetX);
+    return Math.round(this.x + this.shakeOffsetX + this.cinematicOffset.x);
   }
 
   get renderY() {
-    return Math.round(this.y + this.shakeOffsetY);
+    return Math.round(this.y + this.shakeOffsetY + this.cinematicOffset.y);
   }
 
   _clampX(x) {
@@ -24992,7 +25028,9 @@ class MainMenuAndScenes {
    * la profecía de El Ojete Dorado y la transición suave al pueblo de Valleverde.
    */
   startAnimeIntroCutscene(onComplete) {
-    // (FIX CINEMÁTICAS) La intro del prólogo se ejecuta in-engine desde main._startNewGame().
+    // (FIX FLUJO) La intro es in-engine y el gameplay debe arrancar, no volver al título.
+    this.state = 'none';
+    this.fadeAlpha = 0;
     if (typeof onComplete === 'function') onComplete();
   }
 
@@ -29079,6 +29117,8 @@ class CinematicTimeline {
     this.events = [...events].sort((a, b) => a.time - b.time);
     this.time = 0;
     this.cursor = 0;
+    this.currentEventIndex = 0;
+    this.currentEventTimer = 0;
     this.finished = false;
     this.fired = [];
   }
@@ -29096,6 +29136,13 @@ class CinematicTimeline {
       this.fired.push(event);
       if (typeof onEvent === 'function') onEvent(event, this.time);
     }
+
+    // Reloj del evento actual: nunca se adelanta al siguiente antes de tiempo.
+    this.currentEventIndex = this.cursor;
+    const nextEvent = this.events[this.cursor];
+    this.currentEventTimer = nextEvent
+      ? Math.max(0, nextEvent.time - this.time)
+      : Math.max(0, this.duration - this.time);
 
     if (this.time >= this.duration - 1e-6) {
       this.finished = true;
@@ -29563,6 +29610,8 @@ class CinematicDirector {
     this.particleAccumulator = 0;
     this.beam = null;
     this.onComplete = null;
+    this.ending = false;
+    this.endingTimer = 0;
     this.previousMusicMode = null;
     this.lastBlip = -1;
   }
@@ -29611,6 +29660,9 @@ class CinematicDirector {
     this.particles = [];
     this.particleAccumulator = 0;
     this.isActive = true;
+    this.ending = false;
+    this.endingTimer = 0;
+    try { this.game?.camera?.resetCinematic?.(); } catch { /* cámara opcional */ }
 
     this.binaryRain = [];
     for (let i = 0; i < 46; i++) {
@@ -29630,6 +29682,20 @@ class CinematicDirector {
     } catch {
       /* audio opcional */
     }
+  }
+
+  _syncGameCamera() {
+    const cam = this.game?.camera;
+    if (!cam || typeof cam.setCinematicTarget !== 'function') return;
+    const player = this.game?.player;
+    const px = player ? player.x + player.width / 2 : this.camera.x;
+    const py = player ? player.y + player.height / 2 : this.camera.y;
+    // La cámara del juego interpola hacia este objetivo; nada de saltos bruscos.
+    cam.setCinematicTarget(
+      this.camera.zoom,
+      this.camera.x - px,
+      this.camera.y - py
+    );
   }
 
   _actor(id) {
@@ -29798,6 +29864,14 @@ class CinematicDirector {
 
   _timelineEvent(ev) {
     if (!ev) return;
+    try {
+      this._timelineEventRaw(ev);
+    } catch (err) {
+      console.warn('Evento de cinemática fallido', ev.action, err);
+    }
+  }
+
+  _timelineEventRaw(ev) {
     switch (ev.action) {
       case 'title':
         this.title = ev.text || this.title;
@@ -29963,7 +30037,18 @@ class CinematicDirector {
   }
 
   _finish() {
-    if (!this.isActive) return;
+    if (!this.isActive || this.ending) return;
+    // Fade out limpio; la escena NO termina hasta que el fundido acaba.
+    this.ending = true;
+    this.endingTimer = 0.7;
+    this.fadeTarget = 1;
+    this.dialogueActive = false;
+    this.dialogue = null;
+  }
+
+  _finalize() {
+    this.ending = false;
+    this.endingTimer = 0;
     this.isActive = false;
     this.dialogueActive = false;
     if (this.previousMusicMode) {
@@ -29974,6 +30059,7 @@ class CinematicDirector {
       }
     }
     try {
+      this.game?.camera?.resetCinematic?.();
       this.game?.camera?.snapTo?.(this.game.player);
     } catch {
       /* cámara opcional */
@@ -30009,11 +30095,23 @@ class CinematicDirector {
 
   update(dt, input) {
     if (!this.isActive) return;
-    this.time += dt;
+    // Clamp: un frame largo tras una carga no debe saltarse eventos.
+    const step = Math.min(Math.max(0, Number(dt) || 0), 0.05);
+
+    if (this.ending) {
+      this.endingTimer -= step;
+      this.fadeTarget = 1;
+      this.fadeAlpha = Math.min(1, this.fadeAlpha + step * 3.2);
+      this._syncGameCamera();
+      if (this.endingTimer <= 0) this._finalize();
+      return;
+    }
+
+    this.time += step;
     this._applyHorizontalInput(input);
 
     if (this.timeline) {
-      const done = this.timeline.update(dt, (ev) => this._timelineEvent(ev));
+      const done = this.timeline.update(step, (ev) => this._timelineEvent(ev));
       this.time = this.timeline.time;
       if (done) {
         this._finish();
@@ -30047,6 +30145,7 @@ class CinematicDirector {
       this.camera.zoom = tw.fromZoom + (tw.toZoom - tw.fromZoom) * e;
       if (p >= 1) this.cameraTween = null;
     }
+    this._syncGameCamera();
 
     for (const actor of this.actors) {
       if (actor.move) {
@@ -30298,6 +30397,8 @@ class CinematicDirector {
 
   _drawActors(ctx) {
     for (const actor of this.actors) {
+      if (!actor) continue;
+      try {
       const bob = actor.bob || 0;
       const x = Math.round(actor.x - 8);
       const y = Math.round(actor.y - 16 + bob);
@@ -30361,6 +30462,10 @@ class CinematicDirector {
         ctx.restore();
       }
       ctx.restore();
+      } catch (err) {
+        // Un actor ausente o un sprite no cargado nunca debe romper la cinemática.
+        console.warn('[CinematicDirector] Actor omitido:', err?.message || err);
+      }
     }
   }
 
@@ -30672,7 +30777,6 @@ class CinematicDirector {
 
     this._drawLetterbox(ctx, W, H);
     this._drawTitle(ctx);
-    this._drawCaption(ctx, W, H);
     this._drawSpotlight(ctx, W, H);
     this._drawDialogue(ctx, W, H);
 
@@ -30686,6 +30790,8 @@ class CinematicDirector {
       ctx.fillStyle = `rgba(0, 0, 0, ${this.fadeAlpha})`;
       ctx.fillRect(0, 0, W, H);
     }
+    // La caption final (CAPÍTULO I) va SOBRE el fundido para que no desaparezca.
+    this._drawCaption(ctx, W, H);
     ctx.restore();
   }
 }
@@ -33672,11 +33778,25 @@ class RPGGame {
     this._resetWorldToInitialState();
     this.music.setMode('village');
     this._saveGameToStorage();
+    // (FIX FLUJO) El menú NO debe quedarse en 'title' durante el prólogo.
+    this.menuSystem.state = 'none';
+    this.menuSystem.fadeAlpha = 0;
+    this.player.stopMovement();
+    this.camera.resetCinematic();
+    this.camera.snapTo(this.player);
     // Inicio natural sin diálogos forzados: libertad total de movimiento y exploración
     this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
     // (BLOQUE 4) Prólogo de Alex al empezar una partida nueva.
     if (this.cinematicDirector) {
-      this.cinematicDirector.play(PROLOGUE_ALEX);
+      this.cinematicDirector.play(PROLOGUE_ALEX, () => {
+        // Al terminar/saltar: gameplay, nunca menú principal.
+        this.menuSystem.state = 'none';
+        this.menuSystem.fadeAlpha = 0;
+        this.player.stopMovement();
+        this.camera.resetCinematic();
+        this.camera.snapTo(this.player);
+        this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
+      });
     }
   }
 

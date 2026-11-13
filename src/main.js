@@ -718,11 +718,25 @@ export class RPGGame {
     this._resetWorldToInitialState();
     this.music.setMode('village');
     this._saveGameToStorage();
+    // (FIX FLUJO) El menú NO debe quedarse en 'title' durante el prólogo.
+    this.menuSystem.state = 'none';
+    this.menuSystem.fadeAlpha = 0;
+    this.player.stopMovement();
+    this.camera.resetCinematic();
+    this.camera.snapTo(this.player);
     // Inicio natural sin diálogos forzados: libertad total de movimiento y exploración
     this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
     // (BLOQUE 4) Prólogo de Alex al empezar una partida nueva.
     if (this.cinematicDirector) {
-      this.cinematicDirector.play(PROLOGUE_ALEX);
+      this.cinematicDirector.play(PROLOGUE_ALEX, () => {
+        // Al terminar/saltar: gameplay, nunca menú principal.
+        this.menuSystem.state = 'none';
+        this.menuSystem.fadeAlpha = 0;
+        this.player.stopMovement();
+        this.camera.resetCinematic();
+        this.camera.snapTo(this.player);
+        this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
+      });
     }
   }
 

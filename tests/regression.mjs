@@ -34,6 +34,7 @@ import handleSave from '../api/save.js';
 import { Tilemap, CHASM_COLLISION } from '../src/world/Tilemap.js';
 import { DialogueBox } from '../src/ui/DialogueBox.js';
 import { CollisionSystem } from '../src/physics/CollisionSystem.js';
+import { Camera2D } from '../src/core/Camera2D.js';
 import { NPC, getBromForgeChoices } from '../src/entities/NPC.js';
 import { TILES } from '../src/graphics/SpriteSheetGenerator.js';
 import { DayNightCycle } from '../src/world/DayNightCycle.js';
@@ -2643,6 +2644,19 @@ test('Timeline v2.0: 7 escenas con duración exacta y eventos absolutos', () => 
   assert.deepEqual(fired, ['a', 'b']);
   assert.equal(tl.finished, true);
   assert.equal(tl.duration, 35);
+
+  // FIX 1: reloj por evento, sin adelantar al siguiente antes de tiempo.
+  const ev = new CinematicTimeline({
+    duration: 35,
+    events: [{ time: 3, action: 'a' }, { time: 12, action: 'b' }]
+  });
+  ev.update(1, () => {});
+  assert.equal(ev.currentEventIndex, 0);
+  assert.equal(ev.currentEventTimer, 2);
+  ev.update(2, () => {});
+  assert.equal(ev.currentEventIndex, 1);
+  assert.equal(ev.currentEventTimer, 9);
+  assert.equal(ev.finished, false);
 });
 
 test('Transiciones espaciales: salir por un borde aparece en el opuesto con margen de 2 tiles', () => {
@@ -2698,6 +2712,22 @@ test('Puerta con nivel: empuje inverso de 2 tiles y bloqueo del Guardia Vulcano'
   assert.ok(block, 'El Guardia Vulcano debe bloquear el nivel 1');
   assert.ok(block.title.includes('VULCANO'));
   assert.equal(getDoorBlock('south_swamp', { level: 3 }), null, 'Nivel 3 debe permitir el paso');
+});
+
+test('Cámara cinematográfica: zoom/offset suavizados y reset a gameplay', () => {
+  const cam = new Camera2D(320, 180, 1000, 1000);
+  cam.setCinematicTarget(2, 40, -20);
+  cam.update({ x: 400, y: 300, width: 16, height: 16 }, 0.2);
+
+  assert.ok(cam.cinematicZoom > 1 && cam.cinematicZoom < 2, 'El zoom debe interpolar, no saltar');
+  assert.ok(cam.cinematicOffset.x > 0 && cam.cinematicOffset.x < 40, 'El offset X debe interpolar');
+  assert.ok(cam.cinematicOffset.y < 0 && cam.cinematicOffset.y > -20, 'El offset Y debe interpolar');
+
+  cam.resetCinematic();
+  assert.equal(cam.cinematicZoom, 1);
+  assert.equal(cam.targetCinematicZoom, 1);
+  assert.deepEqual(cam.cinematicOffset, { x: 0, y: 0 });
+  assert.deepEqual(cam.targetCinematicOffset, { x: 0, y: 0 });
 });
 
 await Promise.all(asyncQueue);

@@ -19,6 +19,12 @@ export class Camera2D {
     this.shakeIntensity = 0;
     this.shakeOffsetX = 0;
     this.shakeOffsetY = 0;
+
+    // (FIX CÁMARA) Capa cinematográfica suavizada; NUNCA se toca x/y a lo bruto.
+    this.cinematicZoom = 1.0;
+    this.targetCinematicZoom = 1.0;
+    this.cinematicOffset = { x: 0, y: 0 };
+    this.targetCinematicOffset = { x: 0, y: 0 };
   }
 
   /**
@@ -89,15 +95,45 @@ export class Camera2D {
     this.x = this._clampX(this.x);
     this.y = this._clampY(this.y);
 
+    // Suavizado cinematográfico (5/s) independiente del seguimiento normal.
+    const cineFactor = 1 - Math.exp(-5 * Math.max(0, dt));
+    this.cinematicZoom += (this.targetCinematicZoom - this.cinematicZoom) * cineFactor;
+    this.cinematicOffset.x += (this.targetCinematicOffset.x - this.cinematicOffset.x) * cineFactor;
+    this.cinematicOffset.y += (this.targetCinematicOffset.y - this.cinematicOffset.y) * cineFactor;
+    if (Math.abs(this.targetCinematicZoom - this.cinematicZoom) < 0.0005) {
+      this.cinematicZoom = this.targetCinematicZoom;
+    }
+    if (Math.abs(this.targetCinematicOffset.x - this.cinematicOffset.x) < 0.05) {
+      this.cinematicOffset.x = this.targetCinematicOffset.x;
+    }
+    if (Math.abs(this.targetCinematicOffset.y - this.cinematicOffset.y) < 0.05) {
+      this.cinematicOffset.y = this.targetCinematicOffset.y;
+    }
+
     this.updateShake(dt);
   }
 
+  /** Fija el objetivo cinematográfico; el update lo interpola suavemente. */
+  setCinematicTarget(zoom = 1, offsetX = 0, offsetY = 0) {
+    this.targetCinematicZoom = Math.max(0.5, Math.min(3, Number(zoom) || 1));
+    this.targetCinematicOffset.x = Number(offsetX) || 0;
+    this.targetCinematicOffset.y = Number(offsetY) || 0;
+  }
+
+  /** Vuelve a la cámara de gameplay normal (zoom 1, sin offset). */
+  resetCinematic() {
+    this.cinematicZoom = 1.0;
+    this.targetCinematicZoom = 1.0;
+    this.cinematicOffset = { x: 0, y: 0 };
+    this.targetCinematicOffset = { x: 0, y: 0 };
+  }
+
   get renderX() {
-    return Math.round(this.x + this.shakeOffsetX);
+    return Math.round(this.x + this.shakeOffsetX + this.cinematicOffset.x);
   }
 
   get renderY() {
-    return Math.round(this.y + this.shakeOffsetY);
+    return Math.round(this.y + this.shakeOffsetY + this.cinematicOffset.y);
   }
 
   _clampX(x) {
