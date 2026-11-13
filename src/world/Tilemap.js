@@ -723,7 +723,9 @@ export class Tilemap {
           worldX: armorDoorX,
           worldY: armorDoorY,
           spawnX: 10.5 * this.tileSize,
-          spawnY: 15 * this.tileSize
+          spawnY: 14.5 * this.tileSize,
+          spawnMode: 'fixed',
+          entryFacing: 'up'
         };
       }
 
@@ -738,7 +740,9 @@ export class Tilemap {
           worldX: swordDoorX,
           worldY: swordDoorY,
           spawnX: 11.5 * this.tileSize,
-          spawnY: 15 * this.tileSize
+          spawnY: 14.5 * this.tileSize,
+          spawnMode: 'fixed',
+          entryFacing: 'up'
         };
       }
 
@@ -1045,7 +1049,9 @@ export class Tilemap {
             worldX: scene.exitDoor.worldX,
             worldY: scene.exitDoor.worldY,
             spawnX: scene.exitDoor.returnX,
-            spawnY: scene.exitDoor.returnY
+            spawnY: scene.exitDoor.returnY,
+            spawnMode: 'fixed',
+            entryFacing: 'down'
           };
         }
       }
@@ -1139,7 +1145,9 @@ export class Tilemap {
             targetScene: 'overworld',
             label: 'Salir al Pueblo',
             spawnX: scene.exitDoor.returnX,
-            spawnY: scene.exitDoor.returnY
+            spawnY: scene.exitDoor.returnY,
+            spawnMode: 'fixed',
+            entryFacing: 'down'
           };
         }
       }
@@ -2595,9 +2603,17 @@ export class Tilemap {
       { x: 18.5 * 16, y: 7.5 * 16, radius: 44, intensity: 0.8 }
     );
 
-    // Felpudo de salida al sur
-    setDeco(10, 16, TILES.EXIT_MAT, false);
-    setDeco(11, 16, TILES.EXIT_MAT, false);
+    // (FIX TEMPLOS) Vano de salida sur despejado (4 tiles) y conectado al camino.
+    for (let r = 13; r <= 16; r++) {
+      for (let c = 9; c <= 12; c++) {
+        collision[r][c] = 0;
+        decoration[r][c] = -1;
+      }
+    }
+    fillRect(ground, 9, 13, 4, 4, TILES.COBBLE);
+    fillRect(decoration, 10, 16, 2, 1, TILES.EXIT_MAT);
+    collision[16][10] = 0;
+    collision[16][11] = 0;
 
     this.scenes.armor_temple = {
       title: 'Templo de la Armadura Binaria · Santuario del Bastión',
@@ -2716,9 +2732,17 @@ export class Tilemap {
       { x: 20.5 * 16, y: 7.5 * 16, radius: 46, intensity: 0.85 }
     );
 
-    // Felpudo de salida al sur
-    setDeco(11, 16, TILES.EXIT_MAT, false);
-    setDeco(12, 16, TILES.EXIT_MAT, false);
+    // (FIX TEMPLOS) Vano de salida sur despejado (4 tiles) y conectado al camino.
+    for (let r = 13; r <= 16; r++) {
+      for (let c = 10; c <= 13; c++) {
+        collision[r][c] = 0;
+        decoration[r][c] = -1;
+      }
+    }
+    fillRect(ground, 10, 13, 4, 4, TILES.COBBLE);
+    fillRect(decoration, 11, 16, 2, 1, TILES.EXIT_MAT);
+    collision[16][11] = 0;
+    collision[16][12] = 0;
 
     this.scenes.sword_temple = {
       title: 'Templo de la Espada de la Recursividad · Altar del Abismo',

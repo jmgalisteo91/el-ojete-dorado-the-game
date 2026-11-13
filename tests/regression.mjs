@@ -35,6 +35,7 @@ import { Tilemap, CHASM_COLLISION } from '../src/world/Tilemap.js';
 import { DialogueBox } from '../src/ui/DialogueBox.js';
 import { CollisionSystem } from '../src/physics/CollisionSystem.js';
 import { Camera2D } from '../src/core/Camera2D.js';
+import { SceneTransitionController } from '../src/core/SceneTransitionController.js';
 import { NPC, getBromForgeChoices } from '../src/entities/NPC.js';
 import { TILES } from '../src/graphics/SpriteSheetGenerator.js';
 import { DayNightCycle } from '../src/world/DayNightCycle.js';
@@ -2726,6 +2727,24 @@ test('Cámara cinematográfica: zoom/offset suavizados y reset a gameplay', () =
   assert.equal(cam.targetCinematicZoom, 1);
   assert.deepEqual(cam.cinematicOffset, { x: 0, y: 0 });
   assert.deepEqual(cam.targetCinematicOffset, { x: 0, y: 0 });
+});
+
+test('Spawn fijo de templos: usa spawnX/spawnY y no el borde genérico', () => {
+  const fake = {
+    tilemap: { tileSize: 16, width: 384, height: 288 },
+    player: { direction: 'left' },
+    _compassFromDirection: () => 'west'
+  };
+  const controller = new SceneTransitionController(fake);
+  const spawn = controller.resolveSpawn({
+    spawnX: 10.5 * 16,
+    spawnY: 14.5 * 16,
+    spawnMode: 'fixed',
+    entryFacing: 'up'
+  });
+  assert.equal(spawn.x, 168, 'Debe respetar la X del vano del templo');
+  assert.equal(spawn.y, 232, 'Debe respetar la Y del vano del templo');
+  assert.equal(spawn.facing, 'up', 'Debe mirar hacia el interior');
 });
 
 await Promise.all(asyncQueue);

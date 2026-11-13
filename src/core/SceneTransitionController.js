@@ -32,6 +32,16 @@ export class SceneTransitionController {
     const entryX = Number.isFinite(door.spawnX) ? door.spawnX : width / 2;
     const entryY = Number.isFinite(door.spawnY) ? door.spawnY : height / 2;
 
+    // (FIX TEMPLOS) Puertas interiores: spawn exacto en su vano, no en un borde genérico.
+    if (door.spawnMode === 'fixed' || door.fixedSpawn === true) {
+      return {
+        x: entryX,
+        y: entryY,
+        facing: door.entryFacing || door.forceDirection || g.player.direction,
+        exitDirection: door.exitDirection || null
+      };
+    }
+
     let x = entryX;
     let y = entryY;
     let facing = g.player.direction;
