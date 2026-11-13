@@ -27,6 +27,8 @@
 const AUDIO_STORAGE_KEY = 'ojete_audio_settings';
 
 /** (BLOQUE 1) BGM pregrabada. Los SFX siguen siendo Web Audio API. */
+import { EXPANSION_BGM, hasExpansionUnlocked } from '../expansion/ExpansionData.js?v=8';
+
 export const BGM_MAX_VOLUME = 0.35;
 const BGM_DUCK_VOLUME = 0.1;
 const BGM_DUCK_RESTORE_MS = 400;
@@ -41,14 +43,14 @@ export const BGM_TRACKS = {
   boss_final: 'assets/music/07_final_boss_alex.mp3',
   jail: 'assets/music/08_jail_cell.mp3',
   game_over: 'assets/music/09_game_over.mp3',
-  victory: 'assets/music/10_credits_victory.mp3',
-  // (EXPANSIÓN v2.0) El Resurgir de Mister Alex IA
-  valleverde_corp: 'assets/music/11_valleverde_corporativo.mp3',
-  oficina_central: 'assets/music/12_oficina_central.mp3',
-  vertedero: 'assets/music/13_vertedero_digital.mp3',
-  boss_iñakito: 'assets/music/14_boss_iñakito.mp3',
-  boss_alex_final: 'assets/music/15_boss_alex_final.mp3'
+  victory: 'assets/music/10_credits_victory.mp3'
 };
+
+// (REFACTOR 4) La BGM de la expansión vive en ExpansionData y solo se registra
+// si el jugador desbloqueó el trofeo o entra a la expansión.
+export function registerExpansionMusic() {
+  Object.assign(BGM_TRACKS, EXPANSION_BGM);
+}
 
 const BGM_MODE_ALIASES = {
   theme_title_screen: 'title',
@@ -605,6 +607,7 @@ export class AudioManager {
 
   preloadMusic() {
     if (typeof Audio === 'undefined') return;
+    if (hasExpansionUnlocked()) registerExpansionMusic();
     for (const [key, src] of Object.entries(BGM_TRACKS)) {
       if (this._bgmAudio.has(key)) continue;
       try {
@@ -793,7 +796,8 @@ export class AudioManager {
 
   _tickBgmFade() {
     if (!this._bgmFade) {
-      this._clearBgmFade();
+      this._tickBgmDuck();
+      if (!this._bgmDuckUntil) this._clearBgmFade();
       return;
     }
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -874,8 +878,9 @@ export class AudioManager {
     this._bgmDuckLevel = Math.max(0, Math.min(BGM_MAX_VOLUME, level));
     this._bgmDuckRestoreStart = 0;
     this._bgmDuckRestoreFrom = 0;
-    if (typeof setInterval !== 'undefined' && !this._bgmDuckTimer) {
-      this._bgmDuckTimer = setInterval(() => this._tickBgmDuck(), 30);
+    if (typeof setInterval !== 'undefined' && !this._bgmFadeTimer) {
+      this._bgmFadeTimer = setInterval(() => this._tickBgmFade(), 30);
+      this.fadeInterval = this._bgmFadeTimer;
     }
     this._tickBgmDuck();
   }
@@ -904,10 +909,7 @@ export class AudioManager {
   }
 
   _clearBgmDuck() {
-    if (this._bgmDuckTimer) {
-      clearInterval(this._bgmDuckTimer);
-      this._bgmDuckTimer = null;
-    }
+    this._bgmDuckUntil = 0;
     this._bgmDuckUntil = 0;
     this._bgmDuckLevel = 0;
     this._bgmDuckRestoreStart = 0;
@@ -981,6 +983,18 @@ export class AudioManager {
     if (this.mode === mode) return;
     this.mode = mode;
     this.stepIndex = 0;
+
+    // (REFACTOR 3) Con MP3, cancelar el secuenciador chiptune.
+    const bgmKey = this._resolveBgmKey(mode);
+    if (bgmKey) {
+      if (EXPANSION_BGM[mode]) {
+        try { registerExpansionMusic(); } catch { /* opcional */ }
+      }
+      if (this.timerId) {
+        clearInterval(this.timerId);
+        this.timerId = null;
+      }
+    }
 
     // Tempo según la atmósfera
     if (
@@ -1071,6 +1085,8 @@ export class AudioManager {
     if (this.timerId) clearInterval(this.timerId);
 
     this.timerId = setInterval(() => {
+      // (REFACTOR 3) Si hay un MP3 sonando, el sintetizador chiptune debe callar.
+      if (this._bgmCurrentAudio && !this._bgmCurrentAudio.paused) return;
       if (!this.ctx || this.isMusicMuted()) return;
       // (FIX M2.4) No reanudar ni programar notas mientras está en segundo plano
       if (this._isHidden) return;

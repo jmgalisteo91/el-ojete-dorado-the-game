@@ -1,3 +1,4 @@
+import { getExpansionDialogueSfx } from '../expansion/ExpansionData.js?v=8';
 /**
  * Cuadro de diálogo flotante estilo RPG con soporte de:
  * - Efecto máquina de escribir (typewriter)
@@ -131,23 +132,19 @@ export class DialogueBox {
       door_airlock: 'playAirlock'
     };
 
-    const sfx = npc && npc.talkSfx;
+    const flat = Array.isArray(lines) ? lines.join(' ') : String(lines || '');
+    // (REFACTOR 4) La lógica de SFX de expansión vive en ExpansionData, no en regex base.
+    const sfx = getExpansionDialogueSfx(npc ? (npc.id || npc.name) : null, flat) || (npc && npc.talkSfx);
     if (sfx) {
       const method = wrappers[sfx];
       if (method && typeof sound[method] === 'function') sound[method]();
       else if (typeof sound.playSFX === 'function') sound.playSFX(sfx);
     }
-
-    const flat = Array.isArray(lines) ? lines.join(' ') : String(lines || '');
     if (/glitch|error|excepci[oó]n|exception|undefined|null|404|fallo|bug/i.test(flat)) {
       if (typeof sound.playGlitch === 'function') sound.playGlitch();
       else if (typeof sound.playError === 'function') sound.playError();
     }
 
-    const npcName = npc ? `${npc.name || ''} ${npc.id || ''}` : '';
-    if (!sfx && /iñakito|inakito/i.test(npcName) && typeof sound.playCoffee === 'function') {
-      sound.playCoffee();
-    }
   }
 
   start(npc, customLines = null, customChoices = null) {

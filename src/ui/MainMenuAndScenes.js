@@ -1403,7 +1403,8 @@ export class MainMenuAndScenes {
       if (this.previousStateBeforeControls === 'title') {
         this._renderTitleBackdropPixelArt(ctx);
       } else {
-        ctx.fillStyle = 'rgba(8, 11, 20, 0.78)';
+        // (REFACTOR 4) Controles desde pausa: fondo opaco, nunca el mundo detrás.
+        ctx.fillStyle = '#0b1018';
         ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
       }
       this._renderControlsScreen(ctx);

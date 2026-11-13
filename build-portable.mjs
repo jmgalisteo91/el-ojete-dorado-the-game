@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MODULE_ORDER = [
   'src/core/GameLoop.js',
   'src/core/DoorGatekeeper.js',
+  'src/core/SceneTransitionController.js',
   'src/core/SkillCatalog.js',
   'src/core/InputHandler.js',
   'src/core/Camera2D.js',

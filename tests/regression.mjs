@@ -42,7 +42,7 @@ import { RenderPipeline } from '../src/graphics/RenderPipeline.js';
 import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT, GAME_VERSION } from '../src/ui/UILayout.js';
 import { CloudStorage } from '../src/services/CloudStorage.js';
 import { LeaderboardView } from '../src/ui/LeaderboardView.js';
-import { AudioManager, BGM_TRACKS, BGM_MAX_VOLUME } from '../src/audio/AudioManager.js?v=8';
+import { AudioManager, BGM_TRACKS, BGM_MAX_VOLUME, registerExpansionMusic } from '../src/audio/AudioManager.js?v=8';
 import { AmbientMusic } from '../src/audio/AmbientMusic.js';
 import { MainMenuAndScenes } from '../src/ui/MainMenuAndScenes.js';
 import { SCENE_AI_ALEX_WARNING, SCENE_ENDING_VICTORY } from '../src/assets/VillainDialogues.js';
@@ -52,7 +52,7 @@ import { QuestLogView } from '../src/ui/QuestLogView.js';
 import { CharacterStats } from '../src/ui/CharacterStats.js';
 import { InputHandler } from '../src/core/InputHandler.js';
 import { WorldMap } from '../src/ui/WorldMap.js';
-import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY, getExpansionDialogueSfx } from '../src/expansion/ExpansionData.js';
+import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY, EXPANSION_BGM, getExpansionDialogueSfx } from '../src/expansion/ExpansionData.js';
 import { CinematicTimeline } from '../src/ui/CinematicTimeline.js';
 import { CINEMATIC_TIMELINES, CINEMATIC_TIMELINE_DURATIONS, PROLOGUE_ALEX, SCENE_ALEX_FINAL, SCENE_INTRO_INAKITO } from '../src/assets/CinematicTimelines.js';
 import { TonyCuleiro } from '../src/expansion/entities/TonyCuleiro.js';
@@ -2541,14 +2541,12 @@ test('Expansión v2.0: teaser bloqueado/desbloqueado, 5 NPCs y fases de Iñakito
 
 test('Expansión v2.0: BGM/SFX nuevos y hooks de audio en diálogos', () => {
   // Pistas de la expansión, volumen global y crossfade compartido.
-  const expansionTracks = {
-    valleverde_corp: 'assets/music/11_valleverde_corporativo.mp3',
-    oficina_central: 'assets/music/12_oficina_central.mp3',
-    vertedero: 'assets/music/13_vertedero_digital.mp3',
-    boss_iñakito: 'assets/music/14_boss_iñakito.mp3',
-    boss_alex_final: 'assets/music/15_boss_alex_final.mp3'
-  };
-  for (const [key, path] of Object.entries(expansionTracks)) {
+  // La expansión ya NO contamina el registro base.
+  for (const key of Object.keys(EXPANSION_BGM)) {
+    assert.equal(BGM_TRACKS[key], undefined, `La pista de expansión ${key} no debe cargarse en base`);
+  }
+  registerExpansionMusic();
+  for (const [key, path] of Object.entries(EXPANSION_BGM)) {
     assert.equal(BGM_TRACKS[key], path, `Falta la pista ${key}`);
   }
   assert.equal(BGM_MAX_VOLUME, 0.35, 'La BGM debe mantenerse al 35%');

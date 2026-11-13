@@ -244,20 +244,6 @@ export class CinematicDirector {
     }
   }
 
-  _syncGameCamera() {
-    const cam = this.game?.camera;
-    if (!cam || typeof cam.setCinematicTarget !== 'function') return;
-    const player = this.game?.player;
-    const px = player ? player.x + player.width / 2 : this.camera.x;
-    const py = player ? player.y + player.height / 2 : this.camera.y;
-    // La cámara del juego interpola hacia este objetivo; nada de saltos bruscos.
-    cam.setCinematicTarget(
-      this.camera.zoom,
-      this.camera.x - px,
-      this.camera.y - py
-    );
-  }
-
   _actor(id) {
     return this.actors.find((a) => a.id === id) || null;
   }
@@ -266,21 +252,26 @@ export class CinematicDirector {
     const id = options.id || actor;
     if (this._actor(id)) return;
     let entry = null;
-    if (actor === 'player' && this.game?.player) {
-      const player = this.game.player;
-      player.x = x - 8;
-      player.y = y - 16;
+    if (actor === 'player') {
+      // (REFACTOR 1) Nunca tocar al jugador real: actor local con su propio animator.
+      const sheet = this.game?.assets?.charactersSheet;
+      const player = this.game?.player;
+      const heroType = player && player.hasArmor
+        ? CHARACTER_TYPES.HERO_ARMORED
+        : CHARACTER_TYPES.HERO;
       entry = {
         id,
-        entity: player,
-        animator: player.animator,
+        animator: sheet ? new SpriteAnimator(sheet, heroType) : null,
         x, y,
         direction: 'right',
         anim: 'idle',
         move: null,
         bob: 0,
         glitch: 0,
-        phase: 0
+        phase: 0,
+        alpha: options.alpha ?? 1,
+        clone: Boolean(options.clone),
+        holo: Boolean(options.holo)
       };
     } else if (Object.prototype.hasOwnProperty.call(ACTOR_SPRITES, actor)) {
       const sheet = this.game?.assets?.charactersSheet;
@@ -662,8 +653,7 @@ export class CinematicDirector {
       this.endingTimer -= step;
       this.fadeTarget = 1;
       this.fadeAlpha = Math.min(1, this.fadeAlpha + step * 3.2);
-      this._syncGameCamera();
-      if (this.endingTimer <= 0) this._finalize();
+        if (this.endingTimer <= 0) this._finalize();
       return;
     }
 
@@ -705,7 +695,6 @@ export class CinematicDirector {
       this.camera.zoom = tw.fromZoom + (tw.toZoom - tw.fromZoom) * e;
       if (p >= 1) this.cameraTween = null;
     }
-    this._syncGameCamera();
 
     for (const actor of this.actors) {
       if (actor.move) {
@@ -719,11 +708,6 @@ export class CinematicDirector {
           actor.move = null;
           actor.anim = 'idle';
         }
-      }
-      if (actor.entity) {
-        actor.entity.x = actor.x - 8;
-        actor.entity.y = actor.y - 16;
-        actor.entity.direction = actor.direction;
       }
       if (actor.animator) {
         actor.animator.update(dt, actor.direction, actor.anim === 'walk');

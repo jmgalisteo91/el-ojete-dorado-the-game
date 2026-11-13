@@ -1,3 +1,5 @@
+import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
+
 /**
  * DoorGatekeeper: reglas puras de acceso a zonas hostiles (sin dependencias de UI ni de estado global).
  * Decide si el jugador puede cruzar una puerta y qué título/descripción mostrar al confirmar el paso.
@@ -185,32 +187,55 @@ export function getDoorDestinationInfo(targetScene) {
  * @param {string} [direction='down'] - Dirección hacia la que se empuja (opuesto al movimiento intentado)
  * @returns {boolean} true si se realizó el empujón
  */
-export function pushBackPlayer(player, direction = 'down', tiles = 1) {
+export function pushBackPlayer(player, doorOrDirection = 'down', tiles = 1, tilemap = null, obstacles = []) {
   if (!player) return false;
 
   const tileSize = 16;
   const pushDistance = tileSize * Math.max(1, Number(tiles) || 1);
+  let dx = 0;
+  let dy = 0;
 
-  // El jugador mira/intenta cruzar en `direction`: el empujón va al lado OPUESTO.
-  const reverse = { up: 'down', down: 'up', left: 'right', right: 'left' };
-  const back = reverse[direction] || 'up';
+  if (doorOrDirection && typeof doorOrDirection === 'object') {
+    // (REFACTOR 2) Vector desde el centro de la puerta hacia el centro del jugador.
+    const door = doorOrDirection;
+    const px = player.centerX;
+    const py = player.centerY;
+    const vx = px - (Number(door.worldX) || px);
+    const vy = py - (Number(door.worldY) || py);
+    const len = Math.hypot(vx, vy);
+    if (len > 0.001) {
+      dx = (vx / len) * pushDistance;
+      dy = (vy / len) * pushDistance;
+    } else {
+      // Fallback si el jugador está exactamente encima de la puerta.
+      const reverse = { up: 'down', down: 'up', left: 'right', right: 'left' };
+      const back = reverse[player.direction] || 'up';
+      const offsets = {
+        up: { dx: 0, dy: -pushDistance }, down: { dx: 0, dy: pushDistance },
+        left: { dx: -pushDistance, dy: 0 }, right: { dx: pushDistance, dy: 0 }
+      };
+      ({ dx, dy } = offsets[back]);
+    }
+  } else {
+    const reverse = { up: 'down', down: 'up', left: 'right', right: 'left' };
+    const back = reverse[doorOrDirection] || 'up';
+    const offsets = {
+      up: { dx: 0, dy: -pushDistance }, down: { dx: 0, dy: pushDistance },
+      left: { dx: -pushDistance, dy: 0 }, right: { dx: pushDistance, dy: 0 }
+    };
+    ({ dx, dy } = offsets[back]);
+  }
 
-  const offsets = {
-    up:    { dx: 0,  dy: -pushDistance },
-    down:  { dx: 0,  dy:  pushDistance },
-    left:  { dx: -pushDistance, dy: 0 },
-    right: { dx:  pushDistance, dy: 0 }
-  };
+  // (REFACTOR 2) Mover con colisión para no meter al jugador dentro de un muro.
+  if (tilemap && typeof CollisionSystem.moveWithCollisions === 'function') {
+    CollisionSystem.moveWithCollisions(player, dx, dy, tilemap, Array.isArray(obstacles) ? obstacles : []);
+  } else {
+    player.x += dx;
+    player.y += dy;
+  }
 
-  const offset = offsets[back];
-
-  player.x += offset.dx;
-  player.y += offset.dy;
-
-  // Knockback amplio para que no vuelva a entrar en el trigger al cerrar el diálogo.
   player.knockbackTimer = 0.65;
-  player.knockbackVx = offset.dx * 2;
-  player.knockbackVy = offset.dy * 2;
-
+  player.knockbackVx = dx * 2;
+  player.knockbackVy = dy * 2;
   return true;
 }

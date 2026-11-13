@@ -7,6 +7,23 @@
 
 export const EXPANSION_UNLOCK_KEY = 'el_ojete_dorado_victory_trophy';
 
+export const EXPANSION_BGM = {
+  valleverde_corp: 'assets/music/11_valleverde_corporativo.mp3',
+  oficina_central: 'assets/music/12_oficina_central.mp3',
+  vertedero: 'assets/music/13_vertedero_digital.mp3',
+  boss_iñakito: 'assets/music/14_boss_iñakito.mp3',
+  boss_alex_final: 'assets/music/15_boss_alex_final.mp3'
+};
+
+export function hasExpansionUnlocked() {
+  try {
+    return typeof localStorage !== 'undefined' &&
+      Boolean(localStorage.getItem(EXPANSION_UNLOCK_KEY));
+  } catch {
+    return false;
+  }
+}
+
 export const EXPANSION_INFO = {
   id: 'resurgir_mister_alex',
   version: 'v2.0',
@@ -99,7 +116,8 @@ export function getExpansionDialogueSfx(npcId, text = '') {
   const npc = EXPANSION_NPCS[npcId];
   if (npc && npc.talkSfx) return npc.talkSfx;
   if (/iñakito|inakito/i.test(npcId || '')) {
-    return Math.random() < 0.5 ? 'coffee_sip' : 'keyboard_type';
+    // Determinista: los tests y la escena esperan el sorbo de café de Iñakito.
+    return 'coffee_sip';
   }
   if (/glitch|error|excepci[oó]n|exception|undefined|null|404|fallo|bug/i.test(text || '')) {
     return Math.random() < 0.5 ? 'ui_glitch' : 'error_buzz';

@@ -1,4 +1,5 @@
 import { getDoorBlock, getDoorDestinationInfo, pushBackPlayer } from './core/DoorGatekeeper.js?v=8';
+import { SceneTransitionController } from './core/SceneTransitionController.js?v=8';
 import { GameLoop } from './core/GameLoop.js?v=8';
 import { InputHandler } from './core/InputHandler.js?v=8';
 import { Camera2D } from './core/Camera2D.js?v=8';
@@ -409,6 +410,7 @@ export class RPGGame {
     this.activeAbyssalPortal = null;
     this.transitionCooldown = 0;
     this.doorGate = null;
+    this.sceneTransitions = new SceneTransitionController(this);
     // (FIX 2.4) Origen de la última entrada a un templo (para que su salida vuelva a esa sala)
     this.templeReturn = null;
     // (FIX NPC.6) Cambio de rutina pospuesto porque el NPC estaba hablando
@@ -733,11 +735,50 @@ export class RPGGame {
         this.menuSystem.state = 'none';
         this.menuSystem.fadeAlpha = 0;
         this.player.stopMovement();
+        // (REFACTOR 1) Posición inicial canónica del Capítulo 1.
+        this.player.x = 224;
+        this.player.y = 192;
+        this.player.direction = 'down';
         this.camera.resetCinematic();
         this.camera.snapTo(this.player);
         this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
       });
     }
+  }
+
+  _shakeCamera(intensity = 4, duration = 0.3) {
+    if (this.camera && typeof this.camera.shake === 'function') {
+      this.camera.shake(intensity, duration);
+    }
+  }
+
+  _flashScreen(color = '#ffffff', alpha = 0.35, duration = 0.15) {
+    this.screenFlash = { color, alpha, time: duration, duration };
+  }
+
+  _handleBlockedDoor(door, title, lines) {
+    return this.sceneTransitions.handleBlockedDoor(door, title, lines);
+  }
+
+  _updateDoorGate() {
+    this.sceneTransitions.updateDoorGate();
+  }
+
+  _compassFromDirection(direction) {
+    return this.sceneTransitions.compassFromDirection(direction);
+  }
+
+  _resolveStageSpawn(door = {}) {
+    if (!this.sceneTransitions) this.sceneTransitions = new SceneTransitionController(this);
+    return this.sceneTransitions.resolveSpawn(door);
+  }
+
+  _executeStageTransition(door) {
+    return this.sceneTransitions.executeStageTransition(door);
+  }
+
+  _checkBossIntroTriggers() {
+    this.sceneTransitions.checkBossIntroTriggers();
   }
 
   _buildSavePayload() {
@@ -4483,8 +4524,8 @@ export class RPGGame {
       };
 
       if (this.animeCutscenes) {
-        this.animeCutscenes.cameraShake(5.0, 0.35);
-        this.animeCutscenes.flash('#a855f7', 0.4);
+        this._shakeCamera(5.0, 0.35);
+        this._flashScreen('#a855f7', 0.4);
       }
       if (this.music && typeof this.music.playAbyssalPortalSound === 'function') {
         this.music.playAbyssalPortalSound();
@@ -4704,8 +4745,8 @@ export class RPGGame {
           this.music.playFanfare();
         }
         if (this.animeCutscenes) {
-          this.animeCutscenes.flash(ped.id === 'gc' ? '#10b981' : (ped.id === 'stack' ? '#38bdf8' : '#ef4444'), 0.35);
-          this.animeCutscenes.cameraShake(4.0, 0.3);
+          this._flashScreen(ped.id === 'gc' ? '#10b981' : (ped.id === 'stack' ? '#38bdf8' : '#ef4444'), 0.35);
+          this._shakeCamera(4.0, 0.3);
         }
         this._saveGameToStorage();
 
@@ -5063,28 +5104,20 @@ export class RPGGame {
         if (door.targetScene !== 'player_house') {
           const hasPerm = Boolean(this.housePermissions[door.targetScene]);
           if (!hasPerm) {
-            if (this.music && typeof this.music.playDoorLockedSound === 'function') {
-              this.music.playDoorLockedSound();
-            }
-            if (isDay) {
-              this.dialogueBox.showMessage('Cerrado con Cerrojo', [
-                'Cerrado. Su dueño está atendiendo su puesto en la plaza.',
-                'Habla con su propietario en el pueblo si necesitas autorización para acceder.'
-              ]);
-            } else {
-              this.dialogueBox.showMessage('Cerrado con Cerrojo', [
-                'La puerta está cerrada por dentro con pestillo nocturno.',
-                'Necesitas autorización expresa de su dueño para entrar.'
-              ]);
-            }
+            this._handleBlockedDoor(door, 'Cerrado con Cerrojo', isDay ? [
+              'Cerrado. Su dueño está atendiendo su puesto en la plaza.',
+              'Habla con su propietario en el pueblo si necesitas autorización para acceder.'
+            ] : [
+              'La puerta está cerrada por dentro con pestillo nocturno.',
+              'Necesitas autorización expresa de su dueño para entrar.'
+            ]);
             return;
           }
         }
       }
 
       if (door.type === 'bridge_gate') {
-        if (this.music) this.music.playDoorLockedSound();
-        this.dialogueBox.showMessage('Puente del Este · Precintado', [
+        this._handleBlockedDoor(door, 'Puente del Este · Precintado', [
           'El paso hacia las Tierras Sagradas del este está bloqueado por una sólida barrera de madera.',
           'Los Guardias del Binario custodian el acceso e impiden el paso.',
           'Habla con los guardias o visita al Gran Sabio Aurelio en su casa (al noroeste, tejado azul) para conocer la causa del cierre y obtener autorización.'
@@ -5093,8 +5126,7 @@ export class RPGGame {
       }
 
       if (door.type === 'stage_locked') {
-        if (this.music) this.music.playDoorLockedSound();
-        this.dialogueBox.showMessage('Portal Sagrado Sellado', [
+        this._handleBlockedDoor(door, 'Portal Sagrado Sellado', [
           'El Portal hacia Valleverde permanece cerrado por un sello protector del Alba.',
           'Debes equiparte primero con la [Armadura del Alba] (Oeste) y la [Espada del Alba] (Norte) para poder hacer frente a las tinieblas de Mister AI Alex.'
         ]);
@@ -5105,29 +5137,7 @@ export class RPGGame {
         // 1. GATEKEEPING: las reglas viven en DoorGatekeeper
         const block = getDoorBlock(door.targetScene, this.player);
         if (block) {
-          // Mientras el diálogo está abierto la puerta no vuelve a detectar al jugador.
-          if (this.dialogueBox.active) return;
-          const gateKey = `${door.targetScene}|${door.label || ''}`;
-          const now = performance.now();
-          if (this.doorGate && this.doorGate.key === gateKey && now < this.doorGate.until) {
-            return;
-          }
-
-          if (this.music) this.music.playDoorLockedSound();
-          // Empujón inverso y contundente (2 tiles) para salir del área de activación.
-          pushBackPlayer(this.player, this.player.direction || 'down', 2);
-          const gateDoor = {
-            key: gateKey,
-            targetScene: door.targetScene,
-            worldX: door.worldX,
-            worldY: door.worldY,
-            until: 0
-          };
-          this.doorGate = gateDoor;
-          this.dialogueBox.showMessage(block.title, block.lines, () => {
-            // Cooldown de 2 s al cerrar la última página.
-            this.doorGate = { ...gateDoor, until: performance.now() + 2000 };
-          });
+          this._handleBlockedDoor(door, block.title, block.lines);
           return;
         }
 
@@ -5226,7 +5236,7 @@ export class RPGGame {
       this.music.playFanfare();
     }
     if (this.animeCutscenes) {
-      this.animeCutscenes.flash('#34d399', 0.35);
+      this._flashScreen('#34d399', 0.35);
     }
     this._shakeCamera(3.5, 0.35);
     this.dialogueBox.showMessage('🌊 [CANAL DE MEMORIA DRENADO]', [
@@ -5270,7 +5280,7 @@ export class RPGGame {
         this.music.playFanfare();
       }
       if (this.animeCutscenes) {
-        this.animeCutscenes.flash('#38bdf8', 0.4);
+        this._flashScreen('#38bdf8', 0.4);
       }
       this._shakeCamera(4.5, 0.4);
       this._saveGameToStorage();
@@ -5289,7 +5299,7 @@ export class RPGGame {
         this.music.playPlayerHurt();
       }
       if (this.animeCutscenes) {
-        this.animeCutscenes.flash('#ef4444', 0.35);
+        this._flashScreen('#ef4444', 0.35);
       }
       this._shakeCamera(4.0, 0.3);
       this.player.takeDamage(1, this.music);
@@ -5327,7 +5337,7 @@ export class RPGGame {
       this.music.playFanfare();
     }
     if (this.animeCutscenes) {
-      this.animeCutscenes.flash('#f97316', 0.4);
+      this._flashScreen('#f97316', 0.4);
     }
     this._shakeCamera(4.0, 0.35);
     this._saveGameToStorage();
@@ -5353,8 +5363,8 @@ export class RPGGame {
         this.music.playFanfare();
       }
       if (this.animeCutscenes) {
-        this.animeCutscenes.cameraShake(5.0, 0.45);
-        this.animeCutscenes.flash('#fde047', 0.4);
+        this._shakeCamera(5.0, 0.45);
+        this._flashScreen('#fde047', 0.4);
       }
       if (this.questLog) {
         this.questLog.advanceStep('quest_code_temples', 'Caso base alcanzado. ¡Recoge la Espada de la Recursividad y cruza hacia el Guardián del Stack Overflow!');
@@ -5378,8 +5388,8 @@ export class RPGGame {
         this.music.playPlayerHurt();
       }
       if (this.animeCutscenes) {
-        this.animeCutscenes.cameraShake(6.5, 0.45);
-        this.animeCutscenes.flash('#ef4444', 0.4);
+        this._shakeCamera(6.5, 0.45);
+        this._flashScreen('#ef4444', 0.4);
       }
       this.player.takeDamage(1, this.music);
       this.menuSystem.showNotice('🌀 Stack Overflow: ¡Desbordamiento de pila! (-0.5 corazón)', 2.5);
@@ -5440,8 +5450,8 @@ export class RPGGame {
                 this.music.playHitSound();
               }
               if (this.animeCutscenes) {
-                this.animeCutscenes.flash('#a855f7', 0.2);
-                this.animeCutscenes.cameraShake(3.0, 0.2);
+                this._flashScreen('#a855f7', 0.2);
+                this._shakeCamera(3.0, 0.2);
               }
               this.worldItems.push(
                 new WorldItem({
@@ -5484,8 +5494,8 @@ export class RPGGame {
           if (this.player.invulnTimer <= 0 && this.player.hp > 0) {
             this.player.takeDamage(1, this.music);
             if (this.animeCutscenes) {
-              this.animeCutscenes.flash('#f97316', 0.25);
-              this.animeCutscenes.cameraShake(2.5, 0.2);
+              this._flashScreen('#f97316', 0.25);
+              this._shakeCamera(2.5, 0.2);
             }
             if (this.menuSystem && (!this._lastHeatNotice || Date.now() - this._lastHeatNotice > 3500)) {
               this._lastHeatNotice = Date.now();
@@ -5512,166 +5522,10 @@ export class RPGGame {
     }
   }
 
-  _updateDoorGate() {
-    if (!this.doorGate) return;
-    const dx = this.player.centerX - this.doorGate.worldX;
-    const dy = this.player.centerY - this.doorGate.worldY;
-    if (Math.hypot(dx, dy) > 64) {
-      this.doorGate = null;
-    }
-  }
-
-  _compassFromDirection(direction) {
-    return { right: 'east', left: 'west', down: 'south', up: 'north' }[direction] || null;
-  }
-
   /**
    * Regla espacial 2D: si sales por el ESTE apareces al OESTE del nuevo mapa,
    * y viceversa. Margen de 2 tiles para no reactivar la puerta de regreso.
    */
-  _resolveStageSpawn(door = {}) {
-    const margin = 2 * this.tilemap.tileSize;
-    const width = this.tilemap.width;
-    const height = this.tilemap.height;
-    const exitDirection =
-      door.exitDirection ||
-      this._compassFromDirection(this.player.direction) ||
-      'east';
-    const entryX = Number.isFinite(door.spawnX) ? door.spawnX : width / 2;
-    const entryY = Number.isFinite(door.spawnY) ? door.spawnY : height / 2;
-
-    let x = entryX;
-    let y = entryY;
-    let facing = this.player.direction;
-
-    if (exitDirection === 'east') {
-      x = margin;
-      y = entryY;
-      facing = 'right';
-    } else if (exitDirection === 'west') {
-      x = width - margin;
-      y = entryY;
-      facing = 'left';
-    } else if (exitDirection === 'south') {
-      y = margin;
-      x = entryX;
-      facing = 'down';
-    } else if (exitDirection === 'north') {
-      y = height - margin;
-      x = entryX;
-      facing = 'up';
-    }
-
-    return { x, y, facing, exitDirection };
-  }
-
-  _executeStageTransition(door) {
-    this.transitionCooldown = 0.5;
-    if (this.music) {
-      if (door.targetScene === 'condemned_realms' || this.tilemap.currentSceneId === 'condemned_realms') {
-        if (typeof this.music.playAbyssalPortalSound === 'function') {
-          this.music.playAbyssalPortalSound();
-        }
-      } else if (typeof this.music.playDoorOpenSound === 'function') {
-        this.music.playDoorOpenSound();
-      }
-    }
-    if (door.type === 'exit') {
-      this._restoreAllNPCsToOverworld();
-    }
-    // Limpiar proyectiles, clones, ondas y charcos activos de cualquier jefe al cambiar de escena
-    for (const en of this.enemies) {
-      if (en.isBoss && !en.dead && typeof en.resetCombatState === 'function') {
-        en.resetCombatState();
-      }
-    }
-    // (FIX H3) Nada de proyectiles del jugador ni de enemigos viaja entre escenas
-    this.player.thrownLogs = [];
-    this.player.energySlashes = [];
-    for (const e of this.enemies) {
-      if (e.shots) e.shots = [];
-    }
-    // Si entramos a un templo, configurar su puerta de salida para regresar exactamente a la escena de origen
-    // (FIX 2.4) El Templo de la Espada se alcanza desde first_stage y desde mines_puzzle: la salida
-    // debe devolver a la sala de la que se viene, y ese origen se persiste en la partida.
-    if (door.targetScene === 'armor_temple' || door.targetScene === 'sword_temple') {
-      const entryScene = this.tilemap.currentSceneId;
-      const returnX = door.worldX;
-      const returnY = door.worldY + 22;
-      if (this.tilemap.setSceneExitReturn(door.targetScene, { returnScene: entryScene, returnX, returnY })) {
-        this.templeReturn = {
-          scene: door.targetScene,
-          returnScene: entryScene,
-          returnX,
-          returnY
-        };
-      }
-    }
-    this.tilemap.loadScene(door.targetScene);
-    // (FIX 3) Sincronizar la puerta norte de la arena con el estado real del Núcleo
-    if (door.targetScene === 'mines_boss_arena') {
-      this._syncMinesBossArenaGate();
-    }
-    for (const en of this.enemies) {
-      if (en.respawnOnEnter && en.dead && en.sceneId === door.targetScene) {
-        en.reset();
-      }
-    }
-    this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
-    // (FIX ESPACIAL) Entrada por el borde OPUESTO a la salida, con margen de 2 tiles.
-    const spawn = this._resolveStageSpawn(door);
-    this.player.x = spawn.x;
-    this.player.y = spawn.y;
-    this.player.direction = door.forceDirection || spawn.facing;
-    this.camera.snapTo(this.player);
-
-    if (this.music && this.music.currentBossTrack) {
-      this.music.stopBossMusic(false);
-    }
-
-    this.music.setMode(
-      STAGE_SCENE_IDS.has(door.targetScene) ? 'stage1' : 'village'
-    );
-
-    if (door.type === 'enter') {
-      this._handleHouseOwnerConfrontation(door.targetScene);
-    } else {
-      this._saveGameToStorage();
-    }
-
-    if (door.targetScene === 'condemned_realms') {
-      if (this.questLog) {
-        this.questLog.advanceStep('quest_condemned_pointer', 'Habla con el Dios Supremo en el altar sagrado para purificar tu corazón e historial penal.');
-      }
-      if (this.achievementManager) {
-        this.achievementManager.unlock('ach_condemned');
-      }
-    } else if (door.targetScene === 'sewers_dungeon' && this.questLog) {
-      this.questLog.advanceStep('quest_boss_garbage', 'Enfréntate al Garbage Collector Furioso en el fondo de las alcantarillas.');
-    } else if (door.targetScene === 'ai_fortress_gate' && this.questLog) {
-      this.questLog.advanceStep('quest_boss_microwave', 'Infiltra el Umbral de la Fortaleza y destruye el Prototipo del Microondas de AI Alex.');
-    } else if (door.targetScene === 'ai_citadel' && this.questLog) {
-      this.questLog.advanceStep('quest_boss_final', 'Asciende a la Ciudadela de AI Alex, destruye el Microondas Cuántico y consagra El Ojete Dorado.');
-    }
-
-    if (door.targetScene === 'ai_citadel' && !this.prebattleAlexCutscenePlayed) {
-      this.prebattleAlexCutscenePlayed = true;
-      if (this.animeCutscenes) {
-        this.animeCutscenes.playCutscene(SCENE_AI_ALEX_PREBATTLE);
-      }
-    } else if (door.targetScene === 'sewers_dungeon' && !this.bossCutscenesSeen.boss_garbage_collector) {
-      const gcBoss = this.enemies.find((e) => e.id === 'boss_garbage_collector');
-      if (gcBoss && !gcBoss.dead) {
-        this._triggerBossIntroCutscene(gcBoss);
-      }
-    } else if (door.targetScene === 'ai_fortress_gate' && !this.bossCutscenesSeen.boss_prototype_microwave) {
-      const protoBoss = this.enemies.find((e) => e.id === 'boss_prototype_microwave');
-      if (protoBoss && !protoBoss.dead) {
-        this._triggerBossIntroCutscene(protoBoss);
-      }
-    }
-  }
-
   _triggerBossIntroCutscene(boss) {
     if (!boss || !boss.isBoss || boss.dead) return;
     const cutscene = getBossIntroCutscene(boss.id);
@@ -5695,38 +5549,6 @@ export class RPGGame {
         this.music.playBossMusic(boss.trackName);
       }
       this._saveGameToStorage();
-    }
-  }
-
-  _checkBossIntroTriggers() {
-    if (this.animeCutscenes && this.animeCutscenes.isActive) return;
-    if (this.dialogueBox.active || this.menuSystem.isBlockingGameplay()) return;
-
-    const curScene = this.tilemap.currentSceneId;
-    const boss = this.enemies.find(
-      (e) => e.isBoss && e.sceneId === curScene && !e.dead
-    );
-    if (!boss) return;
-
-    // (FIX H1) El Guardián del Stack Overflow SOLO se manifiesta cuando el héroe ya
-    // desenvainó la Espada y además resolvió el puzle de las Minas (Nivel 4)
-    if (
-      boss.id === 'boss_stack_overflow' &&
-      (!this.player.hasSword || Boolean(this.tilemap?.minesPuzzle?.solved) !== true)
-    ) {
-      return;
-    }
-
-    // Si ya vio la cinemática, asegurarse de que boss.introCutscenePlayed sea true
-    if (this.bossCutscenesSeen && this.bossCutscenesSeen[boss.id]) {
-      boss.introCutscenePlayed = true;
-      return;
-    }
-
-    // Verificar si el jugador entra al alcance de activación de la arena del jefe
-    const dist = boss.distanceTo(this.player);
-    if (dist <= boss.combatTriggerDistance) {
-      this._triggerBossIntroCutscene(boss);
     }
   }
 
@@ -6416,8 +6238,8 @@ export class RPGGame {
                 this.music.playPlayerHurt();
               }
               if (this.animeCutscenes) {
-                this.animeCutscenes.flash('#38bdf8', 0.35);
-                this.animeCutscenes.cameraShake(5.5, 0.35);
+                this._flashScreen('#38bdf8', 0.35);
+                this._shakeCamera(5.5, 0.35);
               }
               this.player.takeDamage(1, this.music);
               this.menuSystem.showNotice(res.message || '⚡ ¡Cortocircuito de Paridad! (-0.5 corazón)', 2.5);
@@ -6426,8 +6248,8 @@ export class RPGGame {
                 this.music.playFanfare();
               }
               if (this.animeCutscenes) {
-                this.animeCutscenes.flash('#22c55e', 0.35);
-                this.animeCutscenes.cameraShake(3.0, 0.25);
+                this._flashScreen('#22c55e', 0.35);
+                this._shakeCamera(3.0, 0.25);
               }
               if (this.questLog) {
                 this.questLog.advanceStep('quest_code_temples', 'Pedestal de la Armadura liberado. ¡Recoge la Armadura del Código Binario!');
@@ -6562,6 +6384,8 @@ export class RPGGame {
         this.music
       );
     }
+    this.sceneTransitions.checkEdgeTransitions();
+
     this._checkBossIntroTriggers();
     if (this.animeCutscenes && this.animeCutscenes.isActive) {
       this.input.endFrame();
@@ -6826,6 +6650,10 @@ export class RPGGame {
 
     this.camera.update(this.player, dt);
     this._updateDoorGate();
+    if (this.screenFlash) {
+      this.screenFlash.time -= dt;
+      if (this.screenFlash.time <= 0) this.screenFlash = null;
+    }
     this.dialogueBox.update(dt);
     if (this.achievementManager) {
       this.achievementManager.update(dt);
@@ -6854,7 +6682,7 @@ export class RPGGame {
       this.camera.shake(intensity, duration);
     }
     if (this.animeCutscenes && this.animeCutscenes.isActive) {
-      this.animeCutscenes.cameraShake(intensity, duration);
+      this._shakeCamera(intensity, duration);
     }
   }
 
@@ -6939,6 +6767,15 @@ export class RPGGame {
     ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
 
     const { npcs, animals, enemies, items } = this._getActiveSceneEntities();
+
+    if (this.screenFlash) {
+      const a = Math.max(0, this.screenFlash.time / Math.max(0.001, this.screenFlash.duration)) * this.screenFlash.alpha;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = this.screenFlash.color;
+      ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+      ctx.restore();
+    }
 
     this.renderPipeline.render(ctx, {
       tilemap: this.tilemap,

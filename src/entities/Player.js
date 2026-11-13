@@ -622,6 +622,11 @@ export class Player extends Entity {
   }
 
   update(dt, input, tilemap, obstacles, movementLocked = false, soundEngine = null) {
+    // (REFACTOR 2) El knockback de puertas se consume y bloquea el input de movimiento.
+    if (this.knockbackTimer > 0) {
+      this.knockbackTimer = Math.max(0, this.knockbackTimer - dt);
+    }
+    const movementHardLocked = movementLocked || this.knockbackTimer > 0;
     if (this.invulnTimer > 0) {
       this.invulnTimer = Math.max(0, this.invulnTimer - dt);
     }
@@ -690,7 +695,7 @@ export class Player extends Entity {
       }
     }
 
-    if (movementLocked) {
+    if (movementHardLocked) {
       this.isMoving = false;
       this.chargeTimer = 0;
       this.dashTimer = 0;
