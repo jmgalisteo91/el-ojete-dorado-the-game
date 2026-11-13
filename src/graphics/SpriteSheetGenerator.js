@@ -25,7 +25,16 @@ export const CHARACTER_TYPES = {
   // (BLOQUE 2) Variantes de aldeano para ropa roja/azul/verde.
   VILLAGER_RED: 12,
   VILLAGER_BLUE: 13,
-  VILLAGER_GREEN: 14
+  VILLAGER_GREEN: 14,
+  // (EXPANSIÓN v2.0) Sprites in-engine de los jefes para las cinemáticas.
+  BOSS_GC: 15,
+  BOSS_STACK: 16,
+  BOSS_MICROWAVE: 17,
+  // (TIMELINE v2.0) Sprites de cinemática para Alex y la expansión.
+  ALEX_TV: 18,
+  ALEX_PHASE2: 19,
+  INAKITO: 20,
+  RAT: 21
 };
 
 export const TILES = {
@@ -606,8 +615,9 @@ async function generateCharacterSheet() {
     }
   ];
 
-  // 12..14: variantes de aldeano. El alto total es 15*4*16*4 = 3840 px.
-  const totalArchetypes = 15;
+  // 12..14: variantes de aldeano; 15..21: jefes y actores de cinemática.
+  // El alto total es 22*4*16*4 = 5632 px.
+  const totalArchetypes = 22;
   const cols = 4;
   const rowsPerChar = 4;
   const canvas = document.createElement('canvas');
@@ -720,6 +730,145 @@ async function generateCharacterSheet() {
       // Visor láser rojo de AI Alex
       px(ctx, ox + 5, oy + 4 + bob, 6, 2, '#ff2a55');
       px(ctx, ox + 6, oy + 4 + bob, 4, 1, '#ffffff');
+    }
+  }
+
+  // 15..17: Jefes in-engine (sprites de cinemática, 16x16).
+  const drawCinematicBossFrame = (ox, oy, dir, frame, kind) => {
+    const bob = frame === 1 || frame === 3 ? -1 : 0;
+    const eyeShift = dir === 2 ? -1 : dir === 3 ? 1 : 0;
+    if (kind === 'gc') {
+      px(ctx, ox + 2, oy + 14, 12, 1, 'rgba(0, 0, 0, 0.38)');
+      px(ctx, ox + 3, oy + 5 + bob, 10, 8, '#374151');
+      px(ctx, ox + 2, oy + 7 + bob, 12, 4, '#4b5563');
+      px(ctx, ox + 5, oy + 3 + bob, 6, 3, '#3f3f46');
+      px(ctx, ox + 4, oy + 12 + bob, 8, 2, '#292524');
+      px(ctx, ox + 4, oy + 6 + bob, 2, 2, '#57534e');
+      px(ctx, ox + 10, oy + 10 + bob, 2, 1, '#a8a29e');
+      px(ctx, ox + 6 + eyeShift, oy + 7 + bob, 4, 3, '#450a0a');
+      px(ctx, ox + 7 + eyeShift, oy + 8 + bob, 2, 1, '#ef4444');
+      px(ctx, ox + 5, oy + 11 + bob, 1, 1, '#a8a29e');
+      px(ctx, ox + 10, oy + 11 + bob, 1, 1, '#a8a29e');
+    } else if (kind === 'stack') {
+      px(ctx, ox + 2, oy + 14, 12, 1, 'rgba(0, 0, 0, 0.38)');
+      px(ctx, ox + 4, oy + 3 + bob, 8, 4, '#312e81');
+      px(ctx, ox + 3, oy + 7 + bob, 10, 4, '#1e1b4b');
+      px(ctx, ox + 2, oy + 11 + bob, 12, 3, '#0f172a');
+      px(ctx, ox + 5, oy + 5 + bob, 6, 2, '#6366f1');
+      px(ctx, ox + 6 + eyeShift, oy + 8 + bob, 4, 2, '#22d3ee');
+      px(ctx, ox + 7 + eyeShift, oy + 8 + bob, 1, 1, '#f8fafc');
+      px(ctx, ox + 3, oy + 12 + bob, 2, 1, '#a5b4fc');
+      px(ctx, ox + 11, oy + 12 + bob, 2, 1, '#a5b4fc');
+    } else {
+      px(ctx, ox + 2, oy + 14, 12, 1, 'rgba(0, 0, 0, 0.38)');
+      px(ctx, ox + 3, oy + 5 + bob, 10, 8, '#9a3412');
+      px(ctx, ox + 4, oy + 4 + bob, 8, 1, '#c2410c');
+      px(ctx, ox + 4, oy + 6 + bob, 6, 6, '#1c1917');
+      px(ctx, ox + 10, oy + 7 + bob, 2, 4, '#ea580c');
+      px(ctx, ox + 6 + eyeShift, oy + 8 + bob, 3, 2, '#fde047');
+      px(ctx, ox + 11, oy + 6 + bob, 1, 1, '#f87171');
+      px(ctx, ox + 4, oy + 13 + bob, 2, 1, '#cbd5e1');
+      px(ctx, ox + 9, oy + 13 + bob, 2, 1, '#cbd5e1');
+    }
+  };
+
+  const cinematicBossKinds = [
+    [CHARACTER_TYPES.BOSS_GC, 'gc'],
+    [CHARACTER_TYPES.BOSS_STACK, 'stack'],
+    [CHARACTER_TYPES.BOSS_MICROWAVE, 'microwave']
+  ];
+  for (const [type, kind] of cinematicBossKinds) {
+    for (let dir = 0; dir < 4; dir++) {
+      for (let frame = 0; frame < 4; frame++) {
+        const ox = frame * TILE_SIZE;
+        const oy = (type * rowsPerChar + dir) * TILE_SIZE;
+        drawCinematicBossFrame(ox, oy, dir, frame, kind);
+      }
+    }
+  }
+
+  // 18..20: Alex TV (Fase 1), Alex Fase 2 (carne y cables) e Iñakito.
+  const drawCinematicActorFrame = (ox, oy, dir, frame, kind) => {
+    const bob = frame === 1 || frame === 3 ? -1 : 0;
+    const eyeShift = dir === 2 ? -1 : dir === 3 ? 1 : 0;
+    if (kind === 'alex_tv') {
+      px(ctx, ox + 4, oy + 14, 8, 1, 'rgba(0, 0, 0, 0.38)');
+      // Traje de ejecutivo.
+      px(ctx, ox + 4, oy + 8 + bob, 8, 6, '#1e293b');
+      px(ctx, ox + 5, oy + 8 + bob, 6, 2, '#334155');
+      px(ctx, ox + 7, oy + 9 + bob, 2, 4, '#dc2626');
+      // Cabeza de TV CRT.
+      px(ctx, ox + 3, oy + 1 + bob, 10, 7, '#0f172a');
+      px(ctx, ox + 4, oy + 2 + bob, 8, 5, '#1e293b');
+      px(ctx, ox + 5, oy + 3 + bob, 6, 3, '#7f1d1d');
+      px(ctx, ox + 6 + eyeShift, oy + 4 + bob, 3, 1, '#ef4444');
+      px(ctx, ox + 8, oy + 0 + bob, 1, 1, '#94a3b8');
+      px(ctx, ox + 5, oy + 9 + bob, 6, 1, '#0f172a');
+      px(ctx, ox + 4, oy + 12 + bob, 2, 2, '#0f172a');
+      px(ctx, ox + 10, oy + 12 + bob, 2, 2, '#0f172a');
+    } else if (kind === 'alex_phase2') {
+      px(ctx, ox + 4, oy + 14, 8, 1, 'rgba(0, 0, 0, 0.38)');
+      // Carne y cables.
+      px(ctx, ox + 3, oy + 7 + bob, 10, 7, '#7f1d1d');
+      px(ctx, ox + 4, oy + 8 + bob, 8, 4, '#991b1b');
+      px(ctx, ox + 1, oy + 9 + bob, 3, 2, '#0f172a');
+      px(ctx, ox + 12, oy + 9 + bob, 3, 2, '#0f172a');
+      px(ctx, ox + 1, oy + 12 + bob, 2, 2, '#7f1d1d');
+      px(ctx, ox + 13, oy + 12 + bob, 2, 2, '#7f1d1d');
+      // Rostro/TV agrietada.
+      px(ctx, ox + 4, oy + 1 + bob, 8, 6, '#0f172a');
+      px(ctx, ox + 5, oy + 2 + bob, 6, 4, '#450a0a');
+      px(ctx, ox + 6 + eyeShift, oy + 3 + bob, 2, 2, '#f97316');
+      px(ctx, ox + 9 + eyeShift, oy + 3 + bob, 1, 2, '#fef08a');
+      px(ctx, ox + 4, oy + 6 + bob, 8, 1, '#7f1d1d');
+    } else if (kind === 'rat') {
+      // Rata de la celda: cuerpo bajo, cola y orejas.
+      const step = frame === 1 || frame === 3 ? 1 : 0;
+      px(ctx, ox + 3, oy + 12 + step, 9, 3, '#78716c');
+      px(ctx, ox + 4, oy + 11 + step, 7, 1, '#a8a29e');
+      px(ctx, ox + 10, oy + 10 + step, 3, 3, '#78716c');
+      px(ctx, ox + 12, oy + 9 + step, 1, 2, '#d6d3d1');
+      px(ctx, ox + 11 + eyeShift, oy + 11 + step, 1, 1, '#0f172a');
+      px(ctx, ox + 2, oy + 13 + step, 2, 1, '#57534e');
+      px(ctx, ox + 1, oy + 14 + step, 1, 1, '#44403c');
+      px(ctx, ox + 4, oy + 15, 1, 1, '#44403c');
+      px(ctx, ox + 9, oy + 15, 1, 1, '#44403c');
+    } else {
+      // Iñakito 2.0: becario con ojeras y café.
+      px(ctx, ox + 4, oy + 14, 8, 1, 'rgba(0, 0, 0, 0.38)');
+      px(ctx, ox + 4, oy + 8 + bob, 8, 6, '#e2e8f0');
+      px(ctx, ox + 5, oy + 8 + bob, 6, 2, '#cbd5e1');
+      px(ctx, ox + 7, oy + 9 + bob, 2, 4, '#ef4444');
+      // Cabeza con ojeras gigantes.
+      px(ctx, ox + 5, oy + 2 + bob, 7, 6, '#f1c9a5');
+      px(ctx, ox + 5, oy + 1 + bob, 7, 2, '#4a2c1a');
+      px(ctx, ox + 5, oy + 4 + bob, 2, 1, '#6b7280');
+      px(ctx, ox + 9, oy + 4 + bob, 2, 1, '#6b7280');
+      px(ctx, ox + 6 + eyeShift, oy + 5 + bob, 1, 1, '#0f172a');
+      px(ctx, ox + 9 + eyeShift, oy + 5 + bob, 1, 1, '#0f172a');
+      px(ctx, ox + 7, oy + 7 + bob, 3, 1, '#94a3b8');
+      // Taza de café humeante.
+      px(ctx, ox + 12, oy + 9 + bob, 3, 3, '#f8fafc');
+      px(ctx, ox + 12, oy + 9 + bob, 3, 1, '#78350f');
+      px(ctx, ox + 13, oy + 8 + bob, 1, 2, 'rgba(226, 232, 240, 0.5)');
+      px(ctx, ox + 11, oy + 12 + bob, 1, 2, '#1e293b');
+      px(ctx, ox + 15, oy + 12 + bob, 1, 2, '#1e293b');
+    }
+  };
+
+  const cinematicActorKinds = [
+    [CHARACTER_TYPES.ALEX_TV, 'alex_tv'],
+    [CHARACTER_TYPES.ALEX_PHASE2, 'alex_phase2'],
+    [CHARACTER_TYPES.INAKITO, 'inakito'],
+    [CHARACTER_TYPES.RAT, 'rat']
+  ];
+  for (const [type, kind] of cinematicActorKinds) {
+    for (let dir = 0; dir < 4; dir++) {
+      for (let frame = 0; frame < 4; frame++) {
+        const ox = frame * TILE_SIZE;
+        const oy = (type * rowsPerChar + dir) * TILE_SIZE;
+        drawCinematicActorFrame(ox, oy, dir, frame, kind);
+      }
     }
   }
 

@@ -695,8 +695,9 @@ export class Tilemap {
   findNearbyDoor(player) {
     // 1. ZONA ESTE: Valle de la Consagración (Templos del Héroe: Armadura y Espada)
     if (this.currentSceneId === 'first_stage') {
-      // Portal del Este hacia el Pueblo de Valleverde (retorno a la aldea pacífica)
-      const gateX = 33 * this.tileSize;
+      // Portal Oeste hacia el Pueblo de Valleverde (retorno a la aldea pacífica).
+      // El jugador entra al Valle por el Este y aparece al Oeste: la puerta queda detrás.
+      const gateX = 0.5 * this.tileSize;
       const gateY = 12.5 * this.tileSize;
       if (Math.hypot(player.centerX - gateX, player.centerY - gateY) <= 26) {
         return {
@@ -706,7 +707,8 @@ export class Tilemap {
           worldX: gateX,
           worldY: gateY,
           spawnX: 30 * this.tileSize,
-          spawnY: 12.5 * this.tileSize
+          spawnY: 12.5 * this.tileSize,
+          exitDirection: 'west'
         };
       }
 
@@ -1062,7 +1064,8 @@ export class Tilemap {
           worldX: bridgeGateX,
           worldY: bridgeGateY,
           spawnX: 31 * this.tileSize,
-          spawnY: 12.5 * this.tileSize
+          spawnY: 12.5 * this.tileSize,
+          exitDirection: 'east'
         };
       }
 

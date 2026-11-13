@@ -388,7 +388,8 @@ export class RPGGame {
     this.animeCutscenes = new AnimeCutsceneManager(
       VIEWPORT_WIDTH,
       VIEWPORT_HEIGHT,
-      this.music
+      this.music,
+      this.cinematicDirector
     );
 
     // Registro de estadísticas del jugador para el Expediente de Compilación Final
@@ -407,6 +408,7 @@ export class RPGGame {
     this.abyssalPortalOrigin = null;
     this.activeAbyssalPortal = null;
     this.transitionCooldown = 0;
+    this.doorGate = null;
     // (FIX 2.4) Origen de la última entrada a un templo (para que su salida vuelva a esa sala)
     this.templeReturn = null;
     // (FIX NPC.6) Cambio de rutina pospuesto porque el NPC estaba hablando
@@ -707,6 +709,7 @@ export class RPGGame {
     this.abyssalPortalOrigin = null;
     this.activeAbyssalPortal = null;
     this.transitionCooldown = 0;
+    this.doorGate = null;
 
     this.camera.snapTo(this.player);
   }
@@ -1520,16 +1523,27 @@ export class RPGGame {
 
     this._restoreAllNPCsToOverworld();
     this.totalJailVisits = (this.totalJailVisits || 0) + 1;
-    this.jailRemainingSeconds = 10 * 60;
-    this.tilemap.loadScene('jail_cell');
-    this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
-    this.player.x = 5.5 * 16;
-    this.player.y = 3.5 * 16;
-    this.player.direction = 'down';
-    this.camera.snapTo(this.player);
-    this.music.setMode('jail');
+    this.isJailedForever = false;
+    // La condena arranca cuando termina la cinemática de 20 s.
+    this.jailRemainingSeconds = 0;
 
-    this.dialogueBox.showMessage('🚨 ARRESTO MUNICIPAL 🚨', rightsLines);
+    const sendToCell = () => {
+      this.jailRemainingSeconds = 10 * 60;
+      this.tilemap.loadScene('jail_cell');
+      this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
+      this.player.x = 5.5 * 16;
+      this.player.y = 3.5 * 16;
+      this.player.direction = 'down';
+      this.camera.snapTo(this.player);
+      this.music.setMode('jail');
+      this.dialogueBox.showMessage('🚨 ARRESTO MUNICIPAL 🚨', rightsLines);
+    };
+
+    if (this.animeCutscenes) {
+      this.animeCutscenes.playCutscene(SCENE_JAIL_ARREST, sendToCell);
+    } else {
+      sendToCell();
+    }
   }
 
   _releaseFromJail(messageLines) {
@@ -5077,10 +5091,29 @@ export class RPGGame {
         // 1. GATEKEEPING: las reglas viven en DoorGatekeeper
         const block = getDoorBlock(door.targetScene, this.player);
         if (block) {
+          // Mientras el diálogo está abierto la puerta no vuelve a detectar al jugador.
+          if (this.dialogueBox.active) return;
+          const gateKey = `${door.targetScene}|${door.label || ''}`;
+          const now = performance.now();
+          if (this.doorGate && this.doorGate.key === gateKey && now < this.doorGate.until) {
+            return;
+          }
+
           if (this.music) this.music.playDoorLockedSound();
-          // Empujar al jugador exactamente 1 tile hacia atrás (opuesto al intento de cruce)
-          pushBackPlayer(this.player, this.player.direction || 'down');
-          this.dialogueBox.showMessage(block.title, block.lines);
+          // Empujón inverso y contundente (2 tiles) para salir del área de activación.
+          pushBackPlayer(this.player, this.player.direction || 'down', 2);
+          const gateDoor = {
+            key: gateKey,
+            targetScene: door.targetScene,
+            worldX: door.worldX,
+            worldY: door.worldY,
+            until: 0
+          };
+          this.doorGate = gateDoor;
+          this.dialogueBox.showMessage(block.title, block.lines, () => {
+            // Cooldown de 2 s al cerrar la última página.
+            this.doorGate = { ...gateDoor, until: performance.now() + 2000 };
+          });
           return;
         }
 
@@ -5465,6 +5498,59 @@ export class RPGGame {
     }
   }
 
+  _updateDoorGate() {
+    if (!this.doorGate) return;
+    const dx = this.player.centerX - this.doorGate.worldX;
+    const dy = this.player.centerY - this.doorGate.worldY;
+    if (Math.hypot(dx, dy) > 64) {
+      this.doorGate = null;
+    }
+  }
+
+  _compassFromDirection(direction) {
+    return { right: 'east', left: 'west', down: 'south', up: 'north' }[direction] || null;
+  }
+
+  /**
+   * Regla espacial 2D: si sales por el ESTE apareces al OESTE del nuevo mapa,
+   * y viceversa. Margen de 2 tiles para no reactivar la puerta de regreso.
+   */
+  _resolveStageSpawn(door = {}) {
+    const margin = 2 * this.tilemap.tileSize;
+    const width = this.tilemap.width;
+    const height = this.tilemap.height;
+    const exitDirection =
+      door.exitDirection ||
+      this._compassFromDirection(this.player.direction) ||
+      'east';
+    const entryX = Number.isFinite(door.spawnX) ? door.spawnX : width / 2;
+    const entryY = Number.isFinite(door.spawnY) ? door.spawnY : height / 2;
+
+    let x = entryX;
+    let y = entryY;
+    let facing = this.player.direction;
+
+    if (exitDirection === 'east') {
+      x = margin;
+      y = entryY;
+      facing = 'right';
+    } else if (exitDirection === 'west') {
+      x = width - margin;
+      y = entryY;
+      facing = 'left';
+    } else if (exitDirection === 'south') {
+      y = margin;
+      x = entryX;
+      facing = 'down';
+    } else if (exitDirection === 'north') {
+      y = height - margin;
+      x = entryX;
+      facing = 'up';
+    }
+
+    return { x, y, facing, exitDirection };
+  }
+
   _executeStageTransition(door) {
     this.transitionCooldown = 0.5;
     if (this.music) {
@@ -5518,15 +5604,11 @@ export class RPGGame {
       }
     }
     this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
-    this.player.x = door.spawnX;
-    this.player.y = door.spawnY;
-    // PRESERVAR DIRECCIÓN DE ENTRADA: si el jugador entra por la derecha, sigue mirando a la derecha.
-    // Solo se sobrescribe la dirección si la puerta especifica una dirección de entrada forzada
-    // (por ejemplo, al entrar en una casa por una puerta, se mira hacia adentro).
-    if (door.forceDirection) {
-      this.player.direction = door.forceDirection;
-    }
-    // Si no hay forceDirection, se mantiene la dirección actual del jugador (no se sobrescribe).
+    // (FIX ESPACIAL) Entrada por el borde OPUESTO a la salida, con margen de 2 tiles.
+    const spawn = this._resolveStageSpawn(door);
+    this.player.x = spawn.x;
+    this.player.y = spawn.y;
+    this.player.direction = door.forceDirection || spawn.facing;
     this.camera.snapTo(this.player);
 
     if (this.music && this.music.currentBossTrack) {
@@ -6729,6 +6811,7 @@ export class RPGGame {
     }
 
     this.camera.update(this.player, dt);
+    this._updateDoorGate();
     this.dialogueBox.update(dt);
     if (this.achievementManager) {
       this.achievementManager.update(dt);

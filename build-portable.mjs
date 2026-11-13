@@ -53,6 +53,8 @@ const MODULE_ORDER = [
   'src/ui/AnimeCutsceneManager.js',
   'src/world/DayNightCycle.js',
   'src/graphics/RenderPipeline.js',
+  'src/ui/CinematicTimeline.js',
+  'src/assets/CinematicTimelines.js',
   'src/ui/CinematicDirector.js',
   'src/ai/AIBotBrain.js',
   'src/audio/AudioManager.js',

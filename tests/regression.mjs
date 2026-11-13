@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { findPath, hasLineOfSight } from '../src/ai/Pathfinding.js';
 import { Enemy } from '../src/entities/Enemy.js';
 import { Player, LEVEL_XP_THRESHOLDS, XP_REWARDS } from '../src/entities/Player.js';
-import { getDoorBlock, getDoorDestinationInfo, ZONE_LEVEL_REQUIREMENTS } from '../src/core/DoorGatekeeper.js';
+import { getDoorBlock, getDoorDestinationInfo, ZONE_LEVEL_REQUIREMENTS, pushBackPlayer } from '../src/core/DoorGatekeeper.js';
 import { AI_STATE, inferArchetype } from '../src/ai/EnemyBrain.js';
 import { SpeechBubble, drawSpeechBalloonPath } from '../src/ui/SpeechBubble.js';
 import { GarbageCollectorBoss } from '../src/entities/bosses/GarbageCollectorBoss.js';
@@ -52,6 +52,8 @@ import { CharacterStats } from '../src/ui/CharacterStats.js';
 import { InputHandler } from '../src/core/InputHandler.js';
 import { WorldMap } from '../src/ui/WorldMap.js';
 import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY, getExpansionDialogueSfx } from '../src/expansion/ExpansionData.js';
+import { CinematicTimeline } from '../src/ui/CinematicTimeline.js';
+import { CINEMATIC_TIMELINES, CINEMATIC_TIMELINE_DURATIONS, PROLOGUE_ALEX, SCENE_ALEX_FINAL, SCENE_INTRO_INAKITO } from '../src/assets/CinematicTimelines.js';
 import { TonyCuleiro } from '../src/expansion/entities/TonyCuleiro.js';
 import { FrancoPancho } from '../src/expansion/entities/FrancoPancho.js';
 import { IñakitoBoss } from '../src/expansion/entities/IñakitoBoss.js';
@@ -1602,13 +1604,11 @@ test('Menú de Pausa Depurado y Cinemática de Mister AI Alex sin Truncamiento',
   assert.equal(soundItems.length, 6, 'El submenú de Ajustes y Sonido debe tener 6 opciones (incluye Efectos Visuales)');
   assert.ok(soundItems.some((item) => item.label.includes('Efectos Visuales')), 'Debe existir el toggle de Efectos Visuales');
 
-  // Verificación de cinemática de entrada: 8 diapositivas bien distribuidas
-  menu.startAnimeIntroCutscene();
-  assert.equal(menu.cutsceneSlides.length, 8, 'El prólogo debe dividirse en 8 diapositivas dinámicas');
-  for (const slide of menu.cutsceneSlides) {
-    assert.ok(slide.text.length < 165, `El texto "${slide.text.slice(0, 30)}..." no debe superar el límite de visualización`);
-    assert.ok(slide.chapter.length > 0);
-  }
+  // (FIX CINEMÁTICAS) La intro ya NO usa diapositivas vectoriales.
+  let introDelegated = false;
+  menu.startAnimeIntroCutscene(() => { introDelegated = true; });
+  assert.equal(introDelegated, true, 'La intro debe delegar al prólogo in-engine');
+  assert.equal(menu.cutsceneSlides, undefined, 'No debe quedar estado de diapositivas vectoriales');
 
   // Verificación de diálogos de Mister AI Alex
   for (const s of SCENE_AI_ALEX_WARNING) {
@@ -2595,6 +2595,109 @@ test('Expansión v2.0: BGM/SFX nuevos y hooks de audio en diálogos', () => {
     calls.includes('playGlitch') || calls.includes('playError'),
     'Un texto de error/glitch debe disparar playGlitch/playError'
   );
+});
+
+test('Timeline v2.0: 7 escenas con duración exacta y eventos absolutos', () => {
+  const expected = {
+    prologue_alex: 35,
+    scene_intro_garbage_collector: 15,
+    scene_intro_stack_overflow: 18,
+    scene_intro_prototype_microwave: 15,
+    scene_ai_alex_prebattle: 40,
+    scene_intro_inakito: 20,
+    scene_jail_arrest: 20
+  };
+  assert.equal(Object.keys(CINEMATIC_TIMELINES).length, 7);
+  for (const [id, duration] of Object.entries(expected)) {
+    const scene = CINEMATIC_TIMELINES[id];
+    assert.ok(scene, `Falta el timeline ${id}`);
+    assert.equal(scene.duration, duration, `Duración incorrecta en ${id}`);
+    assert.equal(CINEMATIC_TIMELINE_DURATIONS[id], duration);
+    assert.ok(Array.isArray(scene.timeline) && scene.timeline.length > 0);
+    let last = -1;
+    for (const ev of scene.timeline) {
+      assert.ok(Number.isFinite(ev.time), `Evento sin time en ${id}`);
+      assert.ok(ev.action, `Evento sin action en ${id}`);
+      assert.ok(ev.time >= last, `Eventos desordenados en ${id}`);
+      assert.ok(ev.time <= duration, `Evento fuera de duración en ${id}`);
+      last = ev.time;
+    }
+    assert.equal(scene.timeline[scene.timeline.length - 1].action, 'end');
+  }
+  assert.equal(PROLOGUE_ALEX.duration, 35);
+  assert.equal(SCENE_ALEX_FINAL.duration, 40);
+  assert.equal(SCENE_INTRO_INAKITO.duration, 20);
+
+  // El reloj absoluto no dispara antes de tiempo y cierra a la duración exacta.
+  const tl = new CinematicTimeline({
+    id: 'test',
+    duration: 35,
+    events: [{ time: 3, action: 'a' }, { time: 12, action: 'b' }]
+  });
+  const fired = [];
+  tl.update(2.9, (e) => fired.push(e.action));
+  assert.deepEqual(fired, []);
+  tl.update(0.2, (e) => fired.push(e.action));
+  assert.deepEqual(fired, ['a']);
+  tl.update(40, (e) => fired.push(e.action));
+  assert.deepEqual(fired, ['a', 'b']);
+  assert.equal(tl.finished, true);
+  assert.equal(tl.duration, 35);
+});
+
+test('Transiciones espaciales: salir por un borde aparece en el opuesto con margen de 2 tiles', () => {
+  const fake = {
+    tilemap: { tileSize: 16, width: 576, height: 384 },
+    player: { direction: 'right' },
+    _compassFromDirection: RPGGame.prototype._compassFromDirection
+  };
+  const resolve = (direction, door = { spawnY: 200 }) => {
+    fake.player.direction = direction;
+    return RPGGame.prototype._resolveStageSpawn.call(fake, door);
+  };
+
+  const east = resolve('right');
+  assert.equal(east.x, 32, 'Salir por el Este debe aparecer al Oeste (32 px)');
+  assert.equal(east.y, 200);
+  assert.equal(east.facing, 'right');
+
+  const west = resolve('left');
+  assert.equal(west.x, 576 - 32, 'Salir por el Oeste debe aparecer al Este');
+  assert.equal(west.facing, 'left');
+
+  fake.player.direction = 'down';
+  const south = RPGGame.prototype._resolveStageSpawn.call(fake, { spawnX: 288 });
+  assert.equal(south.y, 32, 'Salir por el Sur debe aparecer arriba');
+  assert.equal(south.x, 288);
+  assert.equal(south.facing, 'down');
+
+  fake.player.direction = 'up';
+  const north = RPGGame.prototype._resolveStageSpawn.call(fake, { spawnX: 288 });
+  assert.equal(north.y, 384 - 32, 'Salir por el Norte debe aparecer abajo');
+  assert.equal(north.x, 288);
+  assert.equal(north.facing, 'up');
+
+  // La puerta Este del overworld fuerza el borde opuesto aunque la dirección sea otra.
+  fake.player.direction = 'down';
+  const forced = RPGGame.prototype._resolveStageSpawn.call(fake, {
+    exitDirection: 'east',
+    spawnY: 240
+  });
+  assert.equal(forced.x, 32);
+  assert.equal(forced.y, 240);
+});
+
+test('Puerta con nivel: empuje inverso de 2 tiles y bloqueo del Guardia Vulcano', () => {
+  const player = { x: 128, y: 128 };
+  pushBackPlayer(player, 'down', 2);
+  assert.equal(player.x, 128);
+  assert.equal(player.y, 96, 'Debe retroceder 2 tiles (32 px) en sentido opuesto');
+  assert.ok(player.knockbackTimer > 0);
+
+  const block = getDoorBlock('south_swamp', { level: 1 });
+  assert.ok(block, 'El Guardia Vulcano debe bloquear el nivel 1');
+  assert.ok(block.title.includes('VULCANO'));
+  assert.equal(getDoorBlock('south_swamp', { level: 3 }), null, 'Nivel 3 debe permitir el paso');
 });
 
 await Promise.all(asyncQueue);

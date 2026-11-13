@@ -185,11 +185,15 @@ export function getDoorDestinationInfo(targetScene) {
  * @param {string} [direction='down'] - Dirección hacia la que se empuja (opuesto al movimiento intentado)
  * @returns {boolean} true si se realizó el empujón
  */
-export function pushBackPlayer(player, direction = 'down') {
+export function pushBackPlayer(player, direction = 'down', tiles = 1) {
   if (!player) return false;
 
   const tileSize = 16;
-  const pushDistance = tileSize; // 1 tile exactamente
+  const pushDistance = tileSize * Math.max(1, Number(tiles) || 1);
+
+  // El jugador mira/intenta cruzar en `direction`: el empujón va al lado OPUESTO.
+  const reverse = { up: 'down', down: 'up', left: 'right', right: 'left' };
+  const back = reverse[direction] || 'up';
 
   const offsets = {
     up:    { dx: 0,  dy: -pushDistance },
@@ -198,14 +202,13 @@ export function pushBackPlayer(player, direction = 'down') {
     right: { dx:  pushDistance, dy: 0 }
   };
 
-  const offset = offsets[direction] || offsets.down;
+  const offset = offsets[back];
 
-  // Aplicar empujón de 1 tile
   player.x += offset.dx;
   player.y += offset.dy;
 
-  // Temporizador de knockback para evitar bucles de colisión inmediata
-  player.knockbackTimer = 0.5;
+  // Knockback amplio para que no vuelva a entrar en el trigger al cerrar el diálogo.
+  player.knockbackTimer = 0.65;
   player.knockbackVx = offset.dx * 2;
   player.knockbackVy = offset.dy * 2;
 

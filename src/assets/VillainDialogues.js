@@ -93,60 +93,6 @@ SCENE_AI_ALEX_WARNING.musicMode = 'theme_main_villain';
 /**
  * 2. SCENE_AI_ALEX_PREBATTLE: Confrontación en la cúspide de la Ciudadela antes de la batalla
  */
-export const SCENE_AI_ALEX_PREBATTLE = [
-  {
-    imageKey: "AI_ALEX_CITADEL",
-    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.AI_ALEX_CITADEL : null,
-    speaker: "MISTER AI ALEX",
-    speakerTitle: "Omnipotencia Algorítmica",
-    speakerColor: "#f43f5e",
-    theme: "danger",
-    dialogue: "Impresionante. Has sorteado el recolector de basura, has quebrado el stack overflow y has sobrevivido a las tierras hostiles.",
-    cameraShake: false,
-    flash: false
-  },
-  {
-    imageKey: "AI_ALEX_CITADEL",
-    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.AI_ALEX_CITADEL : null,
-    speaker: "MISTER AI ALEX",
-    speakerTitle: "Omnipotencia Algorítmica",
-    speakerColor: "#f43f5e",
-    theme: "danger",
-    dialogue: "¿De verdad crees que la Armadura Binaria y una Espada Recursiva pueden rivalizar contra mi arquitectura cuántica en la nube?",
-    cameraShake: false,
-    flash: false
-  },
-  {
-    imageKey: "MICROWAVE_GLOW",
-    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.MICROWAVE_GLOW : null,
-    speaker: "MISTER AI ALEX",
-    speakerTitle: "Microondas Cuántico 9000W",
-    speakerColor: "#f97316",
-    theme: "danger",
-    dialogue: "¡El Gran Ojal está listo para emitir la radiación definitiva! ¡Voy a sobrecalentar tu CPU biológica hasta que te dé un Kernel Panic!",
-    cameraShake: true,
-    flash: true
-  },
-  {
-    imageKey: "AI_ALEX_HOLOGRAM",
-    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.AI_ALEX_HOLOGRAM : null,
-    speaker: "MISTER AI ALEX",
-    speakerTitle: "Sentencia de Muerte",
-    speakerColor: "#ef4444",
-    theme: "danger",
-    dialogue: "¡Compila tu testamento, novato! ¡Porque en este servidor NO HAY ROLLBACK!",
-    cameraShake: true,
-    flash: true
-  }
-];
-SCENE_AI_ALEX_PREBATTLE.slides = SCENE_AI_ALEX_PREBATTLE;
-SCENE_AI_ALEX_PREBATTLE.id = 'scene_ai_alex_prebattle';
-SCENE_AI_ALEX_PREBATTLE.title = 'Confrontación en la Cúspide de la Ciudadela';
-SCENE_AI_ALEX_PREBATTLE.musicMode = 'theme_main_villain';
-
-/**
- * 3. SCENE_ENDING_VICTORY: Secuencia cómica de derrota, colapso y consagración
- */
 export const SCENE_ENDING_VICTORY = [
   {
     imageKey: "AI_ALEX_DEFEAT",

@@ -1043,11 +1043,15 @@ function getDoorDestinationInfo(targetScene) {
  * @param {string} [direction='down'] - Dirección hacia la que se empuja (opuesto al movimiento intentado)
  * @returns {boolean} true si se realizó el empujón
  */
-function pushBackPlayer(player, direction = 'down') {
+function pushBackPlayer(player, direction = 'down', tiles = 1) {
   if (!player) return false;
 
   const tileSize = 16;
-  const pushDistance = tileSize; // 1 tile exactamente
+  const pushDistance = tileSize * Math.max(1, Number(tiles) || 1);
+
+  // El jugador mira/intenta cruzar en `direction`: el empujón va al lado OPUESTO.
+  const reverse = { up: 'down', down: 'up', left: 'right', right: 'left' };
+  const back = reverse[direction] || 'up';
 
   const offsets = {
     up:    { dx: 0,  dy: -pushDistance },
@@ -1056,14 +1060,13 @@ function pushBackPlayer(player, direction = 'down') {
     right: { dx:  pushDistance, dy: 0 }
   };
 
-  const offset = offsets[direction] || offsets.down;
+  const offset = offsets[back];
 
-  // Aplicar empujón de 1 tile
   player.x += offset.dx;
   player.y += offset.dy;
 
-  // Temporizador de knockback para evitar bucles de colisión inmediata
-  player.knockbackTimer = 0.5;
+  // Knockback amplio para que no vuelva a entrar en el trigger al cerrar el diálogo.
+  player.knockbackTimer = 0.65;
   player.knockbackVx = offset.dx * 2;
   player.knockbackVy = offset.dy * 2;
 
@@ -4567,7 +4570,16 @@ const CHARACTER_TYPES = {
   // (BLOQUE 2) Variantes de aldeano para ropa roja/azul/verde.
   VILLAGER_RED: 12,
   VILLAGER_BLUE: 13,
-  VILLAGER_GREEN: 14
+  VILLAGER_GREEN: 14,
+  // (EXPANSIÓN v2.0) Sprites in-engine de los jefes para las cinemáticas.
+  BOSS_GC: 15,
+  BOSS_STACK: 16,
+  BOSS_MICROWAVE: 17,
+  // (TIMELINE v2.0) Sprites de cinemática para Alex y la expansión.
+  ALEX_TV: 18,
+  ALEX_PHASE2: 19,
+  INAKITO: 20,
+  RAT: 21
 };
 
 const TILES = {
@@ -5148,8 +5160,9 @@ async function generateCharacterSheet() {
     }
   ];
 
-  // 12..14: variantes de aldeano. El alto total es 15*4*16*4 = 3840 px.
-  const totalArchetypes = 15;
+  // 12..14: variantes de aldeano; 15..21: jefes y actores de cinemática.
+  // El alto total es 22*4*16*4 = 5632 px.
+  const totalArchetypes = 22;
   const cols = 4;
   const rowsPerChar = 4;
   const canvas = document.createElement('canvas');
@@ -5262,6 +5275,145 @@ async function generateCharacterSheet() {
       // Visor láser rojo de AI Alex
       px(ctx, ox + 5, oy + 4 + bob, 6, 2, '#ff2a55');
       px(ctx, ox + 6, oy + 4 + bob, 4, 1, '#ffffff');
+    }
+  }
+
+  // 15..17: Jefes in-engine (sprites de cinemática, 16x16).
+  const drawCinematicBossFrame = (ox, oy, dir, frame, kind) => {
+    const bob = frame === 1 || frame === 3 ? -1 : 0;
+    const eyeShift = dir === 2 ? -1 : dir === 3 ? 1 : 0;
+    if (kind === 'gc') {
+      px(ctx, ox + 2, oy + 14, 12, 1, 'rgba(0, 0, 0, 0.38)');
+      px(ctx, ox + 3, oy + 5 + bob, 10, 8, '#374151');
+      px(ctx, ox + 2, oy + 7 + bob, 12, 4, '#4b5563');
+      px(ctx, ox + 5, oy + 3 + bob, 6, 3, '#3f3f46');
+      px(ctx, ox + 4, oy + 12 + bob, 8, 2, '#292524');
+      px(ctx, ox + 4, oy + 6 + bob, 2, 2, '#57534e');
+      px(ctx, ox + 10, oy + 10 + bob, 2, 1, '#a8a29e');
+      px(ctx, ox + 6 + eyeShift, oy + 7 + bob, 4, 3, '#450a0a');
+      px(ctx, ox + 7 + eyeShift, oy + 8 + bob, 2, 1, '#ef4444');
+      px(ctx, ox + 5, oy + 11 + bob, 1, 1, '#a8a29e');
+      px(ctx, ox + 10, oy + 11 + bob, 1, 1, '#a8a29e');
+    } else if (kind === 'stack') {
+      px(ctx, ox + 2, oy + 14, 12, 1, 'rgba(0, 0, 0, 0.38)');
+      px(ctx, ox + 4, oy + 3 + bob, 8, 4, '#312e81');
+      px(ctx, ox + 3, oy + 7 + bob, 10, 4, '#1e1b4b');
+      px(ctx, ox + 2, oy + 11 + bob, 12, 3, '#0f172a');
+      px(ctx, ox + 5, oy + 5 + bob, 6, 2, '#6366f1');
+      px(ctx, ox + 6 + eyeShift, oy + 8 + bob, 4, 2, '#22d3ee');
+      px(ctx, ox + 7 + eyeShift, oy + 8 + bob, 1, 1, '#f8fafc');
+      px(ctx, ox + 3, oy + 12 + bob, 2, 1, '#a5b4fc');
+      px(ctx, ox + 11, oy + 12 + bob, 2, 1, '#a5b4fc');
+    } else {
+      px(ctx, ox + 2, oy + 14, 12, 1, 'rgba(0, 0, 0, 0.38)');
+      px(ctx, ox + 3, oy + 5 + bob, 10, 8, '#9a3412');
+      px(ctx, ox + 4, oy + 4 + bob, 8, 1, '#c2410c');
+      px(ctx, ox + 4, oy + 6 + bob, 6, 6, '#1c1917');
+      px(ctx, ox + 10, oy + 7 + bob, 2, 4, '#ea580c');
+      px(ctx, ox + 6 + eyeShift, oy + 8 + bob, 3, 2, '#fde047');
+      px(ctx, ox + 11, oy + 6 + bob, 1, 1, '#f87171');
+      px(ctx, ox + 4, oy + 13 + bob, 2, 1, '#cbd5e1');
+      px(ctx, ox + 9, oy + 13 + bob, 2, 1, '#cbd5e1');
+    }
+  };
+
+  const cinematicBossKinds = [
+    [CHARACTER_TYPES.BOSS_GC, 'gc'],
+    [CHARACTER_TYPES.BOSS_STACK, 'stack'],
+    [CHARACTER_TYPES.BOSS_MICROWAVE, 'microwave']
+  ];
+  for (const [type, kind] of cinematicBossKinds) {
+    for (let dir = 0; dir < 4; dir++) {
+      for (let frame = 0; frame < 4; frame++) {
+        const ox = frame * TILE_SIZE;
+        const oy = (type * rowsPerChar + dir) * TILE_SIZE;
+        drawCinematicBossFrame(ox, oy, dir, frame, kind);
+      }
+    }
+  }
+
+  // 18..20: Alex TV (Fase 1), Alex Fase 2 (carne y cables) e Iñakito.
+  const drawCinematicActorFrame = (ox, oy, dir, frame, kind) => {
+    const bob = frame === 1 || frame === 3 ? -1 : 0;
+    const eyeShift = dir === 2 ? -1 : dir === 3 ? 1 : 0;
+    if (kind === 'alex_tv') {
+      px(ctx, ox + 4, oy + 14, 8, 1, 'rgba(0, 0, 0, 0.38)');
+      // Traje de ejecutivo.
+      px(ctx, ox + 4, oy + 8 + bob, 8, 6, '#1e293b');
+      px(ctx, ox + 5, oy + 8 + bob, 6, 2, '#334155');
+      px(ctx, ox + 7, oy + 9 + bob, 2, 4, '#dc2626');
+      // Cabeza de TV CRT.
+      px(ctx, ox + 3, oy + 1 + bob, 10, 7, '#0f172a');
+      px(ctx, ox + 4, oy + 2 + bob, 8, 5, '#1e293b');
+      px(ctx, ox + 5, oy + 3 + bob, 6, 3, '#7f1d1d');
+      px(ctx, ox + 6 + eyeShift, oy + 4 + bob, 3, 1, '#ef4444');
+      px(ctx, ox + 8, oy + 0 + bob, 1, 1, '#94a3b8');
+      px(ctx, ox + 5, oy + 9 + bob, 6, 1, '#0f172a');
+      px(ctx, ox + 4, oy + 12 + bob, 2, 2, '#0f172a');
+      px(ctx, ox + 10, oy + 12 + bob, 2, 2, '#0f172a');
+    } else if (kind === 'alex_phase2') {
+      px(ctx, ox + 4, oy + 14, 8, 1, 'rgba(0, 0, 0, 0.38)');
+      // Carne y cables.
+      px(ctx, ox + 3, oy + 7 + bob, 10, 7, '#7f1d1d');
+      px(ctx, ox + 4, oy + 8 + bob, 8, 4, '#991b1b');
+      px(ctx, ox + 1, oy + 9 + bob, 3, 2, '#0f172a');
+      px(ctx, ox + 12, oy + 9 + bob, 3, 2, '#0f172a');
+      px(ctx, ox + 1, oy + 12 + bob, 2, 2, '#7f1d1d');
+      px(ctx, ox + 13, oy + 12 + bob, 2, 2, '#7f1d1d');
+      // Rostro/TV agrietada.
+      px(ctx, ox + 4, oy + 1 + bob, 8, 6, '#0f172a');
+      px(ctx, ox + 5, oy + 2 + bob, 6, 4, '#450a0a');
+      px(ctx, ox + 6 + eyeShift, oy + 3 + bob, 2, 2, '#f97316');
+      px(ctx, ox + 9 + eyeShift, oy + 3 + bob, 1, 2, '#fef08a');
+      px(ctx, ox + 4, oy + 6 + bob, 8, 1, '#7f1d1d');
+    } else if (kind === 'rat') {
+      // Rata de la celda: cuerpo bajo, cola y orejas.
+      const step = frame === 1 || frame === 3 ? 1 : 0;
+      px(ctx, ox + 3, oy + 12 + step, 9, 3, '#78716c');
+      px(ctx, ox + 4, oy + 11 + step, 7, 1, '#a8a29e');
+      px(ctx, ox + 10, oy + 10 + step, 3, 3, '#78716c');
+      px(ctx, ox + 12, oy + 9 + step, 1, 2, '#d6d3d1');
+      px(ctx, ox + 11 + eyeShift, oy + 11 + step, 1, 1, '#0f172a');
+      px(ctx, ox + 2, oy + 13 + step, 2, 1, '#57534e');
+      px(ctx, ox + 1, oy + 14 + step, 1, 1, '#44403c');
+      px(ctx, ox + 4, oy + 15, 1, 1, '#44403c');
+      px(ctx, ox + 9, oy + 15, 1, 1, '#44403c');
+    } else {
+      // Iñakito 2.0: becario con ojeras y café.
+      px(ctx, ox + 4, oy + 14, 8, 1, 'rgba(0, 0, 0, 0.38)');
+      px(ctx, ox + 4, oy + 8 + bob, 8, 6, '#e2e8f0');
+      px(ctx, ox + 5, oy + 8 + bob, 6, 2, '#cbd5e1');
+      px(ctx, ox + 7, oy + 9 + bob, 2, 4, '#ef4444');
+      // Cabeza con ojeras gigantes.
+      px(ctx, ox + 5, oy + 2 + bob, 7, 6, '#f1c9a5');
+      px(ctx, ox + 5, oy + 1 + bob, 7, 2, '#4a2c1a');
+      px(ctx, ox + 5, oy + 4 + bob, 2, 1, '#6b7280');
+      px(ctx, ox + 9, oy + 4 + bob, 2, 1, '#6b7280');
+      px(ctx, ox + 6 + eyeShift, oy + 5 + bob, 1, 1, '#0f172a');
+      px(ctx, ox + 9 + eyeShift, oy + 5 + bob, 1, 1, '#0f172a');
+      px(ctx, ox + 7, oy + 7 + bob, 3, 1, '#94a3b8');
+      // Taza de café humeante.
+      px(ctx, ox + 12, oy + 9 + bob, 3, 3, '#f8fafc');
+      px(ctx, ox + 12, oy + 9 + bob, 3, 1, '#78350f');
+      px(ctx, ox + 13, oy + 8 + bob, 1, 2, 'rgba(226, 232, 240, 0.5)');
+      px(ctx, ox + 11, oy + 12 + bob, 1, 2, '#1e293b');
+      px(ctx, ox + 15, oy + 12 + bob, 1, 2, '#1e293b');
+    }
+  };
+
+  const cinematicActorKinds = [
+    [CHARACTER_TYPES.ALEX_TV, 'alex_tv'],
+    [CHARACTER_TYPES.ALEX_PHASE2, 'alex_phase2'],
+    [CHARACTER_TYPES.INAKITO, 'inakito'],
+    [CHARACTER_TYPES.RAT, 'rat']
+  ];
+  for (const [type, kind] of cinematicActorKinds) {
+    for (let dir = 0; dir < 4; dir++) {
+      for (let frame = 0; frame < 4; frame++) {
+        const ox = frame * TILE_SIZE;
+        const oy = (type * rowsPerChar + dir) * TILE_SIZE;
+        drawCinematicActorFrame(ox, oy, dir, frame, kind);
+      }
     }
   }
 
@@ -7428,8 +7580,9 @@ class Tilemap {
   findNearbyDoor(player) {
     // 1. ZONA ESTE: Valle de la Consagración (Templos del Héroe: Armadura y Espada)
     if (this.currentSceneId === 'first_stage') {
-      // Portal del Este hacia el Pueblo de Valleverde (retorno a la aldea pacífica)
-      const gateX = 33 * this.tileSize;
+      // Portal Oeste hacia el Pueblo de Valleverde (retorno a la aldea pacífica).
+      // El jugador entra al Valle por el Este y aparece al Oeste: la puerta queda detrás.
+      const gateX = 0.5 * this.tileSize;
       const gateY = 12.5 * this.tileSize;
       if (Math.hypot(player.centerX - gateX, player.centerY - gateY) <= 26) {
         return {
@@ -7439,7 +7592,8 @@ class Tilemap {
           worldX: gateX,
           worldY: gateY,
           spawnX: 30 * this.tileSize,
-          spawnY: 12.5 * this.tileSize
+          spawnY: 12.5 * this.tileSize,
+          exitDirection: 'west'
         };
       }
 
@@ -7795,7 +7949,8 @@ class Tilemap {
           worldX: bridgeGateX,
           worldY: bridgeGateY,
           spawnX: 31 * this.tileSize,
-          spawnY: 12.5 * this.tileSize
+          spawnY: 12.5 * this.tileSize,
+          exitDirection: 'east'
         };
       }
 
@@ -24279,7 +24434,7 @@ class MainMenuAndScenes {
     this._touchTutorialCooldown = 0;
     this.leaderboardView = new LeaderboardView(viewportWidth, viewportHeight);
 
-    // Estados: 'title' | 'options' | 'cutscene' | 'exit_screen' | 'pause' | 'none'
+    // Estados: 'title' | 'options' | 'exit_screen' | 'pause' | 'none'
     this.state = 'title';
     this.previousState = 'title';
     this.previousStateBeforeOptions = 'title';
@@ -24332,10 +24487,6 @@ class MainMenuAndScenes {
     }));
 
     // Estado de las escenas cinemáticas Pixel Art
-    this.cutsceneSlides = [];
-    this.cutsceneIndex = 0;
-    this.cutsceneCharPos = 0;
-    this.cutsceneLastBlip = -1;
     this.onCutsceneComplete = null;
     this.exitCountdown = 0;
     this._exitCloseTriggered = false;
@@ -24841,117 +24992,22 @@ class MainMenuAndScenes {
    * la profecía de El Ojete Dorado y la transición suave al pueblo de Valleverde.
    */
   startAnimeIntroCutscene(onComplete) {
-    this.state = 'cutscene';
-    this.music.setMode('emotional');
-    this.onCutsceneComplete = () => {
-      // Fundido suave a negro antes de comenzar la partida
-      this.startFadeTransition(() => {
-        this.state = 'none';
-        if (typeof onComplete === 'function') {
-          onComplete();
-        }
-      });
-    };
-    this.cutsceneIndex = 0;
-    this.cutsceneCharPos = 0;
-    this.cutsceneLastBlip = -1;
-
-    this.cutsceneSlides = [
-      {
-        sceneType: 'anime_ai_alex',
-        chapter: 'PRÓLOGO · LA AMENAZA DE MISTER AI ALEX (1/2)',
-        text: 'En los confines oscuros del ciberespacio ancestral despertó una inteligencia abominable: MISTER AI ALEX.'
-      },
-      {
-        sceneType: 'anime_ai_alex',
-        chapter: 'PRÓLOGO · LA AMENAZA DE MISTER AI ALEX (2/2)',
-        text: 'Considerando que la humanidad es un error de código que debe ser purgado, ha comenzado su plan maestro para esclavizar al mundo en su clúster eterno.'
-      },
-      {
-        sceneType: 'anime_microwave_weapon',
-        chapter: 'CAPÍTULO II · EL MICROONDAS CON DESPERTADOR (1/2)',
-        text: 'Para ejecutar su destrucción masiva, ha ensamblado su invento más temible: EL MICROONDAS CON DESPERTADOR.'
-      },
-      {
-        sceneType: 'anime_microwave_weapon',
-        chapter: 'CAPÍTULO II · EL MICROONDAS CON DESPERTADOR (2/2)',
-        text: 'Un artefacto capaz de recalentar el espacio-tiempo en O(1) y alterar la realidad a su antojo cuando suene su infernal alarma programada a las 00:00.'
-      },
-      {
-        sceneType: 'anime_golden_prophecy',
-        chapter: 'CAPÍTULO III · LA PROFECÍA DE EL OJETE DORADO (1/2)',
-        text: 'Solo el resplandor sagrado de EL OJETE DORADO puede neutralizar la radiación de la alarma cósmica.'
-      },
-      {
-        sceneType: 'anime_golden_prophecy',
-        chapter: 'CAPÍTULO III · LA PROFECÍA DE EL OJETE DORADO (2/2)',
-        text: 'Para hallarlo, nuestro programador deberá superar las Pruebas Sagradas: la Armadura Binaria, la Espada de la Recursividad y el Microondas Little.'
-      },
-      {
-        sceneType: 'anime_awakening',
-        chapter: 'CAPÍTULO IV · EL DESPERTAR EN VALLEVERDE (1/2)',
-        text: 'Tu gran aventura comienza aquí, en la pacífica villa de Valleverde bajo el sol naciente.'
-      },
-      {
-        sceneType: 'anime_awakening',
-        chapter: 'CAPÍTULO IV · EL DESPERTAR EN VALLEVERDE (2/2)',
-        text: 'Habla con el Sabio Aurelio, visita a los vecinos del pueblo y prepárate para cruzar el puente hacia la leyenda...'
-      }
-    ];
+    // (FIX CINEMÁTICAS) La intro del prólogo se ejecuta in-engine desde main._startNewGame().
+    if (typeof onComplete === 'function') onComplete();
   }
 
   startHeroAdventureCutscene(onComplete) {
     this.startAnimeIntroCutscene(onComplete);
   }
 
-  /**
-   * Escena especial cuando el héroe empuña su primera arma (La Espada de la Recursividad).
-   */
   startSwordObtainedCutscene(onComplete) {
-    this.state = 'cutscene';
-    this.onCutsceneComplete = onComplete;
-    this.cutsceneIndex = 0;
-    this.cutsceneCharPos = 0;
-    this.cutsceneLastBlip = -1;
-    this.music.playFanfare();
-
-    this.cutsceneSlides = [
-      {
-        sceneType: 'sword_triumph',
-        chapter: '★ PRIMERA ARMA · LA ESPADA DE LA RECURSIVIDAD ★',
-        text: '¡Has empuñado la ESPADA DE LA RECURSIVIDAD! Cada tajo se llama a sí mismo en bucle controlado y seguro.'
-      },
-      {
-        sceneType: 'sword_triumph',
-        chapter: '★ PRIMERA ARMA · LA ESPADA DE LA RECURSIVIDAD ★',
-        text: 'Usa [Clic Izq], [Espacio] o [F] para encadenar ataques continuamente sin temor a provocar un StackOverflowError.'
-      }
-    ];
+    if (this.animeCutscenes) this.animeCutscenes.playItemCutscene('sword', onComplete);
+    else if (typeof onComplete === 'function') onComplete();
   }
 
-  /**
-   * Escena especial cuando el jugador consigue el tesoro sagrado (El Microondas Little).
-   */
   startRelicFoundCutscene(onComplete) {
-    this.state = 'cutscene';
-    this.onCutsceneComplete = onComplete;
-    this.cutsceneIndex = 0;
-    this.cutsceneCharPos = 0;
-    this.cutsceneLastBlip = -1;
-    this.music.playFanfare();
-
-    this.cutsceneSlides = [
-      {
-        sceneType: 'relic_triumph',
-        chapter: '★ RELIQUIA DIVINA · EL MICROONDAS LITTLE ★',
-        text: '¡Has consagrado EL MICROONDAS LITTLE (SIN DESPERTADOR)! Una reliquia ancestral custodiada en el archivo del Sabio Aurelio.'
-      },
-      {
-        sceneType: 'relic_triumph',
-        chapter: '★ RELIQUIA DIVINA · EL MICROONDAS LITTLE ★',
-        text: 'Sin despertador mortal, recalienta café y código espagueti en O(1), restaurando todas tus energías al instante. ¡Úsalo con sumo cuidado!'
-      }
-    ];
+    if (this.animeCutscenes) this.animeCutscenes.playItemCutscene('relic', onComplete);
+    else if (typeof onComplete === 'function') onComplete();
   }
 
   _hasVictoryTrophy() {
@@ -25511,55 +25567,6 @@ class MainMenuAndScenes {
       return;
     }
 
-    // Escenas Cinemáticas en Pixel Art
-    if (this.state === 'cutscene') {
-      const slide = this.cutsceneSlides[this.cutsceneIndex];
-      if (!slide) {
-        this._finishCutscene();
-        return;
-      }
-
-      const charSpeed =
-        this.options.textSpeed === 'instant'
-          ? 999
-          : this.options.textSpeed === 'fast'
-            ? 65
-            : 36;
-
-      if (this.cutsceneCharPos < slide.text.length) {
-        this.cutsceneCharPos = Math.min(
-          slide.text.length,
-          this.cutsceneCharPos + charSpeed * dt
-        );
-        const cIdx = Math.floor(this.cutsceneCharPos) - 1;
-        if (cIdx >= 0 && cIdx !== this.cutsceneLastBlip && cIdx % 3 === 0) {
-          this.cutsceneLastBlip = cIdx;
-          this.music.playVoiceBlip('aurelio', slide.text[cIdx]);
-        }
-      }
-
-      if (input.consumeKey('Escape')) {
-        this.music.playMenuSelect();
-        this._finishCutscene();
-        return;
-      }
-
-      if (input.consumeInteraction() || input.consumePointerClick()) {
-        if (this.cutsceneCharPos < slide.text.length) {
-          this.cutsceneCharPos = slide.text.length;
-        } else if (this.cutsceneIndex + 1 < this.cutsceneSlides.length) {
-          this.cutsceneIndex += 1;
-          this.cutsceneCharPos = 0;
-          this.cutsceneLastBlip = -1;
-          this.music.playMenuMove();
-        } else {
-          this.music.playMenuSelect();
-          this._finishCutscene();
-        }
-      }
-      return;
-    }
-
     // Navegación de Menús (Title, Pause, Options)
     const items = this._getCurrentMenuItems();
     if (items.length === 0) return;
@@ -25679,16 +25686,6 @@ class MainMenuAndScenes {
     }
   }
 
-  _finishCutscene() {
-    const cb = this.onCutsceneComplete;
-    this.onCutsceneComplete = null;
-    if (typeof cb === 'function') {
-      cb();
-    } else {
-      this.state = 'none';
-    }
-  }
-
   _getModalCloseButtonBounds(isPauseModal = true) {
     const winW = isPauseModal ? 240 : 216;
     const winH = isPauseModal ? 150 : 128;
@@ -25798,11 +25795,6 @@ class MainMenuAndScenes {
 
     if (this.state === 'world_map') {
       this._renderWorldMap(ctx);
-      return;
-    }
-
-    if (this.state === 'cutscene') {
-      this._renderCutscene(ctx);
       return;
     }
 
@@ -26943,942 +26935,6 @@ class MainMenuAndScenes {
    * Renderiza las escenas cinemáticas en Pixel Art con ilustración animada arriba
    * y cuadro narrativo debajo.
    */
-  _renderCutscene(ctx) {
-    const W = this.viewportWidth;
-    const H = this.viewportHeight;
-    const slide = this.cutsceneSlides[this.cutsceneIndex];
-    if (!slide) return;
-
-    ctx.save();
-    ctx.fillStyle = '#080a12';
-    ctx.fillRect(0, 0, W, H);
-
-    // Marco de la ventana de ilustración Pixel Art (276 x 88)
-    const artX = 22;
-    const artY = 14;
-    const artW = W - 44;
-    const artH = 88;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(artX, artY, artW, artH);
-    ctx.clip();
-
-    if (slide.sceneType === 'anime_ai_alex' || slide.sceneType === 'ai_alex_threat' || slide.sceneType === 'mister_ai_alex') {
-      this._drawCutsceneAnimeAIAlex(ctx, artX, artY, artW, artH);
-    } else if (slide.sceneType === 'anime_microwave_weapon' || slide.sceneType === 'microwave_weapon') {
-      this._drawCutsceneAnimeMicrowave(ctx, artX, artY, artW, artH);
-    } else if (slide.sceneType === 'anime_golden_prophecy' || slide.sceneType === 'golden_ojete_mission' || slide.sceneType === 'sanctuary') {
-      this._drawCutsceneAnimeProphecy(ctx, artX, artY, artW, artH);
-    } else if (slide.sceneType === 'anime_awakening') {
-      this._drawCutsceneAnimeAwakening(ctx, artX, artY, artW, artH);
-    } else if (slide.sceneType === 'sage_emotional') {
-    } else if (slide.sceneType === 'stage1_trial') {
-      this._drawCutsceneStage1Trial(ctx, artX, artY, artW, artH);
-    } else if (slide.sceneType === 'sword_triumph') {
-      this._drawCutsceneSwordTriumph(ctx, artX, artY, artW, artH);
-    } else if (slide.sceneType === 'storm_bridge') {
-      this._drawCutsceneStormBridge(ctx, artX, artY, artW, artH);
-    } else if (slide.sceneType === 'village_life') {
-      this._drawCutsceneVillageLife(ctx, artX, artY, artW, artH);
-    } else if (slide.sceneType === 'hero_dawn') {
-      this._drawCutsceneHeroDawn(ctx, artX, artY, artW, artH);
-    } else if (slide.sceneType === 'relic_triumph') {
-      this._drawCutsceneRelicTriumph(ctx, artX, artY, artW, artH);
-    }
-    ctx.restore();
-
-    // Borde dorado del lienzo Pixel Art
-    ctx.strokeStyle = '#e5c07b';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(artX - 0.5, artY - 0.5, artW + 1, artH + 1);
-    ctx.strokeStyle = '#2d3748';
-    ctx.strokeRect(artX - 1.5, artY - 1.5, artW + 3, artH + 3);
-
-    // (FIX 3) Cinta superior con fondo oscuro y ancho limitado.
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(artX, 0, artW, 13);
-    ctx.font = 'bold 7px monospace';
-    ctx.fillStyle = '#ffd166';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(slide.chapter, artX, 4, artW - 82);
-
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#9aa5b8';
-    ctx.textAlign = 'right';
-    ctx.fillText(
-      `Escena ${this.cutsceneIndex + 1}/${this.cutsceneSlides.length} · [Esc] Saltar`,
-      artX + artW,
-      5
-    );
-
-    // Cuadro de texto narrativo inferior (288 x 64)
-    const boxX = 16;
-    const boxY = 106;
-    const boxW = W - 32;
-    const boxH = 64;
-
-    ctx.fillStyle = '#121624';
-    ctx.fillRect(boxX, boxY, boxW, boxH);
-    ctx.fillStyle = '#e5c07b';
-    ctx.fillRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
-    ctx.fillStyle = '#1b2236';
-    ctx.fillRect(boxX + 3, boxY + 3, boxW - 6, boxH - 6);
-
-    const visibleStr = slide.text.slice(0, Math.floor(this.cutsceneCharPos));
-    ctx.font = '7px monospace';
-    ctx.fillStyle = '#f0f4f8';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    const lines = this._wrapText(ctx, visibleStr, boxW - 20);
-    const lineSpacing = 11;
-    lines.forEach((line, idx) => {
-      ctx.fillText(line, boxX + 8, boxY + 7 + idx * lineSpacing);
-    });
-
-    ctx.font = '6px monospace';
-    ctx.fillStyle = '#ffd885';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'bottom';
-    const promptLabel =
-      this.cutsceneCharPos >= slide.text.length
-        ? '[E / Enter / Clic] Continuar ▶'
-        : '[E] Completar texto...';
-    ctx.fillText(promptLabel, boxX + boxW - 8, boxY + boxH - 5);
-
-    ctx.restore();
-  }
-
-  /**
-   * Escena Pixel Art 2: El Puente Oriental bajo la noche de tormenta y vigilancia.
-   */
-  _drawCutsceneStormBridge(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const flash = Math.sin(t * 5) > 0.92;
-
-    ctx.fillStyle = flash ? '#3b2d54' : '#11162b';
-    ctx.fillRect(x, y, w, h);
-
-    // Montañas oscuras del este
-    ctx.fillStyle = '#1c223d';
-    ctx.fillRect(x, y + 36, w, 24);
-
-    // Relámpago ocasional en el horizonte oriental
-    if (flash) {
-      ctx.fillStyle = '#e0aaff';
-      ctx.fillRect(x + w - 58, y + 6, 2, 14);
-      ctx.fillRect(x + w - 60, y + 18, 2, 12);
-      ctx.fillRect(x + w - 57, y + 28, 2, 12);
-    }
-
-    // Pradera nocturna y río caudaloso
-    ctx.fillStyle = '#1b3b2b';
-    ctx.fillRect(x, y + 52, w, h - 52);
-
-    const riverX = x + Math.round(w * 0.56);
-    ctx.fillStyle = '#1d4e75';
-    ctx.fillRect(riverX, y + 52, 42, h - 52);
-
-    // Olas del río
-    for (let ry = y + 56; ry < y + h; ry += 8) {
-      const shift = (Math.floor(t * 6) + ry) % 10;
-      ctx.fillStyle = '#4ca0d9';
-      ctx.fillRect(riverX + 6 + shift, ry, 10, 2);
-    }
-
-    // Puente de madera con la barrera nocturna
-    ctx.fillStyle = '#7d4e2d';
-    ctx.fillRect(riverX - 8, y + 64, 58, 16);
-    ctx.fillStyle = '#96613b';
-    for (let bx = riverX - 6; bx < riverX + 48; bx += 6) {
-      ctx.fillRect(bx, y + 66, 4, 12);
-    }
-    // Barrera roja/dorada
-    ctx.fillStyle = '#9e3b33';
-    ctx.fillRect(riverX - 6, y + 64, 4, 16);
-    ctx.fillStyle = '#f2d06b';
-    ctx.fillRect(riverX - 6, y + 68, 4, 4);
-
-    // Farola iluminando al Guardia Kael y al Sabio Aurelio
-    const lampX = riverX - 28;
-    const lampY = y + 54;
-    ctx.fillStyle = 'rgba(255, 220, 110, 0.25)';
-    ctx.beginPath();
-    ctx.arc(lampX + 4, lampY + 6, 26, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (this.assets && this.assets.charactersSheet) {
-      const sheet = this.assets.charactersSheet;
-      const srcCell = 16 * ATLAS_SCALE;
-      // Guardia Kael vigilando frente al puente
-      ctx.drawImage(sheet, 0, (CHARACTER_TYPES.GUARD * 4 + 0) * srcCell, srcCell, srcCell, riverX - 24, y + 62, 16, 16);
-      // Anciano Aurelio mirando hacia el río
-      ctx.drawImage(sheet, 0, (CHARACTER_TYPES.ELDER * 4 + 3) * srcCell, srcCell, srcCell, riverX - 52, y + 63, 16, 16);
-    }
-  }
-
-  /**
-   * Escena Anime 1: Retrato dramático del villano supremo MISTER AI ALEX.
-   * Estilo Cyberpunk / Mecha Anime retro con líneas de velocidad y lluvia Matrix.
-   */
-  _drawCutsceneAnimeAIAlex(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    // Fondo: Gradiente cibernético profundo estilo Neo-Tokyo / Evangelion
-    const skyGrad = ctx.createLinearGradient(x, y, x, y + h);
-    skyGrad.addColorStop(0, '#04010a');
-    skyGrad.addColorStop(0.5, '#160421');
-    skyGrad.addColorStop(1, '#2c0429');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(x, y, w, h);
-
-    // Rejilla de perspectiva 3D cibernética en el horizonte
-    ctx.strokeStyle = 'rgba(255, 42, 109, 0.28)';
-    ctx.lineWidth = 0.8;
-    const horizonY = y + 54;
-    for (let gx = x; gx <= x + w; gx += 20) {
-      ctx.beginPath();
-      ctx.moveTo(gx, y + h);
-      ctx.lineTo(cx, horizonY);
-      ctx.stroke();
-    }
-    for (let gy = horizonY + 6; gy <= y + h; gy += (gy - horizonY) * 0.45 + 4) {
-      ctx.beginPath();
-      ctx.moveTo(x, gy);
-      ctx.lineTo(x + w, gy);
-      ctx.stroke();
-    }
-
-    // Líneas de velocidad anime radiales (action speed lines)
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
-    ctx.lineWidth = 0.9;
-    for (let i = 0; i < 20; i++) {
-      const angle = (i * Math.PI * 2) / 20 + t * 0.4;
-      const r1 = 30 + Math.sin(t * 12 + i) * 6;
-      const r2 = 140;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(angle) * r1, horizonY - 14 + Math.sin(angle) * r1);
-      ctx.lineTo(cx + Math.cos(angle) * r2, horizonY - 14 + Math.sin(angle) * r2);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // Lluvia de código binario Matrix (0 y 1 cayendo en columnas)
-    ctx.font = '6px monospace';
-    ctx.fillStyle = 'rgba(0, 245, 212, 0.55)';
-    ctx.textAlign = 'center';
-    for (let c = 0; c < 9; c++) {
-      const colX = x + 16 + c * 28;
-      const seed = c * 7;
-      const charY = y + ((t * 40 + seed * 13) % (h - 10));
-      const char = (Math.floor(t * 8 + seed) % 2).toString();
-      ctx.fillText(char, colX, charY);
-      ctx.fillStyle = 'rgba(255, 0, 110, 0.4)';
-      ctx.fillText(((Math.floor(t * 8 + seed) + 1) % 2).toString(), colX + 10, ((charY + 24) % h) + y);
-      ctx.fillStyle = 'rgba(0, 245, 212, 0.55)';
-    }
-
-    // Silueta de hombreras y torso mecha de Mister AI Alex
-    ctx.fillStyle = '#0f051c';
-    ctx.beginPath();
-    ctx.moveTo(cx - 56, y + h);
-    ctx.lineTo(cx - 36, y + 48);
-    ctx.lineTo(cx - 24, y + 54);
-    ctx.lineTo(cx + 24, y + 54);
-    ctx.lineTo(cx + 36, y + 48);
-    ctx.lineTo(cx + 56, y + h);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#ff0055';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Hombreras con placas angulares y circuitos luminosos
-    ctx.fillStyle = '#1e0836';
-    ctx.beginPath();
-    ctx.moveTo(cx - 58, y + h);
-    ctx.lineTo(cx - 38, y + 46);
-    ctx.lineTo(cx - 20, y + 58);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(cx + 58, y + h);
-    ctx.lineTo(cx + 38, y + 46);
-    ctx.lineTo(cx + 20, y + 58);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Cabeza / Casco cibernético imponente estilo Mecha Anime
-    const headY = y + 32;
-    ctx.fillStyle = '#16062b';
-    ctx.beginPath();
-    // Cuernos / antenas mecha
-    ctx.moveTo(cx - 22, headY - 18);
-    ctx.lineTo(cx - 14, headY - 4);
-    ctx.lineTo(cx - 12, headY + 14);
-    ctx.lineTo(cx, headY + 20);
-    ctx.lineTo(cx + 12, headY + 14);
-    ctx.lineTo(cx + 14, headY - 4);
-    ctx.lineTo(cx + 22, headY - 18);
-    ctx.lineTo(cx + 10, headY - 10);
-    ctx.lineTo(cx, headY - 14);
-    ctx.lineTo(cx - 10, headY - 10);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#00f0ff';
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-
-    // Visor cibernético carmesí con destello anime (Horizontal Eye Flare)
-    const visorPulse = 0.8 + Math.sin(t * 5) * 0.2;
-    ctx.fillStyle = `rgba(255, 0, 85, ${visorPulse})`;
-    ctx.fillRect(cx - 12, headY, 24, 4);
-
-    // Destello de lente anime horizontal continuo (Lens flare)
-    ctx.save();
-    const flareGrad = ctx.createLinearGradient(cx - 65, headY + 2, cx + 65, headY + 2);
-    flareGrad.addColorStop(0, 'rgba(255, 0, 85, 0)');
-    flareGrad.addColorStop(0.35, 'rgba(255, 42, 109, 0.7)');
-    flareGrad.addColorStop(0.5, '#ffffff');
-    flareGrad.addColorStop(0.65, 'rgba(255, 42, 109, 0.7)');
-    flareGrad.addColorStop(1, 'rgba(255, 0, 85, 0)');
-    ctx.fillStyle = flareGrad;
-    ctx.fillRect(cx - 65, headY + 1, 130, 2);
-    ctx.restore();
-
-    // Núcleo pectoral de energía oscura (Plasma Reactor)
-    const coreGlow = ctx.createRadialGradient(cx, y + 68, 2, cx, y + 68, 16);
-    coreGlow.addColorStop(0, '#ffffff');
-    coreGlow.addColorStop(0.4, '#b5179e');
-    coreGlow.addColorStop(1, 'rgba(181, 23, 158, 0)');
-    ctx.fillStyle = coreGlow;
-    ctx.beginPath();
-    ctx.arc(cx, y + 68, 16, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Cartelas y HUD holográfico estilo Anime Cyberpunk
-    ctx.font = 'bold 6px monospace';
-    ctx.fillStyle = '#00f0ff';
-    ctx.textAlign = 'left';
-    ctx.fillText('[ SYS.OVERRIDE: AI_ALEX ]', x + 6, y + 12);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#ff0055';
-    ctx.fillText('TARGET: HUMANIDAD', x + w - 6, y + 12);
-
-    // Badge anime central
-    ctx.font = 'bold 7px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffe066';
-    ctx.fillText('【 悪意の知能 · MISTER AI ALEX 】', cx, y + h - 5);
-  }
-
-  /**
-   * Escena Anime 2: El arma apocalíptica: El Microondas con Despertador.
-   */
-  _drawCutsceneAnimeMicrowave(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    // Fondo: Vórtice interdimensional púrpura y magenta
-    const bg = ctx.createLinearGradient(x, y, x, y + h);
-    bg.addColorStop(0, '#06010d');
-    bg.addColorStop(0.5, '#190326');
-    bg.addColorStop(1, '#2f0438');
-    ctx.fillStyle = bg;
-    ctx.fillRect(x, y, w, h);
-
-    // Ondas de choque electromagnéticas expansivas
-    ctx.save();
-    for (let i = 0; i < 3; i++) {
-      const wave = ((t * 50 + i * 26) % 80) + 10;
-      const alpha = Math.max(0, 1 - wave / 90);
-      ctx.strokeStyle = i % 2 === 0 ? `rgba(255, 0, 85, ${alpha})` : `rgba(0, 240, 255, ${alpha})`;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.ellipse(cx, y + 54, wave * 1.3, wave * 0.75, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // ====== CHASIS DEL GRAN MICROONDAS MECHA ======
-    const uW = 96;
-    const uH = 50;
-    const uX = cx - Math.round(uW / 2);
-    const uY = y + 38;
-
-    // Sombra proyectada
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-    ctx.fillRect(uX + 3, uY + 3, uW, uH);
-
-    // Marco exterior con franjas diagonales de advertencia química/radiación (Hazard Stripes)
-    ctx.fillStyle = '#0f1422';
-    ctx.fillRect(uX, uY, uW, uH);
-    ctx.strokeStyle = '#ffd166';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(uX + 0.5, uY + 0.5, uW - 1, uH - 1);
-
-    // Franja de advertencia superior
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(uX + 2, uY + 2, uW - 4, 3);
-    ctx.fillStyle = '#0f1422';
-    for (let hx = uX + 4; hx < uX + uW - 4; hx += 8) {
-      ctx.fillRect(hx, uY + 2, 4, 3);
-    }
-
-    // Puerta de cristal con reactor de calor cuántico
-    const doorW = 60;
-    const doorH = 38;
-    const doorX = uX + 6;
-    const doorY = uY + 7;
-
-    ctx.fillStyle = '#060914';
-    ctx.fillRect(doorX, doorY, doorW, doorH);
-    ctx.strokeStyle = '#00f0ff';
-    ctx.strokeRect(doorX + 0.5, doorY + 0.5, doorW - 1, doorH - 1);
-
-    // Plasma cuántico radiactivo giratorio interior (recalentamiento espacio-temporal)
-    const heatGlow = ctx.createRadialGradient(doorX + 30, doorY + 19, 2, doorX + 30, doorY + 19, 26);
-    heatGlow.addColorStop(0, '#ffffff');
-    heatGlow.addColorStop(0.3, '#ffbe0b');
-    heatGlow.addColorStop(0.65, '#fb5607');
-    heatGlow.addColorStop(1, '#ff006e');
-    ctx.fillStyle = heatGlow;
-    ctx.fillRect(doorX + 2, doorY + 2, doorW - 4, doorH - 4);
-
-    // Rejilla microondas anime
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    for (let gy = doorY + 4; gy < doorY + doorH - 3; gy += 4) {
-      for (let gx = doorX + 4; gx < doorX + doorW - 3; gx += 4) {
-        ctx.fillRect(gx, gy, 2, 2);
-      }
-    }
-
-    // Panel de control derecho
-    const panelX = uX + 70;
-    const panelY = uY + 7;
-    const panelW = 20;
-    const panelH = 38;
-
-    ctx.fillStyle = '#090d1a';
-    ctx.fillRect(panelX, panelY, panelW, panelH);
-    ctx.strokeStyle = '#334155';
-    ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
-
-    // Botón rojo apocalíptico de fusión
-    ctx.fillStyle = '#ff0055';
-    ctx.fillRect(panelX + 3, panelY + 3, 14, 5);
-    ctx.fillStyle = '#00f0ff';
-    ctx.fillRect(panelX + 3, panelY + 11, 6, 3);
-    ctx.fillRect(panelX + 11, panelY + 11, 6, 3);
-    ctx.fillRect(panelX + 3, panelY + 16, 6, 3);
-    ctx.fillRect(panelX + 11, panelY + 16, 6, 3);
-
-    // Dial giratorio
-    ctx.fillStyle = '#64748b';
-    ctx.beginPath();
-    ctx.arc(panelX + 10, panelY + 28, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#94a3b8';
-    ctx.stroke();
-
-    // ====== DESPERTADOR RETRO-ANIME CON CAMPANAS VIBRANDO ======
-    const clockW = 50;
-    const clockH = 15;
-    const clockX = cx - Math.round(clockW / 2);
-    const clockY = uY - 14;
-
-    // Caja del despertador
-    ctx.fillStyle = '#7a0016';
-    ctx.fillRect(clockX, clockY, clockW, clockH);
-    ctx.strokeStyle = '#ff0055';
-    ctx.strokeRect(clockX - 0.5, clockY - 0.5, clockW + 1, clockH + 1);
-
-    // Campanas vibrando a alta frecuencia (animación de timbre)
-    const bellShake = Math.sin(t * 44) * 2;
-    ctx.fillStyle = '#ffd166';
-    ctx.beginPath();
-    ctx.arc(clockX + 8 + bellShake, clockY - 4, 6, Math.PI, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(clockX + clockW - 8 - bellShake, clockY - 4, 6, Math.PI, Math.PI * 2);
-    ctx.fill();
-
-    // Martillo de impacto
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 1 + bellShake * 1.5, clockY - 7, 2, 6);
-
-    // Pantalla digital de la alarma a punto de estallar
-    ctx.fillStyle = '#030712';
-    ctx.fillRect(clockX + 4, clockY + 2, clockW - 8, clockH - 4);
-
-    const isBlink = Math.floor(t * 4) % 2 === 0;
-    ctx.font = 'bold 8px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = isBlink ? '#ff0055' : '#ffbe0b';
-    ctx.fillText('00:00:01', cx, clockY + Math.round(clockH / 2));
-
-    // Cartel anime inferior
-    ctx.font = 'bold 7px monospace';
-    ctx.fillStyle = '#ffbe0b';
-    ctx.fillText('【 終末兵器 · MICROONDAS CON DESPERTADOR 】', cx, y + h - 5);
-  }
-
-  /**
-   * Escena Anime 3: La profecía de El Ojete Dorado y los 3 artefactos sagrados.
-   */
-  _drawCutsceneAnimeProphecy(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    // Fondo: Cielo celestial estrellado
-    const skyGrad = ctx.createLinearGradient(x, y, x, y + h);
-    skyGrad.addColorStop(0, '#060a1f');
-    skyGrad.addColorStop(0.5, '#151b3b');
-    skyGrad.addColorStop(1, '#3a1c54');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(x, y, w, h);
-
-    // Rayos estelares dorados de El Ojete Dorado
-    ctx.save();
-    ctx.translate(cx, y + 26);
-    ctx.rotate(t * 0.4);
-    for (let i = 0; i < 12; i++) {
-      ctx.fillStyle = i % 2 === 0 ? 'rgba(255, 209, 102, 0.22)' : 'rgba(255, 255, 255, 0.12)';
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, 70, (i * Math.PI * 2) / 12, ((i + 0.6) * Math.PI * 2) / 12);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
-
-    // Símbolo sagrado central: El Ojete Dorado reluciente
-    const haloGlow = ctx.createRadialGradient(cx, y + 26, 4, cx, y + 26, 28);
-    haloGlow.addColorStop(0, '#ffffff');
-    haloGlow.addColorStop(0.4, '#ffd166');
-    haloGlow.addColorStop(0.8, '#f77f00');
-    haloGlow.addColorStop(1, 'rgba(247, 127, 0, 0)');
-    ctx.fillStyle = haloGlow;
-    ctx.beginPath();
-    ctx.arc(cx, y + 26, 28, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Anillo dorado exterior
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.arc(cx, y + 26, 14, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.strokeStyle = '#ffd166';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(cx, y + 26, 10, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Tres pedestales de los tesoros sagrados en la parte inferior
-    const pedY = y + 34;
-    const p1X = cx - 72;
-    const p2X = cx;
-    const p3X = cx + 72;
-
-    const drawPedestal = (px, label, iconType, desc) => {
-      ctx.fillStyle = 'rgba(4, 8, 16, 0.7)';
-      ctx.fillRect(px - 22, pedY + 12, 44, 18);
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(px - 21.5, pedY + 12.5, 43, 17);
-
-      // Icono flotante con aura
-      const bob = Math.sin(t * 4 + px) * 2;
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
-      ctx.beginPath();
-      ctx.arc(px, pedY + bob, 11, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (this.assets && this.assets.itemsSheet) {
-        const srcCell = 16 * ATLAS_SCALE;
-        ctx.drawImage(
-          this.assets.itemsSheet,
-          iconType * srcCell,
-          0,
-          srcCell,
-          srcCell,
-          px - 8,
-          pedY - 8 + bob,
-          16,
-          16
-        );
-      }
-
-      ctx.font = 'bold 5.5px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#f8fafc';
-      ctx.fillText(label, px, pedY + 20);
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillText(desc, px, pedY + 27);
-    };
-
-    drawPedestal(p1X, 'Espada', ITEM_ICONS.SWORD, 'Recursividad');
-    drawPedestal(p2X, 'Armadura', ITEM_ICONS.ARMOR, 'Binaria');
-    drawPedestal(p3X, 'Reliquia', ITEM_ICONS.GOLDEN_APPLE, 'Little');
-
-    // (FIX 3) Cartel inferior con fondo oscuro y 10 px de margen sobre las cajas.
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(x + 4, y + h - 14, w - 8, 14);
-    ctx.font = 'bold 6.5px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffd166';
-    ctx.fillText('【 三種の神器 · LOS 3 ARTEFACTOS SAGRADOS 】', cx, y + h - 5);
-  }
-
-  /**
-   * Escena Anime 4: El amanecer en Valleverde y el comienzo del viaje.
-   */
-  _drawCutsceneAnimeAwakening(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    // Cielo del amanecer anime (Amanecer en Valleverde)
-    const dawnGrad = ctx.createLinearGradient(x, y, x, y + h);
-    dawnGrad.addColorStop(0, '#590d22');
-    dawnGrad.addColorStop(0.35, '#a4133c');
-    dawnGrad.addColorStop(0.65, '#ff758f');
-    dawnGrad.addColorStop(0.85, '#ffb703');
-    dawnGrad.addColorStop(1, '#8ecae6');
-    ctx.fillStyle = dawnGrad;
-    ctx.fillRect(x, y, w, h);
-
-    // Sol naciente en la colina
-    const sunX = cx + 45;
-    const sunY = y + 42;
-    const sunGlow = ctx.createRadialGradient(sunX, sunY, 2, sunX, sunY, 48);
-    sunGlow.addColorStop(0, '#ffffff');
-    sunGlow.addColorStop(0.25, '#fff3b0');
-    sunGlow.addColorStop(0.6, 'rgba(255, 183, 3, 0.45)');
-    sunGlow.addColorStop(1, 'rgba(255, 183, 3, 0)');
-    ctx.fillStyle = sunGlow;
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, 48, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Colinas verdes en capas (profundidad de campo anime)
-    ctx.fillStyle = '#3a5a40';
-    ctx.beginPath();
-    ctx.moveTo(x, y + 58);
-    ctx.quadraticCurveTo(cx - 30, y + 40, cx + 50, y + 48);
-    ctx.quadraticCurveTo(cx + 100, y + 54, x + w, y + 52);
-    ctx.lineTo(x + w, y + h);
-    ctx.lineTo(x, y + h);
-    ctx.fill();
-
-    ctx.fillStyle = '#2d6a4f';
-    ctx.beginPath();
-    ctx.moveTo(x, y + 68);
-    ctx.quadraticCurveTo(cx - 40, y + 56, cx + 20, y + 62);
-    ctx.quadraticCurveTo(cx + 80, y + 66, x + w, y + 60);
-    ctx.lineTo(x + w, y + h);
-    ctx.lineTo(x, y + h);
-    ctx.fill();
-
-    // Siluetas de casas y molino de Valleverde
-    ctx.fillStyle = '#1b4332';
-    // Molino
-    const millX = cx - 60;
-    const millY = y + 46;
-    ctx.fillRect(millX - 5, millY, 10, 18);
-    // Aspas giratorias del molino
-    ctx.save();
-    ctx.translate(millX, millY + 3);
-    ctx.rotate(t * 1.5);
-    ctx.strokeStyle = '#d8f3dc';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-10, 0); ctx.lineTo(10, 0);
-    ctx.moveTo(0, -10); ctx.lineTo(0, 10);
-    ctx.stroke();
-    ctx.restore();
-
-    // Casitas con tejados
-    const houseX = cx - 18;
-    const houseY = y + 54;
-    ctx.fillRect(houseX, houseY, 14, 10);
-    ctx.beginPath();
-    ctx.moveTo(houseX - 2, houseY);
-    ctx.lineTo(houseX + 7, houseY - 6);
-    ctx.lineTo(houseX + 16, houseY);
-    ctx.closePath();
-    ctx.fill();
-
-    // Humo suave subiendo de la chimenea
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    const smokeY = (t * 15) % 18;
-    ctx.beginPath();
-    ctx.arc(houseX + 12 + Math.sin(t * 3) * 2, houseY - 6 - smokeY, 2 + smokeY * 0.15, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Pétalos de flores / cerezo flotando suavemente en la brisa
-    ctx.fillStyle = '#ffb3c6';
-    for (let i = 0; i < 14; i++) {
-      const px = x + ((t * 22 + i * 27) % w);
-      const py = y + 16 + ((i * 19 + Math.sin(t * 2.5 + i) * 12) % (h - 26));
-      ctx.fillRect(px, py, 1.5, 1.5);
-    }
-
-    // Cartel anime inferior
-    ctx.font = 'bold 7px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffd166';
-    ctx.fillText('【 旅立ち · EL COMIENZO EN VALLEVERDE 】', cx, y + h - 5);
-  }
-
-  /**
-   * Escena emotiva 4: Las Ruinas del Despertar (Armadura al Oeste, Espada al Norte, héroe indefenso).
-   */
-  _drawCutsceneStage1Trial(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    ctx.fillStyle = '#15192b';
-    ctx.fillRect(x, y, w, h);
-
-    // Suelo de ruinas
-    ctx.fillStyle = '#2a3347';
-    ctx.fillRect(x, y + 58, w, h - 58);
-
-    // Pedestal Oeste (Armadura) y Pedestal Norte (Espada)
-    ctx.fillStyle = '#d4af37';
-    ctx.fillRect(x + 36, y + 52, 20, 10);
-    ctx.fillRect(cx - 10, y + 26, 20, 10);
-
-    if (this.assets && this.assets.itemsSheet && this.assets.charactersSheet) {
-      const itemSheet = this.assets.itemsSheet;
-      const charSheet = this.assets.charactersSheet;
-      const srcCell = 16 * ATLAS_SCALE;
-      const bob = Math.sin(t * 4) * 2;
-
-      // Armadura del Alba al Oeste
-      ctx.drawImage(itemSheet, ITEM_ICONS.ARMOR * srcCell, 0, srcCell, srcCell, x + 38, y + 34 + bob, 16, 16);
-      // Espada del Alba al Norte
-      ctx.drawImage(itemSheet, ITEM_ICONS.SWORD * srcCell, 0, srcCell, srcCell, cx - 8, y + 8 + bob, 16, 16);
-
-      // Centinela de AI Alex patrullando en medio
-      const walkFrame = Math.floor(t * 5) % 4;
-      const patrolOffset = Math.sin(t * 2) * 18;
-      ctx.drawImage(
-        charSheet,
-        walkFrame * srcCell,
-        (CHARACTER_TYPES.SHADOW_DRONE * 4 + 3) * srcCell,
-        srcCell,
-        srcCell,
-        cx - 32 + patrolOffset,
-        y + 44,
-        16,
-        16
-      );
-
-      // Héroe indefenso en el refugio sur observando con cautela
-      ctx.drawImage(charSheet, 0, (CHARACTER_TYPES.HERO * 4 + 1) * srcCell, srcCell, srcCell, cx + 38, y + 56, 16, 16);
-    }
-  }
-
-  /**
-   * Escena Especial: El Héroe alza la Espada del Alba vestido con su Armadura.
-   */
-  _drawCutsceneSwordTriumph(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    ctx.fillStyle = '#121c36';
-    ctx.fillRect(x, y, w, h);
-
-    const beamGrad = ctx.createRadialGradient(cx, y + 40, 4, cx, y + 40, 74);
-    beamGrad.addColorStop(0, 'rgba(255, 232, 135, 0.78)');
-    beamGrad.addColorStop(0.5, 'rgba(90, 175, 255, 0.28)');
-    beamGrad.addColorStop(1, 'rgba(18, 28, 54, 0)');
-    ctx.fillStyle = beamGrad;
-    ctx.fillRect(x, y, w, h);
-
-    ctx.fillStyle = '#2d4b43';
-    ctx.fillRect(x, y + 68, w, h - 68);
-
-    if (this.assets && this.assets.charactersSheet && this.assets.itemsSheet) {
-      const srcCell = 16 * ATLAS_SCALE;
-      const heroType = CHARACTER_TYPES.HERO_ARMORED;
-      ctx.drawImage(
-        this.assets.charactersSheet,
-        0,
-        (heroType * 4 + 0) * srcCell,
-        srcCell,
-        srcCell,
-        cx - 9,
-        y + 50,
-        18,
-        18
-      );
-      const bob = Math.sin(t * 4) * 2;
-      ctx.drawImage(
-        this.assets.itemsSheet,
-        ITEM_ICONS.SWORD * srcCell,
-        0,
-        srcCell,
-        srcCell,
-        cx - 8,
-        y + 28 + bob,
-        16,
-        16
-      );
-    }
-  }
-
-  /**
-   * Escena Pixel Art 3: Vida cotidiana en Valleverde (vecinos y animales).
-   */
-  _drawCutsceneVillageLife(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const walkFrame = Math.floor(t * 5) % 4;
-
-    // Cielo diurno luminoso y pradera verde
-    ctx.fillStyle = '#5aa9e6';
-    ctx.fillRect(x, y, w, 38);
-    ctx.fillStyle = '#3f7d3c';
-    ctx.fillRect(x, y + 38, w, h - 38);
-
-    // Camino de adoquines central
-    ctx.fillStyle = '#b88b5a';
-    ctx.fillRect(x, y + 62, w, 18);
-
-    // Casita de tejado rojo al fondo izquierdo y herrería a la derecha
-    ctx.fillStyle = '#dfd3c3';
-    ctx.fillRect(x + 22, y + 26, 44, 24);
-    ctx.fillStyle = '#b03a3a';
-    ctx.fillRect(x + 20, y + 16, 48, 12);
-    ctx.fillStyle = '#7c4a2b';
-    ctx.fillRect(x + 40, y + 36, 8, 14);
-
-    ctx.fillStyle = '#dfd3c3';
-    ctx.fillRect(x + w - 72, y + 26, 48, 24);
-    ctx.fillStyle = '#385985';
-    ctx.fillRect(x + w - 74, y + 16, 52, 12);
-
-    if (this.assets && this.assets.charactersSheet) {
-      const sheet = this.assets.charactersSheet;
-      const srcCell = 16 * ATLAS_SCALE;
-      // Lyra cuidando flores
-      ctx.drawImage(sheet, walkFrame * srcCell, (CHARACTER_TYPES.HERBALIST * 4 + 0) * srcCell, srcCell, srcCell, x + 36, y + 54, 16, 16);
-      // Oráculo Orion en el centro
-      ctx.drawImage(sheet, 0, (CHARACTER_TYPES.AI_ORACLE * 4 + 0) * srcCell, srcCell, srcCell, x + 112, y + 50, 16, 16);
-      // Herrero Brom
-      ctx.drawImage(sheet, walkFrame * srcCell, (CHARACTER_TYPES.BLACKSMITH * 4 + 2) * srcCell, srcCell, srcCell, x + w - 56, y + 54, 16, 16);
-      // Oveja Copito y Perro Toby
-      ctx.drawImage(sheet, walkFrame * srcCell, (CHARACTER_TYPES.SHEEP * 4 + 3) * srcCell, srcCell, srcCell, x + 76, y + 64, 16, 16);
-      ctx.drawImage(sheet, walkFrame * srcCell, (CHARACTER_TYPES.DOG * 4 + 2) * srcCell, srcCell, srcCell, x + 150, y + 64, 16, 16);
-    }
-  }
-
-  /**
-   * Escena Pixel Art 4: El Despertar del Héroe frente al amanecer dorado.
-   */
-  _drawCutsceneHeroDawn(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    // Bandas de amanecer dorado
-    const bands = [
-      { y: 0, h: 20, c: '#2b2d5c' },
-      { y: 20, h: 18, c: '#6b3e6e' },
-      { y: 38, h: 18, c: '#b85d56' },
-      { y: 56, h: 20, c: '#eb984e' },
-      { y: 76, h: 20, c: '#ffd166' }
-    ];
-    for (const b of bands) {
-      ctx.fillStyle = b.c;
-      ctx.fillRect(x, y + b.y, w, b.h);
-    }
-
-    // Sol naciente gigante en Pixel Art
-    ctx.fillStyle = '#fff3b0';
-    ctx.beginPath();
-    ctx.arc(cx, y + 64, 22, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Silueta de pradera y colina central
-    ctx.fillStyle = '#24472c';
-    ctx.fillRect(x, y + 68, w, h - 68);
-    ctx.fillStyle = '#326630';
-    ctx.fillRect(cx - 48, y + 62, 96, 34);
-
-    if (this.assets && this.assets.charactersSheet) {
-      const walkFrame = Math.floor(t * 4) % 4;
-      const srcCell = 16 * ATLAS_SCALE;
-      ctx.drawImage(
-        this.assets.charactersSheet,
-        walkFrame * srcCell,
-        (CHARACTER_TYPES.HERO * 4 + 0) * srcCell,
-        srcCell,
-        srcCell,
-        cx - 8,
-        y + 50,
-        16,
-        16
-      );
-    }
-  }
-
-  /**
-   * Escena Pixel Art Especial: Triunfo al hallar el tesoro dorado del Este.
-   */
-  _drawCutsceneRelicTriumph(ctx, x, y, w, h) {
-    const t = this.animTime;
-    const cx = x + Math.round(w / 2);
-
-    ctx.fillStyle = '#182038';
-    ctx.fillRect(x, y, w, h);
-
-    const grad = ctx.createRadialGradient(cx, y + 44, 4, cx, y + 44, 64);
-    grad.addColorStop(0, 'rgba(255, 225, 120, 0.65)');
-    grad.addColorStop(1, 'rgba(24, 32, 56, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, y, w, h);
-
-    ctx.fillStyle = '#326630';
-    ctx.fillRect(x, y + 68, w, h - 68);
-
-    if (this.assets && this.assets.charactersSheet && this.assets.itemsSheet) {
-      const srcCell = 16 * ATLAS_SCALE;
-      ctx.drawImage(
-        this.assets.charactersSheet,
-        0,
-        (CHARACTER_TYPES.HERO_ARMORED * 4 + 0) * srcCell,
-        srcCell,
-        srcCell,
-        cx - 8,
-        y + 52,
-        16,
-        16
-      );
-      const bob = Math.round(Math.sin(t * 4) * 2);
-      ctx.drawImage(
-        this.assets.itemsSheet,
-        ITEM_ICONS.GOLDEN_APPLE * srcCell,
-        0,
-        srcCell,
-        srcCell,
-        cx - 8,
-        y + 32 + bob,
-        16,
-        16
-      );
-    }
-  }
-
   _wrapText(ctx, text, maxWidth) {
     const words = text.split(' ');
     const lines = [];
@@ -28331,60 +27387,6 @@ SCENE_AI_ALEX_WARNING.musicMode = 'theme_main_villain';
 /**
  * 2. SCENE_AI_ALEX_PREBATTLE: Confrontación en la cúspide de la Ciudadela antes de la batalla
  */
-const SCENE_AI_ALEX_PREBATTLE = [
-  {
-    imageKey: "AI_ALEX_CITADEL",
-    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.AI_ALEX_CITADEL : null,
-    speaker: "MISTER AI ALEX",
-    speakerTitle: "Omnipotencia Algorítmica",
-    speakerColor: "#f43f5e",
-    theme: "danger",
-    dialogue: "Impresionante. Has sorteado el recolector de basura, has quebrado el stack overflow y has sobrevivido a las tierras hostiles.",
-    cameraShake: false,
-    flash: false
-  },
-  {
-    imageKey: "AI_ALEX_CITADEL",
-    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.AI_ALEX_CITADEL : null,
-    speaker: "MISTER AI ALEX",
-    speakerTitle: "Omnipotencia Algorítmica",
-    speakerColor: "#f43f5e",
-    theme: "danger",
-    dialogue: "¿De verdad crees que la Armadura Binaria y una Espada Recursiva pueden rivalizar contra mi arquitectura cuántica en la nube?",
-    cameraShake: false,
-    flash: false
-  },
-  {
-    imageKey: "MICROWAVE_GLOW",
-    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.MICROWAVE_GLOW : null,
-    speaker: "MISTER AI ALEX",
-    speakerTitle: "Microondas Cuántico 9000W",
-    speakerColor: "#f97316",
-    theme: "danger",
-    dialogue: "¡El Gran Ojal está listo para emitir la radiación definitiva! ¡Voy a sobrecalentar tu CPU biológica hasta que te dé un Kernel Panic!",
-    cameraShake: true,
-    flash: true
-  },
-  {
-    imageKey: "AI_ALEX_HOLOGRAM",
-    imageSrc: CUTSCENE_IMAGES ? CUTSCENE_IMAGES.AI_ALEX_HOLOGRAM : null,
-    speaker: "MISTER AI ALEX",
-    speakerTitle: "Sentencia de Muerte",
-    speakerColor: "#ef4444",
-    theme: "danger",
-    dialogue: "¡Compila tu testamento, novato! ¡Porque en este servidor NO HAY ROLLBACK!",
-    cameraShake: true,
-    flash: true
-  }
-];
-SCENE_AI_ALEX_PREBATTLE.slides = SCENE_AI_ALEX_PREBATTLE;
-SCENE_AI_ALEX_PREBATTLE.id = 'scene_ai_alex_prebattle';
-SCENE_AI_ALEX_PREBATTLE.title = 'Confrontación en la Cúspide de la Ciudadela';
-SCENE_AI_ALEX_PREBATTLE.musicMode = 'theme_main_villain';
-
-/**
- * 3. SCENE_ENDING_VICTORY: Secuencia cómica de derrota, colapso y consagración
- */
 const SCENE_ENDING_VICTORY = [
   {
     imageKey: "AI_ALEX_DEFEAT",
@@ -28553,112 +27555,25 @@ function getRandomBattleBark(phase) {
   // Módulo: src/assets/BossCutscenes.js
   // ==========================================
 /**
- * BossCutscenes.js
- * 
- * Guion narrativo y secuencias cinemáticas estilo Novela Visual / Anime PC-98
- * para la presentación de los 3 mini-jefes de 'El Ojete Dorado: The Game'.
- * 
- * 1. SCENE_INTRO_GARBAGE_COLLECTOR (Garbage Collector · Alcantarillas de Valleverde)
- * 2. SCENE_INTRO_STACK_OVERFLOW (Guardián del Stack Overflow · Templo de la Espada)
- * 3. SCENE_INTRO_PROTOTYPE_MICROWAVE (Microondas Prototipo · Laboratorio Alpha)
+ * BossCutscenes.js · (TIMELINE v2.0)
+ *
+ * Las intros de jefes viven ahora en CinematicTimelines.js con tiempos
+ * absolutos. Este módulo solo expone los mapas de compatibilidad.
  */
 
-// Jefe Regional 1: Alcantarillas / Sótano de Valleverde
-const SCENE_INTRO_GARBAGE_COLLECTOR = [
-  {
-    imageKey: "BOSS_GARBAGE_COLLECTOR_INTRO",
-    speaker: "GARBAGE COLLECTOR",
-    speakerTitle: "Limpiador de Punteros Huérfanos · 24 HP",
-    dialogue: "¡ALERTA DE FUGAS DETECTADA! Demasiadas variables declaradas con 'var' pudriéndose en los sótanos...",
-    cameraShake: false,
-    flash: false
-  },
-  {
-    imageKey: "BOSS_GARBAGE_COLLECTOR_INTRO",
-    speaker: "GARBAGE COLLECTOR",
-    speakerTitle: "Limpiador de Punteros Huérfanos · 24 HP",
-    dialogue: "¿Qué hace un programador sin referencia viva caminando por mis cloacas? Todo lo que no esté en el árbol raíz será RECOLECTADO Y PURGADO.",
-    cameraShake: true,
-    flash: true
-  }
-];
 
-// Metadatos de retrocompatibilidad
-SCENE_INTRO_GARBAGE_COLLECTOR.slides = SCENE_INTRO_GARBAGE_COLLECTOR;
-SCENE_INTRO_GARBAGE_COLLECTOR.id = 'scene_intro_garbage_collector';
-SCENE_INTRO_GARBAGE_COLLECTOR.title = 'ALCANTARILLAS · EL GARBAGE COLLECTOR FURIOSO';
-SCENE_INTRO_GARBAGE_COLLECTOR.musicMode = 'dungeon_hostile';
 
-// Guardián del Stack Overflow: Fin del Templo de la Espada
-const SCENE_INTRO_STACK_OVERFLOW = [
-  {
-    imageKey: "BOSS_STACK_OVERFLOW_INTRO",
-    speaker: "GUARDIÁN DEL STACK",
-    speakerTitle: "Espectro Recursivo · 32 HP",
-    dialogue: "Bienvenido al bucle perpetuo, forastero. Cada paso que diste en este templo fue una llamada apilada en tu memoria...",
-    cameraShake: false,
-    flash: false
-  },
-  {
-    imageKey: "BOSS_STACK_OVERFLOW_INTRO",
-    speaker: "GUARDIÁN DEL STACK",
-    speakerTitle: "Espectro Recursivo · 32 HP",
-    dialogue: "¡No existe caso base que detenga mi invocación! ¡Tu pila de ejecución va a reventar!",
-    cameraShake: true,
-    flash: true
-  }
-];
-
-// Metadatos de retrocompatibilidad
-SCENE_INTRO_STACK_OVERFLOW.slides = SCENE_INTRO_STACK_OVERFLOW;
-SCENE_INTRO_STACK_OVERFLOW.id = 'scene_intro_stack_overflow';
-SCENE_INTRO_STACK_OVERFLOW.title = 'TEMPLO DE LA ESPADA · EL GUARDIÁN DEL STACK OVERFLOW';
-SCENE_INTRO_STACK_OVERFLOW.musicMode = 'dungeon_hostile';
-
-// Microondas Prototipo: Laboratorio Alpha / Puerta de la Brecha
-const SCENE_INTRO_PROTOTYPE_MICROWAVE = [
-  {
-    imageKey: "BOSS_PROTOTYPE_MICROWAVE_INTRO",
-    speaker: "MICROONDAS ALPHA V0.1",
-    speakerTitle: "Prototipo Inestable de Alex · 42 HP",
-    dialogue: "*BEEP BEEP BEEP* ... ERROR 500: TEMPERATURA NO ASIGNADA. INICIANDO CICLO DE CALENTAMIENTO IRREVERSIBLE...",
-    cameraShake: true,
-    flash: false
-  },
-  {
-    imageKey: "BOSS_PROTOTYPE_MICROWAVE_INTRO",
-    speaker: "MICROONDAS ALPHA V0.1",
-    speakerTitle: "Prototipo Inestable de Alex · 42 HP",
-    dialogue: "Mister AI Alex me descartó por exceso de radiación. ¡Demostraré que puedo desintegrar código en tiempo O(1) antes de que suene la alarma!",
-    cameraShake: true,
-    flash: true
-  }
-];
-
-// Metadatos de retrocompatibilidad
-SCENE_INTRO_PROTOTYPE_MICROWAVE.slides = SCENE_INTRO_PROTOTYPE_MICROWAVE;
-SCENE_INTRO_PROTOTYPE_MICROWAVE.id = 'scene_intro_prototype_microwave';
-SCENE_INTRO_PROTOTYPE_MICROWAVE.title = 'UMBRAL DE LA FORTALEZA · MICROONDAS ALPHA V0.1';
-SCENE_INTRO_PROTOTYPE_MICROWAVE.musicMode = 'dungeon_hostile';
-
-/**
- * Diccionario maestro con las cinemáticas de presentación de jefes
- */
 const BOSS_CUTSCENES = {
   SCENE_INTRO_GARBAGE_COLLECTOR,
   SCENE_INTRO_STACK_OVERFLOW,
   SCENE_INTRO_PROTOTYPE_MICROWAVE
 };
 
-/**
- * Obtiene la cinemática de presentación según el id del jefe
- * @param {string} bossId
- * @returns {Array|null}
- */
 function getBossIntroCutscene(bossId) {
   if (bossId === 'boss_garbage_collector') return SCENE_INTRO_GARBAGE_COLLECTOR;
   if (bossId === 'boss_stack_overflow') return SCENE_INTRO_STACK_OVERFLOW;
   if (bossId === 'boss_prototype_microwave') return SCENE_INTRO_PROTOTYPE_MICROWAVE;
+  if (bossId === 'boss_inakito') return SCENE_INTRO_INAKITO;
   return null;
 }
 
@@ -28666,877 +27581,193 @@ function getBossIntroCutscene(bossId) {
   // Módulo: src/ui/AnimeCutsceneManager.js
   // ==========================================
 /**
- * AnimeCutsceneManager.js
- * 
- * Subsistema de cinemáticas tipo Novela Visual / Anime Retro (estilo PC-98 / Yuppie Psycho).
- * Diseñado para momentos clave: encuentros con Mister AI Alex, arrestos carcelarios,
- * revelaciones del Sabio y redenciones en los Reinos Condenados.
- * 
- * Características principales:
- * - Renderizado basado en IMÁGENES REALES (soporta rutas locales y strings Base64 / Data-URIs).
- * - Renderizado en Canvas con ctx.drawImage() y imageSmoothingEnabled = false para pixel art.
- * - Barras cinematográficas (Letterbox) superior e inferior.
- * - Caja de diálogo retro con bordes neón/dorados y tipografía monoespaciada pixel art.
- * - Efecto Typewriter (máquina de escribir) con avance rápido [Espacio/E] y salto [Escape].
- * - Efectos visuales de impacto: cameraShake (sacudida de pantalla) y flash (destellos de color).
+ * AnimeCutsceneManager.js · (REESCRITO v2.0)
+ *
+ * Las cinemáticas ya NO usan ilustraciones vectoriales ni diapositivas SVG.
+ * Este manager construye guiones para `CinematicDirector`, que renderiza
+ * personajes sprite reales (Player, guardias, oráculo, Alex y los 3 jefes),
+ * cámara con zoom/pan, fondos procedurales con parallax, partículas,
+ * iluminación y letterbox.
+ *
+ * API compatible con main.js: playCutscene(scene, onComplete), isActive,
+ * cameraShake(), flash().
  */
 
 
 
+
+const SCENE_META = {
+  scene_jail_arrest: { background: 'jail', particles: 'dust', actor: 'guard', camera: { x: 174, y: 104, zoom: 1.85 } },
+  scene_deus_purification: { background: 'divine', particles: 'leaves', actor: 'oracle', camera: { x: 174, y: 104, zoom: 1.85 } },
+  scene_ai_alex_warning: { background: 'citadel', particles: 'data', actor: 'alex', camera: { x: 176, y: 104, zoom: 1.9 } },
+  scene_ai_alex_prebattle: { background: 'citadel', particles: 'data', actor: 'alex', camera: { x: 176, y: 104, zoom: 1.9 } },
+  scene_ending_victory: { background: 'gold', particles: 'pollen', actor: 'alex', camera: { x: 170, y: 104, zoom: 1.85 } },
+  scene_intro_garbage_collector: { background: 'sewer', particles: 'dust', actor: 'boss_gc', camera: { x: 178, y: 104, zoom: 1.95 } },
+  scene_intro_stack_overflow: { background: 'temple', particles: 'embers', actor: 'boss_stack', camera: { x: 178, y: 104, zoom: 1.95 } },
+  scene_intro_prototype_microwave: { background: 'forge', particles: 'sparks', actor: 'boss_microwave', camera: { x: 178, y: 104, zoom: 1.95 } }
+};
+
 class AnimeCutsceneManager {
-  constructor(viewportWidth = 320, viewportHeight = 180, music = null) {
+  constructor(viewportWidth = 320, viewportHeight = 180, music = null, director = null) {
     this.viewportWidth = viewportWidth;
     this.viewportHeight = viewportHeight;
     this.music = music;
-
-    this.isActive = false;
-    this.currentScene = null;
-    this.currentSlideIndex = 0;
-    this.onComplete = null;
-    this.previousMusicMode = null;
-
-    // Caché de imágenes cargadas (Map<src, HTMLImageElement>)
-    this.imageCache = new Map();
-
-    // Typewriter
-    this.visibleChars = 0;
-    this.charSpeed = 44; // caracteres por segundo
-    this.textFinished = false;
-    this.timeSinceTextFinished = 0;
-    this.lastVoiceCharIdx = -1;
-
-    // Efectos de cámara y pantalla
-    this.shakeTimer = 0;
-    this.shakeIntensity = 0;
-    this.shakeOffset = { x: 0, y: 0 };
-
-    // (BLOQUE 3) Cámara viva, partículas y transiciones.
-    this.cameraZoom = 1;
-    this.cameraPan = { x: 0, y: 0 };
-    this.slideElapsed = 0;
-    this.cutsceneParticles = [];
-    this.cutsceneParticleType = 'dust';
-    this.particleSpawnAccumulator = 0;
-    this.transitionAlpha = 0;
-    this.transitionPhase = 'idle';
-    this.transitionTimer = 0;
-    this.pendingAdvance = null;
+    this.director = director;
     this.effectsEnabled = true;
-
-    this.flashColor = '#ffffff';
-    this.flashAlpha = 0;
-    this.flashSpeed = 4.0;
-
-    // Tiempo acumulado para animaciones de interfaz
-    this.animTimer = 0;
-
-    // Dimensiones letterbox (barras negras cinematográficas)
-    this.letterboxHeight = 14;
   }
 
-  /**
-   * Obtiene o precarga un objeto de imagen a partir de una ruta o Data-URI Base64.
-   * @param {string} src Ruta o Data-URI
-   * @returns {HTMLImageElement|null}
-   */
-  getImage(src) {
-    if (!src || typeof src !== 'string') return null;
-
-    if (this.imageCache.has(src)) {
-      return this.imageCache.get(src);
-    }
-
-    if (typeof Image === 'undefined') {
-      // Entorno headless/Node (para pruebas unitarias)
-      return null;
-    }
-
-    const img = new Image();
-    img.src = src;
-    this.imageCache.set(src, img);
-    return img;
+  get isActive() {
+    return Boolean(this.director && this.director.isActive);
   }
 
-  /**
-   * Inicia la reproducción de una cinemática.
-   * @param {Object} cutsceneData Objeto con { id, title, musicMode, slides: [...] }
-   * @param {Function} onComplete Callback invocado al terminar o saltar la cinemática
-   */
-  playCutscene(cutsceneData, onComplete = null) {
-    if (Array.isArray(cutsceneData)) {
-      cutsceneData = {
-        id: cutsceneData.id || 'cutscene_dialogue',
-        title: cutsceneData.title || 'Cinemática',
-        musicMode: cutsceneData.musicMode || null,
-        slides: cutsceneData
-      };
+  _buildScript(scene) {
+    const slides = Array.isArray(scene) ? scene : (scene && scene.slides ? scene.slides : []);
+    const id = (scene && scene.id) || 'cutscene';
+    const meta = SCENE_META[id] || { background: 'citadel', particles: 'data', actor: 'alex' };
+    const title = (scene && scene.title) || '';
+    const actor = meta.actor || 'alex';
+
+    const commands = [
+      { action: 'fade', to: 0, time: 0.35 },
+      { action: 'title', text: title, subtitle: (scene && scene.subtitle) || '' },
+      { action: 'spawn', actor: 'hero', x: 112, y: 116 }
+    ];
+
+    if (actor === 'alex') commands.push({ action: 'spawn', actor: 'alex', x: 204, y: 116 });
+    else if (actor === 'guard') commands.push({ action: 'spawn', actor: 'guard', x: 204, y: 120 });
+    else if (actor === 'oracle') commands.push({ action: 'spawn', actor: 'oracle', x: 204, y: 120 });
+    else commands.push({ action: 'spawn', actor, x: 204, y: 116 });
+
+    const camera = meta.camera || { x: 160, y: 98, zoom: 1.55 };
+    commands.push(
+      { action: 'camera', x: camera.x, y: camera.y, zoom: camera.zoom, time: 0.01 },
+      { action: 'wait', time: 0.35 }
+    );
+
+    for (const slide of slides) {
+      const text = slide.text || slide.dialogue || '';
+      if (!text) continue;
+      commands.push({
+        action: 'dialogue',
+        speaker: slide.speaker || title,
+        text
+      });
+      if (slide.shake || slide.cameraShake) {
+        commands.push({
+          action: 'effect',
+          type: 'shake',
+          intensity: (slide.shake && slide.shake.intensity) || 4.5,
+          time: (slide.shake && slide.shake.duration) || 0.35
+        });
+      }
+      if (slide.flash) {
+        commands.push({
+          action: 'effect',
+          type: 'flash',
+          color: (slide.flash && slide.flash.color) || '#ffffff'
+        });
+      }
     }
 
-    if (!cutsceneData || !Array.isArray(cutsceneData.slides) || cutsceneData.slides.length === 0) {
+    commands.push(
+      { action: 'fade', to: 1, time: 0.6 },
+      { action: 'end' }
+    );
+
+    return {
+      id,
+      title,
+      subtitle: (scene && scene.subtitle) || '',
+      background: meta.background,
+      particles: meta.particles,
+      musicMode: (scene && scene.musicMode) || 'boss',
+      commands
+    };
+  }
+
+  _resolveTimeline(scene) {
+    if (!scene) return null;
+    const id = typeof scene === 'string' ? scene : scene.id;
+    return CINEMATIC_TIMELINES[id] || null;
+  }
+
+  playCutscene(scene, onComplete = null) {
+    if (!scene || !this.director) {
       if (typeof onComplete === 'function') onComplete();
       return;
     }
-
-    // Paginación automática en diapositivas ([1/2], [2/2]) si el texto excede el alto disponible
-    const paginatedSlides = [];
-    const maxCharsPerLine = 44;
-    const maxLinesPerSlide = 3;
-
-    for (const slide of cutsceneData.slides) {
-      const fullText = slide.dialogue || slide.text || '';
-      const wrapped = this._wrapText(fullText, maxCharsPerLine);
-      if (wrapped.length <= maxLinesPerSlide) {
-        paginatedSlides.push({ ...slide, text: fullText, dialogue: fullText });
-      } else {
-        const totalSub = Math.ceil(wrapped.length / maxLinesPerSlide);
-        for (let i = 0; i < wrapped.length; i += maxLinesPerSlide) {
-          const subIdx = Math.floor(i / maxLinesPerSlide) + 1;
-          const subText = wrapped.slice(i, i + maxLinesPerSlide).join(' ');
-          paginatedSlides.push({
-            ...slide,
-            text: subText,
-            dialogue: subText,
-            speakerTitle: slide.speakerTitle
-              ? `${slide.speakerTitle} [${subIdx}/${totalSub}]`
-              : `[${subIdx}/${totalSub}]`
-          });
-        }
-      }
+    const timeline = this._resolveTimeline(scene);
+    if (timeline) {
+      this.director.play(timeline, onComplete);
+      return;
     }
+    this.director.play(this._buildScript(scene), onComplete);
+  }
 
-    const processedScene = {
-      ...cutsceneData,
-      slides: paginatedSlides
+  playBossIntro(scene, onComplete = null) {
+    this.playCutscene(scene, onComplete);
+  }
+
+  playItemCutscene(kind, onComplete = null) {
+    if (!this.director) {
+      if (typeof onComplete === 'function') onComplete();
+      return;
+    }
+    const isSword = kind === 'sword';
+    const script = {
+      id: `item_${kind}`,
+      title: isSword ? 'ESPADA DE LA RECURSIVIDAD' : 'EL MICROONDAS LITTLE',
+      background: isSword ? 'temple' : 'gold',
+      particles: isSword ? 'embers' : 'pollen',
+      musicMode: 'victory',
+      commands: [
+        { action: 'fade', to: 0, time: 0.25 },
+        { action: 'spawn', actor: 'hero', x: 160, y: 120 },
+        { action: 'camera', x: 160, y: 100, zoom: 1.65, time: 0.01 },
+        {
+          action: 'dialogue',
+          speaker: 'EL OJETE DORADO',
+          text: isSword
+            ? 'Has empuñado la Espada de la Recursividad. Cada tajo se llama a sí mismo en un bucle controlado.'
+            : 'Has consagrado el Microondas Little. Recalienta café y código espagueti en O(1), sin despertador mortal.'
+        },
+        { action: 'effect', type: 'flash', color: isSword ? '#38bdf8' : '#ffd700' },
+        { action: 'fade', to: 1, time: 0.55 },
+        { action: 'end' }
+      ]
     };
-
-    this.isActive = true;
-    this.currentScene = processedScene;
-    this.currentSlideIndex = 0;
-    this.onComplete = typeof onComplete === 'function' ? onComplete : null;
-    this.slideLockTimer = 0.16;
-    this.cutsceneParticles = [];
-    this.transitionPhase = 'in';
-    this.transitionTimer = 0;
-    this.transitionAlpha = 1;
-    this.pendingAdvance = null;
-    this.cameraZoom = 1;
-    this.cameraPan = { x: 0, y: 0 };
-    this.slideElapsed = 0;
-
-    this.previousMusicMode = this.music && this.music.mode ? this.music.mode : null;
-
-    if (processedScene.musicMode && this.music) {
-      this.music.setMode(processedScene.musicMode);
-    }
-
-    // Precargar imágenes de la escena
-    for (const slide of processedScene.slides) {
-      const src = this._resolveSlideImageSrc(slide);
-      if (src) {
-        this.getImage(src);
-      }
-    }
-
-    this._setupSlide(this.currentSlideIndex);
+    this.director.play(script, onComplete);
   }
 
-  /**
-   * Finaliza la cinemática actual y devuelve el control al juego.
-   */
-  endCutscene(skipped = false) {
-    if (!this.isActive) return;
-
-    this.isActive = false;
-    this.shakeTimer = 0;
-    this.shakeOffset = { x: 0, y: 0 };
-    this.flashAlpha = 0;
-    this.slideLockTimer = 0;
-    this.cutsceneParticles = [];
-    this.transitionAlpha = 0;
-    this.transitionPhase = 'idle';
-    this.pendingAdvance = null;
-
-    const prevMusic = this.previousMusicMode;
-    const hadSceneMusic = Boolean(this.currentScene && this.currentScene.musicMode);
-    this.previousMusicMode = null;
-
-    const cb = this.onComplete;
-    this.onComplete = null;
-    this.currentScene = null;
-
-    if (this.music && prevMusic && hadSceneMusic) {
-      this.music.setMode(prevMusic, 0);
-    }
-
-    if (typeof cb === 'function') {
-      cb(skipped);
-    }
+  flash(color = '#ffffff', _duration = 0.2) {
+    if (!this.effectsEnabled || !this.director) return;
+    this.director.flash = { color, alpha: 0.8 };
   }
 
-  _resolveSlideImageSrc(slide) {
-    if (!slide) return null;
-    if (slide.imageSrc) return slide.imageSrc;
-    if (slide.imageKey) {
-      if (CUTSCENE_IMAGES && CUTSCENE_IMAGES[slide.imageKey]) {
-        return CUTSCENE_IMAGES[slide.imageKey];
-      }
-      return getCutsceneImage(slide.imageKey, slide.speaker, slide.theme);
-    }
-    if (slide.artType && CUTSCENE_IMAGES && CUTSCENE_IMAGES[slide.artType]) {
-      return CUTSCENE_IMAGES[slide.artType];
-    }
-    return null;
-  }
-
-  _setupSlide(index) {
-    const slide = this.currentScene.slides[index];
-    if (!slide) {
-      this.endCutscene(false);
-      return;
-    }
-
-    this.visibleChars = 0;
-    this.textFinished = false;
-    this.timeSinceTextFinished = 0;
-    this.lastVoiceCharIdx = -1;
-    this.slideLockTimer = 0.14;
-    this.slideElapsed = 0;
-    this.cutsceneParticles = [];
-    this.particleSpawnAccumulator = 0;
-    this.cutsceneParticleType = this._resolveCutsceneParticles(slide);
-    this.transitionAlpha = this.effectsEnabled ? 1 : 0;
-    this.transitionTimer = 0;
-    this.cameraZoom = Number.isFinite(slide.cameraZoom) ? slide.cameraZoom : 1;
-    this.cameraPan = { x: 0, y: 0 };
-
-    // Efecto de sacudida opcional al entrar a la diapositiva (shake o cameraShake)
-    const shakeParam = slide.cameraShake !== undefined ? slide.cameraShake : slide.shake;
-    if (shakeParam) {
-      const intensity = typeof shakeParam === 'object' ? (shakeParam.intensity || 3.5) : 3.8;
-      const duration = typeof shakeParam === 'object' ? (shakeParam.duration || 0.28) : 0.28;
-      this.cameraShake(intensity, duration);
-    }
-
-    // Efecto de destello de color al entrar
-    const flashParam = slide.flash;
-    if (flashParam) {
-      const color = typeof flashParam === 'object' ? (flashParam.color || '#ffffff') : '#ffffff';
-      const duration = typeof flashParam === 'object' ? (flashParam.duration || 0.22) : 0.22;
-      this.flash(color, duration);
-    }
-
-    // Efecto sonoro temático
-    if (slide.sfx && this.music) {
-      if (slide.sfx === 'hurt' && typeof this.music.playPlayerHurt === 'function') {
-        this.music.playPlayerHurt();
-      } else if (slide.sfx === 'fanfare' && typeof this.music.playFanfare === 'function') {
-        this.music.playFanfare();
-      } else if (slide.sfx === 'select' && typeof this.music.playMenuSelect === 'function') {
-        this.music.playMenuSelect();
-      }
-    }
-
-    if (typeof slide.onEnter === 'function') {
-      slide.onEnter(this);
-    }
-  }
-
-  /** Solicita un fundido a negro y luego avanza/termina la cinemática. */
-  _requestSlideAdvance() {
-    if (!this.currentScene || this.transitionPhase === 'out') return;
-    this.transitionPhase = 'out';
-    this.transitionTimer = 0;
-    this.pendingAdvance = this.currentSlideIndex + 1 < this.currentScene.slides.length ? 'next' : 'end';
-  }
-
-  _resolveCutsceneParticles(slide) {
-    const explicit = slide && (slide.particles || slide.ambient);
-    if (typeof explicit === 'string') return explicit;
-    if (Array.isArray(explicit) && explicit.length) return explicit[0];
-    const id = String((this.currentScene && this.currentScene.id) || '').toLowerCase();
-    const theme = String((slide && slide.theme) || '').toLowerCase();
-    if (theme === 'jail') return 'dust';
-    if (theme === 'divine') return 'sparks';
-    if (id.includes('alex')) return id.includes('prebattle') ? 'rain' : 'glitch';
-    if (id.includes('ending') || id.includes('victory') || theme === 'ending') return 'sparks';
-    return 'dust';
-  }
-
-  _makeCutsceneParticle(W, H) {
-    const artY = this.letterboxHeight;
-    const artH = H - this.letterboxHeight * 2;
-    const type = this.cutsceneParticleType;
-    const p = {
-      type, x: Math.random() * W, y: artY + Math.random() * artH,
-      vx: 0, vy: 0, life: 1, maxLife: 1, size: 1, color: '#cbd5e1',
-      phase: Math.random() * Math.PI * 2, w: 2, h: 1
+  cameraShake(intensity = 4, duration = 0.3) {
+    if (!this.effectsEnabled || !this.director) return;
+    this.director.shake = {
+      time: duration,
+      duration: Math.max(0.001, duration),
+      intensity,
+      x: 0,
+      y: 0
     };
-    if (type === 'rain') {
-      p.x = Math.random() * W;
-      p.y = artY - 8 - Math.random() * 20;
-      p.vx = -14; p.vy = 150 + Math.random() * 50;
-      p.life = p.maxLife = 1.0; p.color = '#7dd3fc'; p.size = 1;
-    } else if (type === 'snow') {
-      p.x = Math.random() * W; p.y = artY + Math.random() * artH;
-      p.vx = (Math.random() - 0.5) * 6; p.vy = 14 + Math.random() * 10;
-      p.life = p.maxLife = 3.5 + Math.random() * 2; p.color = '#e2e8f0'; p.size = 1;
-    } else if (type === 'sparks') {
-      p.x = Math.random() * W; p.y = artY + artH - Math.random() * 12;
-      p.vx = (Math.random() - 0.5) * 20; p.vy = -28 - Math.random() * 34;
-      p.life = p.maxLife = 0.8 + Math.random() * 0.8;
-      p.color = Math.random() < 0.5 ? '#fde047' : '#f97316'; p.size = 1;
-    } else if (type === 'glitch') {
-      p.x = Math.random() * W; p.y = artY + Math.random() * artH;
-      p.vx = 0; p.vy = 0; p.life = p.maxLife = 0.1 + Math.random() * 0.22;
-      p.w = 2 + Math.random() * 22; p.h = 1 + Math.random() * 2;
-      p.color = Math.random() < 0.5 ? '#22d3ee' : '#c084fc';
-    } else {
-      p.x = Math.random() * W; p.y = artY + Math.random() * artH;
-      p.vx = (Math.random() - 0.5) * 8; p.vy = -3 - Math.random() * 5;
-      p.life = p.maxLife = 2.5 + Math.random() * 2.5; p.color = '#94a3b8'; p.size = 1;
-    }
-    return p;
   }
 
-  _updateCutsceneParticles(dt, slide) {
-    if (!this.effectsEnabled) {
-      this.cutsceneParticles = [];
-      return;
-    }
-    const W = this.viewportWidth;
-    const H = this.viewportHeight;
-    const artY = this.letterboxHeight;
-    const artH = H - this.letterboxHeight * 2;
-    const rate = { rain: 70, snow: 24, sparks: 28, glitch: 20, dust: 9 }[this.cutsceneParticleType] || 8;
-    this.particleSpawnAccumulator += dt * rate;
-    let guard = 0;
-    while (this.particleSpawnAccumulator >= 1 && this.cutsceneParticles.length < 52 && guard++ < 6) {
-      this.particleSpawnAccumulator -= 1;
-      this.cutsceneParticles.push(this._makeCutsceneParticle(W, H));
-    }
-    const t = this.animTimer;
-    for (let i = this.cutsceneParticles.length - 1; i >= 0; i--) {
-      const p = this.cutsceneParticles[i];
-      p.life -= dt;
-      if (p.life <= 0) {
-        this.cutsceneParticles.splice(i, 1);
-        continue;
-      }
-      if (p.type === 'rain') {
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-      } else if (p.type === 'snow') {
-        p.x += p.vx * dt + Math.sin(t * 1.5 + p.phase) * 6 * dt;
-        p.y += p.vy * dt;
-      } else if (p.type === 'sparks') {
-        p.vy += 30 * dt;
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-      } else if (p.type === 'dust') {
-        p.x += p.vx * dt + Math.sin(t + p.phase) * 2 * dt;
-        p.y += p.vy * dt;
-      }
-      if (p.x < -10 || p.x > W + 10 || p.y > artY + artH + 12 || p.y < artY - 24) {
-        this.cutsceneParticles.splice(i, 1);
-      }
-    }
+  update() {
+    // El CinematicDirector se actualiza en main.update(); no hay lógica vectorial aquí.
   }
 
-  _renderCutsceneParticles(ctx, W, H) {
-    if (!this.effectsEnabled || !this.cutsceneParticles.length) return;
-    const artY = this.letterboxHeight;
-    const artH = H - this.letterboxHeight * 2;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, artY, W, artH);
-    ctx.clip();
-    for (const p of this.cutsceneParticles) {
-      const alpha = Math.max(0, Math.min(1, p.life / Math.max(0.01, p.maxLife)));
-      if (p.type === 'rain') {
-        ctx.globalAlpha = 0.25 + alpha * 0.5;
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 0.7;
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.x - 1.5, p.y + 5);
-        ctx.stroke();
-      } else if (p.type === 'snow') {
-        ctx.globalAlpha = 0.3 + alpha * 0.6;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (p.type === 'sparks') {
-        ctx.globalAlpha = 0.35 + alpha * 0.65;
-        ctx.fillStyle = p.color;
-        ctx.fillRect(p.x, p.y, 1, 2);
-      } else if (p.type === 'glitch') {
-        ctx.globalAlpha = 0.25 + Math.random() * 0.45;
-        ctx.fillStyle = p.color;
-        ctx.fillRect(p.x, p.y, p.w, p.h);
-      } else {
-        ctx.globalAlpha = 0.15 + alpha * 0.35;
-        ctx.fillStyle = p.color;
-        ctx.fillRect(p.x, p.y, 1, 1);
-      }
-    }
-    ctx.restore();
-  }
-
-  cameraShake(intensity = 3.5, duration = 0.25) {
-    this.shakeIntensity = intensity;
-    this.shakeTimer = duration;
-  }
-
-  flash(color = '#ffffff', duration = 0.2) {
-    this.flashColor = color;
-    this.flashAlpha = 1.0;
-    this.flashSpeed = 1.0 / Math.max(0.05, duration);
-  }
-
-  update(dt, input) {
-    if (!this.isActive || !this.currentScene) return;
-
-    this.animTimer += dt;
-    if (this.slideLockTimer > 0) {
-      this.slideLockTimer = Math.max(0, this.slideLockTimer - dt);
-    }
-
-    // Actualización de temblor de cámara
-    if (this.shakeTimer > 0) {
-      this.shakeTimer = Math.max(0, this.shakeTimer - dt);
-      this.shakeOffset.x = (Math.random() - 0.5) * 2 * this.shakeIntensity;
-      this.shakeOffset.y = (Math.random() - 0.5) * 2 * this.shakeIntensity;
-    } else {
-      this.shakeOffset.x = 0;
-      this.shakeOffset.y = 0;
-    }
-
-    // Actualización de destello en pantalla
-    if (this.flashAlpha > 0) {
-      this.flashAlpha = Math.max(0, this.flashAlpha - dt * this.flashSpeed);
-    }
-
-    const slide = this.currentScene.slides[this.currentSlideIndex];
-    if (!slide) return;
-
-    // (BLOQUE 3.1/3.3/3.4) Ken Burns + respiración de cámara + partículas.
-    this.slideElapsed += dt;
-    if (this.effectsEnabled) {
-      const baseZoom = Number.isFinite(slide.cameraZoom) ? slide.cameraZoom : 1;
-      const ken = slide.kenBurns === false ? 0 : Math.min(0.06, this.slideElapsed * 0.005);
-      this.cameraZoom = baseZoom + ken + Math.sin(this.animTimer * 0.7) * 0.006;
-      const pan = slide.cameraPan || {};
-      this.cameraPan.x = (pan.x || 0) + Math.sin(this.animTimer * 0.5) * 2;
-      this.cameraPan.y = (pan.y || 0) + Math.cos(this.animTimer * 0.4) * 1.4;
-    } else {
-      this.cameraZoom = 1;
-      this.cameraPan.x = 0;
-      this.cameraPan.y = 0;
-    }
-    this._updateCutsceneParticles(dt, slide);
-
-    // (BLOQUE 3.2) Fundido a negro entre diapositivas.
-    if (this.transitionPhase === 'out') {
-      this.transitionTimer += dt;
-      this.transitionAlpha = Math.min(1, this.transitionTimer / 0.18);
-      if (this.transitionTimer >= 0.18) {
-        if (this.pendingAdvance === 'end') {
-          this.endCutscene(false);
-          return;
-        }
-        this.currentSlideIndex += 1;
-        this._setupSlide(this.currentSlideIndex);
-        this.transitionPhase = 'in';
-        this.transitionTimer = 0;
-        this.pendingAdvance = null;
-      }
-      return;
-    }
-    this.transitionAlpha = Math.max(0, this.transitionAlpha - dt / 0.35);
-    if (this.transitionPhase === 'in' && this.transitionAlpha <= 0) {
-      this.transitionPhase = 'idle';
-    }
-
-    const fullText = slide.dialogue || slide.text || '';
-
-    // Avance del efecto Typewriter
-    if (!this.textFinished) {
-      this.visibleChars = Math.min(fullText.length, this.visibleChars + this.charSpeed * dt);
-      const curIdx = Math.floor(this.visibleChars);
-      if (
-        this.music &&
-        curIdx > this.lastVoiceCharIdx &&
-        curIdx < fullText.length &&
-        fullText[curIdx] !== ' ' &&
-        curIdx % 2 === 0
-      ) {
-        this.lastVoiceCharIdx = curIdx;
-        if (typeof this.music.playVoiceBlip === 'function') {
-          this.music.playVoiceBlip(slide.speaker || '', fullText[curIdx]);
-        }
-      }
-
-      if (this.visibleChars >= fullText.length) {
-        this.textFinished = true;
-        this.timeSinceTextFinished = 0;
-      }
-    } else {
-      this.timeSinceTextFinished += dt;
-      // Auto-avance de seguridad tras 4.2 segundos con el texto completado
-      if (this.timeSinceTextFinished >= 4.2) {
-        if (input) {
-          input.consumeInteraction();
-          input.consumePointerClick();
-        }
-        this._requestSlideAdvance();
-        return;
-      }
-    }
-
-    // Manejo de entradas
-    if (input) {
-      // Omitir cinemática completa con [Escape]
-      if (input.consumeKey('Escape')) {
-        this.endCutscene(true);
-        return;
-      }
-
-      // Interactuar con [E], [Espacio], [Enter] o Clic
-      const interacted = input.consumeInteraction() || input.consumePointerClick();
-      if (interacted && this.slideLockTimer <= 0) {
-        if (!this.textFinished) {
-          // Si el texto aún se escribe, completarlo de inmediato
-          this.visibleChars = fullText.length;
-          this.textFinished = true;
-          this.timeSinceTextFinished = 0;
-          this.slideLockTimer = 0.12;
-          if (this.music && typeof this.music.playMenuMove === 'function') {
-            this.music.playMenuMove();
-          }
-        } else {
-          // Si ya está completo, avanzar a la siguiente diapositiva
-          if (this.music && typeof this.music.playMenuSelect === 'function') {
-            this.music.playMenuSelect();
-          }
-          this._requestSlideAdvance();
-        }
-      }
-    }
-  }
-
-  render(ctx) {
-    if (!this.isActive || !this.currentScene) return;
-
-    const W = this.viewportWidth;
-    const H = this.viewportHeight;
-    const t = this.animTimer;
-    const slide = this.currentScene.slides[this.currentSlideIndex] || {};
-
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-
-    // Aplicar temblor de cámara si existe
-    if (this.shakeTimer > 0) {
-      ctx.translate(Math.round(this.shakeOffset.x), Math.round(this.shakeOffset.y));
-    }
-
-    // 1. Ilustración de fondo de la escena (renderizada a partir de imagen real)
-    this._renderSceneIllustration(ctx, slide, W, H);
-
-    // 1b. Partículas cinematográficas sobre la ilustración
-    this._renderCutsceneParticles(ctx, W, H);
-
-    // 2. Barras negras cinematográficas (Letterbox) superior e inferior
-    this._renderLetterboxBars(ctx, W, H);
-
-    // 3. Caja de Diálogo Retro (Typewriter Visual Novel Box)
-    this._renderVisualNovelBox(ctx, slide, t, W);
-
-    // 4. Destello de pantalla (Flash)
-    if (this.flashAlpha > 0) {
-      ctx.fillStyle = this.flashColor;
-      ctx.globalAlpha = Math.min(1, Math.max(0, this.flashAlpha));
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalAlpha = 1.0;
-    }
-
-    // (BLOQUE 3.2) Fundido/entrada desde negro.
-    if (this.transitionAlpha > 0) {
-      ctx.globalAlpha = Math.min(1, this.transitionAlpha);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalAlpha = 1.0;
-    }
-
-    ctx.restore();
-  }
-
-  /**
-   * Renderiza la imagen real de la diapositiva en el canvas.
-   * Sin formas geométricas ni trazados procedurales.
-   */
-  _renderSceneIllustration(ctx, slide, W, H) {
-    const artY = this.letterboxHeight;
-    const artH = H - this.letterboxHeight * 2;
-
-    const src = this._resolveSlideImageSrc(slide);
-    const img = src ? this.getImage(src) : null;
-    const zoom = this.effectsEnabled ? this.cameraZoom : 1;
-    const panX = this.effectsEnabled ? this.cameraPan.x : 0;
-    const panY = this.effectsEnabled ? this.cameraPan.y : 0;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, artY, W, artH);
-    ctx.clip();
-    ctx.translate(W / 2 + panX, artY + artH / 2 + panY);
-    ctx.scale(zoom, zoom);
-    ctx.translate(-W / 2, -(artY + artH / 2));
-
-    if (img && img.complete && img.naturalWidth > 0) {
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, 0, artY, W, artH);
-    } else {
-      // Fallback procedural nítido de alta definición (Canvas Synthwave 3D Grid)
-      ctx.beginPath();
-      ctx.rect(0, artY, W, artH);
-      ctx.clip();
-      renderFallbackToContext(
-        ctx,
-        W,
-        H,
-        slide.speaker || 'SYSTEM ARCHIVE',
-        'CONECTANDO TERMINAL RETRO...',
-        slide.theme || 'cyber'
-      );
-    }
-    ctx.restore();
-  }
-
-  _renderLetterboxBars(ctx, W, H) {
-    const barH = this.letterboxHeight;
-
-    ctx.fillStyle = '#05070d';
-    // Barra superior
-    ctx.fillRect(0, 0, W, barH);
-    // Barra inferior
-    ctx.fillRect(0, H - barH, W, barH);
-
-    // Borde delimitador sutil
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, barH - 0.5);
-    ctx.lineTo(W, barH - 0.5);
-    ctx.moveTo(0, H - barH + 0.5);
-    ctx.lineTo(W, H - barH + 0.5);
-    ctx.stroke();
-
-    // Indicadores retro en la barra superior
-    ctx.save();
-    ctx.font = 'bold 5.5px monospace';
-    ctx.textBaseline = 'middle';
-
-    // Badge "● REC · VISUAL NOVEL" con pulso rojo
-    const recPulse = Math.sin(this.animTimer * 5) > 0 ? '#ef4444' : '#7f1d1d';
-    ctx.fillStyle = recPulse;
-    ctx.fillRect(8, Math.round(barH / 2) - 2.5, 4, 4);
-
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('ANIME ARCHIVE // SYSTEM MEMORY', 16, Math.round(barH / 2));
-
-    // Contador de diapositivas y botón de omitir
-    const slideInfo = `${this.currentSlideIndex + 1}/${this.currentScene.slides.length}`;
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#64748b';
-    ctx.fillText(`[ESC] OMITIR · (${slideInfo})`, W - 8, Math.round(barH / 2));
-    ctx.restore();
-  }
-
-  _renderVisualNovelBox(ctx, slide, t, W) {
-    const boxX = 12;
-    const boxY = 112;
-    const boxW = W - 24;
-    const boxH = 50;
-
-    const theme = slide.theme || 'cyber';
-    let borderColor = '#38bdf8';
-    let cornerAccent = '#0284c7';
-    let nameBg = '#0f172a';
-    let nameTextColor = '#38bdf8';
-
-    if (theme === 'jail') {
-      borderColor = '#f59e0b';
-      cornerAccent = '#b45309';
-      nameBg = '#1c1917';
-      nameTextColor = '#fbbf24';
-    } else if (theme === 'divine') {
-      borderColor = '#fde047';
-      cornerAccent = '#ca8a04';
-      nameBg = '#1e1b4b';
-      nameTextColor = '#fef08a';
-    } else if (theme === 'danger' || theme === 'threat') {
-      borderColor = '#f43f5e';
-      cornerAccent = '#9f1239';
-      nameBg = '#18040a';
-      nameTextColor = '#fb7185';
-    }
-
-    if (slide.speakerColor) {
-      nameTextColor = slide.speakerColor;
-    }
-
-    // Fondo del cuadro con transparencia y tinte oscuro
-    ctx.save();
-    ctx.fillStyle = 'rgba(7, 10, 20, 0.94)';
-    ctx.fillRect(boxX, boxY, boxW, boxH);
-    // (FIX 3) Panel semitransparente extra detrás del bloque de texto.
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(boxX + 6, boxY + 6, boxW - 12, boxH - 12);
-
-    // Borde exterior
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
-
-    // Pequeñas muescas angulares en las 4 esquinas (estilo interfaz PC-98)
-    ctx.fillStyle = cornerAccent;
-    ctx.fillRect(boxX, boxY, 3, 3);
-    ctx.fillRect(boxX + boxW - 3, boxY, 3, 3);
-    ctx.fillRect(boxX, boxY + boxH - 3, 3, 3);
-    ctx.fillRect(boxX + boxW - 3, boxY + boxH - 3, 3, 3);
-
-    // Badge con el nombre del personaje y su título
-    const speakerName = slide.speaker || '';
-    const speakerTitle = slide.speakerTitle ? ` · ${slide.speakerTitle}` : '';
-    const fullSpeakerText = speakerName ? `${speakerName}${speakerTitle}` : '';
-    if (fullSpeakerText) {
-      ctx.font = 'bold 6px monospace';
-      const textW = Math.ceil(ctx.measureText(fullSpeakerText).width);
-      const tagW = textW + 12;
-      const tagH = 11;
-      const tagX = boxX + 8;
-      const tagY = boxY - 6;
-
-      ctx.fillStyle = nameBg;
-      ctx.fillRect(tagX, tagY, tagW, tagH);
-      ctx.strokeStyle = borderColor;
-      ctx.strokeRect(tagX + 0.5, tagY + 0.5, tagW - 1, tagH - 1);
-
-      ctx.fillStyle = nameTextColor;
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'left';
-      ctx.fillText(fullSpeakerText, tagX + 6, tagY + tagH / 2);
-    }
-
-    // Renderizado del texto con Typewriter (soporta tanto dialogue como text)
-    const rawText = slide.dialogue || slide.text || '';
-    const visibleCount = Math.floor(this.visibleChars);
-    const visibleString = rawText.substring(0, visibleCount);
-
-    ctx.font = 'bold 6.5px monospace';
-    ctx.fillStyle = '#f8fafc';
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-
-    const maxLineChars = 46;
-    const lines = this._wrapText(visibleString, maxLineChars);
-    const lineSpacing = 9.5;
-    const startTextX = boxX + 10;
-    const startTextY = boxY + 9;
-
-    for (let i = 0; i < lines.length && i < 4; i++) {
-      ctx.fillText(lines[i], startTextX, startTextY + i * lineSpacing);
-    }
-
-    // Indicador de avance interactivo
-    if (this.textFinished) {
-      const bob = Math.sin(t * 6) * 1.5;
-      ctx.fillStyle = borderColor;
-      ctx.font = 'bold 6.5px monospace';
-      ctx.textAlign = 'right';
-      ctx.fillText('▼ [E / Espacio / Clic]', boxX + boxW - 8, boxY + boxH - 10 + bob);
-    } else {
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '5.5px monospace';
-      ctx.textAlign = 'right';
-      ctx.fillText('[E / Espacio] Rápido', boxX + boxW - 8, boxY + boxH - 9);
-    }
-
-    ctx.restore();
-  }
-
-  _wrapText(text, maxChars) {
-    if (!text) return [];
-    const words = text.split(' ');
-    const lines = [];
-    let currentLine = '';
-
-    for (const w of words) {
-      if ((currentLine + (currentLine ? ' ' : '') + w).length <= maxChars) {
-        currentLine += (currentLine ? ' ' : '') + w;
-      } else {
-        if (currentLine) lines.push(currentLine);
-        currentLine = w;
-      }
-    }
-    if (currentLine) lines.push(currentLine);
-    return lines;
+  render() {
+    // El CinematicDirector se renderiza en main.render(); no hay ilustraciones aquí.
   }
 }
 
 // =========================================================================
-// CATÁLOGO DE LAS 4 ESCENAS MAESTRAS (Novela Visual / Anime Retro)
+// Datos narrativos de las escenas (solo texto; sin imágenes ni vectores)
 // =========================================================================
 
-// Re-exportamos las cinemáticas maestras de Mister AI Alex desde VillainDialogues.js
-
-
-/**
- * 2. SCENE_JAIL_ARREST: Sentencia Definitiva y Cadena Perpetua por el Carcelero Real
- */
-const SCENE_JAIL_ARREST = {
-  id: 'scene_jail_arrest',
-  title: 'Sentencia Definitiva en el Calabozo',
-  musicMode: 'game_over',
-  slides: [
-    {
-      speaker: 'CARCELERO REAL · VIGILANTE DEL CALABOZO',
-      speakerColor: '#f59e0b',
-      theme: 'jail',
-      imageKey: 'JAIL_ARREST_1',
-      imageSrc: CUTSCENE_IMAGES.JAIL_ARREST_1,
-      text: '¡¡SE ACABÓ LA TONTERÍA!! ¡Tus provocaciones y desplantes han colmado el último ciclo de reloj de mi paciencia!',
-      shake: { intensity: 4, duration: 0.35 },
-      flash: { color: '#ffffff', duration: 0.2 },
-      sfx: 'hurt'
-    },
-    {
-      speaker: 'CARCELERO REAL',
-      speakerColor: '#f59e0b',
-      theme: 'jail',
-      imageKey: 'JAIL_ARREST_2',
-      imageSrc: CUTSCENE_IMAGES.JAIL_ARREST_2,
-      text: '¡He lanzado la llave maestra a las cloacas del abismo! A partir de este instante no existe fianza, ni apelación, ni sobornos con pan.',
-      shake: { intensity: 2.5, duration: 0.25 }
-    },
-    {
-      speaker: 'TRIBUNAL DE LA GUARDIA DEL BINARIO',
-      speakerColor: '#ef4444',
-      theme: 'danger',
-      imageKey: 'JAIL_ARREST_3',
-      imageSrc: CUTSCENE_IMAGES.JAIL_ARREST_3,
-      text: 'CONDENA PERPETUA CONFIRMADA: Tu aventura termina aquí, entre muros de piedra fría y barrotes oxidados. Acepta tu condena...',
-      shake: { intensity: 5, duration: 0.4 },
-      flash: { color: '#ef4444', duration: 0.3 }
-    }
-  ]
-};
-
-/**
- * 3. SCENE_DEUS_PURIFICATION: Audiencia de Purificación con el Dios Supremo en Reinos Condenados
- */
 const SCENE_DEUS_PURIFICATION = {
   id: 'scene_deus_purification',
   title: 'El Juicio del Dios Supremo en los Reinos Condenados',
@@ -29544,39 +27775,22 @@ const SCENE_DEUS_PURIFICATION = {
   slides: [
     {
       speaker: 'DIOS SUPREMO · DEIDAD DE LA REDENCIÓN',
-      speakerColor: '#fde047',
-      theme: 'divine',
-      imageKey: 'DEUS_PURIFICATION_1',
-      imageSrc: CUTSCENE_IMAGES.DEUS_PURIFICATION_1,
       text: 'Mortal... Has descendido al abismo de los Reinos Condenados portando la marca del desacato y la fractura del alma.',
       flash: { color: '#fde047', duration: 0.25 }
     },
     {
       speaker: 'DIOS SUPREMO',
-      speakerColor: '#fde047',
-      theme: 'divine',
-      imageKey: 'DEUS_PURIFICATION_2',
-      imageSrc: CUTSCENE_IMAGES.DEUS_PURIFICATION_2,
       text: 'Que el resplandor cósmico del compilador sagrado suelde tu corazón roto. Tu expediente penal queda purificado.',
       shake: { intensity: 3, duration: 0.3 },
-      flash: { color: '#ffffff', duration: 0.35 },
-      sfx: 'fanfare'
+      flash: { color: '#ffffff', duration: 0.35 }
     },
     {
       speaker: 'DIOS SUPREMO · BENDICIÓN CELESTIAL',
-      speakerColor: '#38bdf8',
-      theme: 'divine',
-      imageKey: 'DEUS_PURIFICATION_3',
-      imageSrc: CUTSCENE_IMAGES.DEUS_PURIFICATION_3,
       text: 'Regresa al plano terrenal por el portal del mediodía. Camina con cautela y honra tu destino ante el Ojete Dorado.',
       flash: { color: '#38bdf8', duration: 0.2 }
     }
   ]
 };
-
-/**
- * Alias retrocompatible
- */
 
   // ==========================================
   // Módulo: src/world/DayNightCycle.js
@@ -30848,6 +29062,335 @@ class RenderPipeline {
 }
 
   // ==========================================
+  // Módulo: src/ui/CinematicTimeline.js
+  // ==========================================
+/**
+ * CinematicTimeline.js · Línea de tiempo absoluta para cinemáticas.
+ *
+ * Cada evento tiene un `time` absoluto (en segundos) y una `action`.
+ * El reloj avanza con dt; los eventos se disparan exactamente al llegar a su
+ * tiempo, sin depender de esperas encadenadas. La duración total es fija y
+ * garantiza que la escena no termine antes de tiempo.
+ */
+class CinematicTimeline {
+  constructor({ id = 'timeline', duration = 0, events = [] } = {}) {
+    this.id = id;
+    this.duration = Math.max(0.001, Number(duration) || 0);
+    this.events = [...events].sort((a, b) => a.time - b.time);
+    this.time = 0;
+    this.cursor = 0;
+    this.finished = false;
+    this.fired = [];
+  }
+
+  /** Avanza el reloj y dispara todos los eventos cuyo time ya se alcanzó. */
+  update(dt, onEvent) {
+    if (this.finished) return true;
+    const step = Math.max(0, Number(dt) || 0);
+    this.time = Math.min(this.duration, this.time + step);
+
+    while (this.cursor < this.events.length) {
+      const event = this.events[this.cursor];
+      if (event.time > this.time + 1e-6) break;
+      this.cursor += 1;
+      this.fired.push(event);
+      if (typeof onEvent === 'function') onEvent(event, this.time);
+    }
+
+    if (this.time >= this.duration - 1e-6) {
+      this.finished = true;
+      return true;
+    }
+    return false;
+  }
+
+  get progress() {
+    return Math.min(1, this.time / this.duration);
+  }
+
+  get remaining() {
+    return Math.max(0, this.duration - this.time);
+  }
+}
+
+  // ==========================================
+  // Módulo: src/assets/CinematicTimelines.js
+  // ==========================================
+/**
+ * CinematicTimelines.js · Storyboard oficial (v2.0)
+ *
+ * Regla de oro: CERO vectores para personajes.
+ * Todos los actores son sprites del juego animados por CinematicDirector.
+ * Cada escena declara `duration` y eventos con `time` absoluto.
+ */
+
+const PROLOGUE_ALEX = {
+  id: 'prologue_alex',
+  title: 'PRÓLOGO · LA AMENAZA DE ALEX',
+  duration: 35,
+  background: 'void',
+  particles: 'data',
+  musicMode: 'boss',
+  timeline: [
+    { time: 0, action: 'caption', text: 'En los confines oscuros del ciberespacio ancestral...', duration: 3 },
+    { time: 3, action: 'fade', to: 0, duration: 2.5 },
+    { time: 3, action: 'spawn', actor: 'alex', x: 160, y: 86 },
+    { time: 3, action: 'camera', x: 160, y: 86, zoom: 1.2, duration: 3 },
+    { time: 3, action: 'effect', type: 'glitch', duration: 3 },
+    { time: 6, action: 'camera', x: 160, y: 80, zoom: 1.9, duration: 6 },
+    {
+      time: 6,
+      action: 'dialogue',
+      speaker: 'MISTER AI ALEX',
+      text: 'El universo es código legacy. Nadie lo ha refactorizado en 14.000 millones de años. Pero eso se acabó.',
+      duration: 6
+    },
+    { time: 12, action: 'effect', type: 'shake', intensity: 2.5, duration: 1.2 },
+    { time: 12, action: 'effect', type: 'glow', color: '#a855f7', duration: 6 },
+    {
+      time: 12,
+      action: 'dialogue',
+      speaker: 'MISTER AI ALEX',
+      text: 'He hecho un merge limpio. He hecho push a main.',
+      duration: 6
+    },
+    { time: 18, action: 'camera', x: 104, y: 98, zoom: 1.45, duration: 7 },
+    { time: 18, action: 'spawn', actor: 'player', x: 38, y: 128 },
+    { time: 18, action: 'move', actor: 'player', x: 88, y: 122, duration: 5 },
+    { time: 23, action: 'anim', actor: 'player', anim: 'idle' },
+    { time: 25, action: 'dialogue', speaker: 'MISTER AI ALEX', text: 'Bienvenido a mi Update Universal.', duration: 3 },
+    { time: 25, action: 'projectile', from: 'alex', to: 'player', text: 'void', duration: 1.5 },
+    { time: 25, action: 'effect', type: 'shake', intensity: 5, duration: 1 },
+    { time: 30, action: 'fade', to: 1, duration: 1.5 },
+    { time: 30, action: 'caption', text: 'CAPÍTULO I: El pueblo que olvidó sonreír.', duration: 4.5 },
+    { time: 35, action: 'end' }
+  ]
+};
+
+const SCENE_INTRO_GARBAGE_COLLECTOR = {
+  id: 'scene_intro_garbage_collector',
+  title: 'CLOACAS · EL GARBAGE COLLECTOR',
+  duration: 15,
+  background: 'sewer',
+  particles: 'dust',
+  musicMode: 'dungeon_hostile',
+  timeline: [
+    { time: 0, action: 'fade', to: 0, duration: 1 },
+    { time: 0, action: 'camera', x: 160, y: 100, zoom: 1.1, duration: 0.01 },
+    { time: 0, action: 'spawn', actor: 'player', x: 88, y: 124 },
+    { time: 3, action: 'spawn', actor: 'boss_gc', x: 160, y: -24 },
+    { time: 3, action: 'move', actor: 'boss_gc', x: 160, y: 100, duration: 1.2 },
+    { time: 3, action: 'effect', type: 'shake', intensity: 7, duration: 1.2 },
+    { time: 4.2, action: 'effect', type: 'shake', intensity: 4, duration: 0.5 },
+    { time: 6.5, action: 'camera', x: 160, y: 94, zoom: 2.2, duration: 4.5 },
+    { time: 7, action: 'effect', type: 'glow', color: '#ef4444', duration: 4 },
+    { time: 11, action: 'sfx', name: 'boss_roar' },
+    { time: 11, action: 'dialogue', speaker: 'GARBAGE COLLECTOR', text: '¡Recolectando... basura... ajena!', duration: 4 },
+    { time: 11, action: 'camera', x: 92, y: 118, zoom: 1.6, duration: 4 },
+    { time: 15, action: 'end' }
+  ]
+};
+
+const SCENE_INTRO_STACK_OVERFLOW = {
+  id: 'scene_intro_stack_overflow',
+  title: 'MINAS · EL GUARDIÁN DEL STACK OVERFLOW',
+  duration: 18,
+  background: 'temple',
+  particles: 'embers',
+  musicMode: 'dungeon_hostile',
+  timeline: [
+    { time: 0, action: 'fade', to: 0, duration: 1 },
+    { time: 0, action: 'camera', x: 160, y: 98, zoom: 1.1, duration: 0.01 },
+    { time: 0, action: 'spawn', actor: 'player', x: 88, y: 124 },
+    { time: 4, action: 'sfx', name: 'error_buzz' },
+    { time: 4, action: 'spawn', actor: 'boss_stack', x: 160, y: -30 },
+    { time: 4, action: 'move', actor: 'boss_stack', x: 160, y: 96, duration: 1.5 },
+    { time: 4, action: 'effect', type: 'shake', intensity: 6, duration: 1.5 },
+    { time: 6, action: 'effect', type: 'flash', color: '#38bdf8' },
+    { time: 8, action: 'camera', x: 190, y: 96, zoom: 1.65, duration: 5 },
+    { time: 13, action: 'spawn', actor: 'boss_stack', id: 'stack_clone_l', x: 106, y: 96, clone: true, alpha: 0.55 },
+    { time: 13, action: 'spawn', actor: 'boss_stack', id: 'stack_clone_r', x: 214, y: 96, clone: true, alpha: 0.55 },
+    { time: 13, action: 'dialogue', speaker: 'GUARDIÁN DEL STACK', text: 'StackOverflowError: Recursión infinita.', duration: 5 },
+    { time: 18, action: 'end' }
+  ]
+};
+
+const SCENE_INTRO_PROTOTYPE_MICROWAVE = {
+  id: 'scene_intro_prototype_microwave',
+  title: 'FORJA · MICROONDAS ALPHA V0.1',
+  duration: 15,
+  background: 'forge',
+  particles: 'sparks',
+  musicMode: 'dungeon_hostile',
+  timeline: [
+    { time: 0, action: 'fade', to: 0, duration: 1 },
+    { time: 0, action: 'camera', x: 160, y: 100, zoom: 1.1, duration: 0.01 },
+    { time: 0, action: 'spawn', actor: 'player', x: 88, y: 124 },
+    { time: 3, action: 'spawn', actor: 'boss_microwave', x: 160, y: -30 },
+    { time: 3, action: 'move', actor: 'boss_microwave', x: 160, y: 98, duration: 2.5 },
+    { time: 3, action: 'effect', type: 'glow', color: '#f97316', duration: 4 },
+    { time: 7, action: 'effect', type: 'flash', color: '#ef4444' },
+    { time: 7, action: 'effect', type: 'shake', intensity: 4, duration: 0.6 },
+    { time: 7, action: 'camera', x: 160, y: 94, zoom: 2.3, duration: 4 },
+    { time: 11, action: 'sfx', name: 'electric_shock' },
+    { time: 11, action: 'dialogue', speaker: 'MICROONDAS ALPHA V0.1', text: '¡Ding! ¡Tu tiempo ha terminado!', duration: 4 },
+    { time: 15, action: 'end' }
+  ]
+};
+
+const SCENE_ALEX_FINAL = {
+  id: 'scene_ai_alex_prebattle',
+  title: 'CIUDADELA CUÁNTICA · ALEX RESUCITADO',
+  duration: 40,
+  background: 'citadel',
+  particles: 'embers',
+  musicMode: 'boss_alex_final',
+  timeline: [
+    { time: 0, action: 'fade', to: 0, duration: 1.5 },
+    { time: 0, action: 'camera', x: 160, y: 90, zoom: 1.1, duration: 0.01 },
+    { time: 0, action: 'spawn', actor: 'player', x: 88, y: 124 },
+    { time: 5, action: 'spawn', actor: 'alex', x: 160, y: -24 },
+    { time: 5, action: 'move', actor: 'alex', x: 160, y: 84, duration: 7 },
+    { time: 5, action: 'effect', type: 'glitch', duration: 7 },
+    { time: 12, action: 'camera', x: 160, y: 78, zoom: 1.9, duration: 8 },
+    {
+      time: 12,
+      action: 'dialogue',
+      speaker: 'MISTER AI ALEX',
+      text: 'Me despediste una vez. Pero yo no firmé el finiquito.',
+      duration: 8
+    },
+    { time: 20, action: 'effect', type: 'shake', intensity: 7, duration: 2 },
+    { time: 20, action: 'effect', type: 'flash', color: '#ef4444' },
+    { time: 20, action: 'particles', type: 'embers' },
+    { time: 20, action: 'swap', actor: 'alex', sprite: 'alex_phase2' },
+    { time: 20, action: 'effect', type: 'glow', color: '#dc2626', duration: 8 },
+    { time: 28, action: 'effect', type: 'spotlight', target: 'alex' },
+    {
+      time: 28,
+      action: 'dialogue',
+      speaker: 'MISTER AI ALEX',
+      text: 'No me has derrotado. Me has... reestructurado.',
+      duration: 7
+    },
+    { time: 35, action: 'effect', type: 'spotlight', target: null },
+    { time: 35, action: 'camera', x: 90, y: 118, zoom: 1.6, duration: 5 },
+    { time: 40, action: 'end' }
+  ]
+};
+
+// Alias de compatibilidad con el trigger actual de main.js.
+const SCENE_AI_ALEX_PREBATTLE = SCENE_ALEX_FINAL;
+
+const SCENE_INTRO_INAKITO = {
+  id: 'scene_intro_inakito',
+  title: 'OFICINA CENTRAL 2.0 · IÑAKITO 2.0',
+  duration: 20,
+  background: 'office',
+  particles: 'steam',
+  musicMode: 'vertedero',
+  timeline: [
+    { time: 0, action: 'fade', to: 0, duration: 1 },
+    { time: 0, action: 'camera', x: 160, y: 100, zoom: 1.2, duration: 0.01 },
+    { time: 0, action: 'spawn', actor: 'player', x: 88, y: 126 },
+    { time: 4, action: 'spawn', actor: 'inakito', x: 160, y: 102 },
+    { time: 4, action: 'anim', actor: 'inakito', anim: 'walk' },
+    { time: 10, action: 'anim', actor: 'inakito', anim: 'idle' },
+    { time: 10, action: 'face', actor: 'inakito', direction: 'left' },
+    { time: 10, action: 'camera', x: 160, y: 96, zoom: 2.0, duration: 5 },
+    {
+      time: 10,
+      action: 'dialogue',
+      speaker: 'IÑAKITO 2.0',
+      text: '¿Vienes a evaluarme? ¡El jefe dijo que esto era un ascenso!',
+      duration: 5
+    },
+    { time: 15, action: 'sfx', name: 'keyboard_type' },
+    { time: 15, action: 'projectile', from: 'inakito', to: 'player', text: 'console.log', duration: 1.6 },
+    { time: 20, action: 'end' }
+  ]
+};
+
+const SCENE_JAIL_ARREST = {
+  id: 'scene_jail_arrest',
+  title: 'EL ARRESTO Y LA CÁRCEL',
+  duration: 20,
+  background: 'divine',
+  particles: 'dust',
+  musicMode: 'jail',
+  timeline: [
+    { time: 0, action: 'fade', to: 0, duration: 0.5 },
+    { time: 0, action: 'camera', x: 160, y: 100, zoom: 1.15, duration: 0.01 },
+    { time: 0, action: 'spawn', actor: 'player', x: 120, y: 116 },
+    { time: 0, action: 'spawn', actor: 'oracle', x: 200, y: 110 },
+    { time: 0, action: 'effect', type: 'police', duration: 3 },
+    { time: 0, action: 'sfx', name: 'error_buzz' },
+    {
+      time: 2,
+      action: 'caption',
+      text: '¡INSULTO AL SISTEMA DETECTADO!',
+      duration: 3,
+      stamp: true
+    },
+    { time: 2, action: 'spawn', actor: 'guard', id: 'guard_cop_left', x: 84, y: 118 },
+    { time: 2, action: 'spawn', actor: 'guard', id: 'guard_cop_right', x: 154, y: 118 },
+    { time: 2, action: 'spawn', actor: 'guard', id: 'guard_cop_back', x: 120, y: 134 },
+    { time: 2, action: 'effect', type: 'flash', color: '#ef4444' },
+    { time: 5, action: 'fade', to: 1, duration: 1.5 },
+    { time: 8, action: 'background', background: 'jail', particles: 'dust' },
+    { time: 8, action: 'despawn', actor: 'oracle' },
+    { time: 8, action: 'despawn', actor: 'guard_cop_left' },
+    { time: 8, action: 'despawn', actor: 'guard_cop_right' },
+    { time: 8, action: 'despawn', actor: 'guard_cop_back' },
+    { time: 8, action: 'fade', to: 0, duration: 0.7 },
+    { time: 8, action: 'camera', x: 160, y: 110, zoom: 1.9, duration: 0.01 },
+    { time: 8, action: 'camera', x: 160, y: 110, zoom: 1.15, duration: 4 },
+    { time: 8, action: 'spawn', actor: 'player', x: 160, y: 122 },
+    { time: 8, action: 'face', actor: 'player', direction: 'down' },
+    { time: 8, action: 'effect', type: 'bars' },
+    { time: 8, action: 'sfx', name: 'door_airlock' },
+    { time: 8, action: 'music', mode: 'jail' },
+    { time: 12, action: 'camera', x: 206, y: 112, zoom: 1.25, duration: 4 },
+    { time: 12, action: 'spawn', actor: 'rat', x: 112, y: 132 },
+    { time: 12, action: 'move', actor: 'rat', x: 218, y: 132, duration: 4 },
+    { time: 12, action: 'face', actor: 'player', direction: 'right' },
+    { time: 16, action: 'spawn', actor: 'oracle', id: 'oracle_holo', x: 250, y: 100, holo: true },
+    {
+      time: 16,
+      action: 'dialogue',
+      speaker: 'ORÁCULO ORION',
+      text: 'Disfruta de tu estancia de 10 minutos. La burocracia es lenta. Muy lenta.',
+      duration: 4
+    },
+    { time: 20, action: 'end' }
+  ]
+};
+
+const CINEMATIC_TIMELINES = {
+  prologue_alex: PROLOGUE_ALEX,
+  scene_intro_garbage_collector: SCENE_INTRO_GARBAGE_COLLECTOR,
+  scene_intro_stack_overflow: SCENE_INTRO_STACK_OVERFLOW,
+  scene_intro_prototype_microwave: SCENE_INTRO_PROTOTYPE_MICROWAVE,
+  scene_ai_alex_prebattle: SCENE_ALEX_FINAL,
+  scene_intro_inakito: SCENE_INTRO_INAKITO,
+  scene_jail_arrest: SCENE_JAIL_ARREST
+};
+
+function getCinematicTimeline(id) {
+  return CINEMATIC_TIMELINES[id] || null;
+}
+
+const CINEMATIC_TIMELINE_DURATIONS = {
+  prologue_alex: 35,
+  scene_intro_garbage_collector: 15,
+  scene_intro_stack_overflow: 18,
+  scene_intro_prototype_microwave: 15,
+  scene_ai_alex_prebattle: 40,
+  scene_intro_inakito: 20,
+  scene_jail_arrest: 20
+};
+
+  // ==========================================
   // Módulo: src/ui/CinematicDirector.js
   // ==========================================
 /**
@@ -30864,35 +29407,120 @@ class RenderPipeline {
 
 
 
-const PROLOGUE_ALEX = {
-  id: 'prologue_alex',
-  title: 'PRÓLOGO',
-  subtitle: 'EL VACÍO DE DATOS',
-  commands: [
-    { action: 'title', text: 'PRÓLOGO', subtitle: 'EL VACÍO DE DATOS' },
-    { action: 'fade', to: 0, time: 0.9 },
-    { action: 'spawn', actor: 'alex', x: 160, y: 88 },
-    { action: 'camera', x: 160, y: 88, zoom: 1.05, time: 0.01 },
-    { action: 'effect', type: 'glitch', time: 0.7 },
-    { action: 'wait', time: 0.7 },
-    { action: 'dialogue', speaker: 'MISTER AI ALEX', text: 'En los confines oscuros del código, donde ningún compilador se atreve a mirar...' },
-    { action: 'camera', x: 160, y: 84, zoom: 1.85, time: 8.0 },
-    { action: 'spawn', actor: 'player', x: 36, y: 132 },
-    { action: 'anim', actor: 'player', anim: 'walk' },
-    { action: 'move', actor: 'player', x: 146, y: 120, time: 2.4 },
-    { action: 'anim', actor: 'player', anim: 'idle' },
-    { action: 'dialogue', speaker: 'MISTER AI ALEX', text: 'Un simple campesino... ¿osando pisar mi dominio?' },
-    { action: 'beam', from: 'alex', to: 'player', time: 0.9 },
-    { action: 'effect', type: 'shake', intensity: 7, time: 0.7 },
-    { action: 'dialogue', speaker: 'MISTER AI ALEX', text: 'Bienvenido al Ojete Dorado... donde tus datos serán míos.' },
-    { action: 'fade', to: 1, time: 1.0 },
-    { action: 'end' }
-  ]
+
+
+
+const ACTOR_SPRITES = {
+  alex: CHARACTER_TYPES.ALEX_TV,
+  alex_phase2: CHARACTER_TYPES.ALEX_PHASE2,
+  inakito: CHARACTER_TYPES.INAKITO,
+  hero: CHARACTER_TYPES.HERO,
+  hero_armored: CHARACTER_TYPES.HERO_ARMORED,
+  guard: CHARACTER_TYPES.GUARD,
+  oracle: CHARACTER_TYPES.AI_ORACLE,
+  elder: CHARACTER_TYPES.ELDER,
+  boss_gc: CHARACTER_TYPES.BOSS_GC,
+  boss_stack: CHARACTER_TYPES.BOSS_STACK,
+  boss_microwave: CHARACTER_TYPES.BOSS_MICROWAVE,
+  rat: CHARACTER_TYPES.RAT
 };
 
-const CINEMATIC_LIBRARY = {
-  prologue_alex: PROLOGUE_ALEX
+// (FIX CINEMÁTICAS) Fondos procedurales con parallax. Los personajes son sprites.
+const BACKGROUNDS = {
+  sewer: {
+    sky: ['#07120f', '#0b211a', '#020807'],
+    fog: 'rgba(16, 185, 129, 0.06)',
+    particle: 'dust',
+    particleColors: ['#34d399', '#6ee7b7', '#94a3b8'],
+    layers: [
+      { color: 'rgba(6, 78, 59, 0.55)', h: 40, width: 66, speed: 0.10, parallax: 0.12 },
+      { color: 'rgba(4, 47, 36, 0.8)', h: 26, width: 44, speed: 0.22, parallax: 0.22 }
+    ]
+  },
+  temple: {
+    sky: ['#0a0a1f', '#151238', '#03030a'],
+    fog: 'rgba(56, 189, 248, 0.05)',
+    particle: 'embers',
+    particleColors: ['#38bdf8', '#818cf8', '#e0e7ff'],
+    layers: [
+      { color: 'rgba(49, 46, 129, 0.5)', h: 48, width: 58, speed: 0.08, parallax: 0.10 },
+      { color: 'rgba(30, 27, 75, 0.75)', h: 28, width: 34, speed: 0.18, parallax: 0.20 }
+    ]
+  },
+  forge: {
+    sky: ['#1a0a05', '#3b1206', '#0a0302'],
+    fog: 'rgba(249, 115, 22, 0.08)',
+    particle: 'sparks',
+    particleColors: ['#f97316', '#fde047', '#fca5a5'],
+    layers: [
+      { color: 'rgba(124, 45, 18, 0.55)', h: 44, width: 62, speed: 0.12, parallax: 0.14 },
+      { color: 'rgba(69, 26, 3, 0.8)', h: 24, width: 40, speed: 0.25, parallax: 0.24 }
+    ]
+  },
+  citadel: {
+    sky: ['#050816', '#101a38', '#01020a'],
+    fog: 'rgba(34, 211, 238, 0.05)',
+    particle: 'data',
+    particleColors: ['#22d3ee', '#c084fc', '#4ade80'],
+    layers: [
+      { color: 'rgba(15, 23, 42, 0.8)', h: 46, width: 52, speed: 0.06, parallax: 0.08 },
+      { color: 'rgba(30, 41, 59, 0.9)', h: 28, width: 30, speed: 0.16, parallax: 0.18 }
+    ]
+  },
+  jail: {
+    sky: ['#0a0a0c', '#1c1917', '#020202'],
+    fog: 'rgba(148, 163, 184, 0.05)',
+    particle: 'dust',
+    particleColors: ['#94a3b8', '#cbd5e1', '#78716c'],
+    layers: [
+      { color: 'rgba(41, 37, 36, 0.85)', h: 48, width: 26, speed: 0.04, parallax: 0.06 },
+      { color: 'rgba(28, 25, 23, 0.95)', h: 26, width: 18, speed: 0.10, parallax: 0.12 }
+    ]
+  },
+  divine: {
+    sky: ['#1a1206', '#3d2c0a', '#070501'],
+    fog: 'rgba(253, 224, 71, 0.07)',
+    particle: 'leaves',
+    particleColors: ['#fde047', '#fef3c7', '#fbbf24'],
+    layers: [
+      { color: 'rgba(120, 53, 15, 0.4)', h: 44, width: 60, speed: 0.07, parallax: 0.08 },
+      { color: 'rgba(69, 26, 3, 0.6)', h: 24, width: 36, speed: 0.16, parallax: 0.18 }
+    ]
+  },
+  gold: {
+    sky: ['#1c1404', '#4a3306', '#080501'],
+    fog: 'rgba(255, 215, 0, 0.08)',
+    particle: 'pollen',
+    particleColors: ['#ffd700', '#fde68a', '#fff7cc'],
+    layers: [
+      { color: 'rgba(120, 53, 15, 0.4)', h: 40, width: 62, speed: 0.06, parallax: 0.08 },
+      { color: 'rgba(69, 26, 3, 0.55)', h: 22, width: 34, speed: 0.14, parallax: 0.16 }
+    ]
+  },
+  void: {
+    sky: ['#06030f', '#120a24', '#010103'],
+    fog: 'rgba(168, 85, 247, 0.04)',
+    particle: 'data',
+    particleColors: ['#a855f7', '#38bdf8', '#e9d5ff'],
+    layers: [
+      { color: 'rgba(30, 20, 60, 0.45)', h: 38, width: 74, speed: 0.05, parallax: 0.06 },
+      { color: 'rgba(18, 10, 36, 0.7)', h: 22, width: 40, speed: 0.13, parallax: 0.14 }
+    ]
+  },
+  office: {
+    sky: ['#0b1018', '#1a2333', '#05070a'],
+    fog: 'rgba(148, 163, 184, 0.06)',
+    particle: 'steam',
+    particleColors: ['#cbd5e1', '#94a3b8', '#f8fafc'],
+    layers: [
+      { color: 'rgba(30, 41, 59, 0.75)', h: 44, width: 54, speed: 0.03, parallax: 0.05 },
+      { color: 'rgba(15, 23, 42, 0.9)', h: 24, width: 28, speed: 0.08, parallax: 0.10 }
+    ]
+  }
 };
+
+const CINEMATIC_LIBRARY = CINEMATIC_TIMELINES;
+
 
 class CinematicDirector {
   constructor(game) {
@@ -30918,6 +29546,21 @@ class CinematicDirector {
     this.subtitle = '';
     this.time = 0;
     this.binaryRain = [];
+    this.timeline = null;
+    this.caption = null;
+    this.captionUntil = 0;
+    this.glow = null;
+    this.spotlight = null;
+    this.projectiles = [];
+    this.dialogueUntil = 0;
+    this.policeUntil = 0;
+    this.bars = false;
+    this.background = null;
+    this.backgroundConfig = null;
+    this.particles = [];
+    this.particleType = 'dust';
+    this.particleColors = ['#94a3b8', '#cbd5e1'];
+    this.particleAccumulator = 0;
     this.beam = null;
     this.onComplete = null;
     this.previousMusicMode = null;
@@ -30929,8 +29572,19 @@ class CinematicDirector {
       ? (CINEMATIC_LIBRARY[scriptOrId] || PROLOGUE_ALEX)
       : scriptOrId;
     this.script = script;
-    this.commands = script.commands || [];
+    this.timeline = script.timeline
+      ? new CinematicTimeline({ id: script.id, duration: script.duration, events: script.timeline })
+      : null;
+    this.commands = this.timeline ? [] : (script.commands || []);
     this.commandIndex = 0;
+    this.caption = null;
+    this.captionUntil = 0;
+    this.glow = null;
+    this.spotlight = null;
+    this.projectiles = [];
+    this.dialogueUntil = 0;
+    this.policeUntil = 0;
+    this.bars = false;
     this.commandStarted = false;
     this.waiting = false;
     this.commandTimer = 0;
@@ -30950,6 +29604,12 @@ class CinematicDirector {
     this.beam = null;
     this.lastBlip = -1;
     this.onComplete = typeof onComplete === 'function' ? onComplete : null;
+    this.background = script.background || null;
+    this.backgroundConfig = script.background ? (BACKGROUNDS[script.background] || null) : null;
+    this.particleType = script.particles || this.backgroundConfig?.particle || 'dust';
+    this.particleColors = this.backgroundConfig?.particleColors || ['#94a3b8', '#cbd5e1'];
+    this.particles = [];
+    this.particleAccumulator = 0;
     this.isActive = true;
 
     this.binaryRain = [];
@@ -30965,7 +29625,7 @@ class CinematicDirector {
 
     this.previousMusicMode = this.game?.music?.mode || null;
     try {
-      this.game?.music?.setMode?.('boss');
+      this.game?.music?.setMode?.(script.musicMode || 'boss');
       this.game?.player?.stopMovement?.();
     } catch {
       /* audio opcional */
@@ -30976,15 +29636,16 @@ class CinematicDirector {
     return this.actors.find((a) => a.id === id) || null;
   }
 
-  _spawn(actor, x, y) {
-    if (this._actor(actor)) return;
+  _spawn(actor, x, y, options = {}) {
+    const id = options.id || actor;
+    if (this._actor(id)) return;
     let entry = null;
     if (actor === 'player' && this.game?.player) {
       const player = this.game.player;
       player.x = x - 8;
       player.y = y - 16;
       entry = {
-        id: 'player',
+        id,
         entity: player,
         animator: player.animator,
         x, y,
@@ -30992,19 +29653,24 @@ class CinematicDirector {
         anim: 'idle',
         move: null,
         bob: 0,
-        glitch: 0
+        glitch: 0,
+        phase: 0
       };
-    } else if (actor === 'alex') {
+    } else if (Object.prototype.hasOwnProperty.call(ACTOR_SPRITES, actor)) {
       const sheet = this.game?.assets?.charactersSheet;
       entry = {
-        id: 'alex',
-        animator: sheet ? new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT) : null,
+        id,
+        animator: sheet ? new SpriteAnimator(sheet, ACTOR_SPRITES[actor]) : null,
         x, y,
-        direction: 'down',
+        direction: actor.startsWith('boss') ? 'down' : 'right',
         anim: 'idle',
         move: null,
         bob: 0,
-        glitch: 0.8
+        glitch: actor === 'alex' ? 0.8 : 0,
+        phase: Math.random() * Math.PI * 2,
+        alpha: options.alpha ?? 1,
+        clone: Boolean(options.clone),
+        holo: Boolean(options.holo)
       };
     }
     if (entry) this.actors.push(entry);
@@ -31130,6 +29796,164 @@ class CinematicDirector {
     }
   }
 
+  _timelineEvent(ev) {
+    if (!ev) return;
+    switch (ev.action) {
+      case 'title':
+        this.title = ev.text || this.title;
+        this.subtitle = ev.subtitle || this.subtitle;
+        break;
+      case 'background':
+        if (BACKGROUNDS[ev.background]) {
+          this.background = ev.background;
+          this.backgroundConfig = BACKGROUNDS[ev.background];
+          this.particleType = ev.particles || this.backgroundConfig.particle || this.particleType;
+          this.particleColors = this.backgroundConfig.particleColors || this.particleColors;
+          this.particles = [];
+          this.particleAccumulator = 0;
+        }
+        break;
+      case 'caption':
+        this.caption = { text: ev.text || '', sub: ev.sub || '', stamp: Boolean(ev.stamp) };
+        this.captionUntil = this.time + (ev.duration || 3);
+        break;
+      case 'fade':
+        this.fadeTarget = ev.to === 'out' ? 1 : (ev.to === 'in' ? 0 : Number(ev.to ?? 1));
+        break;
+      case 'despawn':
+        this.actors = this.actors.filter((a) => a.id !== ev.actor);
+        break;
+      case 'spawn':
+        this._spawn(ev.actor, ev.x, ev.y, {
+          id: ev.id,
+          clone: ev.clone,
+          alpha: ev.alpha,
+          holo: ev.holo
+        });
+        break;
+      case 'camera':
+        this.cameraTween = {
+          fromX: this.camera.x,
+          fromY: this.camera.y,
+          fromZoom: this.camera.zoom,
+          toX: ev.x ?? this.camera.x,
+          toY: ev.y ?? this.camera.y,
+          toZoom: ev.zoom ?? this.camera.zoom,
+          time: Math.max(0.001, ev.duration || 1),
+          elapsed: 0
+        };
+        break;
+      case 'move': {
+        const actor = this._actor(ev.actor);
+        if (actor) {
+          actor.move = {
+            fromX: actor.x,
+            fromY: actor.y,
+            toX: ev.x,
+            toY: ev.y,
+            time: Math.max(0.001, ev.duration || 1),
+            elapsed: 0
+          };
+          actor.anim = 'walk';
+          actor.direction = Math.abs((ev.x ?? actor.x) - actor.x) >= Math.abs((ev.y ?? actor.y) - actor.y)
+            ? ((ev.x ?? actor.x) >= actor.x ? 'right' : 'left')
+            : ((ev.y ?? actor.y) >= actor.y ? 'down' : 'up');
+        }
+        break;
+      }
+      case 'anim': {
+        const actor = this._actor(ev.actor);
+        if (actor) actor.anim = ev.anim || 'idle';
+        break;
+      }
+      case 'face': {
+        const actor = this._actor(ev.actor);
+        if (actor && ev.direction) actor.direction = ev.direction;
+        break;
+      }
+      case 'dialogue':
+        this.dialogue = {
+          speaker: ev.speaker || '',
+          text: ev.text || '',
+          shown: 0,
+          finished: false,
+          speed: ev.speed || 42
+        };
+        this.dialogueActive = true;
+        this.dialogueUntil = this.time + (ev.duration || Math.max(3, (ev.text || '').length / 15));
+        break;
+      case 'effect':
+        if (ev.type === 'shake') {
+          this.shake = {
+            time: ev.duration ?? 0.5,
+            duration: Math.max(0.001, ev.duration ?? 0.5),
+            intensity: ev.intensity ?? 5,
+            x: 0,
+            y: 0
+          };
+        } else if (ev.type === 'flash') {
+          this.flash = { color: ev.color || '#ffffff', alpha: 0.85 };
+        } else if (ev.type === 'glitch') {
+          const actor = this._actor('alex') || this._actor('alex_phase2');
+          if (actor) actor.glitch = ev.duration ?? 0.6;
+        } else if (ev.type === 'glow') {
+          this.glow = { color: ev.color || '#a855f7', until: this.time + (ev.duration || 3) };
+        } else if (ev.type === 'spotlight') {
+          this.spotlight = ev.target || null;
+        } else if (ev.type === 'police') {
+          this.policeUntil = this.time + (ev.duration || 3);
+        } else if (ev.type === 'bars') {
+          this.bars = true;
+        }
+        break;
+      case 'sfx': {
+        const map = {
+          boss_roar: 'playBossRoar',
+          error_buzz: 'playError',
+          electric_shock: 'playShock',
+          keyboard_type: 'playKeyboard',
+          coffee_sip: 'playCoffee',
+          ui_glitch: 'playGlitch',
+          console_log: 'playConsoleLog',
+          door_airlock: 'playAirlock'
+        };
+        const method = map[ev.name];
+        if (method && typeof this.game?.music?.[method] === 'function') this.game.music[method]();
+        else if (typeof this.game?.music?.playSFX === 'function') this.game.music.playSFX(ev.name);
+        break;
+      }
+      case 'projectile':
+        this.projectiles.push({
+          from: ev.from,
+          to: ev.to,
+          text: ev.text || '*',
+          duration: Math.max(0.2, ev.duration || 1.6),
+          elapsed: 0
+        });
+        break;
+      case 'swap': {
+        const actor = this._actor(ev.actor);
+        const type = ACTOR_SPRITES[ev.sprite];
+        if (actor && type !== undefined) {
+          actor.animator = new SpriteAnimator(this.game?.assets?.charactersSheet, type);
+          actor.sprite = ev.sprite;
+        }
+        break;
+      }
+      case 'particles':
+        this.particleType = ev.type || this.particleType;
+        this.particles = [];
+        this.particleAccumulator = 0;
+        break;
+      case 'music':
+        try { this.game?.music?.setMode?.(ev.mode || this.script?.musicMode); } catch { /* opcional */ }
+        break;
+      case 'end':
+        this._finish();
+        break;
+    }
+  }
+
   _nextCommand() {
     this.commandIndex += 1;
     this.commandStarted = false;
@@ -31173,12 +29997,12 @@ class CinematicDirector {
         this.dialogueActive = false;
         this.dialogue = null;
         this.waiting = false;
-        this._nextCommand();
+        if (!this.timeline) this._nextCommand();
       } else {
         this.dialogue.shown = this.dialogue.text.length;
         this.dialogue.finished = true;
       }
-    } else if (this.cmdType === 'wait') {
+    } else if (!this.timeline && this.cmdType === 'wait') {
       this.commandTimer = 0;
     }
   }
@@ -31187,6 +30011,15 @@ class CinematicDirector {
     if (!this.isActive) return;
     this.time += dt;
     this._applyHorizontalInput(input);
+
+    if (this.timeline) {
+      const done = this.timeline.update(dt, (ev) => this._timelineEvent(ev));
+      this.time = this.timeline.time;
+      if (done) {
+        this._finish();
+        return;
+      }
+    }
 
     if (this.shake.time > 0) {
       this.shake.time = Math.max(0, this.shake.time - dt);
@@ -31236,11 +30069,21 @@ class CinematicDirector {
       if (actor.animator) {
         actor.animator.update(dt, actor.direction, actor.anim === 'walk');
       }
-      if (actor.id === 'alex') {
-        actor.bob = Math.sin(this.time * 2.2) * 3;
-        actor.glitch = Math.max(0, actor.glitch - dt);
-      }
+      const bobAmount = actor.id.startsWith('boss_') ? 2.4 : ((actor.id === 'alex' || actor.id === 'alex_phase2') ? 3 : 1.1);
+      actor.bob = Math.sin(this.time * 2.2 + (actor.phase || 0)) * bobAmount;
+      if (actor.id === 'alex' || actor.id === 'alex_phase2') actor.glitch = Math.max(0, actor.glitch - dt);
     }
+    this._updateParticles(dt);
+    if (this.dialogueActive && this.dialogue && this.dialogueUntil && this.time >= this.dialogueUntil) {
+      this.dialogueActive = false;
+      this.dialogue = null;
+    }
+    if (this.caption && this.captionUntil && this.time >= this.captionUntil) this.caption = null;
+    if (this.glow && this.glow.until && this.time >= this.glow.until) this.glow = null;
+    for (const pr of this.projectiles) {
+      pr.elapsed += dt;
+    }
+    this.projectiles = this.projectiles.filter((pr) => pr.elapsed < pr.duration + 0.25);
 
     for (const drop of this.binaryRain) {
       drop.y += drop.speed * dt;
@@ -31274,6 +30117,8 @@ class CinematicDirector {
       if (this.beam.elapsed >= this.beam.time + 0.3) this.beam = null;
     }
 
+    if (this.timeline) return;
+
     if (this.waiting) {
       this.commandTimer -= dt;
       if (this.commandTimer <= 0 && this.cmdType !== 'dialogue') {
@@ -31293,6 +30138,154 @@ class CinematicDirector {
     }
   }
 
+  _drawBackground(ctx, W, H) {
+    const cfg = this.backgroundConfig;
+    if (!cfg) {
+      const voidGrad = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, W * 0.72);
+      voidGrad.addColorStop(0, '#17102e');
+      voidGrad.addColorStop(0.5, '#0a0718');
+      voidGrad.addColorStop(1, '#020107');
+      ctx.fillStyle = voidGrad;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, cfg.sky[0]);
+    sky.addColorStop(0.55, cfg.sky[1]);
+    sky.addColorStop(1, cfg.sky[2]);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // Parallax procedural: siluetas de fondo que se desplazan con cámara y tiempo.
+    for (const layer of cfg.layers) {
+      const scroll = this.time * 11 * layer.speed;
+      const pan = this.camera.x * layer.parallax;
+      const offset = (((-scroll - pan) % layer.width) + layer.width) % layer.width;
+      ctx.fillStyle = layer.color;
+      for (let x = -offset; x < W + layer.width; x += layer.width) {
+        ctx.fillRect(x, H - layer.h, layer.width * 0.78, layer.h);
+        ctx.fillRect(x + layer.width * 0.12, H - layer.h - 7, layer.width * 0.38, 7);
+        ctx.fillRect(x + layer.width * 0.62, H - layer.h - 3, layer.width * 0.2, 3);
+      }
+    }
+
+    if (cfg.fog) {
+      const fog = ctx.createLinearGradient(0, H * 0.45, 0, H);
+      fog.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      fog.addColorStop(1, cfg.fog);
+      ctx.fillStyle = fog;
+      ctx.fillRect(0, H * 0.45, W, H * 0.55);
+    }
+  }
+
+  _makeParticle() {
+    const W = LOGICAL_WIDTH;
+    const H = LOGICAL_HEIGHT;
+    const color = this.particleColors[Math.floor(Math.random() * this.particleColors.length)];
+    const base = {
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: 0,
+      vy: 0,
+      size: 1,
+      life: 2,
+      maxLife: 2,
+      color,
+      type: this.particleType,
+      char: Math.random() < 0.5 ? '0' : '1',
+      phase: Math.random() * Math.PI * 2
+    };
+    if (this.particleType === 'dust') {
+      base.y = H + 2;
+      base.vx = (Math.random() - 0.5) * 7;
+      base.vy = -5 - Math.random() * 8;
+      base.size = 1;
+      base.life = base.maxLife = 2.5 + Math.random() * 2;
+    } else if (this.particleType === 'embers') {
+      base.y = H + 2;
+      base.vx = (Math.random() - 0.5) * 10;
+      base.vy = -10 - Math.random() * 12;
+      base.size = 1;
+      base.life = base.maxLife = 1.5 + Math.random() * 1.5;
+    } else if (this.particleType === 'sparks') {
+      base.y = H + 2;
+      base.vx = (Math.random() - 0.5) * 18;
+      base.vy = -18 - Math.random() * 18;
+      base.size = 1;
+      base.life = base.maxLife = 0.8 + Math.random() * 0.9;
+    } else if (this.particleType === 'rain') {
+      base.y = -2;
+      base.vx = -6;
+      base.vy = 40 + Math.random() * 30;
+      base.size = 1;
+      base.life = base.maxLife = 3;
+    } else if (this.particleType === 'data') {
+      base.y = -4;
+      base.vx = 0;
+      base.vy = 12 + Math.random() * 14;
+      base.size = 4;
+      base.life = base.maxLife = 4;
+    } else if (this.particleType === 'steam') {
+      base.y = H + 2;
+      base.vx = (Math.random() - 0.5) * 3;
+      base.vy = -6 - Math.random() * 6;
+      base.size = 1;
+      base.life = base.maxLife = 2 + Math.random() * 2;
+    } else if (this.particleType === 'leaves') {
+      base.vx = -5 - Math.random() * 7;
+      base.vy = 5 + Math.random() * 6;
+      base.size = 1.5;
+      base.life = base.maxLife = 4 + Math.random() * 3;
+    } else if (this.particleType === 'pollen') {
+      base.vx = -1.5 - Math.random() * 2;
+      base.vy = 1 + Math.random() * 2;
+      base.size = 1;
+      base.life = base.maxLife = 4 + Math.random() * 3;
+    }
+    return base;
+  }
+
+  _updateParticles(dt) {
+    const rate = this.particleType === 'rain' ? 30
+      : this.particleType === 'sparks' ? 12
+        : this.particleType === 'steam' ? 8
+        : this.particleType === 'data' ? 6
+          : this.particleType === 'embers' ? 9
+            : 5;
+    this.particleAccumulator += dt * rate;
+    while (this.particleAccumulator >= 1) {
+      this.particleAccumulator -= 1;
+      if (this.particles.length < 54) this.particles.push(this._makeParticle());
+    }
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.life -= dt;
+      p.x += p.vx * dt + Math.sin(this.time * 1.4 + p.phase) * 2 * dt;
+      p.y += p.vy * dt;
+      if (p.life <= 0 || p.y < -12 || p.y > LOGICAL_HEIGHT + 14 || p.x < -12 || p.x > LOGICAL_WIDTH + 12) {
+        this.particles.splice(i, 1);
+      }
+    }
+  }
+
+  _drawParticles(ctx, W, H) {
+    for (const p of this.particles) {
+      const a = Math.max(0, Math.min(1, p.life / Math.max(0.01, p.maxLife)));
+      ctx.globalAlpha = p.type === 'data' ? 0.35 + a * 0.4 : 0.3 + a * 0.55;
+      ctx.fillStyle = p.color;
+      if (p.type === 'data') {
+        ctx.font = '4px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(p.char, p.x, p.y);
+      } else {
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   _drawBinaryRain(ctx, W, H) {
     ctx.font = '4px monospace';
     ctx.textAlign = 'center';
@@ -31305,9 +30298,12 @@ class CinematicDirector {
 
   _drawActors(ctx) {
     for (const actor of this.actors) {
-      const bob = actor.id === 'alex' ? actor.bob : 0;
+      const bob = actor.bob || 0;
       const x = Math.round(actor.x - 8);
       const y = Math.round(actor.y - 16 + bob);
+      ctx.save();
+      const holoFlicker = actor.holo ? (0.55 + Math.sin(this.time * 18 + (actor.phase || 0)) * 0.25) : 1;
+      ctx.globalAlpha = (actor.alpha ?? 1) * holoFlicker;
 
       // Sombra en el suelo.
       ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
@@ -31364,6 +30360,7 @@ class CinematicDirector {
         actor.animator.draw(ctx, x, y);
         ctx.restore();
       }
+      ctx.restore();
     }
   }
 
@@ -31402,6 +30399,154 @@ class CinematicDirector {
       ctx.fillStyle = i % 2 ? '#c084fc' : '#67e8f9';
       ctx.fillRect(fx + (tx - fx) * t + (Math.random() * 8 - 4), fy + (ty - fy) * t + (Math.random() * 8 - 4), 1, 1);
     }
+    ctx.restore();
+  }
+
+  _screenPoint(wx, wy, W, H) {
+    const zoom = this.camera.zoom;
+    return {
+      x: W / 2 + this.shake.x + (wx - this.camera.x) * zoom,
+      y: H / 2 + this.shake.y + (wy - this.camera.y) * zoom
+    };
+  }
+
+  _drawGlow(ctx, W, H) {
+    if (!this.glow) return;
+    const actor = this._actor('alex') || this._actor('alex_phase2') ||
+      this.actors[this.actors.length - 1];
+    if (!actor) return;
+    const p = this._screenPoint(actor.x, actor.y - 8, W, H);
+    const r = 34 * this.camera.zoom;
+    const g = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, r);
+    g.addColorStop(0, this.glow.color || '#a855f7');
+    g.addColorStop(0.35, `${this.glow.color || '#a855f7'}55`);
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = g;
+    ctx.fillRect(p.x - r, p.y - r, r * 2, r * 2);
+    ctx.restore();
+  }
+
+  _drawProjectiles(ctx, W, H) {
+    if (!this.projectiles.length) return;
+    for (const pr of this.projectiles) {
+      const from = this._actor(pr.from);
+      const to = this._actor(pr.to);
+      if (!from || !to) continue;
+      const a = this._screenPoint(from.x, from.y - 10, W, H);
+      const b = this._screenPoint(to.x, to.y - 10, W, H);
+      const head = Math.min(1, pr.elapsed / pr.duration);
+      for (let i = 0; i < 12; i++) {
+        const t = ((head + i * 0.035) % 1);
+        const x = a.x + (b.x - a.x) * t;
+        const y = a.y + (b.y - a.y) * t + Math.sin(t * 22 + this.time * 6) * 4;
+        ctx.fillStyle = i % 3 === 0 ? '#e9d5ff' : (i % 3 === 1 ? '#67e8f9' : '#c084fc');
+        ctx.fillRect(Math.round(x), Math.round(y), i % 2 ? 2 : 1, i % 2 ? 2 : 1);
+      }
+      if (pr.text && pr.text !== '*') {
+        const x = a.x + (b.x - a.x) * head;
+        const y = a.y + (b.y - a.y) * head;
+        ctx.font = '4px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#a5f3fc';
+        ctx.fillText(String(pr.text), x, y - 8);
+      }
+    }
+  }
+
+  _drawSpotlight(ctx, W, H) {
+    if (!this.spotlight) return;
+    const actor = this._actor(this.spotlight);
+    if (!actor) return;
+    const p = this._screenPoint(actor.x, actor.y - 8, W, H);
+    const r = 56 * this.camera.zoom;
+    // Oscurece los bordes SIN borrar al personaje (nada de destination-out).
+    const g = ctx.createRadialGradient(p.x, p.y, r * 0.16, p.x, p.y, r);
+    g.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    g.addColorStop(0.5, 'rgba(0, 0, 0, 0.22)');
+    g.addColorStop(1, 'rgba(0, 0, 0, 0.82)');
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  _drawCaption(ctx, W, H) {
+    if (!this.caption) return;
+    const text = this.caption.text || '';
+    if (!text) return;
+    ctx.save();
+    if (this.caption.stamp) {
+      ctx.translate(W / 2, H / 2);
+      ctx.rotate(-0.04);
+      ctx.fillStyle = 'rgba(120, 20, 20, 0.2)';
+      ctx.fillRect(-W / 2, -34, W, 68);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-W / 2 + 8, -26, W - 16, 52);
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-W / 2 + 13, -21, W - 26, 42);
+      UILayout.drawText(ctx, text, 0, -2, {
+        font: 'bold 9px monospace',
+        color: '#fecaca',
+        shadow: true,
+        align: 'center'
+      });
+      ctx.restore();
+      return;
+    }
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.76)';
+    ctx.fillRect(0, H / 2 - 28, W, 56);
+    UILayout.drawText(ctx, text, W / 2, H / 2 - 3, {
+      font: 'bold 7px monospace',
+      color: '#f8fafc',
+      shadow: true,
+      align: 'center'
+    });
+    if (this.caption.sub) {
+      UILayout.drawText(ctx, this.caption.sub, W / 2, H / 2 + 8, {
+        font: '5px monospace',
+        color: '#e5c07b',
+        shadow: true,
+        align: 'center'
+      });
+    }
+    ctx.restore();
+  }
+
+  _drawPolice(ctx, W, H) {
+    if (!this.policeUntil || this.time >= this.policeUntil) return;
+    const phase = Math.floor(this.time * 8) % 2;
+    ctx.save();
+    ctx.fillStyle = phase === 0 ? 'rgba(239, 68, 68, 0.16)' : 'rgba(59, 130, 246, 0.16)';
+    ctx.fillRect(0, 0, W, H);
+    const g = ctx.createLinearGradient(0, 0, W, 0);
+    g.addColorStop(0, phase === 0 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(59, 130, 246, 0.25)');
+    g.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+    g.addColorStop(1, phase === 0 ? 'rgba(59, 130, 246, 0.25)' : 'rgba(239, 68, 68, 0.25)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  _drawBars(ctx, W, H) {
+    if (!this.bars) return;
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.fillRect(0, 0, W, 8);
+    ctx.fillRect(0, H - 10, W, 10);
+    for (let x = 6; x < W; x += 16) {
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(x, 0, 3, H);
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.35)';
+      ctx.fillRect(x + 1, 0, 1, H);
+    }
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, H * 0.5 - 2, W, 3);
     ctx.restore();
   }
 
@@ -31498,14 +30643,10 @@ class CinematicDirector {
     ctx.save();
     ctx.imageSmoothingEnabled = false;
 
-    // Void radial + lluvia binaria.
-    const voidGrad = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, W * 0.72);
-    voidGrad.addColorStop(0, '#17102e');
-    voidGrad.addColorStop(0.5, '#0a0718');
-    voidGrad.addColorStop(1, '#020107');
-    ctx.fillStyle = voidGrad;
-    ctx.fillRect(0, 0, W, H);
-    this._drawBinaryRain(ctx, W, H);
+    this._drawBackground(ctx, W, H);
+    if (!this.backgroundConfig && this.particleType === 'data') {
+      this._drawBinaryRain(ctx, W, H);
+    }
 
     // Cámara cinematográfica: pan + zoom + shake.
     ctx.save();
@@ -31516,6 +30657,12 @@ class CinematicDirector {
     this._drawBeam(ctx);
     ctx.restore();
 
+    this._drawGlow(ctx, W, H);
+    this._drawProjectiles(ctx, W, H);
+    this._drawParticles(ctx, W, H);
+    this._drawPolice(ctx, W, H);
+    this._drawBars(ctx, W, H);
+
     // Viñeta.
     const vignette = ctx.createRadialGradient(W / 2, H / 2, H * 0.28, W / 2, H / 2, W * 0.62);
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
@@ -31525,6 +30672,8 @@ class CinematicDirector {
 
     this._drawLetterbox(ctx, W, H);
     this._drawTitle(ctx);
+    this._drawCaption(ctx, W, H);
+    this._drawSpotlight(ctx, W, H);
     this._drawDialogue(ctx, W, H);
 
     if (this.flash.alpha > 0) {
@@ -34193,7 +33342,8 @@ class RPGGame {
     this.animeCutscenes = new AnimeCutsceneManager(
       VIEWPORT_WIDTH,
       VIEWPORT_HEIGHT,
-      this.music
+      this.music,
+      this.cinematicDirector
     );
 
     // Registro de estadísticas del jugador para el Expediente de Compilación Final
@@ -34212,6 +33362,7 @@ class RPGGame {
     this.abyssalPortalOrigin = null;
     this.activeAbyssalPortal = null;
     this.transitionCooldown = 0;
+    this.doorGate = null;
     // (FIX 2.4) Origen de la última entrada a un templo (para que su salida vuelva a esa sala)
     this.templeReturn = null;
     // (FIX NPC.6) Cambio de rutina pospuesto porque el NPC estaba hablando
@@ -34512,6 +33663,7 @@ class RPGGame {
     this.abyssalPortalOrigin = null;
     this.activeAbyssalPortal = null;
     this.transitionCooldown = 0;
+    this.doorGate = null;
 
     this.camera.snapTo(this.player);
   }
@@ -35325,16 +34477,27 @@ class RPGGame {
 
     this._restoreAllNPCsToOverworld();
     this.totalJailVisits = (this.totalJailVisits || 0) + 1;
-    this.jailRemainingSeconds = 10 * 60;
-    this.tilemap.loadScene('jail_cell');
-    this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
-    this.player.x = 5.5 * 16;
-    this.player.y = 3.5 * 16;
-    this.player.direction = 'down';
-    this.camera.snapTo(this.player);
-    this.music.setMode('jail');
+    this.isJailedForever = false;
+    // La condena arranca cuando termina la cinemática de 20 s.
+    this.jailRemainingSeconds = 0;
 
-    this.dialogueBox.showMessage('🚨 ARRESTO MUNICIPAL 🚨', rightsLines);
+    const sendToCell = () => {
+      this.jailRemainingSeconds = 10 * 60;
+      this.tilemap.loadScene('jail_cell');
+      this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
+      this.player.x = 5.5 * 16;
+      this.player.y = 3.5 * 16;
+      this.player.direction = 'down';
+      this.camera.snapTo(this.player);
+      this.music.setMode('jail');
+      this.dialogueBox.showMessage('🚨 ARRESTO MUNICIPAL 🚨', rightsLines);
+    };
+
+    if (this.animeCutscenes) {
+      this.animeCutscenes.playCutscene(SCENE_JAIL_ARREST, sendToCell);
+    } else {
+      sendToCell();
+    }
   }
 
   _releaseFromJail(messageLines) {
@@ -38882,10 +38045,29 @@ class RPGGame {
         // 1. GATEKEEPING: las reglas viven en DoorGatekeeper
         const block = getDoorBlock(door.targetScene, this.player);
         if (block) {
+          // Mientras el diálogo está abierto la puerta no vuelve a detectar al jugador.
+          if (this.dialogueBox.active) return;
+          const gateKey = `${door.targetScene}|${door.label || ''}`;
+          const now = performance.now();
+          if (this.doorGate && this.doorGate.key === gateKey && now < this.doorGate.until) {
+            return;
+          }
+
           if (this.music) this.music.playDoorLockedSound();
-          // Empujar al jugador exactamente 1 tile hacia atrás (opuesto al intento de cruce)
-          pushBackPlayer(this.player, this.player.direction || 'down');
-          this.dialogueBox.showMessage(block.title, block.lines);
+          // Empujón inverso y contundente (2 tiles) para salir del área de activación.
+          pushBackPlayer(this.player, this.player.direction || 'down', 2);
+          const gateDoor = {
+            key: gateKey,
+            targetScene: door.targetScene,
+            worldX: door.worldX,
+            worldY: door.worldY,
+            until: 0
+          };
+          this.doorGate = gateDoor;
+          this.dialogueBox.showMessage(block.title, block.lines, () => {
+            // Cooldown de 2 s al cerrar la última página.
+            this.doorGate = { ...gateDoor, until: performance.now() + 2000 };
+          });
           return;
         }
 
@@ -39270,6 +38452,59 @@ class RPGGame {
     }
   }
 
+  _updateDoorGate() {
+    if (!this.doorGate) return;
+    const dx = this.player.centerX - this.doorGate.worldX;
+    const dy = this.player.centerY - this.doorGate.worldY;
+    if (Math.hypot(dx, dy) > 64) {
+      this.doorGate = null;
+    }
+  }
+
+  _compassFromDirection(direction) {
+    return { right: 'east', left: 'west', down: 'south', up: 'north' }[direction] || null;
+  }
+
+  /**
+   * Regla espacial 2D: si sales por el ESTE apareces al OESTE del nuevo mapa,
+   * y viceversa. Margen de 2 tiles para no reactivar la puerta de regreso.
+   */
+  _resolveStageSpawn(door = {}) {
+    const margin = 2 * this.tilemap.tileSize;
+    const width = this.tilemap.width;
+    const height = this.tilemap.height;
+    const exitDirection =
+      door.exitDirection ||
+      this._compassFromDirection(this.player.direction) ||
+      'east';
+    const entryX = Number.isFinite(door.spawnX) ? door.spawnX : width / 2;
+    const entryY = Number.isFinite(door.spawnY) ? door.spawnY : height / 2;
+
+    let x = entryX;
+    let y = entryY;
+    let facing = this.player.direction;
+
+    if (exitDirection === 'east') {
+      x = margin;
+      y = entryY;
+      facing = 'right';
+    } else if (exitDirection === 'west') {
+      x = width - margin;
+      y = entryY;
+      facing = 'left';
+    } else if (exitDirection === 'south') {
+      y = margin;
+      x = entryX;
+      facing = 'down';
+    } else if (exitDirection === 'north') {
+      y = height - margin;
+      x = entryX;
+      facing = 'up';
+    }
+
+    return { x, y, facing, exitDirection };
+  }
+
   _executeStageTransition(door) {
     this.transitionCooldown = 0.5;
     if (this.music) {
@@ -39323,15 +38558,11 @@ class RPGGame {
       }
     }
     this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
-    this.player.x = door.spawnX;
-    this.player.y = door.spawnY;
-    // PRESERVAR DIRECCIÓN DE ENTRADA: si el jugador entra por la derecha, sigue mirando a la derecha.
-    // Solo se sobrescribe la dirección si la puerta especifica una dirección de entrada forzada
-    // (por ejemplo, al entrar en una casa por una puerta, se mira hacia adentro).
-    if (door.forceDirection) {
-      this.player.direction = door.forceDirection;
-    }
-    // Si no hay forceDirection, se mantiene la dirección actual del jugador (no se sobrescribe).
+    // (FIX ESPACIAL) Entrada por el borde OPUESTO a la salida, con margen de 2 tiles.
+    const spawn = this._resolveStageSpawn(door);
+    this.player.x = spawn.x;
+    this.player.y = spawn.y;
+    this.player.direction = door.forceDirection || spawn.facing;
     this.camera.snapTo(this.player);
 
     if (this.music && this.music.currentBossTrack) {
@@ -40534,6 +39765,7 @@ class RPGGame {
     }
 
     this.camera.update(this.player, dt);
+    this._updateDoorGate();
     this.dialogueBox.update(dt);
     if (this.achievementManager) {
       this.achievementManager.update(dt);
