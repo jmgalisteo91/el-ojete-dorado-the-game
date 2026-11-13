@@ -5,7 +5,10 @@ import { SpeechBubble } from '../ui/SpeechBubble.js?v=8';
  * Tiles de la CAPA 2 (estructuras elevadas) del pipeline 2.5D: se dibujan siempre por encima
  * de las entidades (copas de árboles y tejados).
  */
-const OVERHEAD_TILE_IDS = new Set([TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE]);
+const OVERHEAD_TILE_IDS = new Set([
+  TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE,
+  TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM
+]);
 
 /** Valor de la capa de colisión para abismos: sólidos salvo durante el Dash Asíncrono. */
 export const CHASM_COLLISION = 2;
@@ -26,6 +29,8 @@ export class Tilemap {
     this.animTimer = 0;
     this.animFrame = 0;
     this.waterClock = 0;
+    // (BLOQUE 1) Reloj maestro de animaciones ambientales y de tiles.
+    this.animationClock = 0;
     this._propPool = [];
     this.windowLights = [];
 
@@ -205,6 +210,7 @@ export class Tilemap {
     this._buildSewersDungeonScene();
     this._buildMinesEntryScene();
     this._buildMinesPuzzleScene();
+    this._buildMinesBossArenaScene();
     this._buildForgeEntryScene();
     this._buildForgePuzzleScene();
     this._buildFortressGateScene();
@@ -212,6 +218,23 @@ export class Tilemap {
     this._buildCitadelScene();
     this._buildOverworldScene();
     this._buildHouseInteriors();
+
+    // (FIX 1) Los carteles son decorativos: nunca deben bloquear el paso.
+    // Se normaliza después de construir TODAS las escenas para cubrir también
+    // las asignaciones directas de `collision[...] = 1`.
+    for (const scene of Object.values(this.scenes)) {
+      const layers = scene && scene.layers;
+      if (!layers || !layers.decoration || !layers.collision) continue;
+      for (let r = 0; r < scene.rows; r++) {
+        for (let c = 0; c < scene.cols; c++) {
+          if (layers.decoration[r][c] === TILES.SIGNPOST) {
+            layers.collision[r][c] = 0;
+          }
+        }
+      }
+    }
+
+    this._decorateScenes();
     this.loadScene('overworld');
   }
 
@@ -234,6 +257,10 @@ export class Tilemap {
     this.height = scene.rows * this.tileSize;
     this.layers = scene.layers;
     this.lightSources = scene.lightSources;
+    this.floorDecals = scene.floorDecals || [];
+    this.houseShadows = scene.houseShadows || [];
+    this.caveProps = scene.caveProps || [];
+    this.chimneys = scene.chimneys || [];
 
     // Luces de ventanas (se encienden al anochecer): se calculan una vez por escena y se cachean
     if (!scene.windowLights) {
@@ -296,14 +323,32 @@ export class Tilemap {
   }
 
   update(dt) {
+    this.animationClock += dt;
     this.animTimer += dt;
     this.waterClock += dt;
     if (this.animTimer >= 0.45) {
       this.animTimer -= 0.45;
       this.animFrame = (this.animFrame + 1) % 2;
     }
+    this._updateAnimatedLights();
 
     this._updateBridgeSchedule();
+  }
+
+  /** (BLOQUE 2) Pulso suave de las luces de escena (antorchas, cristales, portales). */
+  _updateAnimatedLights() {
+    if (!this.lightSources) return;
+    for (const source of this.lightSources) {
+      if (!source) continue;
+      if (source._baseIntensity === undefined) {
+        source._baseIntensity = source.intensity ?? 0.8;
+        source._baseRadius = source.radius ?? 40;
+        source._phase = (source.x * 0.013 + source.y * 0.017) % (Math.PI * 2);
+      }
+      const pulse = 1 + Math.sin(this.animationClock * 3 + source._phase) * 0.06;
+      source.intensity = source._baseIntensity * pulse;
+      source.radius = source._baseRadius * (1 + Math.sin(this.animationClock * 2.1 + source._phase) * 0.03);
+    }
   }
 
   /**
@@ -395,6 +440,17 @@ export class Tilemap {
     }
   }
 
+  /** (FIX 3) Abre/cierra la salida norte de la arena del Stack Overflow. */
+  setMinesBossArenaGate(open) {
+    const scene = this.scenes.mines_boss_arena;
+    if (!scene || !scene.layers) return false;
+    for (const c of [5, 6]) {
+      scene.layers.collision[0][c] = open ? 0 : 1;
+      scene.layers.decoration[0][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.PORTAL_GATE_CLOSED;
+    }
+    return true;
+  }
+
   // =========================================================================
   // MECÁNICAS: PUZLES DE MAZMORRA (Cloacas · Minas · Forja)
   // =========================================================================
@@ -423,7 +479,8 @@ export class Tilemap {
 
     for (const c of cols) {
       scene.layers.collision[puzzle.barrierRow][c] = active ? 1 : 0;
-      scene.layers.decoration[puzzle.barrierRow][c] = -1;
+      // (FIX 4) La barrera debe VERSE: cristal de silicio en la capa de decoración
+      scene.layers.decoration[puzzle.barrierRow][c] = active ? TILES.CRYSTAL_BARRIER : -1;
     }
     puzzle.barrierActive = Boolean(active);
     return true;
@@ -607,6 +664,10 @@ export class Tilemap {
   isSolidAtTile(col, row) {
     if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) {
       return true;
+    }
+    // (FIX 1) Un cartel es siempre pisable, aunque alguna escena lo marcara sólido
+    if (this.layers.decoration && this.layers.decoration[row][col] === TILES.SIGNPOST) {
+      return false;
     }
     const value = this.layers.collision[row][col];
     if (value === CHASM_COLLISION) {
@@ -845,12 +906,12 @@ export class Tilemap {
       if (this.minesPuzzle.solved && Math.hypot(player.centerX - northDoorX, player.centerY - northDoorY) <= 22) {
         return {
           type: 'stage_transition',
-          targetScene: 'sword_temple',
-          label: 'Cruzar el Portal a la Cámara del Guardián del Stack Overflow',
+          targetScene: 'mines_boss_arena',
+          label: 'Cruzar el Portal a la Arena del Stack Overflow',
           worldX: northDoorX,
           worldY: northDoorY,
-          spawnX: 11.5 * this.tileSize,
-          spawnY: 15 * this.tileSize
+          spawnX: 5.5 * this.tileSize,
+          spawnY: 5 * this.tileSize
         };
       }
     }
@@ -904,6 +965,26 @@ export class Tilemap {
       }
     }
 
+    // (FIX 3) Salida norte de la arena: solo con el Núcleo del Stack
+    if (this.currentSceneId === 'mines_boss_arena') {
+      const gateX = 5.5 * this.tileSize;
+      const gateY = 1.5 * this.tileSize;
+      if (
+        player?.dungeonCores?.stack &&
+        Math.hypot(player.centerX - gateX, player.centerY - gateY) <= 24
+      ) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'first_stage',
+          label: 'Salir de la Arena hacia el Valle de la Consagración',
+          worldX: gateX,
+          worldY: gateY,
+          spawnX: 17.5 * this.tileSize,
+          spawnY: 4.5 * this.tileSize
+        };
+      }
+    }
+
     if (
       this.currentSceneId === 'armor_temple' ||
       this.currentSceneId === 'sword_temple' ||
@@ -913,6 +994,7 @@ export class Tilemap {
       this.currentSceneId === 'sewers_dungeon' ||
       this.currentSceneId === 'mines_entry' ||
       this.currentSceneId === 'mines_puzzle' ||
+      this.currentSceneId === 'mines_boss_arena' ||
       this.currentSceneId === 'forge_entry' ||
       this.currentSceneId === 'forge_puzzle' ||
       this.currentSceneId === 'ai_fortress_gate' ||
@@ -933,7 +1015,9 @@ export class Tilemap {
                 ? 'Salir a las Marismas del Hardware Legacy'
                 : this.currentSceneId === 'mines_entry'
                   ? 'Salir a las Cumbres de la Recursión'
-                  : this.currentSceneId === 'forge_entry'
+                  : this.currentSceneId === 'mines_boss_arena'
+                    ? 'Salir a la Sala de Runas Recursivas'
+                    : this.currentSceneId === 'forge_entry'
                     ? 'Salir a las Marismas del Hardware Legacy'
                     : this.currentSceneId === 'quantum_gate'
                       ? 'Salir al Páramo de Mister AI Alex'
@@ -1814,11 +1898,11 @@ export class Tilemap {
         setDeco(c, r, TILES.ROOF_RED, true);
       }
     }
-    setDeco(2, 10, TILES.WALL_WOOD, true);
+    setDeco(2, 10, TILES.WALL_FRONT, true);
     setDeco(3, 10, TILES.WALL_WINDOW, true);
     setDeco(4, 10, TILES.WALL_DOOR, true);
     setDeco(5, 10, TILES.WALL_WINDOW, true);
-    setDeco(6, 10, TILES.WALL_WOOD, true);
+    setDeco(6, 10, TILES.WALL_FRONT, true);
     setDeco(2, 11, TILES.CRATE, true);
     setDeco(3, 11, TILES.FLOWERS_1, false);
     ground[11][4] = TILES.PATH;
@@ -1843,12 +1927,12 @@ export class Tilemap {
         setDeco(c, r, TILES.ROOF_BLUE, true);
       }
     }
-    setDeco(6, 5, TILES.WALL_WOOD, true);
+    setDeco(6, 5, TILES.WALL_FRONT, true);
     setDeco(7, 5, TILES.WALL_WINDOW, true);
     setDeco(8, 5, TILES.WALL_DOOR, true);
     setDeco(9, 5, TILES.WALL_WINDOW, true);
     setDeco(10, 5, TILES.WALL_WINDOW, true);
-    setDeco(11, 5, TILES.WALL_WOOD, true);
+    setDeco(11, 5, TILES.WALL_FRONT, true);
     setDeco(6, 6, TILES.TEMPLE_PILLAR, true);
     setDeco(7, 6, TILES.FLOWERS_1, false);
     ground[6][8] = TILES.COBBLE;
@@ -1902,10 +1986,10 @@ export class Tilemap {
         setDeco(c, r, TILES.ROOF_RED, true);
       }
     }
-    setDeco(21, 6, TILES.WALL_WOOD, true);
+    setDeco(21, 6, TILES.WALL_FRONT, true);
     setDeco(22, 6, TILES.WALL_DOOR, true);
     setDeco(23, 6, TILES.WALL_WINDOW, true);
-    setDeco(24, 6, TILES.WALL_WOOD, true);
+    setDeco(24, 6, TILES.WALL_FRONT, true);
     setDeco(25, 6, TILES.FIREPLACE, true); // Horno de forja en fachada
     // Patio empedrado del herrero
     fillRect(ground, 24, 5, 3, 3, TILES.COBBLE);
@@ -1934,10 +2018,10 @@ export class Tilemap {
       }
     }
     setDeco(4, 18, TILES.WALL_WINDOW, true);
-    setDeco(5, 18, TILES.WALL_WOOD, true);
+    setDeco(5, 18, TILES.WALL_FRONT, true);
     setDeco(6, 18, TILES.WALL_DOOR, true);
     setDeco(7, 18, TILES.WALL_WINDOW, true);
-    setDeco(8, 18, TILES.WALL_WOOD, true);
+    setDeco(8, 18, TILES.WALL_FRONT, true);
     // Jardín botánico vallado
     setDeco(4, 19, TILES.FENCE_POST, true);
     setDeco(5, 19, TILES.FLOWERS_1, false);
@@ -1970,11 +2054,11 @@ export class Tilemap {
         setDeco(c, r, TILES.ROOF_BLUE, true);
       }
     }
-    setDeco(20, 18, TILES.WALL_WOOD, true);
+    setDeco(20, 18, TILES.WALL_FRONT, true);
     setDeco(21, 18, TILES.JAIL_BARS, true);
     setDeco(22, 18, TILES.WALL_DOOR, true);
     setDeco(23, 18, TILES.WALL_WINDOW, true);
-    setDeco(24, 18, TILES.WALL_WOOD, true);
+    setDeco(24, 18, TILES.WALL_FRONT, true);
     setDeco(21, 19, TILES.CRATE, true);
     ground[19][22] = TILES.PATH;
     // Ring de arena del Campo de Entrenamiento del Binario
@@ -3311,6 +3395,69 @@ export class Tilemap {
   }
 
   /**
+   * (FIX 3) MAZMORRA 2 · ARENA: Cámara del Stack Overflow.
+   * Sala rectangular 12×8 de roca de silicio, antorchas y un portal norte que
+   * permanece sellado hasta que el Guardián cae.
+   */
+  _buildMinesBossArenaScene() {
+    const cols = 12;
+    const rows = 8;
+    const ground = this._createGrid(cols, rows, TILES.MINE_CRYSTAL_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const setDeco = (c, r, tileId, solid = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        if (solid) collision[r][c] = 1;
+      }
+    };
+
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(c, rows - 1, TILES.MINE_CRYSTAL_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.MINE_CRYSTAL_WALL, true);
+      setDeco(cols - 1, r, TILES.MINE_CRYSTAL_WALL, true);
+    }
+
+    // Antorchas sobre el muro norte
+    setDeco(2, 0, TILES.LAMPPOST, true);
+    setDeco(9, 0, TILES.LAMPPOST, true);
+    lightSources.push(
+      { x: 2.5 * 16, y: 1.5 * 16, radius: 56, intensity: 0.95, color: '#f59e0b' },
+      { x: 9.5 * 16, y: 1.5 * 16, radius: 56, intensity: 0.95, color: '#f59e0b' }
+    );
+
+    // Entrada sur desde mines_puzzle (portal visible)
+    setDeco(5, rows - 1, TILES.PORTAL_GATE_OPEN, false);
+    setDeco(6, rows - 1, TILES.PORTAL_GATE_OPEN, false);
+    collision[rows - 1][5] = 0;
+    collision[rows - 1][6] = 0;
+
+    // Salida norte: sellada hasta vencer al Guardián
+    setDeco(5, 0, TILES.PORTAL_GATE_CLOSED, true);
+    setDeco(6, 0, TILES.PORTAL_GATE_CLOSED, true);
+
+    this.scenes.mines_boss_arena = {
+      title: 'Minas de la Recursión · Cámara del Stack Overflow',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 5.5 * 16,
+        worldY: 7 * 16,
+        returnX: 11.5 * 16,
+        returnY: 2.5 * 16,
+        returnScene: 'mines_puzzle'
+      }
+    };
+  }
+
+  /**
    * MAZMORRA 3 · SALA 1: 'La Forja del Prototipo · Galería de Calderas'
    * Rejillas sobre lava, calderas de bronce y calor sofocante (requiere Blindaje Térmico).
    */
@@ -3728,7 +3875,7 @@ export class Tilemap {
    * (Río Alba). Solo se dibujan aquí las decoraciones planas (flores, alfombras, felpudos...).
    * Los obstáculos sólidos van a la capa 1 (Y-sorted) y las copas/tejados a la capa 2.
    */
-  renderGround(ctx, camera) {
+  renderGround(ctx, camera, sun = null) {
     const camX = camera.renderX;
     const camY = camera.renderY;
     const { startCol, endCol, startRow, endRow } = this._visibleTileRange(camera);
@@ -3741,13 +3888,16 @@ export class Tilemap {
 
         let groundTile = ground[r][c];
         const isWater = groundTile === TILES.WATER_1 || groundTile === TILES.WATER_2;
-        if (groundTile === TILES.WATER_1 && this.animFrame === 1) {
+        // (BLOQUE 1) Agua a 4 fases; alterna las dos texturas sin cortes.
+        const waterFrame = Math.floor(this.animationClock * 4) % 4;
+        if (groundTile === TILES.WATER_1 && waterFrame % 2 === 1) {
           groundTile = TILES.WATER_2;
         }
         this._drawTile(ctx, groundTile, screenX, screenY);
         if (isWater) {
-          this._drawWaterRipple(ctx, screenX, screenY, c, r);
+          this._drawWaterRipple(ctx, screenX, screenY, c, r, waterFrame);
         }
+        this._drawAnimatedTileFx(ctx, groundTile, screenX, screenY);
 
         let decoTile = decoration[r][c];
         if (decoTile === -1 || decoTile === undefined || decoTile === null) continue;
@@ -3757,8 +3907,13 @@ export class Tilemap {
           decoTile = TILES.FLOWERS_2;
         }
         this._drawTile(ctx, decoTile, screenX, screenY);
+        this._drawAnimatedTileFx(ctx, decoTile, screenX, screenY);
       }
     }
+
+    // (BLOQUES 2/3/4) Capa 0: decals estáticos y sombras de edificios, antes de entidades.
+    this._drawFloorDecals(ctx, camera);
+    this._drawHouseShadows(ctx, camera, sun);
 
     // Elementos de suelo de los minijuegos (interruptores, barrera de fuego, indicador de pila, portal)
     if (this.currentSceneId === 'armor_temple') {
@@ -3847,9 +4002,349 @@ export class Tilemap {
     ctx.restore();
   }
 
+
+  /** (BLOQUE 2) Halos aditivos que se suman al pase de iluminación dinámica. */
+  _drawLightHalo(ctx, cx, cy, radius, rgb, alpha) {
+    if (radius <= 0 || alpha <= 0) return;
+    const g = ctx.createRadialGradient(cx, cy, 1, cx, cy, radius);
+    g.addColorStop(0, `rgba(${rgb}, ${alpha.toFixed(3)})`);
+    g.addColorStop(1, `rgba(${rgb}, 0)`);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+    ctx.restore();
+  }
+
+  /**
+   * (BLOQUE 1/2) FX procedurales por tile: lava pulsante, llamas de antorcha,
+   * cristales de mina y anillos de portal.
+   */
+  _drawAnimatedTileFx(ctx, tileId, screenX, screenY) {
+    if (tileId === undefined || tileId === null || tileId < 0) return;
+    const t = this.animationClock;
+    const cx = screenX + 8;
+    const cy = screenY + 8;
+
+    if (tileId === TILES.FORGE_LAVA_FLOOR) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3 + screenX * 0.05 + screenY * 0.04);
+      ctx.fillStyle = `rgba(249, 115, 22, ${(0.10 + pulse * 0.20).toFixed(3)})`;
+      ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
+      ctx.fillStyle = `rgba(127, 29, 29, ${(0.08 + (1 - pulse) * 0.14).toFixed(3)})`;
+      ctx.fillRect(screenX + 1, screenY + 1, this.tileSize - 2, this.tileSize - 2);
+      for (let i = 0; i < 2; i++) {
+        const bx = screenX + 3 + ((i * 7 + Math.floor(t * 2)) % 10);
+        const by = screenY + 6 + Math.sin(t * 2.2 + i * 2 + screenX * 0.03) * 4;
+        ctx.fillStyle = 'rgba(253, 224, 71, 0.65)';
+        ctx.fillRect(Math.round(bx), Math.round(by), 1, 1);
+      }
+      // Sin halo radial por tile: el resplandor global lo aporta la iluminación.
+      return;
+    }
+
+    if (tileId === TILES.LAMPPOST || tileId === TILES.FIREPLACE) {
+      const flicker = Math.sin(t * 10 + screenX * 0.12 + screenY * 0.07);
+      const flameY = tileId === TILES.LAMPPOST ? screenY + 4 : screenY + 9;
+      this._drawLightHalo(ctx, cx, flameY, 20, '255, 170, 60', 0.18 + 0.05 * (flicker * 0.5 + 0.5));
+      ctx.fillStyle = 'rgba(249, 115, 22, 0.9)';
+      ctx.fillRect(cx - 1 + Math.round(flicker), flameY - 2, 2, 4);
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(cx + Math.round(flicker), flameY - 3, 1, 2);
+      return;
+    }
+
+    if (tileId === TILES.MINE_CRYSTAL_FLOOR || tileId === TILES.MINE_CRYSTAL_WALL || tileId === TILES.CRYSTAL_BARRIER) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 2 + screenX * 0.05 + screenY * 0.03);
+      ctx.fillStyle = `rgba(56, 189, 248, ${(0.06 + pulse * 0.14).toFixed(3)})`;
+      ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
+      ctx.strokeStyle = `rgba(186, 230, 253, ${(0.25 + pulse * 0.5).toFixed(3)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, screenY + 3);
+      ctx.lineTo(screenX + 11, screenY + 9);
+      ctx.lineTo(screenX + 5, screenY + 13);
+      ctx.stroke();
+      if (tileId !== TILES.MINE_CRYSTAL_FLOOR) {
+        this._drawLightHalo(ctx, cx, cy, 18, '56, 189, 248', 0.10 + pulse * 0.12);
+      }
+      return;
+    }
+
+    if (tileId === TILES.PORTAL_GATE_CLOSED || tileId === TILES.PORTAL_GATE_OPEN) {
+      const open = tileId === TILES.PORTAL_GATE_OPEN;
+      const speed = open ? 1.8 : 0.6;
+      ctx.strokeStyle = `rgba(56, 189, 248, ${open ? 0.75 : 0.3})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+      ctx.stroke();
+      for (let i = 0; i < 6; i++) {
+        const a = t * speed + i * (Math.PI / 3);
+        const r = 7 + Math.sin(t * 2.4 + i) * 1.5;
+        const px = cx + Math.cos(a) * r;
+        const py = cy + Math.sin(a) * r;
+        ctx.fillStyle = open ? '#7dd3fc' : '#475569';
+        ctx.fillRect(Math.round(px), Math.round(py), 1, 1);
+      }
+      this._drawLightHalo(ctx, cx, cy, 22, '56, 189, 248', open ? 0.22 : 0.08);
+    }
+  }
+
+
+  // =========================================================================
+  // BLOQUES 1-3 · Fachadas, sombras, cuevas y decals estáticos (seed fijo)
+  // =========================================================================
+
+  _seededRandom(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  _sceneSeed(sceneId) {
+    let h = 2166136261;
+    for (let i = 0; i < sceneId.length; i++) h = Math.imul(h ^ sceneId.charCodeAt(i), 16777619);
+    return h >>> 0;
+  }
+
+  _decorateScenes() {
+    for (const [sceneId, scene] of Object.entries(this.scenes)) {
+      if (!scene || !scene.layers) continue;
+      const seed = this._sceneSeed(sceneId);
+      scene.floorDecals = this._generateFloorDecals(sceneId, scene, seed);
+      scene.houseShadows = this._generateHouseShadows(sceneId, scene);
+      scene.caveProps = this._generateCaveProps(sceneId, scene, seed);
+      scene.chimneys = [];
+    }
+    this._addVillageChimneys(this.scenes.overworld);
+  }
+
+  _zoneDecalKind(sceneId) {
+    if (/overworld|first_stage|north_peaks|south_swamp|west_wastes/.test(sceneId)) return 'valley';
+    if (/forge/.test(sceneId)) return 'forge';
+    if (/sewers|mines|temple|jail|condemned|quantum|citadel|ai_/.test(sceneId)) return 'dungeon';
+    return 'dungeon';
+  }
+
+  _generateFloorDecals(sceneId, scene, seed) {
+    const rand = this._seededRandom(seed ^ 0x9e3779b9);
+    const kind = this._zoneDecalKind(sceneId);
+    const { ground } = scene.layers;
+    const decals = [];
+    const cols = scene.cols;
+    const rows = scene.rows;
+    const count = Math.floor(cols * rows * 0.075);
+    const types = kind === 'valley'
+      ? ['grass', 'grass', 'flower', 'stone']
+      : kind === 'forge'
+        ? ['spark', 'oil', 'crack', 'stone']
+        : ['crack', 'moss', 'bone', 'stone'];
+    const palette = kind === 'valley'
+      ? ['#5f8f3a', '#7fae4a', '#e8c547', '#9ca3af']
+      : kind === 'forge'
+        ? ['#f97316', '#1f2937', '#4b5563', '#78716c']
+        : ['#0b0f14', '#3f6b3a', '#e5e7eb', '#6b7280'];
+    for (let i = 0; i < count; i++) {
+      const c = 1 + Math.floor(rand() * (cols - 2));
+      const r = 1 + Math.floor(rand() * (rows - 2));
+      const tile = ground[r][c];
+      if (tile === TILES.WATER_1 || tile === TILES.WATER_2 || tile === TILES.FORGE_LAVA_FLOOR || tile === TILES.MINE_CHASM) continue;
+      const ti = Math.floor(rand() * types.length);
+      decals.push({
+        x: c * this.tileSize + 2 + rand() * 12,
+        y: r * this.tileSize + 2 + rand() * 12,
+        type: types[ti],
+        color: palette[ti],
+        size: 1 + rand() * 2,
+        alpha: 0.4 + rand() * 0.3,
+        rot: rand() * Math.PI
+      });
+    }
+    return decals;
+  }
+
+  _generateHouseShadows(sceneId, scene) {
+    if (sceneId !== 'overworld') return [];
+    const { decoration } = scene.layers;
+    const walls = new Set([TILES.WALL_FRONT, TILES.WALL_WINDOW, TILES.WALL_DOOR]);
+    const shadows = [];
+    for (let r = 0; r < scene.rows; r++) {
+      let c = 0;
+      while (c < scene.cols) {
+        if (walls.has(decoration[r][c])) {
+          const c0 = c;
+          while (c < scene.cols && walls.has(decoration[r][c])) c++;
+          shadows.push({ x: c0 * this.tileSize, y: (r + 1) * this.tileSize, w: (c - c0) * this.tileSize });
+        } else {
+          c++;
+        }
+      }
+    }
+    return shadows;
+  }
+
+  _generateCaveProps(sceneId, scene, seed) {
+    if (!sceneId.startsWith('mines')) return [];
+    const rand = this._seededRandom(seed ^ 0xc0ffee);
+    const { decoration } = scene.layers;
+    const props = [];
+    // Estalactitas en el borde superior y las paredes laterales.
+    for (let c = 1; c < scene.cols - 1; c += 2) {
+      if (decoration[0][c] !== -1 || rand() > 0.55) continue;
+      props.push({ tileId: TILES.STALACTITE, x: c * this.tileSize, y: 0 });
+    }
+    for (let r = 3; r < scene.rows - 2; r += 4) {
+      for (const c of [0, scene.cols - 1]) {
+        if (rand() > 0.6) continue;
+        props.push({ tileId: TILES.STALACTITE, x: c * this.tileSize, y: r * this.tileSize });
+      }
+    }
+    // Vigas horizontales que cruzan el techo de la cueva.
+    for (const r of [2, 8, 14]) {
+      if (r >= scene.rows) continue;
+      for (let c = 1; c < scene.cols - 1; c++) {
+        props.push({ tileId: TILES.BEAM, x: c * this.tileSize, y: r * this.tileSize });
+      }
+    }
+    // Rocas junto a las paredes/ suelo.
+    for (let i = 0; i < 8; i++) {
+      const c = 1 + Math.floor(rand() * (scene.cols - 2));
+      const r = 2 + Math.floor(rand() * (scene.rows - 4));
+      if (decoration[r][c] !== -1) continue;
+      props.push({ tileId: TILES.ROCK, x: c * this.tileSize, y: r * this.tileSize });
+    }
+    return props;
+  }
+
+  _addVillageChimneys(scene) {
+    if (!scene || !scene.layers) return;
+    const spots = [
+      [7, 2], [14, 2], [22, 3], [3, 7], [5, 15], [25, 15]
+    ];
+    for (const [c, r] of spots) {
+      if (r < 0 || r >= scene.rows || c < 0 || c >= scene.cols) continue;
+      scene.layers.decoration[r][c] = TILES.CHIMNEY;
+      scene.layers.collision[r][c] = 1;
+      scene.chimneys.push({ x: c * this.tileSize + 8, y: r * this.tileSize + 2 });
+    }
+  }
+
+  _drawFloorDecals(ctx, camera) {
+    if (!this.floorDecals || this.floorDecals.length === 0) return;
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+    const W = 320;
+    const H = 180;
+    ctx.save();
+    for (const d of this.floorDecals) {
+      const sx = d.x - camX;
+      const sy = d.y - camY;
+      if (sx < -8 || sx > W + 8 || sy < -8 || sy > H + 8) continue;
+      ctx.globalAlpha = d.alpha;
+      ctx.fillStyle = d.color;
+      switch (d.type) {
+        case 'grass':
+          ctx.fillRect(Math.round(sx), Math.round(sy), 1, Math.round(2 + d.size));
+          ctx.fillRect(Math.round(sx) + 2, Math.round(sy) - 1, 1, Math.round(2 + d.size));
+          ctx.fillRect(Math.round(sx) - 2, Math.round(sy), 1, 2);
+          break;
+        case 'flower':
+          ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+          break;
+        case 'stone':
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, d.size, d.size * 0.7, d.rot, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        case 'crack':
+          ctx.strokeStyle = d.color;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(sx + 4, sy + 3);
+          ctx.lineTo(sx + 2, sy + 7);
+          ctx.moveTo(sx + 4, sy + 3);
+          ctx.lineTo(sx + 8, sy + 2);
+          ctx.stroke();
+          break;
+        case 'moss':
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, d.size * 2, d.size, d.rot, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        case 'bone':
+          ctx.fillRect(Math.round(sx), Math.round(sy), 3, 1);
+          ctx.fillRect(Math.round(sx) + 1, Math.round(sy) - 1, 1, 1);
+          break;
+        case 'spark':
+          ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+          break;
+        case 'oil':
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, d.size * 2.2, d.size, d.rot, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        default:
+          ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  _drawHouseShadows(ctx, camera, sun) {
+    if (!this.houseShadows || this.houseShadows.length === 0) return;
+    const len = 8 * (sun && Number.isFinite(sun.length) ? sun.length : 0.8);
+    const dx = sun && Number.isFinite(sun.dx) ? sun.dx * len * 0.4 : 0;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    for (const sh of this.houseShadows) {
+      const sx = sh.x - camera.renderX;
+      const sy = sh.y - camera.renderY;
+      if (sx < -sh.w || sx > 320 + sh.w || sy < -len || sy > 180 + len) continue;
+      ctx.fillRect(Math.round(sx + dx), Math.round(sy), sh.w, len);
+    }
+    ctx.restore();
+  }
+
+  _drawRoofEaves(ctx, camera) {
+    const { decoration } = this.layers;
+    for (let r = 0; r < this.rows - 1; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        const roof = decoration[r][c];
+        if (roof !== TILES.ROOF_RED && roof !== TILES.ROOF_BLUE) continue;
+        const below = decoration[r + 1][c];
+        if (below !== TILES.WALL_FRONT && below !== TILES.WALL_WINDOW && below !== TILES.WALL_DOOR) continue;
+        const sx = c * this.tileSize - camera.renderX;
+        const sy = (r + 1) * this.tileSize - camera.renderY;
+        if (sx < -16 || sx > 320 + 16 || sy < -16 || sy > 180 + 16) continue;
+        // Alero de 4 px que sobresale sobre el muro frontal.
+        ctx.fillStyle = roof === TILES.ROOF_RED ? '#7a2020' : '#1f3350';
+        ctx.fillRect(Math.round(sx), Math.round(sy), this.tileSize, 4);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fillRect(Math.round(sx), Math.round(sy) + 4, this.tileSize, 2);
+      }
+    }
+  }
+
+  _drawCaveProps(ctx, camera) {
+    if (!this.caveProps || this.caveProps.length === 0) return;
+    for (const prop of this.caveProps) {
+      const sx = prop.x - camera.renderX;
+      const sy = prop.y - camera.renderY;
+      if (sx < -16 || sx > 320 + 16 || sy < -16 || sy > 180 + 16) continue;
+      this._drawTile(ctx, prop.tileId, sx, sy);
+    }
+  }
+
   /** Ondulación del agua: dos destellos horizontales por tile que fluyen con una onda senoidal. */
-  _drawWaterRipple(ctx, screenX, screenY, col, row) {
-    const t = this.waterClock;
+  _drawWaterRipple(ctx, screenX, screenY, col, row, phaseIndex = 0) {
+    const t = this.animationClock + phaseIndex * 0.12;
     for (let k = 0; k < 2; k++) {
       const wobble = Math.sin(t * 1.3 + (col + k * 3) * 0.8 + row * 0.35) * 1.5;
       const localY = Math.round(3 + k * 8 + wobble);
@@ -3942,6 +4437,7 @@ export class Tilemap {
       this.drawMinesMonolith(ctx, camera, prop.mono);
     } else {
       this._drawTile(ctx, prop.tileId, prop.sx, prop.sy);
+      this._drawAnimatedTileFx(ctx, prop.tileId, prop.sx, prop.sy);
     }
   }
 
@@ -3963,11 +4459,12 @@ export class Tilemap {
         const screenX = c * this.tileSize - camX;
         const screenY = r * this.tileSize - camY;
         this._drawTile(ctx, decoTile, screenX, screenY);
+        this._drawAnimatedTileFx(ctx, decoTile, screenX, screenY);
 
         // Sombra de alero proyectada sobre el muro situado justo debajo del tejado
         if (decoTile !== TILES.TREE_TOP && r + 1 < this.rows) {
           const below = decoration[r + 1][c];
-          if (below === TILES.WALL_WOOD || below === TILES.WALL_WINDOW || below === TILES.WALL_DOOR) {
+          if (below === TILES.WALL_FRONT || below === TILES.WALL_WINDOW || below === TILES.WALL_DOOR) {
             const baseY = Math.round(screenY) + this.tileSize;
             ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
             ctx.fillRect(Math.round(screenX), baseY, this.tileSize, 2);
@@ -3977,6 +4474,11 @@ export class Tilemap {
         }
       }
     }
+
+    // (BLOQUE 1.2) Alero de 4 px y sombra bajo el tejado.
+    this._drawRoofEaves(ctx, camera);
+    // (BLOQUE 2.1/2.2) Estalactitas, rocas y vigas de cueva en la capa superior.
+    this._drawCaveProps(ctx, camera);
   }
 
   /**

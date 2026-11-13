@@ -122,7 +122,8 @@ export class Boss extends Enemy {
     const baseDamage = customDamage !== null ? customDamage : 1;
     const damage = this.isStunned ? baseDamage * 2 : baseDamage;
     this.hp = Math.max(0, this.hp - damage);
-    this.hitFlashTimer = 0.22;
+    // (FIX BOSS UX) Invulnerabilidad de 0.5 s tras recibir daño: evita multi-hit por frame.
+    this.hitFlashTimer = 0.5;
 
     if (soundEngine && typeof soundEngine.playEnemyHit === 'function') {
       soundEngine.playEnemyHit();

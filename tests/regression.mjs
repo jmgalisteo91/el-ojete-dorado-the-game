@@ -579,11 +579,12 @@ test('Reliquia Divina de El Microondas Little se encuentra en cofre dentro de el
 });
 
 test('StackOverflowBoss (Guardián del Stack Overflow) tiene hitbox de pies optimizada y navega obstáculos con A*', () => {
-  const boss = new StackOverflowBoss({ x: 100, y: 100, sceneId: 'sword_temple' });
+  const boss = new StackOverflowBoss({ x: 100, y: 100, sceneId: 'mines_boss_arena' });
   // Comprobar hitbox de pies
   assert.equal(boss.boundingBox.width, 14);
   assert.equal(boss.boundingBox.height, 12);
-  assert.equal(boss.boundingBox.offsetY, 14);
+  // (REDISEÑO) El cuerpo visual de 3 CRT mide 38 px; los pies quedan al fondo.
+  assert.equal(boss.boundingBox.offsetY, 26);
   // Comprobar hurtbox completa para espada
   assert.ok(boss.hurtbox.width >= 20);
   assert.ok(boss.hurtbox.height >= 24);
@@ -629,7 +630,7 @@ test('Rebalanceo de Bosses: HP calibrada y daño ajustado al héroe', () => {
   assert.equal(b1.maxHp, 24, 'Garbage Collector debe tener 24 HP');
   assert.equal(b2.maxHp, 32, 'Stack Overflow debe tener 32 HP');
   assert.equal(b3.maxHp, 42, 'Microondas Prototipo debe tener 42 HP');
-  assert.equal(b4.maxHp, 55, 'Final Boss Alex debe tener 55 HP');
+  assert.equal(b4.maxHp, 150, 'Final Boss Alex debe tener 150 HP');
 
   // 2. Multiplicador x2 de daño cuando el boss está aturdido
   const mockPlayer = {
@@ -657,22 +658,91 @@ test('Rebalanceo de Bosses: HP calibrada y daño ajustado al héroe', () => {
   b1.takeSwordHit(mockPlayer, null, 2);
   assert.equal(b1.hp, hpBeforeFinisher - 4, 'Finisher con aturdimiento debe restar 4 HP');
 
-  // 3. Clones de Stack Overflow tienen vida justa (3 HP) y thresholds
-  assert.equal(b2.cloneThresholds.length, 2);
-  assert.ok(b2.cloneThresholds[0] === 21 && b2.cloneThresholds[1] === 11);
+  // 3. Stack Overflow: Fase 1 = 2 espejismos de 1 HP; Fase 2 = 4 clones (2+2)
+  assert.equal(b2.cloneThresholds.length, 1);
+  assert.equal(b2.cloneThresholds[0], 16, 'La Fase 2 se activa al 50% (16 HP)');
   b2.spawnRecursiveClones();
   assert.equal(b2.clones.length, 2);
-  assert.equal(b2.clones[0].maxHp, 3, 'Los clones deben tener 3 HP');
-  assert.equal(b2.clones[1].maxHp, 3);
+  assert.equal(b2.clones[0].maxHp, 1, 'Los espejismos deben tener 1 HP');
+  assert.equal(b2.clones[1].maxHp, 1);
+  assert.ok(b2.clones.every((c) => c.isMirage === true));
 
-  // 4. Ciclos térmicos de Microondas Prototipo al 60% y 30%
-  assert.equal(b3.cycleThresholds[0], 25, 'Primer ciclo al 60% (25 HP)');
-  assert.equal(b3.cycleThresholds[1], 13, 'Segundo ciclo al 30% (13 HP)');
+  b2.hp = 16;
+  b2.hitFlashTimer = 0;
+  b2.takeSwordHit(mockPlayer, null, 0);
+  b2._enterPhase2(null, null);
+  assert.equal(b2.clones.length, 4, 'La Fase 2 invoca 4 clones');
+  assert.equal(b2.clones.filter((c) => c.isMirage).length, 2);
+  assert.equal(b2.clones.filter((c) => !c.isMirage).length, 2);
 
-  // 5. Final Boss Alex: Fase 2 Kernel Panic al 50% de vida
-  b4.takeSwordHit(mockPlayer, null, 28); // 55 - 28 = 27 HP (<= 28 HP -> 50%)
-  assert.ok(b4.isOverclocked, 'Alex debe activar Fase 2 Overclocked al 50% de HP');
-  assert.equal(b4.speed, 45, 'Velocidad en Fase 2 debe ser 45');
+  // (FIX MULTI-HIT) Un clon real (2 HP) no recibe dos golpes en el mismo cooldown.
+  const realClone = b2.clones.find((c) => !c.isMirage);
+  const clonePlayer = {
+    centerX: realClone.x,
+    centerY: realClone.y,
+    getSwordHitbox: () => ({ x: realClone.x - 6, y: realClone.y - 6, width: 12, height: 12 }),
+    getSpinHitbox: () => null,
+    getSwordDamage: () => 1,
+    takeHit: () => {},
+    invulnTimer: 0
+  };
+  const cloneHpBefore = realClone.hp;
+  b2._updateClones(0.01, null, clonePlayer);
+  const cloneHpAfterFirst = realClone.hp;
+  b2._updateClones(0.01, null, clonePlayer);
+  assert.equal(cloneHpBefore - cloneHpAfterFirst, 1, 'El primer golpe resta 1 HP');
+  assert.equal(realClone.hp, cloneHpAfterFirst, 'El segundo golpe en <0.2 s no debe restar HP');
+
+  // 4. Microondas: Fase 2 única al 50% (21 HP) con 2 fusibles y 10 s
+  assert.equal(b3.cycleThresholds.length, 1);
+  assert.equal(b3.cycleThresholds[0], 21, 'La Fase 2 se activa al 50% (21 HP)');
+  b3.hp = 21;
+  b3.hitFlashTimer = 0;
+  b3.takeSwordHit(mockPlayer, null, 0);
+  assert.equal(b3.phase, 2);
+  assert.equal(b3.fuses.length, 2, 'La Fase 2 debe crear 2 fusibles');
+  assert.equal(b3.fuseTimer, 10, 'El jugador tiene 10 s para fundir los fusibles');
+
+  // Aturdido por fusibles: puerta abierta 5 s y daño crítico x2 (Boss.isStunned).
+  let fuseIndex = 0;
+  const fusePlayer = {
+    getSwordHitbox: () => ({ x: b3.fuses[fuseIndex].x, y: b3.fuses[fuseIndex].y, width: 1, height: 1 }),
+    getSpinHitbox: () => null,
+    takeHit: () => {}
+  };
+  b3._updateFuses(fusePlayer, null);
+  fuseIndex = 1;
+  b3._updateFuses(fusePlayer, null);
+  assert.equal(b3.stunnedTimer, 5.0, 'La puerta debe quedar abierta 5 s');
+  assert.equal(b3.doorOpen, true);
+
+  b3.hitFlashTimer = 0;
+  const hpBeforeCrit = b3.hp;
+  b3.takeSwordHit(mockPlayer, null, 1);
+  assert.equal(b3.hp, hpBeforeCrit - 2, 'El daño crítico con la puerta abierta debe ser x2');
+
+  // 5. Garbage Collector: al 50% crece 50%, baja a la mitad de velocidad y saca 2 ratas.
+  b1.hp = 12;
+  b1.hitFlashTimer = 0;
+  b1.takeSwordHit(mockPlayer, null, 0);
+  assert.equal(b1.phase, 2);
+  assert.equal(b1.width, 39, 'La masa debe crecer un 50%');
+  assert.equal(b1.height, 39);
+  assert.equal(b1.speed, 17, 'La velocidad debe reducirse a la mitad');
+  assert.equal(b1.rats.length, 2, 'Debe invocar 2 ratas de basura');
+
+  // 5. Final Boss Alex: 3 fases a 66% y 33% de 150 HP
+  b4.takeSwordHit(mockPlayer, null, 51); // 150 - 51 = 99 HP (66%)
+  assert.equal(b4.phase, 2, 'Alex debe entrar en Fase 2 al 66% de HP');
+  assert.ok(b4.isOverclocked, 'La Fase 2 debe marcar isOverclocked');
+  assert.equal(b4.speed, 55, 'Velocidad en Fase 2 debe ser 55');
+
+  b4.hitFlashTimer = 0;
+  b4.takeSwordHit(mockPlayer, null, 50); // 99 - 50 = 49 HP (<33%)
+  assert.equal(b4.phase, 3, 'Alex debe entrar en Fase 3 al 33% de HP');
+  assert.equal(b4.width, 48, 'La torre del Update Final debe ampliar el ancho');
+  assert.equal(b4.height, 56, 'La torre del Update Final debe ampliar el alto');
+  assert.equal(b4.speed, 0, 'La torre del Update Final es estacionaria');
 });
 
 console.log('Sistema de Puntuación y Salón de la Fama');
@@ -1328,6 +1398,65 @@ test('Tilemap: Reestructuración de Mazmorras en 3 niveles y Ciudadela con tiles
   assert.ok(tm.scenes.mines_entry, 'Debe existir mines_entry');
   assert.ok(tm.scenes.mines_puzzle, 'Debe existir mines_puzzle');
   assert.ok(tm.scenes.sword_temple, 'Debe existir sword_temple');
+
+  // (FIX 3) Arena dedicada del Stack Overflow, 12x8 y con la puerta norte sellada
+  assert.ok(tm.scenes.mines_boss_arena, 'Debe existir mines_boss_arena');
+  assert.equal(tm.scenes.mines_boss_arena.cols, 12);
+  assert.equal(tm.scenes.mines_boss_arena.rows, 8);
+  assert.equal(tm.scenes.mines_boss_arena.layers.decoration[0][5], TILES.PORTAL_GATE_CLOSED);
+  assert.equal(tm.scenes.mines_boss_arena.layers.collision[0][5], 1);
+
+  // (FIX 4) La barrera de mines_puzzle debe verse (cristal) además de colisionar
+  assert.equal(tm.scenes.mines_puzzle.layers.decoration[3][5], TILES.CRYSTAL_BARRIER);
+  assert.equal(tm.scenes.mines_puzzle.layers.collision[3][5], 1);
+
+  // (FIX 1) Ningún cartel puede bloquear el paso
+  for (const scene of Object.values(tm.scenes)) {
+    const deco = scene.layers && scene.layers.decoration;
+    const coll = scene.layers && scene.layers.collision;
+    if (!deco || !coll) continue;
+    for (let r = 0; r < scene.rows; r++) {
+      for (let c = 0; c < scene.cols; c++) {
+        if (deco[r][c] === TILES.SIGNPOST) {
+          assert.equal(coll[r][c], 0, `Cartel sólido en ${scene.title} (${c},${r})`);
+        }
+      }
+    }
+  }
+  tm.loadScene('overworld');
+  const owSign = (() => {
+    const scene = tm.scenes.overworld;
+    for (let r = 0; r < scene.rows; r++) {
+      for (let c = 0; c < scene.cols; c++) {
+        if (scene.layers.decoration[r][c] === TILES.SIGNPOST) return { c, r };
+      }
+    }
+    return null;
+  })();
+  assert.ok(owSign, 'El overworld debe conservar carteles');
+  assert.equal(tm.isSolidAtTile(owSign.c, owSign.r), false, 'Un cartel debe ser pisable');
+
+  // (FIX 3) Puertas: puzzle -> arena; norte de la arena solo con el Núcleo del Stack
+  tm.minesPuzzle.solved = true;
+  tm.loadScene('mines_puzzle');
+  const toArena = tm.findNearbyDoor({ centerX: 11.5 * 16, centerY: 1.5 * 16 });
+  assert.equal(toArena && toArena.targetScene, 'mines_boss_arena');
+  tm.loadScene('mines_boss_arena');
+  const lockedNorth = tm.findNearbyDoor({
+    centerX: 5.5 * 16, centerY: 1.5 * 16, dungeonCores: { stack: false }
+  });
+  assert.equal(lockedNorth, null, 'La salida norte debe estar sellada sin el Núcleo');
+  const southExit = tm.findNearbyDoor({
+    centerX: 5.5 * 16, centerY: 7 * 16, dungeonCores: { stack: false }
+  });
+  assert.equal(southExit && southExit.targetScene, 'mines_puzzle');
+  tm.setMinesBossArenaGate(true);
+  const openNorth = tm.findNearbyDoor({
+    centerX: 5.5 * 16, centerY: 1.5 * 16, dungeonCores: { stack: true }
+  });
+  assert.equal(openNorth && openNorth.targetScene, 'first_stage');
+  tm.loadScene('overworld');
+
   assert.equal(tm.scenes.mines_entry.layers.ground[2][2], TILES.MINE_CRYSTAL_FLOOR);
   // Presencia de abismo que exige dash
   assert.equal(tm.scenes.mines_entry.layers.ground[8][4], TILES.MINE_CHASM);
@@ -1466,7 +1595,8 @@ test('Menú de Pausa Depurado y Cinemática de Mister AI Alex sin Truncamiento',
   pauseItems[3].action();
   assert.equal(menu.state, 'options');
   const soundItems = menu._getCurrentMenuItems();
-  assert.equal(soundItems.length, 5, 'El submenú de Ajustes y Sonido debe tener 5 opciones con sliders');
+  assert.equal(soundItems.length, 6, 'El submenú de Ajustes y Sonido debe tener 6 opciones (incluye Efectos Visuales)');
+  assert.ok(soundItems.some((item) => item.label.includes('Efectos Visuales')), 'Debe existir el toggle de Efectos Visuales');
 
   // Verificación de cinemática de entrada: 8 diapositivas bien distribuidas
   menu.startAnimeIntroCutscene();
@@ -1568,8 +1698,18 @@ test('AudioManager: Grafo de 3 buses, 4 canales, calibrador SFX y persistencia d
   assert.equal(audio.getMasterVolume(), 0.5);
   audio.setMusicVolume(0.7);
   assert.equal(audio.getMusicVolume(), 0.7);
+  // (BLOQUE 7) La BGM efectiva nunca supera 0.35; el bus SFX sigue a 1.0.
+  assert.ok(audio._bgmBaseVolume() <= 0.35, 'La BGM debe tener un techo de 0.35');
+  assert.ok(audio._bgmBaseVolume() > 0, 'La BGM debe escucharse con volumen positivo');
   audio.setSfxVolume(1.5); // Clamped a 1.0
   assert.equal(audio.getSfxVolume(), 1.0);
+
+  // Ducking: baja a 0.1 y se puede limpiar sin dejar timers vivos.
+  audio._bgmCurrentAudio = { volume: 0.35, paused: false };
+  audio.duckMusic(500, 0.1);
+  assert.ok(audio._bgmCurrentAudio.volume <= 0.1 + 1e-9, 'El ducking debe bajar la BGM a 0.1');
+  audio._clearBgmDuck();
+  audio._bgmCurrentAudio = null;
 
   // Verificación de mute toggles
   audio.toggleMasterMute();
@@ -2156,7 +2296,7 @@ test('C3: los materiales recogidos se apilan con su tipo canónico y Brom los ac
 
 test('A1: el acceso a la Ciudadela depende solo de los núcleos engarzados', () => {
   const player = new Player({ x: 0, y: 0 });
-  const stack = new StackOverflowBoss({ x: 0, y: 0, sceneId: 'sword_temple' });
+  const stack = new StackOverflowBoss({ x: 0, y: 0, sceneId: 'mines_boss_arena' });
   stack.triggerBossDefeat(player, null);
   assert.equal(player.dungeonCores.stack, true);
   assert.equal(player.gatesUnlocked, 0, 'Vencer al jefe no abre zócalos por sí solo');

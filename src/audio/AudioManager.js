@@ -26,6 +26,42 @@
 
 const AUDIO_STORAGE_KEY = 'ojete_audio_settings';
 
+/** (BLOQUE 1) BGM pregrabada. Los SFX siguen siendo Web Audio API. */
+export const BGM_MAX_VOLUME = 0.35;
+const BGM_DUCK_VOLUME = 0.1;
+const BGM_DUCK_RESTORE_MS = 400;
+
+export const BGM_TRACKS = {
+  title: 'assets/music/01_main_theme.mp3',
+  village: 'assets/music/02_valleverde_hub.mp3',
+  stage1: 'assets/music/03_dungeons_ambient.mp3',
+  forge: 'assets/music/04_the_forge.mp3',
+  combat: 'assets/music/05_normal_battle.mp3',
+  boss: 'assets/music/06_miniboss_battle.mp3',
+  boss_final: 'assets/music/07_final_boss_alex.mp3',
+  jail: 'assets/music/08_jail_cell.mp3',
+  game_over: 'assets/music/09_game_over.mp3',
+  victory: 'assets/music/10_credits_victory.mp3'
+};
+
+const BGM_MODE_ALIASES = {
+  theme_title_screen: 'title',
+  overworld: 'village',
+  valley: 'village',
+  dungeon: 'stage1',
+  sewers: 'stage1',
+  mines: 'stage1',
+  dungeon_hostile: 'combat',
+  track_garbage_collector: 'boss',
+  track_stack_overflow: 'boss',
+  track_prototype_microwave: 'boss',
+  villain: 'boss_final',
+  theme_main_villain: 'boss_final',
+  final_boss: 'boss_final',
+  theme_victory_credits: 'victory',
+  credits: 'victory'
+};
+
 export class AudioManager {
   constructor() {
     this.ctx = null;
@@ -44,6 +80,20 @@ export class AudioManager {
 
     this._noiseBuffer = null;
     this._unlocked = false;
+
+    // (BLOQUE 1/3/4) BGM pregrabada y crossfade independiente del sintetizador.
+    this._bgmAudio = new Map();
+    this._bgmCurrentKey = null;
+    this._bgmCurrentAudio = null;
+    this._bgmPendingKey = null;
+    this._bgmFade = null;
+    this._bgmFadeTimer = null;
+    this._bgmWasPlaying = false;
+    this._bgmDuckUntil = 0;
+    this._bgmDuckLevel = 0;
+    this._bgmDuckTimer = null;
+    this._bgmDuckRestoreStart = 0;
+    this._bgmDuckRestoreFrom = 0;
 
     // Carga de configuración inicial guardada
     this.settings = this._loadSettings();
@@ -198,6 +248,7 @@ export class AudioManager {
     // (FIX M2.4) Suspender el AudioContext en segundo plano
     this._isHidden = false;
     this._setupVisibilityHandling();
+    this.preloadMusic();
   }
 
   // ===========================================================================
@@ -339,6 +390,7 @@ export class AudioManager {
   }
 
   _applyGainNodes() {
+    this._updateBgmVolumes();
     if (!this.ctx || !this.masterGainNode || !this.musicGainNode || !this.sfxGainNode) return;
     const now = this.ctx.currentTime;
 
@@ -368,11 +420,21 @@ export class AudioManager {
     if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
     document.addEventListener('visibilitychange', () => {
       this._isHidden = Boolean(document.hidden);
-      if (!this.ctx) return;
       if (this._isHidden) {
-        if (this.ctx.state === 'running') this.ctx.suspend().catch(() => {});
-      } else if (this.ctx.state === 'suspended') {
-        this.ctx.resume().catch(() => {});
+        // (BLOQUE 6) Pausar la BGM al cambiar de pestaña para ahorrar batería.
+        this._bgmWasPlaying = Boolean(this._bgmCurrentAudio && !this._bgmCurrentAudio.paused);
+        if (this._bgmWasPlaying) this._bgmCurrentAudio.pause();
+        if (this.ctx && this.ctx.state === 'running') this.ctx.suspend().catch(() => {});
+      } else {
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+        if (this._bgmWasPlaying && this._bgmCurrentAudio) {
+          this._bgmCurrentAudio.volume = this._bgmEffectiveVolume();
+          const p = this._bgmCurrentAudio.play();
+          if (p && typeof p.catch === 'function') {
+            p.catch((err) => console.warn('[AudioManager] No se pudo reanudar la BGM:', err?.message || err));
+          }
+          this._bgmWasPlaying = false;
+        }
       }
     });
   }
@@ -392,18 +454,273 @@ export class AudioManager {
   }
 
   unlockAndStart() {
-    this._ensureAudioGraph();
-    if (!this.ctx) return;
+    // (BLOQUE 2) Primer gesto: la BGM pregrabada arranca aquí; los SFX siguen en Web Audio.
+    this._unlocked = true;
+    const key = this._bgmPendingKey || this._resolveBgmKey(this.mode);
+    if (key) {
+      this._bgmPendingKey = null;
+      this._startBgm(key, 0);
+    }
 
-    if (this.ctx.state === 'suspended') {
+    this._ensureAudioGraph();
+    if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
+  }
 
-    this._unlocked = true;
-    if (!this.isPlaying && this.mode !== 'none' && this.mode !== 'silent') {
-      this.isPlaying = true;
-      this._scheduleLoop();
+
+  // ===========================================================================
+  // BGM pregrabada (HTMLAudioElement) · crossfade y control de volumen
+  // ===========================================================================
+
+  preloadMusic() {
+    if (typeof Audio === 'undefined') return;
+    for (const [key, src] of Object.entries(BGM_TRACKS)) {
+      if (this._bgmAudio.has(key)) continue;
+      try {
+        const audio = new Audio();
+        audio.src = src;
+        audio.loop = true;
+        audio.preload = key === 'title' ? 'auto' : 'metadata';
+        audio.volume = 0;
+        audio.addEventListener('error', () => {
+          console.warn(`[AudioManager] No se pudo cargar la BGM: ${src}`);
+        });
+        if (key === 'title') {
+          try { audio.load(); } catch { /* carga diferida */ }
+        }
+        this._bgmAudio.set(key, audio);
+      } catch (err) {
+        console.warn(`[AudioManager] Error creando la BGM ${src}:`, err?.message || err);
+      }
     }
+  }
+
+  _resolveBgmKey(mode) {
+    if (!mode || mode === 'none' || mode === 'silent') return null;
+    if (BGM_TRACKS[mode]) return mode;
+    return BGM_MODE_ALIASES[mode] || null;
+  }
+
+  _getBgmAudio(key) {
+    if (!key || !BGM_TRACKS[key]) return null;
+    let audio = this._bgmAudio.get(key) || null;
+    if (!audio) {
+      if (typeof Audio === 'undefined') return null;
+      try {
+        audio = new Audio();
+        audio.src = BGM_TRACKS[key];
+        audio.loop = true;
+        audio.preload = 'auto';
+        audio.volume = 0;
+        audio.addEventListener('error', () => {
+          console.warn(`[AudioManager] No se pudo cargar la BGM: ${BGM_TRACKS[key]}`);
+        });
+        this._bgmAudio.set(key, audio);
+      } catch (err) {
+        console.warn('[AudioManager] Error creando la BGM:', err?.message || err);
+        return null;
+      }
+    }
+    if (audio.preload !== 'auto') {
+      audio.preload = 'auto';
+      try { audio.load(); } catch { /* carga diferida */ }
+    }
+    return audio;
+  }
+
+  _bgmBaseVolume() {
+    if (!this.settings) return 0;
+    if (typeof this.isMusicMuted === 'function' && this.isMusicMuted()) return 0;
+    const master = this.settings.master ?? 1;
+    const music = this.settings.music ?? 0.8;
+    // (BLOQUE 7) La BGM nunca supera el 35% del volumen efectivo.
+    return Math.max(0, Math.min(BGM_MAX_VOLUME, master * music * BGM_MAX_VOLUME));
+  }
+
+  _bgmEffectiveVolume() {
+    const base = this._bgmBaseVolume();
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    return now < this._bgmDuckUntil ? Math.min(base, this._bgmDuckLevel) : base;
+  }
+
+  _applyBgmMode(mode, fadeMs = 1500) {
+    const key = this._resolveBgmKey(mode);
+    if (!key) {
+      this._bgmPendingKey = null;
+      this._stopBgm(fadeMs);
+      return;
+    }
+    if (key === this._bgmCurrentKey && this._bgmCurrentAudio && !this._bgmCurrentAudio.paused) {
+      return;
+    }
+    this._bgmPendingKey = key;
+    if (!this._unlocked) return;
+    this._startBgm(key, fadeMs);
+  }
+
+  _startBgm(key, fadeMs = 1500) {
+    const audio = this._getBgmAudio(key);
+    if (!audio) return;
+    const old = this._bgmCurrentAudio;
+
+    if (old === audio) {
+      this._bgmCurrentKey = key;
+      audio.volume = this._bgmBaseVolume();
+      if (audio.paused) {
+        const p = audio.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch((err) => console.warn('[AudioManager] BGM bloqueada:', err?.message || err));
+        }
+      }
+      return;
+    }
+
+    this._clearBgmFade();
+    this._bgmCurrentKey = key;
+    this._bgmCurrentAudio = audio;
+    this._bgmPendingKey = null;
+
+    audio.loop = true;
+    try { audio.currentTime = 0; } catch { /* metadata no lista */ }
+    audio.volume = 0;
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch((err) => {
+        console.warn('[AudioManager] BGM bloqueada o fallida:', err?.message || err);
+      });
+    }
+
+    const target = this._bgmEffectiveVolume();
+    if (!fadeMs || fadeMs <= 0 || typeof setInterval === 'undefined') {
+      if (old && old !== audio) {
+        old.pause();
+        try { old.currentTime = 0; } catch { /* noop */ }
+      }
+      audio.volume = target;
+      return;
+    }
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this._bgmFade = {
+      audio,
+      old,
+      start: now,
+      duration: fadeMs,
+      oldStart: old ? old.volume : 0
+    };
+    this._bgmFadeTimer = setInterval(() => this._tickBgmFade(), 30);
+  }
+
+  _stopBgm(fadeMs = 800) {
+    this._bgmPendingKey = null;
+    const old = this._bgmCurrentAudio;
+    this._bgmCurrentAudio = null;
+    this._bgmCurrentKey = null;
+    if (!old) return;
+    if (!fadeMs || fadeMs <= 0 || typeof setInterval === 'undefined') {
+      old.pause();
+      try { old.currentTime = 0; } catch { /* noop */ }
+      return;
+    }
+    this._clearBgmFade();
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this._bgmFade = { audio: null, old, start: now, duration: fadeMs, oldStart: old.volume };
+    this._bgmFadeTimer = setInterval(() => this._tickBgmFade(), 30);
+  }
+
+  _tickBgmFade() {
+    if (!this._bgmFade) {
+      this._clearBgmFade();
+      return;
+    }
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const raw = Math.min(1, (now - this._bgmFade.start) / Math.max(1, this._bgmFade.duration));
+    const eased = raw * raw * (3 - 2 * raw);
+    const target = this._bgmEffectiveVolume();
+    const { audio, old, oldStart } = this._bgmFade;
+    if (audio) audio.volume = target * eased;
+    if (old) old.volume = Math.max(0, oldStart * (1 - eased));
+    if (raw >= 1) {
+      if (old) {
+        old.pause();
+        try { old.currentTime = 0; } catch { /* noop */ }
+      }
+      if (audio) audio.volume = target;
+      this._clearBgmFade();
+    }
+  }
+
+  _clearBgmFade() {
+    if (this._bgmFadeTimer) {
+      clearInterval(this._bgmFadeTimer);
+      this._bgmFadeTimer = null;
+    }
+    this._bgmFade = null;
+  }
+
+  _updateBgmVolumes() {
+    if (!this._bgmAudio) return;
+    const target = this._bgmEffectiveVolume();
+    for (const [key, audio] of this._bgmAudio) {
+      if (!audio) continue;
+      if (key === this._bgmCurrentKey && !this._bgmFade) {
+        audio.volume = target;
+      } else if (!this._bgmFade || this._bgmFade.audio !== audio) {
+        audio.volume = 0;
+      }
+    }
+  }
+
+  /**
+   * (BLOQUE 7) Ducking: baja la BGM a 0.1 durante 0.5 s y la recupera suavemente.
+   * Solo afecta a la música; el bus SFX permanece a 1.0.
+   */
+  duckMusic(durationMs = 500, level = BGM_DUCK_VOLUME) {
+    if (!this._bgmCurrentAudio) return;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this._bgmDuckUntil = now + Math.max(0, durationMs);
+    this._bgmDuckLevel = Math.max(0, Math.min(BGM_MAX_VOLUME, level));
+    this._bgmDuckRestoreStart = 0;
+    this._bgmDuckRestoreFrom = 0;
+    if (typeof setInterval !== 'undefined' && !this._bgmDuckTimer) {
+      this._bgmDuckTimer = setInterval(() => this._tickBgmDuck(), 30);
+    }
+    this._tickBgmDuck();
+  }
+
+  _tickBgmDuck() {
+    const audio = this._bgmCurrentAudio;
+    if (!audio) {
+      this._clearBgmDuck();
+      return;
+    }
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const base = this._bgmBaseVolume();
+    if (now < this._bgmDuckUntil) {
+      this._bgmDuckRestoreStart = 0;
+      audio.volume = Math.min(base, this._bgmDuckLevel);
+      return;
+    }
+    if (!this._bgmDuckRestoreStart) {
+      this._bgmDuckRestoreStart = now;
+      this._bgmDuckRestoreFrom = audio.volume;
+    }
+    const raw = Math.min(1, (now - this._bgmDuckRestoreStart) / BGM_DUCK_RESTORE_MS);
+    const eased = raw * raw * (3 - 2 * raw);
+    audio.volume = this._bgmDuckRestoreFrom + (base - this._bgmDuckRestoreFrom) * eased;
+    if (raw >= 1) this._clearBgmDuck();
+  }
+
+  _clearBgmDuck() {
+    if (this._bgmDuckTimer) {
+      clearInterval(this._bgmDuckTimer);
+      this._bgmDuckTimer = null;
+    }
+    this._bgmDuckUntil = 0;
+    this._bgmDuckLevel = 0;
+    this._bgmDuckRestoreStart = 0;
+    this._bgmDuckRestoreFrom = 0;
   }
 
   _getWhiteNoiseBuffer() {
@@ -497,22 +814,8 @@ export class AudioManager {
       this.stepDurationMs = 272; // ~110 BPM
     }
 
-    // Crossfade fluido modulando la ganancia de música
-    if (this.ctx && this.musicGainNode && fadeMs > 0 && !this.isMusicMuted()) {
-      const now = this.ctx.currentTime;
-      const targetGain = this.settings.music;
-      const fadeSec = fadeMs / 1000;
-
-      this.musicGainNode.gain.cancelScheduledValues(now);
-      this.musicGainNode.gain.setValueAtTime(this.musicGainNode.gain.value, now);
-      this.musicGainNode.gain.linearRampToValueAtTime(targetGain * 0.25, now + fadeSec * 0.4);
-      this.musicGainNode.gain.linearRampToValueAtTime(targetGain, now + fadeSec);
-    }
-
-    if (!this.isPlaying && this.mode !== 'none' && this.mode !== 'silent') {
-      this.isPlaying = true;
-      this._scheduleLoop();
-    }
+    // (BLOQUE 3) Crossfade entre pistas MP3; el sintetizador BGM queda dormido.
+    this._applyBgmMode(mode, fadeMs);
   }
 
   stopTitleMusic(fadeMs = 380) {
@@ -818,6 +1121,8 @@ export class AudioManager {
   }
 
   playFanfare() {
+    // (BLOQUE 7) SFX fuerte: bajar la BGM temporalmente.
+    this.duckMusic();
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -954,6 +1259,8 @@ export class AudioManager {
   }
 
   playMetalClink() {
+    // (BLOQUE 7) SFX fuerte: bajar la BGM temporalmente.
+    this.duckMusic();
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1115,6 +1422,8 @@ export class AudioManager {
   }
 
   playCaughtSkipSound() {
+    // (BLOQUE 7) SFX fuerte: bajar la BGM temporalmente.
+    this.duckMusic();
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1142,6 +1451,8 @@ export class AudioManager {
   }
 
   playGameOver() {
+    // (BLOQUE 7) SFX fuerte: bajar la BGM temporalmente.
+    this.duckMusic();
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1163,6 +1474,8 @@ export class AudioManager {
   }
 
   playBossVictoryFanfare() {
+    // (BLOQUE 7) SFX fuerte: bajar la BGM temporalmente.
+    this.duckMusic();
     this.playFanfare();
   }
 

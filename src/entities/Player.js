@@ -122,6 +122,11 @@ export class Player extends Entity {
     this.logCooldown = 0;
   }
 
+  /** (FIX 2) Nivel 10 es el máximo: no hay más XP que ganar. */
+  get isMaxLevel() {
+    return this.level >= 10;
+  }
+
   /** Devuelve el umbral de XP necesario para ascender al siguiente nivel. */
   getNextLevelXp() {
     if (this.level >= 10) return LEVEL_XP_THRESHOLDS[9];

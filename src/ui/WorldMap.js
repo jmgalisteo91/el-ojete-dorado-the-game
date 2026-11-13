@@ -279,7 +279,10 @@ export class WorldMap {
       return { zone: 'north', x: 160, y: 26, title: 'Minas de la Recursión (Piso 1 · Caverna)', detail: 'Entrada del Gran Abismo' };
     }
     if (sceneId === 'mines_puzzle') {
-      return { zone: 'north', x: 172, y: 24, title: 'Minas de la Recursión (Sala de Runas)', detail: 'Portal al Templo de la Espada' };
+      return { zone: 'north', x: 172, y: 24, title: 'Minas de la Recursión (Sala de Runas)', detail: 'Portal a la Arena del Stack Overflow' };
+    }
+    if (sceneId === 'mines_boss_arena') {
+      return { zone: 'north', x: 180, y: 22, title: 'Minas de la Recursión · Cámara del Stack Overflow', detail: 'Arena del Guardián' };
     }
 
     // SUR: Marismas del Hardware Legacy

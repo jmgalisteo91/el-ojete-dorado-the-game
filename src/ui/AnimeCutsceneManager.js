@@ -52,6 +52,19 @@ export class AnimeCutsceneManager {
     this.shakeIntensity = 0;
     this.shakeOffset = { x: 0, y: 0 };
 
+    // (BLOQUE 3) Cámara viva, partículas y transiciones.
+    this.cameraZoom = 1;
+    this.cameraPan = { x: 0, y: 0 };
+    this.slideElapsed = 0;
+    this.cutsceneParticles = [];
+    this.cutsceneParticleType = 'dust';
+    this.particleSpawnAccumulator = 0;
+    this.transitionAlpha = 0;
+    this.transitionPhase = 'idle';
+    this.transitionTimer = 0;
+    this.pendingAdvance = null;
+    this.effectsEnabled = true;
+
     this.flashColor = '#ffffff';
     this.flashAlpha = 0;
     this.flashSpeed = 4.0;
@@ -143,6 +156,14 @@ export class AnimeCutsceneManager {
     this.currentSlideIndex = 0;
     this.onComplete = typeof onComplete === 'function' ? onComplete : null;
     this.slideLockTimer = 0.16;
+    this.cutsceneParticles = [];
+    this.transitionPhase = 'in';
+    this.transitionTimer = 0;
+    this.transitionAlpha = 1;
+    this.pendingAdvance = null;
+    this.cameraZoom = 1;
+    this.cameraPan = { x: 0, y: 0 };
+    this.slideElapsed = 0;
 
     this.previousMusicMode = this.music && this.music.mode ? this.music.mode : null;
 
@@ -172,6 +193,10 @@ export class AnimeCutsceneManager {
     this.shakeOffset = { x: 0, y: 0 };
     this.flashAlpha = 0;
     this.slideLockTimer = 0;
+    this.cutsceneParticles = [];
+    this.transitionAlpha = 0;
+    this.transitionPhase = 'idle';
+    this.pendingAdvance = null;
 
     const prevMusic = this.previousMusicMode;
     const hadSceneMusic = Boolean(this.currentScene && this.currentScene.musicMode);
@@ -217,6 +242,14 @@ export class AnimeCutsceneManager {
     this.timeSinceTextFinished = 0;
     this.lastVoiceCharIdx = -1;
     this.slideLockTimer = 0.14;
+    this.slideElapsed = 0;
+    this.cutsceneParticles = [];
+    this.particleSpawnAccumulator = 0;
+    this.cutsceneParticleType = this._resolveCutsceneParticles(slide);
+    this.transitionAlpha = this.effectsEnabled ? 1 : 0;
+    this.transitionTimer = 0;
+    this.cameraZoom = Number.isFinite(slide.cameraZoom) ? slide.cameraZoom : 1;
+    this.cameraPan = { x: 0, y: 0 };
 
     // Efecto de sacudida opcional al entrar a la diapositiva (shake o cameraShake)
     const shakeParam = slide.cameraShake !== undefined ? slide.cameraShake : slide.shake;
@@ -248,6 +281,148 @@ export class AnimeCutsceneManager {
     if (typeof slide.onEnter === 'function') {
       slide.onEnter(this);
     }
+  }
+
+  /** Solicita un fundido a negro y luego avanza/termina la cinemática. */
+  _requestSlideAdvance() {
+    if (!this.currentScene || this.transitionPhase === 'out') return;
+    this.transitionPhase = 'out';
+    this.transitionTimer = 0;
+    this.pendingAdvance = this.currentSlideIndex + 1 < this.currentScene.slides.length ? 'next' : 'end';
+  }
+
+  _resolveCutsceneParticles(slide) {
+    const explicit = slide && (slide.particles || slide.ambient);
+    if (typeof explicit === 'string') return explicit;
+    if (Array.isArray(explicit) && explicit.length) return explicit[0];
+    const id = String((this.currentScene && this.currentScene.id) || '').toLowerCase();
+    const theme = String((slide && slide.theme) || '').toLowerCase();
+    if (theme === 'jail') return 'dust';
+    if (theme === 'divine') return 'sparks';
+    if (id.includes('alex')) return id.includes('prebattle') ? 'rain' : 'glitch';
+    if (id.includes('ending') || id.includes('victory') || theme === 'ending') return 'sparks';
+    return 'dust';
+  }
+
+  _makeCutsceneParticle(W, H) {
+    const artY = this.letterboxHeight;
+    const artH = H - this.letterboxHeight * 2;
+    const type = this.cutsceneParticleType;
+    const p = {
+      type, x: Math.random() * W, y: artY + Math.random() * artH,
+      vx: 0, vy: 0, life: 1, maxLife: 1, size: 1, color: '#cbd5e1',
+      phase: Math.random() * Math.PI * 2, w: 2, h: 1
+    };
+    if (type === 'rain') {
+      p.x = Math.random() * W;
+      p.y = artY - 8 - Math.random() * 20;
+      p.vx = -14; p.vy = 150 + Math.random() * 50;
+      p.life = p.maxLife = 1.0; p.color = '#7dd3fc'; p.size = 1;
+    } else if (type === 'snow') {
+      p.x = Math.random() * W; p.y = artY + Math.random() * artH;
+      p.vx = (Math.random() - 0.5) * 6; p.vy = 14 + Math.random() * 10;
+      p.life = p.maxLife = 3.5 + Math.random() * 2; p.color = '#e2e8f0'; p.size = 1;
+    } else if (type === 'sparks') {
+      p.x = Math.random() * W; p.y = artY + artH - Math.random() * 12;
+      p.vx = (Math.random() - 0.5) * 20; p.vy = -28 - Math.random() * 34;
+      p.life = p.maxLife = 0.8 + Math.random() * 0.8;
+      p.color = Math.random() < 0.5 ? '#fde047' : '#f97316'; p.size = 1;
+    } else if (type === 'glitch') {
+      p.x = Math.random() * W; p.y = artY + Math.random() * artH;
+      p.vx = 0; p.vy = 0; p.life = p.maxLife = 0.1 + Math.random() * 0.22;
+      p.w = 2 + Math.random() * 22; p.h = 1 + Math.random() * 2;
+      p.color = Math.random() < 0.5 ? '#22d3ee' : '#c084fc';
+    } else {
+      p.x = Math.random() * W; p.y = artY + Math.random() * artH;
+      p.vx = (Math.random() - 0.5) * 8; p.vy = -3 - Math.random() * 5;
+      p.life = p.maxLife = 2.5 + Math.random() * 2.5; p.color = '#94a3b8'; p.size = 1;
+    }
+    return p;
+  }
+
+  _updateCutsceneParticles(dt, slide) {
+    if (!this.effectsEnabled) {
+      this.cutsceneParticles = [];
+      return;
+    }
+    const W = this.viewportWidth;
+    const H = this.viewportHeight;
+    const artY = this.letterboxHeight;
+    const artH = H - this.letterboxHeight * 2;
+    const rate = { rain: 70, snow: 24, sparks: 28, glitch: 20, dust: 9 }[this.cutsceneParticleType] || 8;
+    this.particleSpawnAccumulator += dt * rate;
+    let guard = 0;
+    while (this.particleSpawnAccumulator >= 1 && this.cutsceneParticles.length < 52 && guard++ < 6) {
+      this.particleSpawnAccumulator -= 1;
+      this.cutsceneParticles.push(this._makeCutsceneParticle(W, H));
+    }
+    const t = this.animTimer;
+    for (let i = this.cutsceneParticles.length - 1; i >= 0; i--) {
+      const p = this.cutsceneParticles[i];
+      p.life -= dt;
+      if (p.life <= 0) {
+        this.cutsceneParticles.splice(i, 1);
+        continue;
+      }
+      if (p.type === 'rain') {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+      } else if (p.type === 'snow') {
+        p.x += p.vx * dt + Math.sin(t * 1.5 + p.phase) * 6 * dt;
+        p.y += p.vy * dt;
+      } else if (p.type === 'sparks') {
+        p.vy += 30 * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+      } else if (p.type === 'dust') {
+        p.x += p.vx * dt + Math.sin(t + p.phase) * 2 * dt;
+        p.y += p.vy * dt;
+      }
+      if (p.x < -10 || p.x > W + 10 || p.y > artY + artH + 12 || p.y < artY - 24) {
+        this.cutsceneParticles.splice(i, 1);
+      }
+    }
+  }
+
+  _renderCutsceneParticles(ctx, W, H) {
+    if (!this.effectsEnabled || !this.cutsceneParticles.length) return;
+    const artY = this.letterboxHeight;
+    const artH = H - this.letterboxHeight * 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, artY, W, artH);
+    ctx.clip();
+    for (const p of this.cutsceneParticles) {
+      const alpha = Math.max(0, Math.min(1, p.life / Math.max(0.01, p.maxLife)));
+      if (p.type === 'rain') {
+        ctx.globalAlpha = 0.25 + alpha * 0.5;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - 1.5, p.y + 5);
+        ctx.stroke();
+      } else if (p.type === 'snow') {
+        ctx.globalAlpha = 0.3 + alpha * 0.6;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.type === 'sparks') {
+        ctx.globalAlpha = 0.35 + alpha * 0.65;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, 1, 2);
+      } else if (p.type === 'glitch') {
+        ctx.globalAlpha = 0.25 + Math.random() * 0.45;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+      } else {
+        ctx.globalAlpha = 0.15 + alpha * 0.35;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, 1, 1);
+      }
+    }
+    ctx.restore();
   }
 
   cameraShake(intensity = 3.5, duration = 0.25) {
@@ -287,6 +462,44 @@ export class AnimeCutsceneManager {
     const slide = this.currentScene.slides[this.currentSlideIndex];
     if (!slide) return;
 
+    // (BLOQUE 3.1/3.3/3.4) Ken Burns + respiración de cámara + partículas.
+    this.slideElapsed += dt;
+    if (this.effectsEnabled) {
+      const baseZoom = Number.isFinite(slide.cameraZoom) ? slide.cameraZoom : 1;
+      const ken = slide.kenBurns === false ? 0 : Math.min(0.06, this.slideElapsed * 0.005);
+      this.cameraZoom = baseZoom + ken + Math.sin(this.animTimer * 0.7) * 0.006;
+      const pan = slide.cameraPan || {};
+      this.cameraPan.x = (pan.x || 0) + Math.sin(this.animTimer * 0.5) * 2;
+      this.cameraPan.y = (pan.y || 0) + Math.cos(this.animTimer * 0.4) * 1.4;
+    } else {
+      this.cameraZoom = 1;
+      this.cameraPan.x = 0;
+      this.cameraPan.y = 0;
+    }
+    this._updateCutsceneParticles(dt, slide);
+
+    // (BLOQUE 3.2) Fundido a negro entre diapositivas.
+    if (this.transitionPhase === 'out') {
+      this.transitionTimer += dt;
+      this.transitionAlpha = Math.min(1, this.transitionTimer / 0.18);
+      if (this.transitionTimer >= 0.18) {
+        if (this.pendingAdvance === 'end') {
+          this.endCutscene(false);
+          return;
+        }
+        this.currentSlideIndex += 1;
+        this._setupSlide(this.currentSlideIndex);
+        this.transitionPhase = 'in';
+        this.transitionTimer = 0;
+        this.pendingAdvance = null;
+      }
+      return;
+    }
+    this.transitionAlpha = Math.max(0, this.transitionAlpha - dt / 0.35);
+    if (this.transitionPhase === 'in' && this.transitionAlpha <= 0) {
+      this.transitionPhase = 'idle';
+    }
+
     const fullText = slide.dialogue || slide.text || '';
 
     // Avance del efecto Typewriter
@@ -318,12 +531,7 @@ export class AnimeCutsceneManager {
           input.consumeInteraction();
           input.consumePointerClick();
         }
-        if (this.currentSlideIndex + 1 < this.currentScene.slides.length) {
-          this.currentSlideIndex += 1;
-          this._setupSlide(this.currentSlideIndex);
-        } else {
-          this.endCutscene(false);
-        }
+        this._requestSlideAdvance();
         return;
       }
     }
@@ -353,12 +561,7 @@ export class AnimeCutsceneManager {
           if (this.music && typeof this.music.playMenuSelect === 'function') {
             this.music.playMenuSelect();
           }
-          if (this.currentSlideIndex + 1 < this.currentScene.slides.length) {
-            this.currentSlideIndex += 1;
-            this._setupSlide(this.currentSlideIndex);
-          } else {
-            this.endCutscene(false);
-          }
+          this._requestSlideAdvance();
         }
       }
     }
@@ -383,6 +586,9 @@ export class AnimeCutsceneManager {
     // 1. Ilustración de fondo de la escena (renderizada a partir de imagen real)
     this._renderSceneIllustration(ctx, slide, W, H);
 
+    // 1b. Partículas cinematográficas sobre la ilustración
+    this._renderCutsceneParticles(ctx, W, H);
+
     // 2. Barras negras cinematográficas (Letterbox) superior e inferior
     this._renderLetterboxBars(ctx, W, H);
 
@@ -393,6 +599,14 @@ export class AnimeCutsceneManager {
     if (this.flashAlpha > 0) {
       ctx.fillStyle = this.flashColor;
       ctx.globalAlpha = Math.min(1, Math.max(0, this.flashAlpha));
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1.0;
+    }
+
+    // (BLOQUE 3.2) Fundido/entrada desde negro.
+    if (this.transitionAlpha > 0) {
+      ctx.globalAlpha = Math.min(1, this.transitionAlpha);
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1.0;
     }
@@ -410,13 +624,23 @@ export class AnimeCutsceneManager {
 
     const src = this._resolveSlideImageSrc(slide);
     const img = src ? this.getImage(src) : null;
+    const zoom = this.effectsEnabled ? this.cameraZoom : 1;
+    const panX = this.effectsEnabled ? this.cameraPan.x : 0;
+    const panY = this.effectsEnabled ? this.cameraPan.y : 0;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, artY, W, artH);
+    ctx.clip();
+    ctx.translate(W / 2 + panX, artY + artH / 2 + panY);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-W / 2, -(artY + artH / 2));
 
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, 0, artY, W, artH);
     } else {
       // Fallback procedural nítido de alta definición (Canvas Synthwave 3D Grid)
-      ctx.save();
       ctx.beginPath();
       ctx.rect(0, artY, W, artH);
       ctx.clip();
@@ -428,8 +652,8 @@ export class AnimeCutsceneManager {
         'CONECTANDO TERMINAL RETRO...',
         slide.theme || 'cyber'
       );
-      ctx.restore();
     }
+    ctx.restore();
   }
 
   _renderLetterboxBars(ctx, W, H) {

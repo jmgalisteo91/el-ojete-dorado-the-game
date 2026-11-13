@@ -35,6 +35,7 @@ export class MainMenuAndScenes {
     this.previousStateBeforeLeaderboard = 'title';
     // (FIX B6) Mientras la despedida está en pantalla, el modal absorbe el input
     this.exitFarewellActive = false;
+    this._exitFallbackApplied = false;
     this._lastPointerX = -1;
     this._lastPointerY = -1;
 
@@ -47,24 +48,33 @@ export class MainMenuAndScenes {
     this.options = {
       muted: false,
       volumeSteps: 3, // 1=25%, 2=50%, 3=75%, 4=100%
-      textSpeed: 'normal' // 'normal' | 'fast' | 'instant'
+      textSpeed: 'normal', // 'normal' | 'fast' | 'instant'
+      visualEffects: true // bloom, scanlines, partículas y parallax
     };
     this._loadOptions();
 
     // Estrellas y partículas para el arte Pixel Art
-    this.stars = Array.from({ length: 42 }, (_, i) => ({
+    this.stars = Array.from({ length: 36 }, (_, i) => ({
       x: (i * 53 + 17) % viewportWidth,
       y: (i * 29 + 7) % 88,
       phase: (i * 1.3) % (Math.PI * 2),
       size: i % 5 === 0 ? 2 : 1
     }));
 
-    this.particles = Array.from({ length: 22 }, (_, i) => ({
+    this.particles = Array.from({ length: 18 }, (_, i) => ({
       x: (i * 37) % viewportWidth,
       y: 20 + ((i * 41) % 130),
       vy: -6 - (i % 5) * 3,
       vx: ((i % 3) - 1) * 4,
       phase: i * 0.7
+    }));
+
+    // Luciérnagas del título (aparecen/desaparecen cerca del suelo).
+    this.fireflies = Array.from({ length: 8 }, (_, i) => ({
+      x: 24 + ((i * 37) % (viewportWidth - 48)),
+      y: viewportHeight - 48 + ((i * 11) % 34),
+      phase: i * 1.7,
+      color: i % 2 === 0 ? '#b6f36b' : '#ffe066'
     }));
 
     // Estado de las escenas cinemáticas Pixel Art
@@ -344,7 +354,7 @@ export class MainMenuAndScenes {
     this.state = 'exit_screen';
     this.exitCountdown = 3.0;
     this._exitCloseTriggered = false;
-    this.music.setMode('silent');
+    this._exitFallbackApplied = false;
     this.music.setMode('silent');
     this.music.playMenuSelect();
     try {
@@ -372,6 +382,53 @@ export class MainMenuAndScenes {
         window.parent.postMessage('close-game', '*');
       }
     } catch {}
+
+    // (FIX EXIT) Si el navegador bloquea el cierre, dejamos el juego en un estado
+    // terminal y seguro: sin loop, sin audio, canvas oculto y mensaje de despedida.
+    this._applyExitFallback();
+  }
+
+  /**
+   * (FIX EXIT) Fallback cuando window.close() está bloqueado por el navegador.
+   * Detiene el juego, silencia el audio, oculta el canvas y actualiza el modal
+   * de despedida con el mensaje de cierre seguro.
+   */
+  _applyExitFallback() {
+    if (this._exitFallbackApplied) return;
+    this._exitFallbackApplied = true;
+    this.exitCountdown = 0;
+    this._exitCloseTriggered = true;
+    this.state = 'exit_screen';
+    this.exitFarewellActive = true;
+
+    try {
+      this.callbacks?.onExit?.();
+    } catch {}
+
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('exit-farewell-modal');
+    if (modal) modal.classList.remove('hidden');
+
+    const header = modal && modal.querySelector('.exit-modal-header span');
+    if (header) header.textContent = '✨ SESIÓN FINALIZADA ✨';
+    const title = modal && modal.querySelector('.exit-farewell-title');
+    if (title) title.textContent = 'El juego se ha cerrado';
+    const body = modal && modal.querySelector('.exit-farewell-body');
+    if (body) {
+      body.textContent = 'El juego se ha cerrado. Ya puedes cerrar esta pestaña de forma segura.';
+    }
+    const slogan = modal && modal.querySelector('.exit-farewell-slogan');
+    if (slogan) slogan.textContent = '¡¡¡GRACIAS POR JUGAR!!!';
+    const countdownText = document.getElementById('exit-farewell-countdown-text');
+    if (countdownText) countdownText.textContent = 'Sesión finalizada.';
+    const hint = document.getElementById('exit-farewell-hint');
+    if (hint) {
+      hint.textContent = 'Gracias por jugar a El Ojete Dorado. Puedes cerrar esta pestaña manualmente.';
+    }
+    const returnBtn = document.getElementById('exit-farewell-return-btn');
+    if (returnBtn) returnBtn.style.display = 'none';
+    const closeBtn = document.getElementById('exit-farewell-close-btn');
+    if (closeBtn) closeBtn.textContent = '✕ Cerrar Pestaña';
   }
 
   _ensureExitModals() {
@@ -510,6 +567,7 @@ export class MainMenuAndScenes {
   }
 
   _onExitCountdownComplete() {
+    if (this._exitFallbackApplied) return;
     if (typeof document === 'undefined') return;
     const textEl = document.getElementById('exit-farewell-countdown-text');
     if (textEl) {
@@ -882,6 +940,19 @@ export class MainMenuAndScenes {
               this.music.toggleSfxMute();
               if (typeof this.music.playTestBeep === 'function') this.music.playTestBeep();
             }
+          }
+        },
+        {
+          label: `Efectos Visuales: [◄ ${this.options.visualEffects !== false ? 'ON' : 'OFF'} ►]`,
+          onAdjust: () => {
+            this.options.visualEffects = this.options.visualEffects === false;
+            this.saveOptions();
+            this.music.playMenuMove();
+          },
+          action: () => {
+            this.options.visualEffects = this.options.visualEffects === false;
+            this.saveOptions();
+            this.music.playMenuSelect();
           }
         },
         {
@@ -1368,9 +1439,9 @@ export class MainMenuAndScenes {
     }
 
     const boxW = isTitle ? 168 : isGameOver ? 204 : 184;
-    const itemH = isTitle ? (count > 5 ? 12 : 14) : isGameOver ? 15 : (count > 5 ? 13 : 15);
+    const itemH = isTitle ? 9 : isGameOver ? 15 : (count > 5 ? 13 : 15);
     const startX = Math.round((this.viewportWidth - boxW) / 2);
-    let startY = isTitle ? (count > 5 ? 93 : 105) : isGameOver ? (count > 2 ? 96 : 108) : 56;
+    let startY = isTitle ? 80 : isGameOver ? (count > 2 ? 96 : 108) : 56;
     if (!isTitle && !isGameOver && count > 5) {
       const totalH = count * itemH;
       const winH = Math.min(160, totalH + 46);
@@ -1957,204 +2028,222 @@ export class MainMenuAndScenes {
     const H = this.viewportHeight;
     const t = this.animTime;
 
-    // 1. Degradado por bandas Pixel Art de cielo nocturno/crepuscular
-    const skyBands = [
-      { y: 0, h: 24, color: '#090d1c' },
-      { y: 24, h: 22, color: '#111936' },
-      { y: 46, h: 20, color: '#1b264f' },
-      { y: 66, h: 18, color: '#2b3366' },
-      { y: 84, h: 16, color: '#473b6b' },
-      { y: 100, h: 16, color: '#6e476b' }
-    ];
-    for (const b of skyBands) {
-      ctx.fillStyle = b.color;
-      ctx.fillRect(0, b.y, W, b.h);
-    }
+    // 1. Cielo cinematográfico: azul profundo → naranja oscuro de atardecer.
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#0a0a2a');
+    sky.addColorStop(0.48, '#171331');
+    sky.addColorStop(0.76, '#2e1c26');
+    sky.addColorStop(1, '#4a2a0a');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
 
-    // 2. Estrellas titilantes en Pixel Art
+    // 2. Parallax sutil con el ratón (10% para las montañas).
+    const mouseX = this._lastPointerX >= 0 ? this._lastPointerX : W / 2;
+    const parallax = (mouseX - W / 2) * 0.1;
+
+    // 3. Estrellas titilantes (36) con un parallax mínimo.
     for (const s of this.stars) {
-      const twinkle = Math.sin(t * 2.6 + s.phase);
-      if (twinkle > -0.2) {
-        ctx.fillStyle = twinkle > 0.55 ? '#fff3b0' : '#a8c5e6';
-        ctx.fillRect(s.x, s.y, s.size, s.size);
-      }
+      const twinkle = Math.sin(t * 2.2 + s.phase);
+      const alpha = 0.35 + 0.65 * (0.5 + 0.5 * twinkle);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = twinkle > 0.55 ? '#fff3b0' : '#a8c5e6';
+      ctx.fillRect(Math.round(s.x + parallax * 0.25), s.y, s.size, s.size);
     }
+    ctx.globalAlpha = 1;
 
-    // 3. Cordillera de montañas lejanas en Pixel Art
-    ctx.fillStyle = '#1d2238';
-    const peaks = [
-      [0, 108], [28, 76], [56, 98], [92, 68], [130, 96],
-      [160, 72], [198, 95], [236, 64], [276, 92], [304, 78], [320, 104]
-    ];
-    for (let x = 0; x < W; x += 2) {
-      // Interpolación escalonada pixelada de las cumbres
-      let seg = 0;
-      for (let i = 0; i < peaks.length - 1; i++) {
-        if (x >= peaks[i][0] && x <= peaks[i + 1][0]) {
-          seg = i;
-          break;
-        }
-      }
-      const [x0, y0] = peaks[seg];
-      const [x1, y1] = peaks[seg + 1] || [320, 104];
-      const ratio = (x - x0) / Math.max(1, x1 - x0);
-      const py = Math.round((y0 + (y1 - y0) * ratio) / 2) * 2;
-      ctx.fillStyle = '#1e243b';
-      ctx.fillRect(x, py, 2, H - py);
-      if (py < 78) {
-        ctx.fillStyle = '#c7d5e8';
-        ctx.fillRect(x, py, 2, 4);
-      }
+    // 4. Cordilleras lejanas y cercanas con siluetas pixeladas.
+    this._drawTitleRidge(ctx, W, H, parallax * 0.5, 104, '#151a2e', 11, 20);
+    this._drawTitleRidge(ctx, W, H, parallax, 121, '#0b1020', 15, 16);
+
+    // 5. Valle y reflejo dorado del horizonte.
+    ctx.fillStyle = '#07100e';
+    ctx.fillRect(0, 139, W, H - 139);
+    const glow = ctx.createLinearGradient(0, 132, 0, 158);
+    glow.addColorStop(0, 'rgba(255, 160, 60, 0.16)');
+    glow.addColorStop(1, 'rgba(255, 160, 60, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 132, W, 26);
+
+    // 6. Silueta del héroe de espaldas, respirando.
+    this._renderTitleSilhouette(ctx, W, H, t);
+
+    // 7. Luciérnagas verdes/amarillas cerca del suelo.
+    for (const f of this.fireflies) {
+      const fx = f.x + Math.sin(t * 0.4 + f.phase) * 10;
+      const fy = f.y + Math.sin(t * 0.9 + f.phase) * 6;
+      const a = 0.18 + 0.82 * (0.5 + 0.5 * Math.sin(t * 1.7 + f.phase));
+      ctx.globalAlpha = a;
+      ctx.fillStyle = f.color;
+      ctx.fillRect(Math.round(fx), Math.round(fy), 1, 1);
+      const fg = ctx.createRadialGradient(fx, fy, 0, fx, fy, 5);
+      fg.addColorStop(0, `rgba(190, 255, 120, ${(0.22 * a).toFixed(3)})`);
+      fg.addColorStop(1, 'rgba(190, 255, 120, 0)');
+      ctx.fillStyle = fg;
+      ctx.fillRect(fx - 5, fy - 5, 10, 10);
     }
+    ctx.globalAlpha = 1;
 
-    // 4. Colinas verdes oscuras y río reflejando luz dorada
-    ctx.fillStyle = '#142b29';
-    ctx.fillRect(0, 112, W, H - 112);
-
-    ctx.fillStyle = '#1d3d33';
-    for (let x = 0; x < W; x += 8) {
-      const treeH = 10 + ((x * 7) % 8);
-      ctx.fillRect(x, 112 - treeH, 6, treeH);
-      ctx.fillRect(x + 1, 110 - treeH, 4, 2);
-    }
-
-    // Río serpenteante al fondo
-    for (let y = 114; y < H; y += 2) {
-      const rx = 225 + Math.round(Math.sin(y * 0.12 + t) * 4);
-      const rw = 16 + Math.floor((y - 114) * 0.35);
-      ctx.fillStyle = '#1d4e75';
-      ctx.fillRect(rx, y, rw, 2);
-      if ((y + Math.floor(t * 6)) % 4 === 0) {
-        ctx.fillStyle = '#f6c967';
-        ctx.fillRect(rx + 4, y, Math.max(2, rw - 10), 1);
-      }
-    }
-
-    // 5. Acantilado en primer plano a la izquierda con nuestro Héroe y una hoguera
-    ctx.fillStyle = '#234930';
-    ctx.fillRect(0, 134, 88, 46);
-    ctx.fillStyle = '#366e42';
-    ctx.fillRect(0, 132, 84, 4);
-    ctx.fillStyle = '#4f9649';
-    ctx.fillRect(4, 132, 72, 2);
-
-    // Hoguera animada junto al héroe
-    const fireX = 54;
-    const fireY = 126;
-    const flicker = Math.floor(t * 8) % 2;
-    ctx.fillStyle = 'rgba(255, 190, 70, 0.22)';
-    ctx.beginPath();
-    ctx.arc(fireX + 4, fireY + 3, 18 + flicker * 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#5c3820';
-    ctx.fillRect(fireX, fireY + 5, 8, 2);
-    ctx.fillStyle = '#ff6b35';
-    ctx.fillRect(fireX + 1, fireY + 1 + flicker, 6, 4);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(fireX + 2, fireY + 2, 4, 3);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(fireX + 3, fireY + 3, 2, 1);
-
-    // Dibujar al Héroe en el acantilado mirando hacia el horizonte
-    if (this.assets && this.assets.charactersSheet) {
-      const heroRow = CHARACTER_TYPES.HERO * 4 + 3; // Dirección 'right'
-      ctx.drawImage(
-        this.assets.charactersSheet,
-        0,
-        heroRow * 16 * ATLAS_SCALE,
-        16 * ATLAS_SCALE,
-        16 * ATLAS_SCALE,
-        28,
-        118,
-        16,
-        16
-      );
-    }
-
-    // 6. Partículas doradas místicas flotando
+    // 8. Polvo dorado flotante (18 partículas sinusoidales).
     ctx.fillStyle = '#ffd885';
     for (const p of this.particles) {
       const py = (p.y + Math.floor(t * p.vy) + H) % H;
       const px = (p.x + Math.round(Math.sin(t * 1.5 + p.phase) * 6) + W) % W;
+      ctx.globalAlpha = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(t * 1.2 + p.phase));
       ctx.fillRect(px, py, 1, 1);
     }
+    ctx.globalAlpha = 1;
   }
 
-  /**
-   * Dibuja el emblema de "EL OJETE DORADO" y el título principal estilo Zelda.
-   */
-  _renderTitleHeader(ctx) {
-    const cx = Math.round(this.viewportWidth / 2);
-    const t = this.animTime;
-    const pulse = Math.sin(t * 3) * 1.5;
-
-    // Resplandor místico detrás del emblema
-    const grad = ctx.createRadialGradient(cx, 32, 2, cx, 32, 34 + pulse);
-    grad.addColorStop(0, 'rgba(255, 216, 110, 0.55)');
-    grad.addColorStop(0.6, 'rgba(229, 140, 40, 0.18)');
-    grad.addColorStop(1, 'rgba(229, 140, 40, 0)');
-    ctx.fillStyle = grad;
+  _drawTitleRidge(ctx, W, H, offset, baseY, color, amp, step) {
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(cx, 32, 36, 0, Math.PI * 2);
+    ctx.moveTo(-20, H);
+    for (let x = -20; x <= W + 20; x += step) {
+      const y =
+        baseY +
+        Math.sin((x + offset) * 0.034) * amp +
+        Math.sin((x + offset) * 0.011) * amp * 0.6;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W + 20, H);
+    ctx.closePath();
     ctx.fill();
+  }
 
-    // Emblema Pixel Art: "El Ojete Dorado" (Reliquia Anular Dorada con Alas estilo Zelda)
-    const ey = 16 + Math.round(Math.sin(t * 2.2));
-    // Alas doradas laterales
-    ctx.fillStyle = '#b8860b';
-    ctx.fillRect(cx - 26, ey + 6, 52, 4);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(cx - 24, ey + 5, 48, 2);
-    ctx.fillRect(cx - 18, ey + 9, 36, 2);
-    // Anillo exterior de oro macizo
-    ctx.fillStyle = '#9c640c';
-    ctx.fillRect(cx - 10, ey - 1, 20, 16);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(cx - 9, ey, 18, 14);
-    ctx.fillStyle = '#fff3b0';
-    ctx.fillRect(cx - 7, ey + 1, 14, 2);
-    // Centro del Ojete (Esmeralda/Abismo Místico con pupila dorada brillante)
-    ctx.fillStyle = '#121624';
-    ctx.fillRect(cx - 5, ey + 3, 10, 8);
-    ctx.fillStyle = '#2a9d8f';
-    ctx.fillRect(cx - 4, ey + 4, 8, 6);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(cx - 2, ey + 5, 4, 4);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 1, ey + 5, 1, 1);
+  _renderTitleSilhouette(ctx, W, H, t) {
+    const cx = Math.round(W / 2);
+    const breathe = Math.sin(t * 1.5) * 0.8;
+    const x = cx - 11;
+    const y = Math.round(H - 38 + breathe);
 
-    // Cinta / Estandarte del Título
+    ctx.save();
+    // Capa y torso oscuro.
+    ctx.fillStyle = '#04060c';
+    ctx.beginPath();
+    ctx.moveTo(x + 2, y + 22);
+    ctx.lineTo(x + 20, y + 22);
+    ctx.lineTo(x + 24, y + 34);
+    ctx.lineTo(x - 2, y + 34);
+    ctx.closePath();
+    ctx.fill();
+    // Piernas.
+    ctx.fillRect(x + 5, y + 28, 5, 8);
+    ctx.fillRect(x + 13, y + 28, 5, 8);
+    // Cuerpo y hombros.
+    ctx.fillRect(x + 4, y + 11, 16, 18);
+    ctx.fillRect(x + 2, y + 12, 2, 6);
+    ctx.fillRect(x + 20, y + 12, 2, 6);
+    // Cabeza y pelo de espaldas.
+    ctx.fillRect(x + 8, y + 3, 10, 9);
+    ctx.fillRect(x + 7, y + 2, 12, 3);
+    // Empuñadura de espada a la espalda.
+    ctx.fillStyle = '#1b1b24';
+    ctx.fillRect(x + 21, y + 8, 2, 15);
+    ctx.fillStyle = '#d9a441';
+    ctx.fillRect(x + 20, y + 7, 4, 2);
+    ctx.fillStyle = '#fde047';
+    ctx.fillRect(x + 21, y + 8, 1, 1);
+    // Borde de luz cálida en el lado derecho.
+    ctx.fillStyle = 'rgba(255, 200, 90, 0.35)';
+    ctx.fillRect(x + 21, y + 11, 1, 18);
+    ctx.fillStyle = 'rgba(255, 200, 90, 0.22)';
+    ctx.fillRect(x + 18, y + 2, 1, 10);
+    ctx.restore();
+  }
+
+  _renderTitleHeader(ctx) {
+    const W = this.viewportWidth;
+    const cx = Math.round(W / 2);
+    const t = this.animTime;
+
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
+    ctx.imageSmoothingEnabled = false;
 
-    // Sombra de texto Pixel Art y Título Principal
-    ctx.font = 'bold 15px monospace';
-    ctx.fillStyle = '#120d1f';
-    ctx.fillText('EL OJETE DORADO', cx + 1, 41);
-    ctx.fillText('EL OJETE DORADO', cx - 1, 41);
-    ctx.fillText('EL OJETE DORADO', cx, 42);
-    ctx.fillStyle = '#ffd166';
-    ctx.fillText('EL OJETE DORADO', cx, 40);
+    // 1. Título con degradado dorado→naranja, sombra de 2 px y parpadeo sutil.
+    const titleGrad = ctx.createLinearGradient(0, 8, 0, 26);
+    titleGrad.addColorStop(0, '#ffd700');
+    titleGrad.addColorStop(0.55, '#ffb300');
+    titleGrad.addColorStop(1, '#ff8c00');
+    const flicker = 0.88 + 0.12 * (0.5 + 0.5 * Math.sin(t * 0.5));
+    ctx.globalAlpha = flicker;
+    ctx.font = `bold 15px ${GAME_FONT_UI}`;
+    ctx.fillStyle = '#05030a';
+    ctx.fillText('EL OJETE DORADO', cx + 2, 9);
+    ctx.fillStyle = titleGrad;
+    ctx.fillText('EL OJETE DORADO', cx, 7);
+    ctx.globalAlpha = 1;
 
-    // Subtítulo estilo aventura Zelda
-    ctx.font = 'bold 7px monospace';
-    ctx.fillStyle = '#120d1f';
-    ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx + 1, 59);
+    ctx.font = `600 6px ${GAME_FONT_UI}`;
+    ctx.fillStyle = '#05030a';
+    ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx + 1, 28);
     ctx.fillStyle = '#7ae582';
-    ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx, 58);
+    ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx, 27);
+
+    // 2. Artefacto central flotante.
+    const ax = cx;
+    const ay = 50 + Math.sin(t * 2) * 5;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3);
+
+    // Halo radial dorado (lo realza el bloom).
+    const halo = ctx.createRadialGradient(ax, ay, 2, ax, ay, 32 + pulse * 4);
+    halo.addColorStop(0, `rgba(255, 225, 130, ${(0.5 + pulse * 0.15).toFixed(3)})`);
+    halo.addColorStop(0.45, 'rgba(255, 176, 50, 0.2)');
+    halo.addColorStop(1, 'rgba(255, 176, 50, 0)');
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = halo;
+    ctx.fillRect(ax - 40, ay - 40, 80, 80);
     ctx.restore();
 
-    // Versión oficial del juego en la esquina inferior derecha (sin solapar con botones)
-    ctx.save();
+    // Anillo exterior, anillo interior y brillo central.
+    ctx.strokeStyle = '#b8860b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ax, ay, 13, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(ax, ay, 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#fff3b0';
+    ctx.beginPath();
+    ctx.arc(ax, ay, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffb300';
+    ctx.beginPath();
+    ctx.arc(ax, ay, 4, 0, Math.PI * 2);
+    ctx.fill();
+    // Pupila/ojete central.
+    ctx.fillStyle = '#16120a';
+    ctx.beginPath();
+    ctx.arc(ax, ay, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff3b0';
+    ctx.fillRect(ax - 1, ay - 2, 1, 1);
+
+    // 3. Partículas orbitando el artefacto.
+    for (let i = 0; i < 8; i++) {
+      const angle = t * 0.8 + (i * Math.PI) / 4;
+      const radius = 18 + Math.sin(t * 2 + i) * 1.5;
+      const px = ax + Math.cos(angle) * radius;
+      const py = ay + Math.sin(angle) * radius * 0.72;
+      ctx.globalAlpha = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(t * 3 + i));
+      ctx.fillStyle = i % 2 === 0 ? '#ffd700' : '#fff3b0';
+      ctx.fillRect(Math.round(px), Math.round(py), 1, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    // 4. Versión oficial.
     ctx.font = `600 6.5px ${GAME_FONT_UI}`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillText(GAME_VERSION, this.viewportWidth - 5, this.viewportHeight - 3);
+    ctx.fillText(GAME_VERSION, W - 5, this.viewportHeight - 3);
     ctx.fillStyle = '#ffd885';
-    ctx.fillText(GAME_VERSION, this.viewportWidth - 6, this.viewportHeight - 4);
+    ctx.fillText(GAME_VERSION, W - 6, this.viewportHeight - 4);
     ctx.restore();
   }
 
@@ -2162,7 +2251,12 @@ export class MainMenuAndScenes {
     const hitboxes = this._getMenuHitboxes(items.length);
 
     ctx.save();
-    ctx.font = isTitle ? `600 6.5px ${GAME_FONT_UI}` : 'bold 7px monospace';
+    if (isTitle) {
+      this._renderTitleMenu(ctx, items, hitboxes);
+      ctx.restore();
+      return;
+    }
+    ctx.font = 'bold 7px monospace';
     ctx.textBaseline = 'top';
 
     items.forEach((item, idx) => {
@@ -2190,6 +2284,65 @@ export class MainMenuAndScenes {
         b.x + Math.round(b.w / 2),
         b.y + (isTitle ? 3 : 4)
       );
+    });
+
+    ctx.restore();
+  }
+
+
+  _renderTitleMenu(ctx, items, hitboxes) {
+    const t = this.animTime;
+    const panelX = 70;
+    const panelY = 74;
+    const panelW = 180;
+    const panelH = 72;
+
+    // Panel semitransparente negro para legibilidad.
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = 'rgba(255, 215, 0, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
+
+    ctx.font = `600 6.5px ${GAME_FONT_UI}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    items.forEach((item, idx) => {
+      const b = hitboxes[idx];
+      const selected = idx === this.selectedIndex;
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      const scale = selected ? 1.1 : 1;
+      const label = item.label;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+      ctx.fillText(label, 1, 1);
+      if (item.disabled) {
+        ctx.fillStyle = '#64748b';
+      } else {
+        ctx.fillStyle = selected ? '#ffd700' : '#f8fafc';
+      }
+      ctx.fillText(label, 0, 0);
+      ctx.restore();
+
+      // Puntero dorado animado a la izquierda de la opción seleccionada.
+      if (selected) {
+        const pointerX = b.x - 10 + Math.sin(t * 5) * 2;
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath();
+        ctx.moveTo(pointerX, cy - 3);
+        ctx.lineTo(pointerX + 5, cy);
+        ctx.lineTo(pointerX, cy + 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#fff3b0';
+        ctx.fillRect(pointerX + 1, cy - 1, 1, 1);
+      }
     });
 
     ctx.restore();

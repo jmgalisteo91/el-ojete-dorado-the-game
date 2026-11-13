@@ -23,6 +23,7 @@ import { WorldItem } from './entities/WorldItem.js?v=8';
 import { DialogueBox } from './ui/DialogueBox.js?v=8';
 import { Inventory, normalizeItemId } from './ui/Inventory.js?v=8';
 import { CharacterStats } from './ui/CharacterStats.js?v=8';
+import { ShopUI } from './ui/ShopUI.js?v=8';
 import { QuestLog } from './core/QuestLog.js?v=8';
 import { AchievementManager } from './core/AchievementManager.js?v=8';
 import { QuestLogView } from './ui/QuestLogView.js?v=8';
@@ -97,6 +98,7 @@ const STAGE_SCENE_IDS = new Set([
   'sword_temple',
   'mines_entry',
   'mines_puzzle',
+  'mines_boss_arena',
   'forge_entry',
   'forge_puzzle',
   'quantum_gate',
@@ -104,6 +106,80 @@ const STAGE_SCENE_IDS = new Set([
   'ai_citadel',
   'condemned_realms'
 ]);
+
+// (FIX SHOP) Catálogo central de compra. Precios, descripciones e iconos
+// provienen de las tiendas existentes; aquí se reutilizan para el modal.
+const SHOP_ITEMS = {
+  bread: {
+    id: 'bread', name: 'Pan Campesino', price: 3, icon: '🍞',
+    description: 'Pan recién horneado de Valleverde. Restaura 2 corazones y alimenta a Toby.',
+    iconIndex: ITEM_ICONS.BREAD
+  },
+  apple: {
+    id: 'apple', name: 'Manzana Crujiente', price: 2, icon: '🍎',
+    description: 'Manzana roja y jugosa del valle. Restaura 1 corazón entero.',
+    iconIndex: ITEM_ICONS.GOLDEN_APPLE
+  },
+  berry_pie: {
+    id: 'berry_pie', name: 'Pastel de Bayas', price: 5, icon: '🥧',
+    description: 'Exquisito pastel de arándanos y moras. Restaura la salud completa y aporta energía.',
+    iconIndex: ITEM_ICONS.BREAD
+  },
+  coffee: {
+    id: 'coffee', name: 'Café Compilado', price: 5, icon: '☕',
+    description: 'Restaura 1 corazón y purga un 40% de robotización binaria al instante.',
+    iconIndex: ITEM_ICONS.POTION
+  },
+  hotfix: {
+    id: 'hotfix', name: 'Parche Hotfix', price: 10, icon: '🩹',
+    description: 'Restaura toda tu salud al 100% y elimina cualquier bug o robotización residual.',
+    iconIndex: ITEM_ICONS.POTION
+  },
+  fish: {
+    id: 'fish', name: 'Trucha del Río Alba', price: 3, icon: '🐟',
+    description: 'Pescado fresco del río. Restaura 1.5 corazones al instante.',
+    iconIndex: ITEM_ICONS.FISH
+  },
+  spring_water: {
+    id: 'spring_water', name: 'Agua de Manantial', price: 1, icon: '🍶',
+    description: 'Agua purificada del pozo central de Valleverde. Refresca y calma.',
+    iconIndex: ITEM_ICONS.POTION
+  },
+  potion: {
+    id: 'potion', name: 'Poción Herbal', price: 4, icon: '🧪',
+    description: 'Elixir de flores curativas. Restaura toda la salud y aumenta la velocidad temporalmente.',
+    iconIndex: ITEM_ICONS.POTION
+  },
+  ointment: {
+    id: 'ointment', name: 'Ungüento Antirrobo', price: 6, icon: '🌿',
+    description: 'Bálsamo orgánico de savia de abeto. Purga un 50% de la robotización binaria.',
+    iconIndex: ITEM_ICONS.POTION
+  },
+  wheat: {
+    id: 'wheat', name: 'Trigo Fresco', price: 2, icon: '🌾',
+    description: 'Espigas doradas para alimentar ovejas y gallinas.',
+    iconIndex: ITEM_ICONS.WHEAT
+  },
+  potion_armor: {
+    id: 'potion_armor', name: 'Poción de Blindaje', price: 12, icon: '🛡️',
+    description: 'Elixir de aleación resplandeciente. Reconstituye los 3 corazones blindados de la Armadura Binaria.',
+    iconIndex: ITEM_ICONS.POTION_ARMOR
+  }
+};
+
+const SELL_CATALOG = [
+  { id: 'drone_scrap', name: 'Restos de Chatarra', price: 10, icon: '⚙️' },
+  { id: 'silicon_flower', name: 'Flor de Silicio', price: 8, icon: '🌸' },
+  { id: 'fish', name: 'Trucha del Río Alba', price: 5, icon: '🐟' },
+  { id: 'bread', name: 'Pan Campesino', price: 2, icon: '🍞' },
+  { id: 'wheat', name: 'Trigo Fresco', price: 1, icon: '🌾' },
+  { id: 'apple', name: 'Manzana Crujiente', price: 2, icon: '🍎' },
+  { id: 'potion', name: 'Poción Herbal', price: 2, icon: '🧪' },
+  { id: 'potion_armor', name: 'Poción de Blindaje', price: 6, icon: '🛡️' },
+  { id: 'ointment', name: 'Ungüento Antirrobo', price: 3, icon: '🌿' },
+  { id: 'coffee', name: 'Café Compilado', price: 4, icon: '☕' },
+  { id: 'spring_water', name: 'Agua de Manantial', price: 2, icon: '🍶' }
+];
 
 const CORE_CHEST_GUARDIANS = {
   chest_nucleo_stack: 'boss_stack_overflow',
@@ -279,6 +355,9 @@ export class RPGGame {
       armoredAnimator: new SpriteAnimator(assets.charactersSheet, CHARACTER_TYPES.HERO_ARMORED)
     });
 
+    // (FIX SHOP) Modal Canvas 2D de compra/venta por cantidad
+    this.shopUI = new ShopUI(this);
+
     this.aiBrain = new AIBotBrain(() => ({
       time: this.dayNight.getFormattedTime(),
       phase: this.dayNight.getPhaseLabel(),
@@ -352,6 +431,12 @@ export class RPGGame {
         onNewGame: () => this._startNewGame(),
         onLoadGame: () => this._loadGameFromStorage(),
         onSaveGame: (opts) => this._saveGameToStorage(opts || { manual: true }),
+        // (FIX EXIT) Fallback real cuando el navegador bloquea window.close()
+        onExit: () => {
+          try { this.loop.stop(); } catch {}
+          try { this.music.setMode('silent'); } catch {}
+          try { if (this.canvas) this.canvas.style.visibility = 'hidden'; } catch {}
+        },
         onOpenCloudSave: () => this._openCloudSaveModal(),
         onOpenCloudLoad: () => this._openCloudLoadModal(),
         getSaveSummary: () => this._getSaveSummary(),
@@ -495,6 +580,20 @@ export class RPGGame {
       instant: 900
     };
     this.dialogueBox.setBaseCharSpeed(speedMap[opts.textSpeed] || 40);
+
+    // (BLOQUES 1/2/3) Efectos visuales configurables desde Opciones.
+    const effectsOn = opts.visualEffects !== false;
+    if (this.renderPipeline && typeof this.renderPipeline.setEffects === 'function') {
+      this.renderPipeline.setEffects({
+        bloom: effectsOn,
+        scanlines: effectsOn,
+        particles: effectsOn,
+        parallax: effectsOn
+      });
+    }
+    if (this.animeCutscenes) {
+      this.animeCutscenes.effectsEnabled = effectsOn && this.performanceProfile !== 'low';
+    }
   }
 
   _resetWorldToInitialState() {
@@ -1353,6 +1452,8 @@ export class RPGGame {
             ? 'stage1'
             : 'village'
       );
+      // (FIX 3) Al cargar una partida dentro de la arena, respetar el Núcleo del Stack
+      this._syncMinesBossArenaGate();
       return true;
     } catch {
       return false;
@@ -1560,62 +1661,27 @@ export class RPGGame {
     );
   }
 
-  _getSellChoices(npcName, returnChoices) {
-    const sellCatalog = [
-      { id: 'drone_scrap', name: 'Restos de Chatarra', price: 10 },
-      { id: 'silicon_flower', name: 'Flor de Silicio', price: 8 },
-      { id: 'fish', name: 'Trucha del Río Alba', price: 5 },
-      { id: 'bread', name: 'Pan Campesino', price: 2 },
-      { id: 'wheat', name: 'Trigo Fresco', price: 1 },
-      { id: 'apple', name: 'Manzana Crujiente', price: 2 },
-      { id: 'potion', name: 'Poción Herbal', price: 2 },
-      { id: 'potion_armor', name: 'Poción de Blindaje', price: 6 },
-      { id: 'ointment', name: 'Ungüento Antirrobo', price: 3 },
-      { id: 'coffee', name: 'Café Compilado', price: 4 },
-      { id: 'spring_water', name: 'Agua de Manantial', price: 2 }
-    ];
+  /** (FIX SHOP) Abre el modal de compra por cantidad. */
+  _openBuyShop(title, itemIds) {
+    if (!this.shopUI || !Array.isArray(itemIds)) return;
+    const entries = itemIds.map((id) => SHOP_ITEMS[id]).filter(Boolean);
+    if (entries.length === 0) return;
+    this.shopUI.open({ title, mode: 'buy', entries });
+  }
 
-    const choices = [];
-    for (const entry of sellCatalog) {
-      const count = this.inventory ? this.inventory.getItemCount(entry.id) : 0;
-      if (count > 0) {
-        choices.push({
-          label: `💰 Vender ${entry.name} (+${entry.price} 🪙) [Tienes: ${count}]`,
-          onSelect: () => {
-            this.inventory.consumeItem(entry.id, 1);
-            this.player.coins += entry.price;
-            if (this.music) this.music.playMenuSelect();
-            this._saveGameToStorage();
-            this.dialogueBox.showMessage(npcName, [
-              `¡Trato cerrado! Te compro 1x [${entry.name}] por [${entry.price} 🪙].`,
-              `Saldo actual: 💰 ${this.player.coins} Bytes.`
-            ], this._getSellChoices(npcName, returnChoices));
-          }
-        });
+  /** (FIX SHOP) Abre el modal de venta por cantidad con el stock actual. */
+  _openSellShop(title) {
+    if (!this.shopUI) return;
+    const entries = SELL_CATALOG
+      .map((entry) => ({ ...entry, count: this.inventory.getItemCount(entry.id) }))
+      .filter((entry) => entry.count > 0);
+    if (entries.length === 0) {
+      if (this.menuSystem) {
+        this.menuSystem.showNotice('🎒 No tienes materiales ni consumibles para vender.', 2.5);
       }
+      return;
     }
-
-    if (choices.length === 0) {
-      choices.push({
-        label: '(No tienes materiales ni consumibles para vender)',
-        onSelect: () => {
-          this.dialogueBox.showMessage(npcName, [
-            'No llevas chatarra, flores ni víveres para vender en este momento.'
-          ], returnChoices);
-        }
-      });
-    }
-
-    choices.push({
-      label: '↩ Volver',
-      onSelect: () => {
-        this.dialogueBox.showMessage(npcName, [
-          `¿En qué más te puedo ayudar? Saldo: 💰 ${this.player.coins} 🪙.`
-        ], returnChoices);
-      }
-    });
-
-    return choices;
+    this.shopUI.open({ title, mode: 'sell', entries });
   }
 
   _buildOracleChoices() {
@@ -1948,11 +2014,7 @@ export class RPGGame {
       },
       {
         label: '💰 Vender plantas / materiales',
-        onSelect: () => {
-          this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-            'Compro flores de silicio, bayas, truchas y elixires para mis preparados botánicos.'
-          ], this._getSellChoices('Herbolaria Lyra · Alquimista', this._getHerbChoices()));
-        }
+        onSelect: () => this._openSellShop('Herbolaria Lyra · Alquimista')
       },
       {
         label: '¿Me das Trigo para los animales?',
@@ -2038,60 +2100,12 @@ export class RPGGame {
         }
       },
       {
-        label: `🐟 Comprar Trucha del Río Alba (3 🪙) [Tienes: ${this.player.coins}🪙]`,
-        onSelect: () => {
-          if (this.player.coins < 3) {
-            this.dialogueBox.showMessage('Finn · Pescador', [
-              'La trucha plateada cuesta 3 monedas.'
-            ], this._getFinnChoices());
-            return;
-          }
-          this.player.coins -= 3;
-          this.inventory.addItem({
-            id: 'fish',
-            name: 'Trucha del Río Alba',
-            description: 'Pescado fresco del río. Restaura 1.5 corazones al instante.',
-            iconIndex: ITEM_ICONS.FISH,
-            qty: 1
-          });
-          this.music.playFanfare();
-          this._saveGameToStorage();
-          this.dialogueBox.showMessage('Finn · Pescador', [
-            '¡Marchando una trucha fresca! Jugosa y repleta de proteínas para la aventura.'
-          ], this._getFinnChoices());
-        }
-      },
-      {
-        label: `🍶 Comprar Botella de Agua de Manantial (1 🪙) [Tienes: ${this.player.coins}🪙]`,
-        onSelect: () => {
-          if (this.player.coins < 1) {
-            this.dialogueBox.showMessage('Finn · Pescador', [
-              'El agua fresca del pozo cuesta solo 1 🪙.'
-            ], this._getFinnChoices());
-            return;
-          }
-          this.player.coins -= 1;
-          this.inventory.addItem({
-            id: 'spring_water',
-            name: 'Agua de Manantial',
-            description: 'Agua purificada del pozo central de Valleverde. Refresca y calma.',
-            iconIndex: ITEM_ICONS.POTION,
-            qty: 1
-          });
-          this.music.playFanfare();
-          this._saveGameToStorage();
-          this.dialogueBox.showMessage('Finn · Pescador', [
-            '¡Agua cristalina y fresca! Perfecta para recuperar el aliento en el camino.'
-          ], this._getFinnChoices());
-        }
+        label: '🛒 Comprar pescado y agua (cantidad)',
+        onSelect: () => this._openBuyShop('Finn · Pescador del Río Alba', ['fish', 'spring_water'])
       },
       {
         label: '💰 Vender pescado / materiales',
-        onSelect: () => {
-          this.dialogueBox.showMessage('Finn · Pescador del Río Alba', [
-            'Compro truchas, agua de manantial, pan y restos que hayas pescado en tus viajes.'
-          ], this._getSellChoices('Finn · Pescador del Río Alba', this._getFinnChoices()));
-        }
+        onSelect: () => this._openSellShop('Finn · Pescador del Río Alba')
       },
       {
         label: '¿Puedo pasar a tu casa?',
@@ -2486,8 +2500,8 @@ export class RPGGame {
             lines: this.tilemap.bridgeForceUnlocked
               ? ((this.player.level || 1) < 2
                   ? [
-                      '⚠️ ¡Cuidado, recluta! El puente del este está físicamente abierto, pero la guardia tiene orden de no dejar pasar a nadie por debajo del NIVEL 2.',
-                      '¡Derrota algunos bugs menores en Valleverde para subir al Nivel 2 y cruzar con garantías!'
+                      '⚠️ ¡Cuidado, recluta! El puente del este está físicamente abierto, pero la guardia recomienda no cruzar por debajo del NIVEL 2.',
+                      'Las Ruinas del Despertar, al otro lado, son el campo de entrenamiento: sus criaturas te darán la experiencia para subir de nivel.'
                     ]
                   : [
                       '¡Paso expedito! Cuentas con Nivel 2+ y el puente está abierto por orden del Sabio Aurelio.',
@@ -2508,7 +2522,7 @@ export class RPGGame {
         x: 19.5 * 16,
         y: 9.2 * 16,
         speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERO),
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_RED),
         behavior: 'static',
         initialDirection: 'down',
         ambientPhrases: [
@@ -2520,77 +2534,8 @@ export class RPGGame {
         getDialogues: () => {
           const storeChoices = [
             {
-              label: `☕ Comprar Café Compilado (5 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 5) {
-                  this.dialogueBox.showMessage('Mercader Byte', [
-                    '¡Error 402: Payment Required! No tienes suficientes monedas para el Café Compilado (cuesta 5 🪙).'
-                  ], storeChoices);
-                  return;
-                }
-                this.player.coins -= 5;
-                this.inventory.addItem({
-                  id: 'coffee',
-                  name: 'Café Compilado',
-                  description: 'Restaura 1 corazón y purga un 40% de robotización binaria al instante.',
-                  iconIndex: ITEM_ICONS.POTION,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Mercader Byte', [
-                  '¡Marchando una taza humeante de Café Compilado!',
-                  'Bébelo abriendo la mochila con [I] para recuperar vida y bajar la robotización de la Armadura Binaria.'
-                ], storeChoices);
-              }
-            },
-            {
-              label: `🩹 Comprar Parche Hotfix (10 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 10) {
-                  this.dialogueBox.showMessage('Mercader Byte', [
-                    'Fondos insuficientes para el Parche Hotfix (cuesta 10 🪙).'
-                  ], storeChoices);
-                  return;
-                }
-                this.player.coins -= 10;
-                this.inventory.addItem({
-                  id: 'hotfix',
-                  name: 'Parche Hotfix',
-                  description: 'Restaura toda tu salud al 100% y elimina cualquier bug o robotización residual.',
-                  iconIndex: ITEM_ICONS.POTION,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Mercader Byte', [
-                  '¡Parche Hotfix listo para producción! Te recuperará toda la vida y desarmará cualquier anomalía binaria.'
-                ], storeChoices);
-              }
-            },
-            {
-              label: `🍞 Comprar Pan Campesino (3 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 3) {
-                  this.dialogueBox.showMessage('Mercader Byte', [
-                    'El pan campesino vale 3 monedas. Vuelve cuando tengas saldo.'
-                  ], storeChoices);
-                  return;
-                }
-                this.player.coins -= 3;
-                this.inventory.addItem({
-                  id: 'bread',
-                  name: 'Pan Campesino',
-                  description: 'Pan recién horneado de Valleverde. Restaura fuerzas o alimenta al perro Toby.',
-                  iconIndex: ITEM_ICONS.BREAD,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Mercader Byte', [
-                  '¡Pan recién sacado del horno de Brom! ¡Que aproveche!'
-                ], storeChoices);
-              }
+              label: '🛒 Comprar consumibles (cantidad)',
+              onSelect: () => this._openBuyShop('Mercader Byte · Dependencias', ['coffee', 'hotfix', 'bread'])
             },
             {
               label: `💾 Comprar Disquete de Respaldo (15 🪙) [Tienes: ${this.player.coins}🪙]`,
@@ -2611,11 +2556,7 @@ export class RPGGame {
             },
             {
               label: '💰 Vender materiales / consumibles',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Mercader Byte', [
-                  'Compro chatarra, elixires, pescado y vituallas. ¿Qué me ofreces?'
-                ], this._getSellChoices('Mercader Byte', storeChoices));
-              }
+              onSelect: () => this._openSellShop('Mercader Byte · Dependencias')
             },
             {
               label: 'Cuéntame tu vida y oficio (Chapa)',
@@ -2643,7 +2584,7 @@ export class RPGGame {
         x: 14.5 * 16,
         y: 9.2 * 16,
         speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERBALIST),
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_RED),
         behavior: 'static',
         initialDirection: 'down',
         ambientPhrases: [
@@ -2654,84 +2595,12 @@ export class RPGGame {
         getDialogues: () => {
           const foodChoices = [
             {
-              label: `🍎 Comprar Manzana Crujiente (2 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 2) {
-                  this.dialogueBox.showMessage('Clara · Panadería', [
-                    'Las manzanas cuestan 2 🪙. ¡Vuelve con unas pocas monedas!'
-                  ], foodChoices);
-                  return;
-                }
-                this.player.coins -= 2;
-                this.inventory.addItem({
-                  id: 'apple',
-                  name: 'Manzana Crujiente',
-                  description: 'Manzana roja y jugosa del valle. Restaura 1 corazón entero.',
-                  iconIndex: ITEM_ICONS.GOLDEN_APPLE,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Clara · Panadería', [
-                  '¡Marchando una manzana crujiente y dulce! ¡Buen provecho!'
-                ], foodChoices);
-              }
-            },
-            {
-              label: `🍞 Comprar Pan Campesino (3 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 3) {
-                  this.dialogueBox.showMessage('Clara · Panadería', [
-                    'El pan campesino vale 3 monedas.'
-                  ], foodChoices);
-                  return;
-                }
-                this.player.coins -= 3;
-                this.inventory.addItem({
-                  id: 'bread',
-                  name: 'Pan Campesino',
-                  description: 'Hogaza de pan blanco horneada esta mañana. Restaura 2 corazones.',
-                  iconIndex: ITEM_ICONS.BREAD,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Clara · Panadería', [
-                  '¡Aquí tienes! La corteza está en su punto perfecto.'
-                ], foodChoices);
-              }
-            },
-            {
-              label: `🥧 Comprar Pastel de Bayas (5 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 5) {
-                  this.dialogueBox.showMessage('Clara · Panadería', [
-                    'El pastel artesano de bayas silvestres vale 5 🪙.'
-                  ], foodChoices);
-                  return;
-                }
-                this.player.coins -= 5;
-                this.inventory.addItem({
-                  id: 'berry_pie',
-                  name: 'Pastel de Bayas',
-                  description: 'Exquisito pastel de arándanos y moras. Restaura la salud completa y aporta energía.',
-                  iconIndex: ITEM_ICONS.BREAD,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Clara · Panadería', [
-                  '¡Una delicia recién desmoldada! Restaura tu vida al 100% y te llena de brío.'
-                ], foodChoices);
-              }
+              label: '🛒 Comprar panadería (cantidad)',
+              onSelect: () => this._openBuyShop('Clara · Panadería y Frutas', ['apple', 'bread', 'berry_pie'])
             },
             {
               label: '💰 Vender provisiones / cosechas',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Clara · Panadería y Frutas', [
-                  'Compro manzanas, trigo, pan, pescado y bayas cosechadas. ¿Qué vendes?'
-                ], this._getSellChoices('Clara · Panadería y Frutas', foodChoices));
-              }
+              onSelect: () => this._openSellShop('Clara · Panadería y Frutas')
             },
             {
               label: '¿Puedo pasar a tu casa?',
@@ -2764,7 +2633,7 @@ export class RPGGame {
         x: 14.5 * 16,
         y: 14.2 * 16,
         speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERBALIST),
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_BLUE),
         behavior: 'static',
         initialDirection: 'down',
         ambientPhrases: [
@@ -2775,108 +2644,12 @@ export class RPGGame {
         getDialogues: () => {
           const herbChoices = [
             {
-              label: `🧪 Comprar Poción Herbal (4 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 4) {
-                  this.dialogueBox.showMessage('Pip · Herboristería', [
-                    'La poción herbal cuesta 4 monedas.'
-                  ], herbChoices);
-                  return;
-                }
-                this.player.coins -= 4;
-                this.inventory.addItem({
-                  id: 'potion',
-                  name: 'Poción Herbal',
-                  description: 'Elixir de flores curativas. Restaura toda la salud y aumenta la velocidad temporalmente.',
-                  iconIndex: ITEM_ICONS.POTION,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Pip · Herboristería', [
-                  '¡Aquí tienes tu Poción Herbal! Huele a menta y tomillo silvestre.'
-                ], herbChoices);
-              }
-            },
-            {
-              label: `🌿 Comprar Ungüento Antirrobo (6 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 6) {
-                  this.dialogueBox.showMessage('Pip · Herboristería', [
-                    'El ungüento purificador vale 6 🪙.'
-                  ], herbChoices);
-                  return;
-                }
-                this.player.coins -= 6;
-                this.inventory.addItem({
-                  id: 'ointment',
-                  name: 'Ungüento Antirrobo',
-                  description: 'Bálsamo orgánico de savia de abeto. Purga un 50% de la robotización binaria.',
-                  iconIndex: ITEM_ICONS.POTION,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Pip · Herboristería', [
-                  '¡Ungüento entregado! Si la Armadura Binaria empieza a volverte máquina, frótatelo.'
-                ], herbChoices);
-              }
-            },
-            {
-              label: `🌾 Comprar Manojo de Trigo (2 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 2) {
-                  this.dialogueBox.showMessage('Pip · Herboristería', [
-                    'El trigo cuesta 2 monedas.'
-                  ], herbChoices);
-                  return;
-                }
-                this.player.coins -= 2;
-                this.inventory.addItem({
-                  id: 'wheat',
-                  name: 'Trigo Fresco',
-                  description: 'Espigas doradas para alimentar ovejas y gallinas.',
-                  iconIndex: ITEM_ICONS.WHEAT,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Pip · Herboristería', [
-                  '¡Espigas de trigo de primera! A la oveja Copito le chiflan.'
-                ], herbChoices);
-              }
-            },
-            {
-              label: `🛡️ Comprar Poción de Blindaje (12 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 12) {
-                  this.dialogueBox.showMessage('Pip · Herboristería', [
-                    'La Poción de Blindaje cuesta 12 monedas.'
-                  ], herbChoices);
-                  return;
-                }
-                this.player.coins -= 12;
-                this.inventory.addItem({
-                  id: 'potion_armor',
-                  name: 'Poción de Blindaje',
-                  description: 'Elixir de aleación resplandeciente. Reconstituye los 3 corazones blindados de la Armadura Binaria.',
-                  iconIndex: ITEM_ICONS.POTION_ARMOR,
-                  qty: 1
-                });
-                this.music.playFanfare();
-                this._saveGameToStorage();
-                this.dialogueBox.showMessage('Pip · Herboristería', [
-                  '¡Aquí tienes tu Poción de Blindaje! Destilada con minerales fractales para reconstituir tu coraza protectora.'
-                ], herbChoices);
-              }
+              label: '🛒 Comprar herboristería (cantidad)',
+              onSelect: () => this._openBuyShop('Pip · Herboristería', ['potion', 'ointment', 'wheat', 'potion_armor'])
             },
             {
               label: '💰 Vender hierbas / elixires',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Pip · Herboristería', [
-                  'Compro flores de silicio, pociones, ungüentos y materiales de alquimia. ¿Qué vendes?'
-                ], this._getSellChoices('Pip · Herboristería', herbChoices));
-              }
+              onSelect: () => this._openSellShop('Pip · Herboristería')
             },
             {
               label: 'Hasta luego, Pip',
@@ -2900,7 +2673,7 @@ export class RPGGame {
         x: 19.5 * 16,
         y: 14.2 * 16,
         speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.BLACKSMITH),
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_GREEN),
         behavior: 'static',
         initialDirection: 'down',
         ambientPhrases: [
@@ -3583,42 +3356,8 @@ export class RPGGame {
     const sheet = this.assets.charactersSheet;
 
     return [
-      // ==================== CAMPO DE ENTRENAMIENTO DE VALLEVERDE (SPARRING Y XP) ====================
-      new Enemy({
-        id: 'drone_training_1',
-        archetype: 'grunt',
-        name: 'Dron de Entrenamiento del Binario',
-        x: 23 * 16,
-        y: 20 * 16,
-        sceneId: 'overworld',
-        speed: 50,
-        maxHp: 2,
-        aggroRange: 120,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 23 * 16, y: 20 * 16 },
-          { x: 25 * 16, y: 20 * 16 },
-          { x: 25 * 16, y: 21 * 16 },
-          { x: 23 * 16, y: 21 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'drone_training_2',
-        archetype: 'grunt',
-        name: 'Bug de Práctica de Valleverde',
-        x: 24 * 16,
-        y: 21 * 16,
-        sceneId: 'overworld',
-        speed: 50,
-        maxHp: 2,
-        aggroRange: 120,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 24 * 16, y: 21 * 16 },
-          { x: 23 * 16, y: 21 * 16 },
-          { x: 23 * 16, y: 20 * 16 }
-        ]
-      }),
+      // (FIX 5) Valleverde es un hub PACÍFICO: sin enemigos de día ni de noche.
+      // El entrenamiento inicial se hace en las Ruinas del Despertar (first_stage).
 
       // ==================== ENEMIGOS EN RUINAS DEL DESPERTAR (EXTERIOR) ====================
       new Enemy({
@@ -3864,11 +3603,11 @@ export class RPGGame {
         sceneId: 'sewers_dungeon'
       }),
 
-      // Jefe Regional: El Guardián del Stack Overflow (Templo de la Espada · 32 HP)
+      // Jefe Regional: El Guardián del Stack Overflow (Arena de las Minas · 32 HP)
       new StackOverflowBoss({
-        x: 11.5 * 16,
-        y: 4.5 * 16,
-        sceneId: 'sword_temple'
+        x: 6 * 16,
+        y: 2.5 * 16,
+        sceneId: 'mines_boss_arena'
       }),
 
       // Jefe Regional: El Microondas Prototipo V0.1 Alpha (Umbral de la Fortaleza · 42 HP)
@@ -3878,7 +3617,7 @@ export class RPGGame {
         sceneId: 'ai_fortress_gate'
       }),
 
-      // Batalla Definitiva: Mister AI Alex y El Microondas Cuántico (Ciudadela · El Gran Ojal · 55 HP)
+      // Batalla Definitiva: Mister AI Alex y El Microondas Cuántico (Ciudadela · El Gran Ojal · 150 HP / 3 fases)
       new FinalBossAlex({
         x: 11.5 * 16,
         y: 6.5 * 16,
@@ -3924,7 +3663,7 @@ export class RPGGame {
   /**
    * (FIX NPC.4) Amenaza de combate real para un NPC: el enemigo despierto (persiguiendo
    * o alertado) más cercano dentro del radio. No basta con que haya esbirros vivos en la
-   * escena: los dos drones de entrenamiento del pueblo harían huir a todos en bucle.
+   * escena: solo cuentan los que están realmente despiertos y persiguiendo.
    */
   _findNPCThreat(npc, enemies, radius = 160) {
     if (!npc || !Array.isArray(enemies) || enemies.length === 0) return null;
@@ -4738,20 +4477,19 @@ export class RPGGame {
     this._saveGameToStorage();
   }
 
-  _getQuickSlotConsumable(quickKey = 'KeyR') {
+  _getQuickSlotConsumable(quickKey = 'Digit1') {
     if (!this.inventory || !Array.isArray(this.inventory.items)) return null;
-    
-    // Mapear tecla a índice de consumible rápido (R=0, 1=1, 2=2, 3=3, 4=4, 5=5)
+
+    // (FIX QUICK) Las ranuras rápidas son SOLO 1-5; R queda para Lanzar Tronco.
     const keyToIndex = {
-      'KeyR': 0,
       'Digit1': 0,
       'Digit2': 1,
       'Digit3': 2,
       'Digit4': 3,
       'Digit5': 4
     };
-    
-    const index = typeof quickKey === 'string' && keyToIndex[quickKey] !== undefined ? keyToIndex[quickKey] : 0;
+    const index = typeof quickKey === 'string' ? keyToIndex[quickKey] : undefined;
+    if (index === undefined) return null;
     
     // Ítems de consumible rápido en orden: [0]=poción armor, [1]=poción, [2]=café, [3]=pan, [4]=trucha
     const quickSlotIds = ['potion_armor', 'potion', 'coffee', 'bread', 'fish'];
@@ -4762,7 +4500,7 @@ export class RPGGame {
     return item || null;
   }
 
-  _useQuickSlotConsumable(quickKey = 'KeyR') {
+  _useQuickSlotConsumable(quickKey = 'Digit1') {
     const item = this._getQuickSlotConsumable(quickKey);
     if (!item) {
       this.menuSystem.showNotice('🎒 Sin consumibles rápidos en la mochila', 2.0);
@@ -5173,7 +4911,7 @@ export class RPGGame {
         if (item.id === 'dawn_sword') {
           this.player.hasSword = true;
           if (this.questLog) {
-            this.questLog.advanceStep('quest_code_temples', '¡Armadura y Espada consagradas! Derrota al Guardián del Stack Overflow en la Cámara Norte del Templo para abrir la ruta a la Ciudadela.');
+            this.questLog.advanceStep('quest_code_temples', '¡Armadura y Espada consagradas! Derrota al Guardián del Stack Overflow en la Arena de las Minas para abrir la ruta a la Ciudadela.');
           }
           if (this.player.hasArmor && this.player.hasSword) {
             this.tilemap.unlockFirstStageGate();
@@ -5707,6 +5445,17 @@ export class RPGGame {
     }
   }
 
+  /** (FIX 3) Sincroniza la puerta norte de mines_boss_arena con el Núcleo del Stack. */
+  _syncMinesBossArenaGate() {
+    if (
+      this.tilemap &&
+      this.tilemap.currentSceneId === 'mines_boss_arena' &&
+      typeof this.tilemap.setMinesBossArenaGate === 'function'
+    ) {
+      this.tilemap.setMinesBossArenaGate(Boolean(this.player?.dungeonCores?.stack));
+    }
+  }
+
   _executeStageTransition(door) {
     this.transitionCooldown = 0.5;
     if (this.music) {
@@ -5750,6 +5499,10 @@ export class RPGGame {
       }
     }
     this.tilemap.loadScene(door.targetScene);
+    // (FIX 3) Sincronizar la puerta norte de la arena con el estado real del Núcleo
+    if (door.targetScene === 'mines_boss_arena') {
+      this._syncMinesBossArenaGate();
+    }
     for (const en of this.enemies) {
       if (en.respawnOnEnter && en.dead && en.sceneId === door.targetScene) {
         en.reset();
@@ -6079,6 +5832,13 @@ export class RPGGame {
   }
 
   update(dt) {
+    // (FIX SHOP) El modal de tienda pausa el mundo y captura toda la entrada.
+    if (this.shopUI && this.shopUI.isOpen) {
+      this.shopUI.update(dt);
+      this.input.endFrame();
+      return;
+    }
+
     this.promptTimer += dt * 4.5;
     if (!this.menuSystem.isBlockingGameplay() && !this.dialogueBox.active && (!this.animeCutscenes || !this.animeCutscenes.isActive)) {
       this.totalPlayTimeSeconds += dt;
@@ -6157,7 +5917,8 @@ export class RPGGame {
       return;
     }
 
-    // Ranura Rápida de Consumibles [1-5] (y [R] mientras no se haya aprendido el console.log arrojadizo)
+    // (FIX QUICK) Ranuras rápidas de consumibles: SOLO [1-5].
+    // [R] queda reservada a Lanzar Tronco (si la skill está desbloqueada).
     const quickSlotReady =
       !this.dialogueBox.active &&
       this.menuSystem.state === 'none' &&
@@ -6165,8 +5926,14 @@ export class RPGGame {
       !this.characterStats.isOpen &&
       (!this.questLogView || !this.questLogView.isOpen);
     if (quickSlotReady) {
+      if (this.input.consumeKey('KeyR')) {
+        if (this.player.skills?.log) {
+          this.player.throwLog(this.music);
+        } else if (this.menuSystem) {
+          this.menuSystem.showNotice('🪵 Habilidad "Lanzar Tronco" no desbloqueada.', 1.8);
+        }
+      }
       const quickKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'];
-      if (!this.player.skills?.log) quickKeys.unshift('KeyR');
       const quickKey = quickKeys.find((k) => this.input.consumeKey(k));
       if (quickKey) {
         this._useQuickSlotConsumable(quickKey);
@@ -6443,7 +6210,14 @@ export class RPGGame {
     this.dayNight.update(dt);
     this.tilemap.update(dt, this.dayNight.timeOfDayHours);
     if (this.renderPipeline) {
-      this.renderPipeline.update(dt);
+      this.renderPipeline.update(dt, {
+        sceneId: this.tilemap.currentSceneId,
+        isNight: this._isNightTime(),
+        camera: this.camera,
+        player: this.player,
+        chimneys: this.tilemap.chimneys || [],
+        paused: this.menuSystem ? this.menuSystem.isBlockingGameplay() : false
+      });
     }
     if (Math.floor(prevHour) !== Math.floor(this.dayNight.timeOfDayHours)) {
       this._updateNPCSchedules();
@@ -6722,6 +6496,10 @@ export class RPGGame {
           if (this.player.dungeonCores) {
             this.player.dungeonCores.stack = true;
           }
+          // (FIX 3) Abrir la salida norte de la arena al vencer al Guardián
+          if (this.tilemap && typeof this.tilemap.setMinesBossArenaGate === 'function') {
+            this.tilemap.setMinesBossArenaGate(true);
+          }
           this._grantBossLoot([
             {
               id: 'dungeon_core_stack',
@@ -6817,22 +6595,6 @@ export class RPGGame {
           if (this.menuSystem) {
             this.menuSystem.showNotice('⚙️ ¡El dron soltó Restos de Chatarra!', 2.5);
           }
-        }
-      }
-
-      // Reaparición automática periódica de los muñecos de práctica en el Campo de Entrenamiento de Valleverde
-      if (enemy.dead && enemy.id && enemy.id.startsWith('drone_training')) {
-        enemy.trainingRespawnTimer = (enemy.trainingRespawnTimer || 0) + dt;
-        if (enemy.trainingRespawnTimer >= 8.0) {
-          enemy.dead = false;
-          enemy.hp = enemy.maxHp;
-          enemy.xpGranted = false;
-          enemy.lootDropped = false;
-          enemy.coinsDropped = false;
-          enemy.trainingRespawnTimer = 0;
-          const orig = enemy.patrolPoints?.[0];
-          enemy.x = orig ? orig.x : 23 * 16;
-          enemy.y = orig ? orig.y : 20 * 16;
         }
       }
 
@@ -7079,6 +6841,14 @@ export class RPGGame {
       }
     });
 
+    // (FIX FINAL BOSS) Filtro glitch de Fase 2/3 por encima del mundo y bajo el HUD
+    const glitchBoss = this.enemies.find(
+      (e) => e.id === 'boss_final_ai_alex' && e.sceneId === this.tilemap.currentSceneId
+    );
+    if (glitchBoss && !glitchBoss.dead && glitchBoss.phase >= 2) {
+      this._renderFinalBossGlitch(ctx, glitchBoss);
+    }
+
     this._renderHUD(ctx);
     if (this.debugMode) {
       this._renderDebugOverlay(ctx);
@@ -7090,6 +6860,9 @@ export class RPGGame {
       this.questLogView.render(ctx);
     }
     this.menuSystem.render(ctx);
+    if (this.shopUI && this.shopUI.isOpen) {
+      this.shopUI.render(ctx);
+    }
     if (this.achievementManager) {
       this.achievementManager.renderToast(ctx);
     }
@@ -7223,6 +6996,30 @@ export class RPGGame {
     ctx.fillRect(2, VIEWPORT_HEIGHT - 26, 230, 24);
     ctx.fillStyle = '#4ade80';
     lines.forEach((l, i) => ctx.fillText(l, 5, VIEWPORT_HEIGHT - 24 + i * 7));
+    ctx.restore();
+  }
+
+  /** (FIX FINAL BOSS) Filtro visual de "Mainframe glitcheado" para Fases 2/3. */
+  _renderFinalBossGlitch(ctx, boss) {
+    const t = performance.now();
+    ctx.save();
+    ctx.globalAlpha = boss.phase === 3 ? 0.16 : 0.10;
+    ctx.fillStyle = (Math.floor(t / 120) % 2 === 0) ? '#ef4444' : '#38bdf8';
+    ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+
+    ctx.globalAlpha = 0.22;
+    for (let i = 0; i < 7; i++) {
+      const y = (t * 0.05 + i * 29) % VIEWPORT_HEIGHT;
+      ctx.fillStyle = i % 2 === 0 ? '#22d3ee' : '#f43f5e';
+      ctx.fillRect(0, Math.floor(y), VIEWPORT_WIDTH, 1);
+    }
+
+    ctx.globalAlpha = 0.10;
+    for (let i = 0; i < 4; i++) {
+      const x = (t * 0.04 + i * 83) % VIEWPORT_WIDTH;
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(Math.floor(x), 0, 1, VIEWPORT_HEIGHT);
+    }
     ctx.restore();
   }
 
@@ -7391,6 +7188,19 @@ export class RPGGame {
       }
     }
 
+    // (FIX FINAL BOSS) Sobrescritura del Update Final: tapa corazones/stamina 5 s.
+    const hiddenBoss = this.enemies.find(
+      (e) => e.id === 'boss_final_ai_alex' && e.sceneId === this.tilemap.currentSceneId && !e.dead
+    );
+    if (hiddenBoss && hiddenBoss.phase === 3 && hiddenBoss._hudHiddenUntil > performance.now()) {
+      ctx.fillStyle = 'rgba(3, 5, 10, 0.97)';
+      ctx.fillRect(0, 0, heartsX + heartsW + 4, heartsY + heartsH + 16);
+      ctx.font = hudFont(5.5, true);
+      ctx.fillStyle = (performance.now() % 300 < 150) ? '#ef4444' : '#fca5a5';
+      ctx.textAlign = 'left';
+      ctx.fillText('SOBRESCRITO', heartsX + 3, heartsY + 9);
+    }
+
     // =========================================================================
     // 2. SUPERIOR IZQUIERDA: Indicador de Monedas / Bytes (SIEMPRE visible)
     // (FIX 1.6) Antes vivía dentro de `if (comboStep > 0)`, así que solo aparecía
@@ -7441,7 +7251,7 @@ export class RPGGame {
     );
 
     if (activeBoss && (activeBoss.activeCombat || activeBoss.dead)) {
-      const barW = 186;
+      const barW = 300;
       const barH = 14;
       const barX = Math.round((VIEWPORT_WIDTH - barW) / 2);
       // (FIX M1.5) En táctil los botones ocupan la esquina inferior derecha:
@@ -7466,7 +7276,9 @@ export class RPGGame {
         ctx.fillText(`¡VICTORIA! HABILIDAD: ${activeBoss.rewardName.toUpperCase()}`, barX + barW - 5, barY - 2);
       } else {
         ctx.fillStyle = '#ffffff';
-        const statusAdd = activeBoss.statusText ? ` ${activeBoss.statusText}` : '';
+        const rawStatus = activeBoss.statusText || '';
+        const shortStatus = rawStatus.length > 22 ? `${rawStatus.slice(0, 21)}…` : rawStatus;
+        const statusAdd = shortStatus ? ` ${shortStatus}` : '';
         ctx.fillText(`${Math.ceil(activeBoss.hp)} / ${activeBoss.maxHp} HP${statusAdd}`, barX + barW - 5, barY - 2);
       }
 

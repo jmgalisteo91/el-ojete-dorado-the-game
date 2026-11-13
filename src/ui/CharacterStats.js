@@ -292,7 +292,13 @@ export class CharacterStats {
     ctx.fillText(`◈ Saldo: ${coinsVal} Bytes`, leftRect.x + 41, leftRect.y + 32);
 
     ctx.fillStyle = UI_COLORS.gold;
-    ctx.fillText(`★ Nivel: ${playerLvl}/10 (${playerXp}/${nextXp} XP)`, leftRect.x + 41, leftRect.y + 40);
+    ctx.fillText(
+      player && player.isMaxLevel
+        ? '★ Nivel: 10/10 · MÁXIMO'
+        : `★ Nivel: ${playerLvl}/10 (${playerXp}/${nextXp} XP)`,
+      leftRect.x + 41,
+      leftRect.y + 40
+    );
 
     // 2. Barras de progreso compactas (Salud, Blindaje, Robotización, Experiencia, Ataque)
     const barX = leftRect.x + 5;
@@ -352,17 +358,26 @@ export class CharacterStats {
     const xpRange = Math.max(1, nextXp - baseXp);
     const xpProgress = playerLvl >= 10 ? xpRange : Math.max(0, Math.min(xpRange, playerXp - baseXp));
     const xpPct = player && typeof player.getXpProgressPercent === 'function' ? player.getXpProgressPercent() : 0;
-    UILayout.drawBar(ctx, {
-      x: barX,
-      y: by,
-      w: barW,
-      h: 5,
-      value: xpProgress,
-      max: xpRange,
-      color: UI_COLORS.gold,
-      label: 'EXP. PROGRAMADOR',
-      valueText: playerLvl >= 10 ? 'NV 10 (MÁX) ★' : `NV ${playerLvl} (${xpPct}%)`
-    });
+    if (player && player.isMaxLevel) {
+      // (FIX 2) Sin barra de XP en nivel 10: solo el rótulo dorado
+      ctx.font = `bold 5.5px ${UI_FONT}`;
+      ctx.fillStyle = UI_COLORS.gold;
+      ctx.textAlign = 'center';
+      ctx.fillText('★ NIVEL MÁXIMO · Nv. 10 ★', barX + barW / 2, by + 3);
+      ctx.textAlign = 'left';
+    } else {
+      UILayout.drawBar(ctx, {
+        x: barX,
+        y: by,
+        w: barW,
+        h: 5,
+        value: xpProgress,
+        max: xpRange,
+        color: UI_COLORS.gold,
+        label: 'EXP. PROGRAMADOR',
+        valueText: `NV ${playerLvl} (${xpPct}%)`
+      });
+    }
     by += barSpacing;
 
     const hasSword = Boolean(player && player.hasSword);

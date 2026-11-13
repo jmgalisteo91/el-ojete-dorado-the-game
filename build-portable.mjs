@@ -37,6 +37,7 @@ const MODULE_ORDER = [
   'src/ui/DialogueBox.js',
   'src/ui/Inventory.js',
   'src/ui/CharacterStats.js',
+  'src/ui/ShopUI.js',
   'src/ui/WorldMap.js',
   'src/ui/QuestLogView.js',
   'src/ui/LeaderboardView.js',

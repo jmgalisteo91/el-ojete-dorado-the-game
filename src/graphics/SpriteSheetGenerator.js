@@ -21,7 +21,11 @@ export const CHARACTER_TYPES = {
   AI_ORACLE: 8,
   HERO_ARMORED: 9,
   SHADOW_DRONE: 10,
-  SHADOW_KNIGHT: 11
+  SHADOW_KNIGHT: 11,
+  // (BLOQUE 2) Variantes de aldeano para ropa roja/azul/verde.
+  VILLAGER_RED: 12,
+  VILLAGER_BLUE: 13,
+  VILLAGER_GREEN: 14
 };
 
 export const TILES = {
@@ -78,6 +82,12 @@ export const TILES = {
   MAINFRAME_WALL: 48,
   CRYSTAL_BARRIER: 49,
   CORE_PEDESTAL: 50,
+  // (BLOQUES 1/2) Volumen de edificios y cuevas.
+  WALL_FRONT: 51,
+  CHIMNEY: 52,
+  STALACTITE: 53,
+  ROCK: 54,
+  BEAM: 55,
 
   // Alias semánticos usados por los constructores de escenas
   DOOR: 15,          // WALL_DOOR
@@ -128,81 +138,258 @@ function px(ctx, x, y, w, h, color) {
   }
 }
 
+function drawArmoredCape(ctx, ox, oy, dir, frame, palette, bob) {
+  const cape = palette.cape || '#1e3a5f';
+  const capeDark = palette.capeDark || '#0f2740';
+  const wave = frame === 1 ? 1 : frame === 3 ? -1 : 0;
+  if (dir === 1) {
+    px(ctx, ox + 4, oy + 8 + bob, 8, 4, cape);
+    px(ctx, ox + 5, oy + 12 + bob, 6, 2 + Math.abs(wave), capeDark);
+  } else if (dir === 0) {
+    px(ctx, ox + 3, oy + 8 + bob, 2, 4, cape);
+    px(ctx, ox + 11, oy + 9 + bob, 2, 3 + Math.abs(wave), capeDark);
+  } else if (dir === 2) {
+    px(ctx, ox + 9, oy + 8 + bob, 4, 4, cape);
+    px(ctx, ox + 11, oy + 11 + bob, 2, 2 + Math.abs(wave), capeDark);
+  } else {
+    px(ctx, ox + 3, oy + 8 + bob, 4, 4, cape);
+    px(ctx, ox + 3, oy + 11 + bob, 2, 2 + Math.abs(wave), capeDark);
+  }
+}
+
 function drawHumanFrame(ctx, ox, oy, dir, frame, palette) {
   const isWalking = frame === 1 || frame === 3;
   const stepDir = frame === 1 ? -1 : frame === 3 ? 1 : 0;
   const bob = isWalking ? -1 : 0;
+  const role = palette.role || 'generic';
+  const armored = role === 'armored';
+  const isBlacksmith = role === 'blacksmith';
+  const isElder = role === 'elder';
+  const isHerbalist = role === 'herbalist';
+  const isVillager = role === 'villager';
+  const isGuard = role === 'guard';
+  const isOracle = role === 'oracle';
+  const bodyW = isBlacksmith ? 8 : isElder ? 4 : isHerbalist ? 5 : 6;
+  const bodyX = Math.floor((16 - bodyW) / 2);
+  const headX = 5;
+  const headY = (isHerbalist ? 3 : 2) + bob;
+  const gold = '#f4d06f';
+  const eyeColor = armored ? '#22d3ee' : '#ffffff';
 
-  px(ctx, ox + 4, oy + 14, 8, 2, 'rgba(0, 0, 0, 0.35)');
+  // Sombra de contacto.
+  px(ctx, ox + 4, oy + 15, 8, 1, 'rgba(0,0,0,0.35)');
 
-  const leftLegY = oy + 12 + (stepDir === -1 ? -1 : 0);
-  const rightLegY = oy + 12 + (stepDir === 1 ? -1 : 0);
+  // Capa corta azul marino de la armadura (2 frames de onda).
+  if (armored) drawArmoredCape(ctx, ox, oy, dir, frame, palette, bob);
+
+  // Martillo a la espalda de Brom.
+  if (isBlacksmith) {
+    const iron = palette.iron || '#94a3b8';
+    const wood = palette.wood || '#6b4a2e';
+    if (dir === 1) {
+      px(ctx, ox + 4, oy + 5 + bob, 3, 2, iron);
+      px(ctx, ox + 7, oy + 6 + bob, 3, 1, wood);
+      px(ctx, ox + 10, oy + 6 + bob, 1, 2, iron);
+    } else if (dir === 2) {
+      px(ctx, ox + 1, oy + 5 + bob, 2, 2, iron);
+      px(ctx, ox + 3, oy + 6 + bob, 1, 4, wood);
+    } else if (dir === 3) {
+      px(ctx, ox + 13, oy + 5 + bob, 2, 2, iron);
+      px(ctx, ox + 12, oy + 6 + bob, 1, 4, wood);
+    } else {
+      px(ctx, ox + 11, oy + 4 + bob, 2, 2, iron);
+      px(ctx, ox + 10, oy + 6 + bob, 1, 4, wood);
+    }
+  }
+
+  // Piernas 4x4 (dos botas de 2x4) con paso de 1 px.
   if (dir === 2 || dir === 3) {
-    px(ctx, ox + 6 + stepDir, oy + 12, 2, 3, palette.boots);
-    px(ctx, ox + 8 - stepDir, oy + 12, 2, 3, palette.boots);
+    px(ctx, ox + 6 + stepDir, oy + 12, 2, 4, palette.boots);
+    px(ctx, ox + 8 - stepDir, oy + 12, 2, 4, palette.boots);
   } else {
-    px(ctx, ox + 5, leftLegY, 2, 3, palette.boots);
-    px(ctx, ox + 9, rightLegY, 2, 3, palette.boots);
+    px(ctx, ox + 6, oy + 12 + (stepDir === -1 ? -1 : 0), 2, 4, palette.boots);
+    px(ctx, ox + 8, oy + 12 + (stepDir === 1 ? -1 : 0), 2, 4, palette.boots);
+  }
+  if (armored) {
+    px(ctx, ox + 6, oy + 12, 1, 2, '#e2e8f0');
+    px(ctx, ox + 8, oy + 12, 1, 2, '#e2e8f0');
+    px(ctx, ox + 6, oy + 13, 1, 1, gold);
+    px(ctx, ox + 8, oy + 13, 1, 1, gold);
   }
 
-  px(ctx, ox + 4, oy + 7 + bob, 8, 5, palette.tunic);
-  px(ctx, ox + 5, oy + 7 + bob, 6, 4, palette.tunicLight);
-  px(ctx, ox + 4, oy + 11 + bob, 8, 1, palette.belt);
-  px(ctx, ox + 7, oy + 11 + bob, 2, 1, '#f4d06f');
+  // Cuerpo 6x6 (Brom 8x6, alcalde 4x6, abuela 5x6).
+  px(ctx, ox + bodyX, oy + 7 + bob, bodyW, 5, palette.tunic);
+  px(ctx, ox + bodyX + 1, oy + 7 + bob, Math.max(1, bodyW - 2), 4, palette.tunicLight);
+  px(ctx, ox + bodyX, oy + 11 + bob, bodyW, 1, palette.belt);
+  px(ctx, ox + 7, oy + 11 + bob, 2, 1, gold);
 
-  const leftArmSwing = stepDir === 1 ? -1 : stepDir === -1 ? 1 : 0;
-  const rightArmSwing = -leftArmSwing;
+  if (armored) {
+    // Peto, hombreras, emblema y faldón de la Armadura del Alba.
+    px(ctx, ox + bodyX - 1, oy + 7 + bob, 2, 2, '#fbbf24');
+    px(ctx, ox + bodyX + bodyW - 1, oy + 7 + bob, 2, 2, '#fbbf24');
+    px(ctx, ox + 7, oy + 8 + bob, 2, 2, '#22d3ee');
+    px(ctx, ox + 7, oy + 8 + bob, 1, 1, '#ffffff');
+    px(ctx, ox + bodyX, oy + 10 + bob, bodyW, 1, '#64748b');
+    px(ctx, ox + bodyX + 1, oy + 12 + bob, bodyW - 2, 1, '#94a3b8');
+  } else if (isBlacksmith) {
+    // Delantal de cuero y remaches de hierro.
+    px(ctx, ox + bodyX + 1, oy + 8 + bob, bodyW - 2, 3, palette.apron || '#4a3528');
+    px(ctx, ox + bodyX + 2, oy + 8 + bob, 1, 3, '#6b4a2e');
+    px(ctx, ox + bodyX + bodyW - 2, oy + 9 + bob, 1, 1, '#cbd5e1');
+  } else if (isElder) {
+    // Camisa blanca, corbata roja y traje negro.
+    px(ctx, ox + 7, oy + 7 + bob, 2, 2, '#e5e7eb');
+    px(ctx, ox + 7, oy + 8 + bob, 1, 3, '#dc2626');
+    px(ctx, ox + bodyX, oy + 7 + bob, bodyW, 1, '#0b0b10');
+  } else if (isHerbalist) {
+    // Vestido verde musgo con delantal y chal.
+    px(ctx, ox + bodyX + 1, oy + 8 + bob, bodyW - 2, 3, '#8a9a4a');
+    px(ctx, ox + bodyX, oy + 7 + bob, bodyW, 1, '#43512a');
+  } else if (isVillager) {
+    // Delantal claro para dar variedad a los aldeanos.
+    px(ctx, ox + bodyX + 1, oy + 8 + bob, bodyW - 2, 3, palette.apron || '#f5e6d3');
+    px(ctx, ox + bodyX + 1, oy + 9 + bob, bodyW - 2, 1, 'rgba(0,0,0,0.1)');
+  } else if (isGuard) {
+    px(ctx, ox + bodyX, oy + 7 + bob, bodyW, 1, '#94a3b8');
+    px(ctx, ox + 7, oy + 8 + bob, 2, 2, '#cbd5e1');
+  } else if (isOracle) {
+    px(ctx, ox + bodyX + 1, oy + 8 + bob, bodyW - 2, 3, palette.accent || '#4cc9f0');
+    px(ctx, ox + bodyX, oy + 7 + bob, bodyW, 1, '#1e1b4b');
+  }
+
+  // Brazos con balanceo de 1 px.
+  const swing = stepDir === 1 ? -1 : stepDir === -1 ? 1 : 0;
   if (dir === 0 || dir === 1) {
-    px(ctx, ox + 3, oy + 7 + bob + leftArmSwing, 1, 4, palette.tunic);
-    px(ctx, ox + 3, oy + 10 + bob + leftArmSwing, 1, 1, palette.skin);
-    px(ctx, ox + 12, oy + 7 + bob + rightArmSwing, 1, 4, palette.tunic);
-    px(ctx, ox + 12, oy + 10 + bob + rightArmSwing, 1, 1, palette.skin);
+    px(ctx, ox + bodyX - 1, oy + 7 + bob + swing, 1, 4, palette.tunic);
+    px(ctx, ox + bodyX - 1, oy + 10 + bob + swing, 1, 1, palette.skin);
+    px(ctx, ox + bodyX + bodyW, oy + 7 + bob - swing, 1, 4, palette.tunic);
+    px(ctx, ox + bodyX + bodyW, oy + 10 + bob - swing, 1, 1, palette.skin);
   } else if (dir === 2) {
-    px(ctx, ox + 6 + leftArmSwing, oy + 8 + bob, 3, 3, palette.tunicLight);
-    px(ctx, ox + 6 + leftArmSwing, oy + 10 + bob, 2, 1, palette.skin);
-  } else if (dir === 3) {
-    px(ctx, ox + 7 + rightArmSwing, oy + 8 + bob, 3, 3, palette.tunicLight);
-    px(ctx, ox + 8 + rightArmSwing, oy + 10 + bob, 2, 1, palette.skin);
+    px(ctx, ox + bodyX + 1 + swing, oy + 8 + bob, 3, 2, palette.tunicLight);
+    px(ctx, ox + bodyX + 2 + swing, oy + 10 + bob, 1, 1, palette.skin);
+  } else {
+    px(ctx, ox + bodyX + bodyW - 4 - swing, oy + 8 + bob, 3, 2, palette.tunicLight);
+    px(ctx, ox + bodyX + bodyW - 3 - swing, oy + 10 + bob, 1, 1, palette.skin);
   }
 
-  px(ctx, ox + 4, oy + 2 + bob, 8, 6, palette.skin);
+  // Cabeza 6x6.
+  px(ctx, ox + headX, oy + headY, 6, 6, palette.skin);
 
+  // Pelo base según dirección.
+  if (!armored && !isGuard) {
+    if (dir === 0) {
+      px(ctx, ox + headX, oy + headY, 6, 2, palette.hair);
+      px(ctx, ox + headX - 1, oy + headY + 1, 1, 2, palette.hair);
+      px(ctx, ox + headX + 6, oy + headY + 1, 1, 2, palette.hair);
+      if (role === 'hero' || isVillager) {
+        px(ctx, ox + headX + 1, oy + headY - 1, 1, 1, palette.hair);
+        px(ctx, ox + headX + 4, oy + headY - 1, 1, 1, palette.hair);
+      }
+    } else if (dir === 1) {
+      px(ctx, ox + headX, oy + headY, 6, 6, palette.hair);
+      px(ctx, ox + headX + 1, oy + headY + 5, 4, 1, palette.skin);
+    } else if (dir === 2) {
+      px(ctx, ox + headX, oy + headY, 6, 2, palette.hair);
+      px(ctx, ox + headX + 3, oy + headY + 1, 3, 5, palette.hair);
+    } else {
+      px(ctx, ox + headX, oy + headY, 6, 2, palette.hair);
+      px(ctx, ox + headX, oy + headY + 1, 3, 5, palette.hair);
+    }
+  }
+
+  // Ojos brillantes (blanco / cian) y boca.
   if (dir === 0) {
-    px(ctx, ox + 4, oy + 1 + bob, 8, 2, palette.hair);
-    px(ctx, ox + 3, oy + 2 + bob, 1, 3, palette.hair);
-    px(ctx, ox + 12, oy + 2 + bob, 1, 3, palette.hair);
-    px(ctx, ox + 5, oy + 5 + bob, 1, 2, '#1a1c2c');
-    px(ctx, ox + 10, oy + 5 + bob, 1, 2, '#1a1c2c');
-    if (palette.beard) {
-      px(ctx, ox + 5, oy + 7 + bob, 6, 3, palette.beard);
-    } else if (palette.accent) {
-      px(ctx, ox + 5, oy + 7 + bob, 6, 1, palette.accent);
-    }
-  } else if (dir === 1) {
-    px(ctx, ox + 4, oy + 1 + bob, 8, 6, palette.hair);
-    px(ctx, ox + 3, oy + 2 + bob, 10, 4, palette.hair);
-    if (palette.accent) {
-      px(ctx, ox + 5, oy + 7 + bob, 6, 1, palette.accent);
-    }
+    px(ctx, ox + headX + 1, oy + headY + 3, 1, 1, eyeColor);
+    px(ctx, ox + headX + 4, oy + headY + 3, 1, 1, eyeColor);
+    if (!isBlacksmith) px(ctx, ox + headX + 2, oy + headY + 5, 2, 1, '#7a4a3a');
   } else if (dir === 2) {
-    px(ctx, ox + 5, oy + 1 + bob, 7, 3, palette.hair);
-    px(ctx, ox + 8, oy + 2 + bob, 4, 5, palette.hair);
-    px(ctx, ox + 5, oy + 5 + bob, 1, 2, '#1a1c2c');
-    if (palette.beard) {
-      px(ctx, ox + 4, oy + 7 + bob, 3, 2, palette.beard);
-    }
+    px(ctx, ox + headX + 1, oy + headY + 3, 1, 1, eyeColor);
   } else if (dir === 3) {
-    px(ctx, ox + 4, oy + 1 + bob, 7, 3, palette.hair);
-    px(ctx, ox + 4, oy + 2 + bob, 4, 5, palette.hair);
-    px(ctx, ox + 10, oy + 5 + bob, 1, 2, '#1a1c2c');
-    if (palette.beard) {
-      px(ctx, ox + 9, oy + 7 + bob, 3, 2, palette.beard);
-    }
+    px(ctx, ox + headX + 4, oy + headY + 3, 1, 1, eyeColor);
   }
 
-  if (palette.plume) {
-    px(ctx, ox + 7, oy + bob, 2, 2, palette.plume);
+  // Barbas tupidas.
+  if (isBlacksmith) {
+    px(ctx, ox + headX + 1, oy + headY + 4, 4, 2, palette.beard || '#3b2a22');
+    px(ctx, ox + headX + 2, oy + headY + 5, 2, 1, '#2b1d18');
+  } else if (isElder) {
+    px(ctx, ox + headX + 1, oy + headY + 4, 4, 2, '#e5e7eb');
+    px(ctx, ox + headX + 2, oy + headY + 5, 2, 1, '#cbd5e1');
   }
+
+  // Sombrero de copa del alcalde.
+  if (isElder) {
+    px(ctx, ox + headX - 1, oy + headY - 1, 8, 1, '#0b0b10');
+    px(ctx, ox + headX + 1, oy + 0, 4, 2, '#0b0b10');
+    px(ctx, ox + headX + 1, oy + 0, 4, 1, '#dc2626');
+    // Monóculo dorado.
+    px(ctx, ox + headX + 4, oy + headY + 2, 1, 1, gold);
+    px(ctx, ox + headX + 3, oy + headY + 4, 1, 1, gold);
+    px(ctx, ox + headX + 5, oy + headY + 4, 1, 1, gold);
+  }
+
+  // Gafas de la abuela binaria y pelo blanco.
+  if (isHerbalist) {
+    px(ctx, ox + headX, oy + headY + 2, 2, 1, '#fbbf24');
+    px(ctx, ox + headX + 3, oy + headY + 2, 2, 1, '#fbbf24');
+    px(ctx, ox + headX + 2, oy + headY + 3, 1, 1, '#fbbf24');
+    px(ctx, ox + headX - 1, oy + headY + 1, 1, 3, '#e5e7eb');
+  }
+
+  // Hats de paja de los aldeanos.
+  if (isVillager) {
+    const hat = palette.hat || '#d9a441';
+    px(ctx, ox + headX - 1, oy + headY - 1, 8, 1, hat);
+    px(ctx, ox + headX + 1, oy + 0, 4, 2, hat);
+    px(ctx, ox + headX + 1, oy + 0, 4, 1, 'rgba(255,255,255,0.18)');
+  }
+
+  // Casco de la guardia con penacho.
+  if (isGuard) {
+    px(ctx, ox + headX, oy + headY - 1, 6, 2, '#94a3b8');
+    px(ctx, ox + headX + 1, oy + headY - 2, 4, 1, '#cbd5e1');
+    px(ctx, ox + headX + 2, oy + 0, 2, 2, palette.plume || '#e53e3e');
+  }
+
+  // Yelmo, visera, cresta dorada y ojos cian de la armadura.
+  if (armored) {
+    px(ctx, ox + headX - 1, oy + headY - 1, 8, 2, '#cbd5e1');
+    px(ctx, ox + headX - 1, oy + headY + 1, 1, 4, '#94a3b8');
+    px(ctx, ox + headX + 6, oy + headY + 1, 1, 4, '#94a3b8');
+    px(ctx, ox + headX + 1, oy + headY + 2, 4, 2, '#0f172a');
+    px(ctx, ox + headX + 2, oy + headY + 3, 1, 1, '#22d3ee');
+    px(ctx, ox + headX + 4, oy + headY + 3, 1, 1, '#22d3ee');
+    px(ctx, ox + headX + 2, oy + 0, 2, 3, '#fbbf24');
+    px(ctx, ox + headX + 2, oy + 0, 1, 1, frame === 0 || frame === 2 ? '#ffffff' : '#f59e0b');
+    px(ctx, ox + headX + 3, oy + 2, 1, 1, '#fde047');
+  }
+
+  // Cayado del alcalde.
+  if (isElder) {
+    px(ctx, ox + bodyX + bodyW + 1, oy + 8 + bob, 1, 7, '#3b2a1e');
+    px(ctx, ox + bodyX + bodyW, oy + 7 + bob, 2, 1, gold);
+  }
+
+  // Bastón binario de la abuela (1 y 0).
+  if (isHerbalist) {
+    px(ctx, ox + 12, oy + 8 + bob, 1, 7, '#6b4a2e');
+    px(ctx, ox + 12, oy + 9 + bob, 1, 2, '#fde047');
+    px(ctx, ox + 13, oy + 10 + bob, 2, 2, '#22d3ee');
+    px(ctx, ox + 13, oy + 10 + bob, 1, 1, '#0f172a');
+    px(ctx, ox + 12, oy + 7 + bob, 2, 1, '#fbbf24');
+  }
+
+  // Penacho arcano del oráculo.
+  if (isOracle && palette.plume) {
+    px(ctx, ox + headX + 2, oy + headY - 2, 2, 2, palette.plume);
+    px(ctx, ox + headX + 1, oy + headY - 1, 1, 1, '#ffffff');
+  }
+
+  // (BLOQUE 4) Luz direccional: borde cálido a la derecha y sombra a la izquierda.
+  const rimX = Math.min(14, Math.max(10, bodyX + bodyW));
+  px(ctx, ox + rimX, oy + 3 + bob, 1, 5, 'rgba(255,240,200,0.16)');
+  px(ctx, ox + rimX, oy + 8 + bob, 1, 4, 'rgba(255,240,200,0.12)');
+  px(ctx, ox + bodyX - 1, oy + 8 + bob, 1, 4, 'rgba(0,0,0,0.15)');
 }
 
 /**
@@ -213,6 +400,8 @@ function drawSheepFrame(ctx, ox, oy, dir, frame) {
   const bob = frame === 1 || frame === 3 ? -1 : 0;
 
   px(ctx, ox + 3, oy + 13, 10, 2, 'rgba(0,0,0,0.3)');
+  // Contorno oscuro para destacar con la iluminación.
+  px(ctx, ox + 2, oy + 4 + bob, 12, 8, 'rgba(15,23,42,0.55)');
   // Patitas oscuras
   px(ctx, ox + 4, oy + 11 + (step === -1 ? -1 : 0), 2, 3, '#3b322c');
   px(ctx, ox + 10, oy + 11 + (step === 1 ? -1 : 0), 2, 3, '#3b322c');
@@ -237,6 +426,8 @@ function drawSheepFrame(ctx, ox, oy, dir, frame) {
     px(ctx, ox + 10, oy + 5 + bob, 4, 5, '#473c35');
     px(ctx, ox + 12, oy + 6 + bob, 1, 1, '#ffffff');
   }
+  // Brillo sutil del lado derecho.
+  px(ctx, ox + 13, oy + 5 + bob, 1, 6, 'rgba(255,255,255,0.3)');
 }
 
 /**
@@ -247,6 +438,8 @@ function drawChickenFrame(ctx, ox, oy, dir, frame) {
   const bob = frame === 1 || frame === 3 ? -1 : 0;
 
   px(ctx, ox + 5, oy + 14, 6, 1, 'rgba(0,0,0,0.3)');
+  // Contorno oscuro.
+  px(ctx, ox + 3, oy + 6 + bob, 10, 6, 'rgba(15,23,42,0.5)');
   // Patitas amarillas
   px(ctx, ox + 6, oy + 12 + (step === -1 ? -1 : 0), 1, 2, '#f2a93b');
   px(ctx, ox + 9, oy + 12 + (step === 1 ? -1 : 0), 1, 2, '#f2a93b');
@@ -271,6 +464,8 @@ function drawChickenFrame(ctx, ox, oy, dir, frame) {
     px(ctx, ox + 6, oy + 6 + bob, 1, 1, '#1d3557');
     px(ctx, ox + 9, oy + 6 + bob, 1, 1, '#1d3557');
   }
+  // Brillo sutil del lado derecho.
+  px(ctx, ox + 10, oy + 7 + bob, 1, 4, 'rgba(255,255,255,0.3)');
 }
 
 /**
@@ -281,6 +476,8 @@ function drawDogFrame(ctx, ox, oy, dir, frame) {
   const bob = frame === 1 || frame === 3 ? -1 : 0;
 
   px(ctx, ox + 4, oy + 14, 8, 1, 'rgba(0,0,0,0.32)');
+  // Contorno oscuro.
+  px(ctx, ox + 3, oy + 6 + bob, 10, 6, 'rgba(15,23,42,0.5)');
   // Patas
   px(ctx, ox + 4, oy + 11 + (step === -1 ? -1 : 0), 2, 3, '#8c5327');
   px(ctx, ox + 10, oy + 11 + (step === 1 ? -1 : 0), 2, 3, '#8c5327');
@@ -315,52 +512,64 @@ function drawDogFrame(ctx, ox, oy, dir, frame) {
       px(ctx, ox + 7 + step, oy + 4 + bob, 2, 3, '#8c5327');
     }
   }
+  // Brillo sutil del lado derecho.
+  px(ctx, ox + 11, oy + 7 + bob, 1, 4, 'rgba(255,220,160,0.3)');
 }
 
 async function generateCharacterSheet() {
   const humanPalettes = [
-    // 0: Hero
+    // 0: Héroe sin armadura · marrones cálidos, verde oliva y piel pálida.
     {
-      skin: '#f4cca1',
-      hair: '#8f4d27',
-      tunic: '#1e6f50',
-      tunicLight: '#2ea36c',
-      belt: '#4b2d1f',
-      boots: '#3b2115',
-      accent: '#d94141'
+      role: 'hero',
+      skin: '#e8c39e',
+      hair: '#6b4a2f',
+      tunic: '#5f6f3a',
+      tunicLight: '#7f8f4a',
+      belt: '#4a3324',
+      boots: '#3a2a1e',
+      accent: '#d9a441'
     },
-    // 1: Elder
+    // 1: Alcalde / Sabio · traje negro, corbata roja, copa y monóculo.
     {
-      skin: '#f0c296',
-      hair: '#d9e2ec',
-      tunic: '#2b4c7e',
-      tunicLight: '#3e6bae',
-      belt: '#7a542e',
-      boots: '#2d231e',
-      beard: '#e6edf5'
+      role: 'elder',
+      skin: '#e8c8a8',
+      hair: '#e5e7eb',
+      tunic: '#17171f',
+      tunicLight: '#262633',
+      belt: '#0b0b10',
+      boots: '#1f1f28',
+      beard: '#e5e7eb',
+      accent: '#dc2626'
     },
-    // 2: Blacksmith
+    // 2: Brom · herrero ancho, piel rojiza, delantal de cuero y martillo.
     {
-      skin: '#e0a97b',
-      hair: '#2b211e',
-      tunic: '#5c3828',
-      tunicLight: '#7a4b36',
+      role: 'blacksmith',
+      skin: '#c97a5a',
+      hair: '#2b1d18',
+      tunic: '#6b4a2e',
+      tunicLight: '#8a5a3a',
       belt: '#1f1917',
       boots: '#1f1917',
-      accent: '#c97a3e'
+      beard: '#3b2a22',
+      apron: '#4a3528',
+      iron: '#94a3b8',
+      wood: '#6b4a2e',
+      accent: '#f59e0b'
     },
-    // 3: Herbalist
+    // 3: Abuela Binaria · vestido verde musgo, pelo blanco, gafas y bastón.
     {
-      skin: '#f6d2ad',
-      hair: '#b8532a',
-      tunic: '#7d3870',
-      tunicLight: '#a64d95',
-      belt: '#f2c94c',
-      boots: '#472836',
-      accent: '#f2c94c'
+      role: 'herbalist',
+      skin: '#e8c8a8',
+      hair: '#e5e7eb',
+      tunic: '#5a6b3a',
+      tunicLight: '#7a8b4a',
+      belt: '#3b2a1e',
+      boots: '#3b2a1e',
+      accent: '#fbbf24'
     },
-    // 4: Guard
+    // 4: Guardia · acero azulado y penacho rojo.
     {
+      role: 'guard',
       skin: '#ebbd92',
       hair: '#6e788c',
       tunic: '#4a5568',
@@ -372,7 +581,33 @@ async function generateCharacterSheet() {
     }
   ];
 
-  const totalArchetypes = 12; // 0..8 + 9:HERO_ARMORED + 10:SHADOW_DRONE + 11:SHADOW_KNIGHT
+  // (BLOQUE 2) Aldeanos genéricos: rojo, azul y verde con sombrero/delantal.
+  const villagerPalettes = [
+    {
+      role: 'villager',
+      skin: '#e8c39e', hair: '#5b3a29',
+      tunic: '#b91c1c', tunicLight: '#dc2626',
+      belt: '#3b2a1e', boots: '#2b1d18',
+      apron: '#f5e6d3', hat: '#d9a441', accent: '#fbbf24'
+    },
+    {
+      role: 'villager',
+      skin: '#e8c39e', hair: '#2b1d18',
+      tunic: '#1d4ed8', tunicLight: '#3b82f6',
+      belt: '#1e293b', boots: '#1e293b',
+      apron: '#e2e8f0', hat: '#0f172a', accent: '#22d3ee'
+    },
+    {
+      role: 'villager',
+      skin: '#d9a97e', hair: '#7a4a2a',
+      tunic: '#15803d', tunicLight: '#22c55e',
+      belt: '#3b2a1e', boots: '#2b1d18',
+      apron: '#a16207', hat: '#d9a441', accent: '#fde047'
+    }
+  ];
+
+  // 12..14: variantes de aldeano. El alto total es 15*4*16*4 = 3840 px.
+  const totalArchetypes = 15;
   const cols = 4;
   const rowsPerChar = 4;
   const canvas = document.createElement('canvas');
@@ -403,6 +638,7 @@ async function generateCharacterSheet() {
 
   // 8: AI_ORACLE (Oráculo Orion con túnica arcana cian/índigo)
   const oraclePalette = {
+    role: 'oracle',
     skin: '#e8d7ff',
     hair: '#4cc9f0',
     tunic: '#3a0ca3',
@@ -422,25 +658,23 @@ async function generateCharacterSheet() {
 
   // 9: HERO_ARMORED (Héroe equipado con la Armadura del Alba)
   const armoredHeroPalette = {
-    skin: '#f4cca1',
-    hair: '#8f4d27',
+    role: 'armored',
+    skin: '#e8c39e',
+    hair: '#6b4a2f',
     tunic: '#94a3b8',
     tunicLight: '#e2e8f0',
     belt: '#d97706',
     boots: '#475569',
-    plume: '#ffd166',
-    accent: '#10b981'
+    plume: '#fbbf24',
+    accent: '#22d3ee',
+    cape: '#1e3a5f',
+    capeDark: '#0f2740'
   };
   for (let dir = 0; dir < 4; dir++) {
     for (let frame = 0; frame < 4; frame++) {
       const ox = frame * TILE_SIZE;
       const oy = (CHARACTER_TYPES.HERO_ARMORED * rowsPerChar + dir) * TILE_SIZE;
       drawHumanFrame(ctx, ox, oy, dir, frame, armoredHeroPalette);
-      // Hombreras doradas y emblema del pecho
-      const bob = frame === 1 || frame === 3 ? -1 : 0;
-      px(ctx, ox + 3, oy + 7 + bob, 2, 2, '#fbbf24');
-      px(ctx, ox + 11, oy + 7 + bob, 2, 2, '#fbbf24');
-      px(ctx, ox + 7, oy + 8 + bob, 2, 2, '#10b981');
     }
   }
 
@@ -488,6 +722,18 @@ async function generateCharacterSheet() {
       px(ctx, ox + 6, oy + 4 + bob, 4, 1, '#ffffff');
     }
   }
+
+  // 12..14: Aldeanos rojo, azul y verde.
+  villagerPalettes.forEach((palette, i) => {
+    const type = CHARACTER_TYPES.VILLAGER_RED + i;
+    for (let dir = 0; dir < 4; dir++) {
+      for (let frame = 0; frame < 4; frame++) {
+        const ox = frame * TILE_SIZE;
+        const oy = (type * rowsPerChar + dir) * TILE_SIZE;
+        drawHumanFrame(ctx, ox, oy, dir, frame, palette);
+      }
+    }
+  });
 
   return canvasToImage(canvas);
 }
@@ -620,19 +866,27 @@ async function generateTilesetSheet() {
     px(ctx, ox, oy, 16, 16, '#dfd3c3');
     px(ctx, ox, oy, 16, 2, '#5c3d28');
     px(ctx, ox, oy + 13, 16, 3, '#6e737b');
-    px(ctx, ox + 4, oy + 4, 8, 7, '#4a3020');
+    // Marco grueso de 2 px y brillo de vela en el interior.
+    px(ctx, ox + 3, oy + 3, 10, 9, '#3b2416');
+    px(ctx, ox + 4, oy + 4, 8, 7, '#5a3a24');
     px(ctx, ox + 5, oy + 5, 6, 5, '#f6c967');
+    px(ctx, ox + 6, oy + 5, 4, 5, '#ffe9a8');
     px(ctx, ox + 7, oy + 5, 1, 5, '#4a3020');
     px(ctx, ox + 5, oy + 7, 6, 1, '#4a3020');
+    px(ctx, ox + 6, oy + 6, 1, 2, 'rgba(255,255,255,0.75)');
   }
   {
     const { ox, oy } = cellOrigin(TILES.WALL_DOOR);
     px(ctx, ox, oy, 16, 16, '#dfd3c3');
     px(ctx, ox, oy, 16, 2, '#5c3d28');
     px(ctx, ox, oy + 13, 16, 3, '#6e737b');
-    px(ctx, ox + 3, oy + 3, 10, 13, '#4a2c18');
-    px(ctx, ox + 4, oy + 4, 8, 12, '#7c4a2b');
-    px(ctx, ox + 10, oy + 10, 1, 2, '#ffd166');
+    px(ctx, ox + 3, oy + 2, 10, 12, '#4a2c18');
+    px(ctx, ox + 4, oy + 3, 8, 10, '#7c4a2b');
+    px(ctx, ox + 5, oy + 4, 1, 7, '#9a6238');
+    px(ctx, ox + 10, oy + 8, 1, 2, '#ffd166');
+    // Escalón de piedra bajo la puerta.
+    px(ctx, ox + 2, oy + 14, 12, 2, '#8a949e');
+    px(ctx, ox + 3, oy + 14, 10, 1, '#b7c0c8');
   }
   {
     const { ox, oy } = cellOrigin(TILES.FENCE_H);
@@ -946,6 +1200,68 @@ async function generateTilesetSheet() {
     px(ctx, ox + 2, oy + 3, 12, 10, '#374151');
     px(ctx, ox + 4, oy + 5, 8, 6, '#111827');
     px(ctx, ox + 6, oy + 7, 4, 3, '#6366f1'); // Resplandor de sincronización
+  }
+  // 51: WALL_FRONT (muro frontal con borde superior oscuro y zócalo)
+  {
+    const { ox, oy } = cellOrigin(TILES.WALL_FRONT);
+    px(ctx, ox, oy, 16, 16, '#c7b394');
+    px(ctx, ox, oy, 16, 3, '#3a2a1e');
+    px(ctx, ox, oy + 1, 16, 1, '#20150f');
+    for (let y = 4; y < 13; y += 3) {
+      px(ctx, ox, oy + y, 16, 1, 'rgba(92, 61, 40, 0.45)');
+      for (let x = (y % 2 ? 0 : 5); x < 16; x += 10) {
+        px(ctx, ox + x, oy + y - 2, 1, 2, 'rgba(92, 61, 40, 0.5)');
+      }
+    }
+    px(ctx, ox, oy + 4, 2, 9, '#5c3d28');
+    px(ctx, ox + 14, oy + 4, 2, 9, '#5c3d28');
+    px(ctx, ox, oy + 13, 16, 3, '#6e737b');
+    px(ctx, ox, oy + 13, 16, 1, '#8a949e');
+  }
+  // 52: CHIMNEY (chimenea de ladrillo sobre el tejado)
+  {
+    const { ox, oy } = cellOrigin(TILES.CHIMNEY);
+    px(ctx, ox + 4, oy + 2, 8, 13, '#6b3a2c');
+    px(ctx, ox + 5, oy + 3, 6, 11, '#8a4b36');
+    for (let y = 5; y < 13; y += 3) {
+      px(ctx, ox + 5, oy + y, 6, 1, '#5a2c22');
+      px(ctx, ox + 7, oy + y - 1, 1, 2, '#5a2c22');
+    }
+    px(ctx, ox + 3, oy + 1, 10, 2, '#3a1f18');
+    px(ctx, ox + 4, oy, 8, 2, '#2a1612');
+    px(ctx, ox + 6, oy, 2, 1, 'rgba(255, 170, 90, 0.5)');
+  }
+  // 53: STALACTITE (estalactita triangular colgante)
+  {
+    const { ox, oy } = cellOrigin(TILES.STALACTITE);
+    px(ctx, ox + 3, oy, 10, 3, '#1e293b');
+    px(ctx, ox + 4, oy + 2, 8, 3, '#273449');
+    px(ctx, ox + 5, oy + 4, 6, 3, '#334155');
+    px(ctx, ox + 6, oy + 6, 4, 3, '#3f4f63');
+    px(ctx, ox + 7, oy + 8, 2, 3, '#4b5c70');
+    px(ctx, ox + 7, oy + 10, 1, 2, '#64748b');
+    px(ctx, ox + 4, oy + 1, 2, 1, 'rgba(148,163,184,0.5)');
+  }
+  // 54: ROCK (roca gris de cueva)
+  {
+    const { ox, oy } = cellOrigin(TILES.ROCK);
+    px(ctx, ox + 3, oy + 8, 10, 6, '#374151');
+    px(ctx, ox + 4, oy + 5, 8, 4, '#4b5563');
+    px(ctx, ox + 6, oy + 3, 5, 3, '#5b6777');
+    px(ctx, ox + 5, oy + 6, 3, 2, '#6b7787');
+    px(ctx, ox + 10, oy + 8, 2, 2, '#2b3441');
+    px(ctx, ox + 4, oy + 12, 8, 2, 'rgba(0,0,0,0.35)');
+  }
+  // 55: BEAM (viga de madera horizontal del techo)
+  {
+    const { ox, oy } = cellOrigin(TILES.BEAM);
+    px(ctx, ox, oy + 4, 16, 8, '#3f2a1c');
+    px(ctx, ox, oy + 4, 16, 2, '#5c3d28');
+    px(ctx, ox, oy + 10, 16, 2, '#2a1a10');
+    px(ctx, ox + 1, oy + 6, 14, 1, 'rgba(138, 90, 58, 0.65)');
+    px(ctx, ox + 3, oy + 3, 2, 10, '#2a1a10');
+    px(ctx, ox + 11, oy + 3, 2, 10, '#2a1a10');
+    px(ctx, ox + 7, oy + 7, 1, 1, '#8a5a3a');
   }
 
   return canvasToImage(canvas);

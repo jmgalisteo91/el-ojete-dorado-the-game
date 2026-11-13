@@ -720,9 +720,13 @@ export function getBromForgeChoices(game) {
   choices.push({
     label: '💰 Vender materiales / chatarra',
     onSelect: () => {
+      if (typeof game._openSellShop === 'function') {
+        game._openSellShop('Herrero Brom · Forjador');
+        return;
+      }
       dialogueBox.showMessage('Herrero Brom · Forjador', [
         'Compro restos de chatarra, minerales y consumibles sobrantes de tus expediciones.'
-      ], game._getSellChoices ? game._getSellChoices('Herrero Brom · Forjador', getBromForgeChoices(game)) : []);
+      ], []);
     }
   });
 
