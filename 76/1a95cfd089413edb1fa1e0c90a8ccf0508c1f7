@@ -1,0 +1,22 @@
+el-ojete-dorado-the-game.html
+  h_e1bbc662b18209 1134-1143,7983-7985,8000-8002,8309-8311,8405-8407,9863-9873,9992-10002
+src/core/SceneTransitionController.js
+  h_e1bbc662b18209 35-44
+src/world/Tilemap.js
+  h_e1bbc662b18209 726-728,743-745,1052-1054,1148-1150,2606-2616,2735-2745
+sw.js
+  h_e1bbc662b18209 16
+tests/regression.mjs
+  h_e1bbc662b18209 38,2732-2749
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "761a95cfd089413edb1fa1e0c90a8ccf0508c1f7",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
