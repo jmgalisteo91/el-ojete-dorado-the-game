@@ -29,7 +29,8 @@ export class NPC extends Entity {
     interactionRange = 24,
     initialDirection = 'down',
     speed = 28,
-    sceneId = 'overworld'
+    sceneId = 'overworld',
+    talkSfx = null
   }) {
     super({
       x,
@@ -49,6 +50,7 @@ export class NPC extends Entity {
     this.overworldY = y;
     this.overworldBehavior = behavior;
     this.dialogues = dialogues;
+    this.talkSfx = talkSfx || null;
     this.getDialogues = getDialogues;
     this.behavior = behavior;
     this.patrolPoints =

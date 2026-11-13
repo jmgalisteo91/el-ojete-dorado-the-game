@@ -17,11 +17,13 @@ export class FrancoPancho extends NPC {
       animator,
       sceneId,
       behavior: 'idle',
+      talkSfx: data.talkSfx || null,
       dialogues: dialogues || data.dialogues,
       initialDirection: 'down'
     });
     this.expansionId = data.id;
     this.spriteColor = data.spriteColor;
+    this.talkSfx = data.talkSfx || null;
     this.boundingBox = { offsetX: 3, offsetY: 10, width: 10, height: 6 };
   }
 

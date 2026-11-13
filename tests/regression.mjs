@@ -41,7 +41,7 @@ import { RenderPipeline } from '../src/graphics/RenderPipeline.js';
 import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT, GAME_VERSION } from '../src/ui/UILayout.js';
 import { CloudStorage } from '../src/services/CloudStorage.js';
 import { LeaderboardView } from '../src/ui/LeaderboardView.js';
-import { AudioManager } from '../src/audio/AudioManager.js?v=8';
+import { AudioManager, BGM_TRACKS, BGM_MAX_VOLUME } from '../src/audio/AudioManager.js?v=8';
 import { AmbientMusic } from '../src/audio/AmbientMusic.js';
 import { MainMenuAndScenes } from '../src/ui/MainMenuAndScenes.js';
 import { SCENE_AI_ALEX_WARNING, SCENE_ENDING_VICTORY } from '../src/assets/VillainDialogues.js';
@@ -51,7 +51,7 @@ import { QuestLogView } from '../src/ui/QuestLogView.js';
 import { CharacterStats } from '../src/ui/CharacterStats.js';
 import { InputHandler } from '../src/core/InputHandler.js';
 import { WorldMap } from '../src/ui/WorldMap.js';
-import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY } from '../src/expansion/ExpansionData.js';
+import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY, getExpansionDialogueSfx } from '../src/expansion/ExpansionData.js';
 import { TonyCuleiro } from '../src/expansion/entities/TonyCuleiro.js';
 import { FrancoPancho } from '../src/expansion/entities/FrancoPancho.js';
 import { IñakitoBoss } from '../src/expansion/entities/IñakitoBoss.js';
@@ -2536,6 +2536,65 @@ test('Expansión v2.0: teaser bloqueado/desbloqueado, 5 NPCs y fases de Iñakito
     createLinearGradient: () => ({ addColorStop: noop })
   };
   assert.doesNotThrow(() => boss.render(mockCtx, { renderX: 0, renderY: 0 }));
+});
+
+test('Expansión v2.0: BGM/SFX nuevos y hooks de audio en diálogos', () => {
+  // Pistas de la expansión, volumen global y crossfade compartido.
+  const expansionTracks = {
+    valleverde_corp: 'assets/music/11_valleverde_corporativo.mp3',
+    oficina_central: 'assets/music/12_oficina_central.mp3',
+    vertedero: 'assets/music/13_vertedero_digital.mp3',
+    boss_iñakito: 'assets/music/14_boss_iñakito.mp3',
+    boss_alex_final: 'assets/music/15_boss_alex_final.mp3'
+  };
+  for (const [key, path] of Object.entries(expansionTracks)) {
+    assert.equal(BGM_TRACKS[key], path, `Falta la pista ${key}`);
+  }
+  assert.equal(BGM_MAX_VOLUME, 0.35, 'La BGM debe mantenerse al 35%');
+
+  const sfxMethods = [
+    'playGlitch', 'playConsoleLog', 'playHologram', 'playError',
+    'playKeyboard', 'playShock', 'playCoffee', 'playAirlock'
+  ];
+  for (const method of sfxMethods) {
+    assert.equal(typeof AudioManager.prototype[method], 'function', `Falta ${method}()`);
+  }
+
+  // Datos de voz y helper de expansión.
+  assert.equal(EXPANSION_NPCS.cepedita_tieso.talkSfx, 'hologram_on');
+  assert.equal(getExpansionDialogueSfx('cepedita_tieso'), 'hologram_on');
+  assert.ok(['coffee_sip', 'keyboard_type'].includes(getExpansionDialogueSfx('inakito')));
+  assert.ok(['ui_glitch', 'error_buzz'].includes(
+    getExpansionDialogueSfx(null, 'ERROR: glitch en el sistema')
+  ));
+
+  // Hook real del DialogueBox.
+  const calls = [];
+  const fakeSound = {
+    playSFX: (name) => calls.push(name),
+    playGlitch: () => calls.push('playGlitch'),
+    playConsoleLog: () => calls.push('playConsoleLog'),
+    playHologram: () => calls.push('playHologram'),
+    playError: () => calls.push('playError'),
+    playKeyboard: () => calls.push('playKeyboard'),
+    playShock: () => calls.push('playShock'),
+    playCoffee: () => calls.push('playCoffee'),
+    playAirlock: () => calls.push('playAirlock')
+  };
+  const box = new DialogueBox(320, 180, fakeSound);
+  box.start({ name: 'Cepedita 2.0', talkSfx: 'hologram_on' }, ['Cepedita el Tieso requiere el impreso A-38 bis.']);
+  assert.ok(calls.includes('playHologram'), 'Cepedita debe sonar como holograma');
+
+  calls.length = 0;
+  box.start({ name: 'Iñakito 2.0', talkSfx: 'coffee_sip' }, ['¡Pero si el jefe me dijo que esto era un ascenso!']);
+  assert.ok(calls.includes('playCoffee'), 'Iñakito debe sonar a café');
+
+  calls.length = 0;
+  box.start(null, ['ERROR: glitch detectado en el sistema.']);
+  assert.ok(
+    calls.includes('playGlitch') || calls.includes('playError'),
+    'Un texto de error/glitch debe disparar playGlitch/playError'
+  );
 });
 
 await Promise.all(asyncQueue);

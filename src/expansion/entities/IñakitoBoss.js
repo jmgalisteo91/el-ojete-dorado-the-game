@@ -45,6 +45,7 @@ export class IñakitoBoss extends Boss {
     this.loopTimer = 0;
     this.loopBrokenTimer = 0;
     this.deathQuote = '';
+    this.talkSfx = 'coffee_sip';
     this.phaseBanner = 0;
     this.lastPhase = 1;
   }

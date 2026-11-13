@@ -111,6 +111,45 @@ export class DialogueBox {
     return lines;
   }
 
+  /**
+   * (EXPANSIÓN v2.0) SFX al empezar a hablar:
+   * - Voz propia del NPC (Cepedita holograma, Iñakito café, Tony teclado...).
+   * - Texto de error/glitch → playGlitch()/playError().
+   */
+  _playDialogueSfx(npc, lines) {
+    const sound = this.soundEngine;
+    if (!sound) return;
+
+    const wrappers = {
+      ui_glitch: 'playGlitch',
+      console_log: 'playConsoleLog',
+      hologram_on: 'playHologram',
+      error_buzz: 'playError',
+      keyboard_type: 'playKeyboard',
+      electric_shock: 'playShock',
+      coffee_sip: 'playCoffee',
+      door_airlock: 'playAirlock'
+    };
+
+    const sfx = npc && npc.talkSfx;
+    if (sfx) {
+      const method = wrappers[sfx];
+      if (method && typeof sound[method] === 'function') sound[method]();
+      else if (typeof sound.playSFX === 'function') sound.playSFX(sfx);
+    }
+
+    const flat = Array.isArray(lines) ? lines.join(' ') : String(lines || '');
+    if (/glitch|error|excepci[oó]n|exception|undefined|null|404|fallo|bug/i.test(flat)) {
+      if (typeof sound.playGlitch === 'function') sound.playGlitch();
+      else if (typeof sound.playError === 'function') sound.playError();
+    }
+
+    const npcName = npc ? `${npc.name || ''} ${npc.id || ''}` : '';
+    if (!sfx && /iñakito|inakito/i.test(npcName) && typeof sound.playCoffee === 'function') {
+      sound.playCoffee();
+    }
+  }
+
   start(npc, customLines = null, customChoices = null) {
     this.active = true;
     this.currentNPC = npc;
@@ -141,6 +180,7 @@ export class DialogueBox {
     }
 
     this.lines = this._paginateLines(rawLines);
+    this._playDialogueSfx(npc, rawLines);
     this.currentLineIndex = 0;
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;

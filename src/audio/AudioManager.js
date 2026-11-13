@@ -41,7 +41,13 @@ export const BGM_TRACKS = {
   boss_final: 'assets/music/07_final_boss_alex.mp3',
   jail: 'assets/music/08_jail_cell.mp3',
   game_over: 'assets/music/09_game_over.mp3',
-  victory: 'assets/music/10_credits_victory.mp3'
+  victory: 'assets/music/10_credits_victory.mp3',
+  // (EXPANSIÓN v2.0) El Resurgir de Mister Alex IA
+  valleverde_corp: 'assets/music/11_valleverde_corporativo.mp3',
+  oficina_central: 'assets/music/12_oficina_central.mp3',
+  vertedero: 'assets/music/13_vertedero_digital.mp3',
+  boss_iñakito: 'assets/music/14_boss_iñakito.mp3',
+  boss_alex_final: 'assets/music/15_boss_alex_final.mp3'
 };
 
 const BGM_MODE_ALIASES = {
@@ -59,7 +65,12 @@ const BGM_MODE_ALIASES = {
   theme_main_villain: 'boss_final',
   final_boss: 'boss_final',
   theme_victory_credits: 'victory',
-  credits: 'victory'
+  credits: 'victory',
+  // (EXPANSIÓN v2.0) Alias de pistas y nombres de jefe
+  track_inakito: 'boss_iñakito',
+  boss_inakito: 'boss_iñakito',
+  track_alex_final: 'boss_alex_final',
+  valleverde_corporativo: 'valleverde_corp'
 };
 
 // (BLOQUE 1) SFX pregrabados: se decodifican a buffers y se reproducen con polifonía.
@@ -67,7 +78,10 @@ const SFX_NAMES = [
   'sword_slash', 'hit_flesh', 'hit_metal', 'player_hurt', 'parry', 'enemy_death',
   'boss_roar', 'charge_attack', 'dash', 'throw_log', 'footstep_grass',
   'footstep_stone', 'pickup_item', 'coin', 'level_up', 'pet_animal',
-  'fish_splash', 'door_open', 'ui_hover', 'ui_click', 'ui_error', 'text_type'
+  'fish_splash', 'door_open', 'ui_hover', 'ui_click', 'ui_error', 'text_type',
+  // (EXPANSIÓN v2.0)
+  'ui_glitch', 'console_log', 'hologram_on', 'error_buzz',
+  'keyboard_type', 'electric_shock', 'coffee_sip', 'door_airlock'
 ];
 
 // El asset real venía como "fisg_splash.mp3"; se prueban ambos nombres.
@@ -1262,6 +1276,67 @@ export class AudioManager {
     this._autoDisconnect(osc, gain);
     osc.start(startTime);
     osc.stop(startTime + duration + 0.01);
+  }
+
+  // ===========================================================================
+  // (EXPANSIÓN v2.0) SFX del Update Universal
+  // ===========================================================================
+  /** Glitch de interfaz: consistente (sin variación) para no sonar aleatorio. */
+  playGlitch() {
+    return this.playSFX('ui_glitch', { volume: 0.85, playbackRate: 1.0 });
+  }
+
+  /** Consola de Mister Alex: variación leve para evitar repetición robótica. */
+  playConsoleLog() {
+    return this.playSFX('console_log', {
+      volume: 0.8,
+      playbackRate: 0.94 + Math.random() * 0.12
+    });
+  }
+
+  /** Holograma de Cepedita 2.0: tono estable de proyección. */
+  playHologram() {
+    return this.playSFX('hologram_on', { volume: 0.85, playbackRate: 1.0 });
+  }
+
+  /** Error del sistema: variación corta. */
+  playError() {
+    return this.playSFX('error_buzz', {
+      volume: 0.85,
+      playbackRate: 0.95 + Math.random() * 0.1
+    });
+  }
+
+  /** Teclado corporativo: variación media. */
+  playKeyboard() {
+    return this.playSFX('keyboard_type', {
+      volume: 0.55,
+      playbackRate: 0.92 + Math.random() * 0.16
+    });
+  }
+
+  /** Descarga eléctrica: variación media. */
+  playShock() {
+    return this.playSFX('electric_shock', {
+      volume: 0.85,
+      playbackRate: 0.95 + Math.random() * 0.1
+    });
+  }
+
+  /** Sorbo de café de Iñakito: variación media. */
+  playCoffee() {
+    return this.playSFX('coffee_sip', {
+      volume: 0.7,
+      playbackRate: 0.94 + Math.random() * 0.12
+    });
+  }
+
+  /** Esclusa de aire: variación sutil. */
+  playAirlock() {
+    return this.playSFX('door_airlock', {
+      volume: 0.85,
+      playbackRate: 0.97 + Math.random() * 0.06
+    });
   }
 
   playMenuMove() {

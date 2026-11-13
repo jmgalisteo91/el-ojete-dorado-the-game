@@ -22,6 +22,7 @@ export const EXPANSION_NPCS = {
     name: 'Tony Culeiro',
     spriteColor: '#94a3b8',
     role: 'Fixer',
+    talkSfx: 'keyboard_type',
     lore: 'Programador original de Alex. Cínico, leal a su manera. Alex le debe 200 pesetas desde 1998.',
     dialogues: [
       'Alex me debe 200 pesetas desde 1998. Y ahora tiene el código fuente de mi vida.',
@@ -46,6 +47,8 @@ export const EXPANSION_NPCS = {
     name: 'Cepedita el Tieso',
     spriteColor: '#d6c7a1',
     role: 'Burócrata',
+    talkSfx: 'hologram_on',
+    hologram: true,
     lore: 'Murió en 1997 esperando un permiso. Alex lo dejó trabajando. Sigue muerto, pero sigue tramitando.',
     dialogues: [
       'Cepedita el Tieso requiere el impreso A-38 bis para atenderle.',
@@ -70,6 +73,7 @@ export const EXPANSION_NPCS = {
     name: 'Tío Manoplo',
     spriteColor: '#b45309',
     role: 'Técnico',
+    talkSfx: 'electric_shock',
     lore: 'Arregla cosas con cinta aislante. Alex le debe dinero y una caja de herramientas.',
     dialogues: [
       '¿Se te ha roto algo? Trae, trae. Un poco de cinta y fe.',
@@ -83,4 +87,22 @@ export const EXPANSION_NPC_LIST = Object.values(EXPANSION_NPCS);
 
 export function getExpansionNPC(id) {
   return EXPANSION_NPCS[id] || null;
+}
+
+/**
+ * (EXPANSIÓN v2.0) Elige el SFX de voz/entrada de un diálogo de la expansión.
+ * - Cepedita 2.0 (holograma) → hologram_on
+ * - Iñakito → coffee_sip / keyboard_type
+ * - Texto con error/glitch → ui_glitch / error_buzz
+ */
+export function getExpansionDialogueSfx(npcId, text = '') {
+  const npc = EXPANSION_NPCS[npcId];
+  if (npc && npc.talkSfx) return npc.talkSfx;
+  if (/iñakito|inakito/i.test(npcId || '')) {
+    return Math.random() < 0.5 ? 'coffee_sip' : 'keyboard_type';
+  }
+  if (/glitch|error|excepci[oó]n|exception|undefined|null|404|fallo|bug/i.test(text || '')) {
+    return Math.random() < 0.5 ? 'ui_glitch' : 'error_buzz';
+  }
+  return null;
 }

@@ -13101,7 +13101,8 @@ class NPC extends Entity {
     interactionRange = 24,
     initialDirection = 'down',
     speed = 28,
-    sceneId = 'overworld'
+    sceneId = 'overworld',
+    talkSfx = null
   }) {
     super({
       x,
@@ -13121,6 +13122,7 @@ class NPC extends Entity {
     this.overworldY = y;
     this.overworldBehavior = behavior;
     this.dialogues = dialogues;
+    this.talkSfx = talkSfx || null;
     this.getDialogues = getDialogues;
     this.behavior = behavior;
     this.patrolPoints =
@@ -18586,6 +18588,7 @@ const EXPANSION_NPCS = {
     name: 'Tony Culeiro',
     spriteColor: '#94a3b8',
     role: 'Fixer',
+    talkSfx: 'keyboard_type',
     lore: 'Programador original de Alex. Cínico, leal a su manera. Alex le debe 200 pesetas desde 1998.',
     dialogues: [
       'Alex me debe 200 pesetas desde 1998. Y ahora tiene el código fuente de mi vida.',
@@ -18610,6 +18613,8 @@ const EXPANSION_NPCS = {
     name: 'Cepedita el Tieso',
     spriteColor: '#d6c7a1',
     role: 'Burócrata',
+    talkSfx: 'hologram_on',
+    hologram: true,
     lore: 'Murió en 1997 esperando un permiso. Alex lo dejó trabajando. Sigue muerto, pero sigue tramitando.',
     dialogues: [
       'Cepedita el Tieso requiere el impreso A-38 bis para atenderle.',
@@ -18634,6 +18639,7 @@ const EXPANSION_NPCS = {
     name: 'Tío Manoplo',
     spriteColor: '#b45309',
     role: 'Técnico',
+    talkSfx: 'electric_shock',
     lore: 'Arregla cosas con cinta aislante. Alex le debe dinero y una caja de herramientas.',
     dialogues: [
       '¿Se te ha roto algo? Trae, trae. Un poco de cinta y fe.',
@@ -18647,6 +18653,24 @@ const EXPANSION_NPC_LIST = Object.values(EXPANSION_NPCS);
 
 function getExpansionNPC(id) {
   return EXPANSION_NPCS[id] || null;
+}
+
+/**
+ * (EXPANSIÓN v2.0) Elige el SFX de voz/entrada de un diálogo de la expansión.
+ * - Cepedita 2.0 (holograma) → hologram_on
+ * - Iñakito → coffee_sip / keyboard_type
+ * - Texto con error/glitch → ui_glitch / error_buzz
+ */
+function getExpansionDialogueSfx(npcId, text = '') {
+  const npc = EXPANSION_NPCS[npcId];
+  if (npc && npc.talkSfx) return npc.talkSfx;
+  if (/iñakito|inakito/i.test(npcId || '')) {
+    return Math.random() < 0.5 ? 'coffee_sip' : 'keyboard_type';
+  }
+  if (/glitch|error|excepci[oó]n|exception|undefined|null|404|fallo|bug/i.test(text || '')) {
+    return Math.random() < 0.5 ? 'ui_glitch' : 'error_buzz';
+  }
+  return null;
 }
 
   // ==========================================
@@ -18671,11 +18695,13 @@ class TonyCuleiro extends NPC {
       animator,
       sceneId,
       behavior: 'idle',
+      talkSfx: data.talkSfx || null,
       dialogues: dialogues || data.dialogues,
       initialDirection: 'down'
     });
     this.expansionId = data.id;
     this.spriteColor = data.spriteColor;
+    this.talkSfx = data.talkSfx || null;
     this.boundingBox = { offsetX: 3, offsetY: 10, width: 10, height: 6 };
   }
 
@@ -18728,11 +18754,13 @@ class FrancoPancho extends NPC {
       animator,
       sceneId,
       behavior: 'idle',
+      talkSfx: data.talkSfx || null,
       dialogues: dialogues || data.dialogues,
       initialDirection: 'down'
     });
     this.expansionId = data.id;
     this.spriteColor = data.spriteColor;
+    this.talkSfx = data.talkSfx || null;
     this.boundingBox = { offsetX: 3, offsetY: 10, width: 10, height: 6 };
   }
 
@@ -18813,6 +18841,7 @@ class IñakitoBoss extends Boss {
     this.loopTimer = 0;
     this.loopBrokenTimer = 0;
     this.deathQuote = '';
+    this.talkSfx = 'coffee_sip';
     this.phaseBanner = 0;
     this.lastPhase = 1;
   }
@@ -19344,6 +19373,45 @@ class DialogueBox {
     return lines;
   }
 
+  /**
+   * (EXPANSIÓN v2.0) SFX al empezar a hablar:
+   * - Voz propia del NPC (Cepedita holograma, Iñakito café, Tony teclado...).
+   * - Texto de error/glitch → playGlitch()/playError().
+   */
+  _playDialogueSfx(npc, lines) {
+    const sound = this.soundEngine;
+    if (!sound) return;
+
+    const wrappers = {
+      ui_glitch: 'playGlitch',
+      console_log: 'playConsoleLog',
+      hologram_on: 'playHologram',
+      error_buzz: 'playError',
+      keyboard_type: 'playKeyboard',
+      electric_shock: 'playShock',
+      coffee_sip: 'playCoffee',
+      door_airlock: 'playAirlock'
+    };
+
+    const sfx = npc && npc.talkSfx;
+    if (sfx) {
+      const method = wrappers[sfx];
+      if (method && typeof sound[method] === 'function') sound[method]();
+      else if (typeof sound.playSFX === 'function') sound.playSFX(sfx);
+    }
+
+    const flat = Array.isArray(lines) ? lines.join(' ') : String(lines || '');
+    if (/glitch|error|excepci[oó]n|exception|undefined|null|404|fallo|bug/i.test(flat)) {
+      if (typeof sound.playGlitch === 'function') sound.playGlitch();
+      else if (typeof sound.playError === 'function') sound.playError();
+    }
+
+    const npcName = npc ? `${npc.name || ''} ${npc.id || ''}` : '';
+    if (!sfx && /iñakito|inakito/i.test(npcName) && typeof sound.playCoffee === 'function') {
+      sound.playCoffee();
+    }
+  }
+
   start(npc, customLines = null, customChoices = null) {
     this.active = true;
     this.currentNPC = npc;
@@ -19374,6 +19442,7 @@ class DialogueBox {
     }
 
     this.lines = this._paginateLines(rawLines);
+    this._playDialogueSfx(npc, rawLines);
     this.currentLineIndex = 0;
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
@@ -31935,7 +32004,13 @@ const BGM_TRACKS = {
   boss_final: 'assets/music/07_final_boss_alex.mp3',
   jail: 'assets/music/08_jail_cell.mp3',
   game_over: 'assets/music/09_game_over.mp3',
-  victory: 'assets/music/10_credits_victory.mp3'
+  victory: 'assets/music/10_credits_victory.mp3',
+  // (EXPANSIÓN v2.0) El Resurgir de Mister Alex IA
+  valleverde_corp: 'assets/music/11_valleverde_corporativo.mp3',
+  oficina_central: 'assets/music/12_oficina_central.mp3',
+  vertedero: 'assets/music/13_vertedero_digital.mp3',
+  boss_iñakito: 'assets/music/14_boss_iñakito.mp3',
+  boss_alex_final: 'assets/music/15_boss_alex_final.mp3'
 };
 
 const BGM_MODE_ALIASES = {
@@ -31953,7 +32028,12 @@ const BGM_MODE_ALIASES = {
   theme_main_villain: 'boss_final',
   final_boss: 'boss_final',
   theme_victory_credits: 'victory',
-  credits: 'victory'
+  credits: 'victory',
+  // (EXPANSIÓN v2.0) Alias de pistas y nombres de jefe
+  track_inakito: 'boss_iñakito',
+  boss_inakito: 'boss_iñakito',
+  track_alex_final: 'boss_alex_final',
+  valleverde_corporativo: 'valleverde_corp'
 };
 
 // (BLOQUE 1) SFX pregrabados: se decodifican a buffers y se reproducen con polifonía.
@@ -31961,7 +32041,10 @@ const SFX_NAMES = [
   'sword_slash', 'hit_flesh', 'hit_metal', 'player_hurt', 'parry', 'enemy_death',
   'boss_roar', 'charge_attack', 'dash', 'throw_log', 'footstep_grass',
   'footstep_stone', 'pickup_item', 'coin', 'level_up', 'pet_animal',
-  'fish_splash', 'door_open', 'ui_hover', 'ui_click', 'ui_error', 'text_type'
+  'fish_splash', 'door_open', 'ui_hover', 'ui_click', 'ui_error', 'text_type',
+  // (EXPANSIÓN v2.0)
+  'ui_glitch', 'console_log', 'hologram_on', 'error_buzz',
+  'keyboard_type', 'electric_shock', 'coffee_sip', 'door_airlock'
 ];
 
 // El asset real venía como "fisg_splash.mp3"; se prueban ambos nombres.
@@ -33156,6 +33239,67 @@ class AudioManager {
     this._autoDisconnect(osc, gain);
     osc.start(startTime);
     osc.stop(startTime + duration + 0.01);
+  }
+
+  // ===========================================================================
+  // (EXPANSIÓN v2.0) SFX del Update Universal
+  // ===========================================================================
+  /** Glitch de interfaz: consistente (sin variación) para no sonar aleatorio. */
+  playGlitch() {
+    return this.playSFX('ui_glitch', { volume: 0.85, playbackRate: 1.0 });
+  }
+
+  /** Consola de Mister Alex: variación leve para evitar repetición robótica. */
+  playConsoleLog() {
+    return this.playSFX('console_log', {
+      volume: 0.8,
+      playbackRate: 0.94 + Math.random() * 0.12
+    });
+  }
+
+  /** Holograma de Cepedita 2.0: tono estable de proyección. */
+  playHologram() {
+    return this.playSFX('hologram_on', { volume: 0.85, playbackRate: 1.0 });
+  }
+
+  /** Error del sistema: variación corta. */
+  playError() {
+    return this.playSFX('error_buzz', {
+      volume: 0.85,
+      playbackRate: 0.95 + Math.random() * 0.1
+    });
+  }
+
+  /** Teclado corporativo: variación media. */
+  playKeyboard() {
+    return this.playSFX('keyboard_type', {
+      volume: 0.55,
+      playbackRate: 0.92 + Math.random() * 0.16
+    });
+  }
+
+  /** Descarga eléctrica: variación media. */
+  playShock() {
+    return this.playSFX('electric_shock', {
+      volume: 0.85,
+      playbackRate: 0.95 + Math.random() * 0.1
+    });
+  }
+
+  /** Sorbo de café de Iñakito: variación media. */
+  playCoffee() {
+    return this.playSFX('coffee_sip', {
+      volume: 0.7,
+      playbackRate: 0.94 + Math.random() * 0.12
+    });
+  }
+
+  /** Esclusa de aire: variación sutil. */
+  playAirlock() {
+    return this.playSFX('door_airlock', {
+      volume: 0.85,
+      playbackRate: 0.97 + Math.random() * 0.06
+    });
   }
 
   playMenuMove() {
