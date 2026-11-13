@@ -1,0 +1,32 @@
+el-ojete-dorado-the-game.html
+  h_e1bbc662b18209 13104-13105,13125,18591,18616-18617,18642,18658-18675,18698,18704,18757,18763,18844,19376-19414,19445,32007-32013,32031-32036,32044-32047,33244-33304
+src/audio/AudioManager.js
+  h_e1bbc662b18209 44-50,68-73,81-84,1281-1341
+src/entities/NPC.js
+  h_e1bbc662b18209 32-33,53
+src/expansion/ExpansionData.js
+  h_e1bbc662b18209 25,50-51,76,91-108
+src/expansion/entities/FrancoPancho.js
+  h_e1bbc662b18209 20,26
+src/expansion/entities/IñakitoBoss.js
+  h_e1bbc662b18209 48
+src/expansion/entities/TonyCuleiro.js
+  h_e1bbc662b18209 20,26
+src/ui/DialogueBox.js
+  h_e1bbc662b18209 114-152,183
+sw.js
+  h_e1bbc662b18209 16
+tests/regression.mjs
+  h_e1bbc662b18209 44,54,2541-2599
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "aff266466906d7cbf6ec1f4e688d6c74eaa29536",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
