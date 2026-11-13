@@ -80,6 +80,7 @@ export class Inventory {
     this._lastSlots = [];
     this._lastSelected = -1;
     this._detailBobStart = 0;
+    this._lastPointer = { x: -1, y: -1, down: false };
     this._touchActions = [];
     this._pageButtons = [];
     this._pointerWasDown = false;
@@ -152,6 +153,7 @@ export class Inventory {
     const px = input.pointerX;
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
+    this._lastPointer = { x: px, y: py, down };
 
     if (input.pointerJustClicked) {
       for (const action of this._touchActions) {
@@ -619,22 +621,36 @@ export class Inventory {
       const useRect = { id: 'use', x: padX, y: actY, w: btnW, h: btnH };
       const dropRect = { id: 'drop', x: padX + btnW + gap, y: actY, w: btnW, h: btnH };
 
-      ctx.fillStyle = 'rgba(20, 60, 45, 0.95)';
-      ctx.fillRect(useRect.x, useRect.y, useRect.w, useRect.h);
-      ctx.strokeStyle = UI_COLORS.emerald;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(useRect.x + 0.5, useRect.y + 0.5, useRect.w - 1, useRect.h - 1);
-      ctx.font = `bold 6px ${UI_FONT}`;
-      ctx.fillStyle = UI_COLORS.emerald;
-      ctx.textAlign = 'center';
-      ctx.fillText('USAR / EQUIPAR', useRect.x + useRect.w / 2, useRect.y + 5);
+      const pointer = this._lastPointer || { x: -1, y: -1, down: false };
+      const hoverUse = pointer.x >= useRect.x && pointer.x <= useRect.x + useRect.w &&
+        pointer.y >= useRect.y && pointer.y <= useRect.y + useRect.h;
+      const hoverDrop = pointer.x >= dropRect.x && pointer.x <= dropRect.x + dropRect.w &&
+        pointer.y >= dropRect.y && pointer.y <= dropRect.y + dropRect.h;
+      const useSink = hoverUse && pointer.down ? 1 : 0;
+      const dropSink = hoverDrop && pointer.down ? 1 : 0;
 
-      ctx.fillStyle = 'rgba(70, 20, 26, 0.95)';
-      ctx.fillRect(dropRect.x, dropRect.y, dropRect.w, dropRect.h);
-      ctx.strokeStyle = UI_COLORS.crimson;
-      ctx.strokeRect(dropRect.x + 0.5, dropRect.y + 0.5, dropRect.w - 1, dropRect.h - 1);
-      ctx.fillStyle = UI_COLORS.crimson;
-      ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5);
+      // (DIRECTRIZ UI) Drop shadow + hover brillante + hundido de 1 px.
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(useRect.x + 2, useRect.y + 3, useRect.w, useRect.h);
+      ctx.fillRect(dropRect.x + 2, dropRect.y + 3, dropRect.w, dropRect.h);
+
+      ctx.fillStyle = hoverUse ? 'rgba(34, 104, 76, 0.98)' : 'rgba(20, 60, 45, 0.95)';
+      ctx.fillRect(useRect.x, useRect.y + useSink, useRect.w, useRect.h);
+      ctx.strokeStyle = hoverUse ? '#86efac' : UI_COLORS.emerald;
+      ctx.lineWidth = hoverUse ? 2 : 1;
+      ctx.strokeRect(useRect.x + 0.5, useRect.y + useSink + 0.5, useRect.w - 1, useRect.h - 1);
+      ctx.font = `bold 6px ${UI_FONT}`;
+      ctx.fillStyle = hoverUse ? '#dcfce7' : UI_COLORS.emerald;
+      ctx.textAlign = 'center';
+      ctx.fillText('USAR / EQUIPAR', useRect.x + useRect.w / 2, useRect.y + 5 + useSink);
+
+      ctx.fillStyle = hoverDrop ? 'rgba(118, 32, 42, 0.98)' : 'rgba(70, 20, 26, 0.95)';
+      ctx.fillRect(dropRect.x, dropRect.y + dropSink, dropRect.w, dropRect.h);
+      ctx.strokeStyle = hoverDrop ? '#fca5a5' : UI_COLORS.crimson;
+      ctx.lineWidth = hoverDrop ? 2 : 1;
+      ctx.strokeRect(dropRect.x + 0.5, dropRect.y + dropSink + 0.5, dropRect.w - 1, dropRect.h - 1);
+      ctx.fillStyle = hoverDrop ? '#fee2e2' : UI_COLORS.crimson;
+      ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5 + dropSink);
 
       ctx.textAlign = 'left';
       this._touchActions = [useRect, dropRect];

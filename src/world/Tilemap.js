@@ -673,9 +673,9 @@ export class Tilemap {
     if (this.layers.decoration && this.layers.decoration[row][col] === TILES.SIGNPOST) {
       return false;
     }
-    // (FIX 4) Los NPCs no deben engancharse con vallas, bancos, cajas o arbustos.
+    // (FIX 2) Vallas, mesas, bancos, cajas, arbustos y yunques: decorativos y pisables
+    // para TODOS (jugador incluido). Solo muros de casa y límites bloquean.
     if (
-      options.ignoreSmallProps &&
       this.layers.decoration &&
       NPC_PASSABLE_PROPS.has(this.layers.decoration[row][col])
     ) {
@@ -2147,78 +2147,11 @@ export class Tilemap {
       });
     }
 
-    // === LETREROS DE SEÑALIZACIÓN VISIBLES DE TIENDAS Y CAMINOS ===
+    // === (FIX 1) SOLO 2 CARTELES EN TODO VALLEVERDE: entrada/tutorial y plaza/tienda ===
     const signposts = [
-      // 1. Tienda de Panadería de Clara
       {
-        c: 13,
-        r: 11,
-        shortName: 'Panadería Clara',
-        title: '🪧 [MERCADO] Panadería y Frutas de Clara · Alimentos & Fruta [Comprar / Vender]',
-        lines: [
-          '«Panadería y Frutas de Clara: Pan campesino recién horneado, manzanas jugosas y pasteles de bayas.»',
-          '«¡Acércate a Clara tras el mostrador para comprar provisiones o vender tus cosechas!»'
-        ]
-      },
-      // 2. Tienda de Software de Byte
-      {
-        c: 21,
-        r: 11,
-        shortName: 'Almacén Byte',
-        title: '🪧 [TIENDA] Almacén de Byte · Software & Café [Comprar / Vender]',
-        lines: [
-          '«Almacén de Dependencias de Byte: Café Compilado, Parches Hotfix y optimizaciones de software.»',
-          '«¡Acércate a Byte tras el mostrador para adquirir mejoras o vender chatarra de silicio!»'
-        ]
-      },
-      // 3. Botica de Pip
-      {
-        c: 13,
-        r: 16,
-        shortName: 'Botica de Pip',
-        title: '🪧 [BOTICA] Pociones de Pip · Herboristería [Pociones & Remedios]',
-        lines: [
-          '«Herboristería y Pociones de Pip: Elixires herbales, brebajes curativos y ungüentos anti-robotización.»',
-          '«¡Acércate a Pip tras el mostrador para reponer tus pociones!»'
-        ]
-      },
-      // 4. Pescadería de Finn
-      {
-        c: 21,
-        r: 16,
-        shortName: 'Pescadería Finn',
-        title: '🪧 [PESCADERÍA] Muelle de Finn · Pescado del Río Alba [Comprar / Vender]',
-        lines: [
-          '«Pescadería de Finn: Truchas plateadas y salmones frescos pescados en el Río Alba.»',
-          '«¡Acércate a Finn tras el mostrador para vender capturas de pesca o comprar pescado fresco!»'
-        ]
-      },
-      // 5. Forja de Brom
-      {
-        c: 23,
-        r: 7,
-        shortName: 'Forja de Brom',
-        title: '🪧 [FORJA] Taller de Brom · Forja de Espadas y Armaduras [Mejora & Venta]',
-        lines: [
-          '«Maestro Forjador Brom: Forjado de Espada de Silicio, Espada Overclockeada y Blindaje Térmico.»',
-          '«Brom trabaja incansablemente en su yunque exterior durante las horas diurnas.»'
-        ]
-      },
-      // 6. Invernadero de Lyra
-      {
-        c: 9,
-        r: 18,
-        shortName: 'Invernadero Lyra',
-        title: '🪧 [BOTICA] Invernadero de Lyra · Alquimia & Silicio [Pociones & Remedios]',
-        lines: [
-          '«Cabaña Botánica y Alambique de Lyra: Recolección de Flores de Silicio y elixires mágicos.»',
-          '«Lyra cuida sus plantas y atiende a los viajeros en su huerto aromático.»'
-        ]
-      },
-      // 7. Campo de Entrenamiento del Binario
-      {
-        c: 20,
-        r: 18,
+        c: 19,
+        r: 20,
         shortName: 'Campo Entrenamiento',
         title: '🪧 [CUARTEL] Guardia del Binario · Campo de Entrenamiento [Práctica & Nivel]',
         lines: [
@@ -2226,103 +2159,14 @@ export class Tilemap {
           '«¡Derrota los drones y bugs de prueba para ganar experiencia (XP) y subir de nivel antes de partir!»'
         ]
       },
-      // 8. Casa del Programador
       {
-        c: 5,
-        r: 11,
-        shortName: 'Tu Hogar',
-        title: '🪧 [HOGAR] Casa del Programador · Tu Refugio',
+        c: 22,
+        r: 10,
+        shortName: 'Forja de Brom',
+        title: '🪧 [FORJA] Taller de Brom · Forja de Espadas y Armaduras [Mejora & Venta]',
         lines: [
-          '«Tu residencia en Valleverde. Usa tu cama en el interior con [E] para descansar y cambiar el ciclo día/noche.»',
-          '«Dormir purga al 100% la robotización binaria y restaura tu salud y energía.»'
-        ]
-      },
-      // 9. Mansión de Aurelio
-      {
-        c: 9,
-        r: 6,
-        shortName: 'Mansión Aurelio',
-        title: '🪧 [ARCHIVO] Mansión del Sabio Aurelio · Cronista de Valleverde',
-        lines: [
-          '«Residencia y archivo histórico del Gran Sabio Aurelio. Consulta la crónica del Reino y tramita el Pase del Puente.»'
-        ]
-      },
-      // 10. Observatorio de Orion
-      {
-        c: 15,
-        r: 6,
-        shortName: 'Torre de Orion',
-        title: '🪧 [OBSERVATORIO] Torre de Orion · Astrología Cuántica e IA',
-        lines: [
-          '«Observatorio Astronómico y Computacional del Oráculo Orion [IA]. Consulta predicciones y charla con la IA.»'
-        ]
-      },
-      // 11. Frontera Oeste
-      {
-        c: 4,
-        r: 11,
-        shortName: 'Frontera Oeste',
-        title: '🪧 Frontera Oeste · Páramo de Mister AI Alex',
-        lines: [
-          '«← OESTE: Camino al Páramo Corrupto de Mister AI Alex y la Gran Puerta del Núcleo Cuántico.»',
-          '«¡PRECAUCIÓN! Más allá de los límites protegidos de Valleverde acechan drones y anomalías corruptas. Requieres equipo completo.»'
-        ]
-      },
-      // 12. Puente Este
-      {
-        c: 26,
-        r: 11,
-        shortName: 'Puente Este',
-        title: '🪧 Camino Este · Puente sobre el Río Alba',
-        lines: [
-          '«→ ESTE: Puente hacia el Valle de la Consagración.»',
-          '«Conduce a los Santuarios Sagrados de la Armadura Binaria y la Espada de la Recursividad.»',
-          '«(Valleverde es una aldea pacífica de descanso. El entrenamiento se realiza en el cuartel sur).»'
-        ]
-      },
-      // 13. Plaza Central
-      {
-        c: 16,
-        r: 12,
-        shortName: 'Plaza Mayor (Mercado)',
-        title: '🪧 Plaza Mayor de Valleverde · Mercado Central',
-        lines: [
-          '«¡Bienvenido al Mercado Central de Valleverde! Puestos disponibles:»',
-          '«• Noreste: Tienda de Software de Byte (Café Compilado y Parches Hotfix).»',
-          '«• Noroeste: Panadería de Clara (Pan Campesino y Manzanas frescas).»',
-          '«• Suroeste: Alquimia de Pip (Pociones Herbales y Ungüentos).»',
-          '«• Sureste: Pescadería de Finn (Truchas plateadas y Agua fresca).»',
-          '«← Oeste: Casa del Programador. ↑ Norte: Casa del Sabio. ↓ Sur: Cuartel y Campo de Entrenamiento.»'
-        ]
-      },
-      {
-        c: 16,
-        r: 7,
-        shortName: 'Cruce Norte',
-        title: '🪧 Cruce Norte de Valleverde · Cumbres de la Recursión',
-        lines: [
-          '«↑ NORTE: Ascenso a las Cumbres de la Recursión (Picos de Silicio y Minas de la Recursión).»',
-          '«← Casa del Sabio Aurelio. → Herrería de Brom.»'
-        ]
-      },
-      {
-        c: 18,
-        r: 17,
-        shortName: 'Cruce Sur',
-        title: '🪧 Cruce Sur de Valleverde · Marismas del Hardware Legacy',
-        lines: [
-          '«↓ SUR: Descenso a las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).»',
-          '«← Cabaña de Lyra. → Cuartel de Kael y Campo de Entrenamiento.»'
-        ]
-      },
-      {
-        c: 10,
-        r: 20,
-        shortName: 'Jardín Sur',
-        title: '🪧 Jardín Sur de Valleverde',
-        lines: [
-          '«Jardín botánico y zona de paseo municipal de Valleverde.»',
-          '«Un rincón apacible cuidado por la comunidad donde florecen las orquídeas del Alba.»'
+          '«Maestro Forjador Brom: Forjado de Espada de Silicio, Espada Overclockeada y Blindaje Térmico.»',
+          '«Brom trabaja incansablemente en su yunque exterior durante las horas diurnas.»'
         ]
       }
     ];
@@ -3895,8 +3739,9 @@ export class Tilemap {
 
     for (let r = startRow; r <= endRow; r++) {
       for (let c = startCol; c <= endCol; c++) {
-        const screenX = c * this.tileSize - camX;
-        const screenY = r * this.tileSize - camY;
+        // (FIX 1) Tiles en coordenadas enteras: sin costuras de 1 px entre celdas.
+        const screenX = Math.round(c * this.tileSize - camX);
+        const screenY = Math.round(r * this.tileSize - camY);
 
         let groundTile = ground[r][c];
         const isWater = groundTile === TILES.WATER_1 || groundTile === TILES.WATER_2;
@@ -4192,7 +4037,7 @@ export class Tilemap {
   }
 
   _generateHouseShadows(sceneId, scene) {
-    if (sceneId !== 'overworld') return [];
+    // (FIX 1/4) Sombras de aleros globales: cualquier escena con muros de casa.
     const { decoration } = scene.layers;
     const walls = new Set([TILES.WALL_FRONT, TILES.WALL_WINDOW, TILES.WALL_DOOR]);
     const shadows = [];
@@ -4259,37 +4104,50 @@ export class Tilemap {
 
   /** (FIX 2) Máximo 2 carteles por zona; el resto se retira y su dato de lectura se elimina. */
   _pruneSignposts(sceneId, scene) {
+    // (FIX 1) Exterminio estricto: se borran TODOS los carteles de la capa y sus datos.
     const deco = scene.layers.decoration;
     const collision = scene.layers.collision;
-    const cells = [];
     for (let r = 0; r < scene.rows; r++) {
       for (let c = 0; c < scene.cols; c++) {
-        if (deco[r][c] === TILES.SIGNPOST) cells.push({ r, c });
+        if (deco[r][c] === TILES.SIGNPOST) {
+          deco[r][c] = -1;
+          collision[r][c] = 0;
+        }
       }
     }
-    if (cells.length <= 2) return;
-    const signAt = (cell) =>
-      (scene.signposts || []).find(
-        (sp) => (sp.r ?? sp.row) === cell.r && (sp.c ?? sp.col) === cell.c
-      );
-    const priority = ['Entrenamiento', 'Forja de Brom', 'Camino a Valleverde', 'Templo'];
-    const priorityCells = cells.filter((cell) => {
-      const sp = signAt(cell);
-      return sp && priority.some((p) => (sp.shortName || '').includes(p));
-    });
-    const ordered = [...priorityCells, ...cells.filter((c) => !priorityCells.includes(c))];
-    const kept = new Set(ordered.slice(0, 2).map((x) => `${x.r},${x.c}`));
-    for (const { r, c } of cells) {
-      if (!kept.has(`${r},${c}`)) {
-        deco[r][c] = -1;
-        collision[r][c] = 0;
+    scene.signposts = [];
+
+    // Mazmorras, templos, minas e interiores: CERO carteles.
+    if (sceneId !== 'overworld') return;
+
+    // (FIX 1) Solo dos carteles manuales, fuera de caminos de tierra y puertas.
+    const kept = [
+      {
+        c: 19,
+        r: 20,
+        shortName: 'Campo Entrenamiento',
+        title: '🪧 [CUARTEL] Guardia del Binario · Campo de Entrenamiento [Práctica & Nivel]',
+        lines: [
+          '«Campo de Entrenamiento de Valleverde: Área cercada para combate de práctica militar.»',
+          '«¡Derrota los drones y bugs de prueba para ganar experiencia (XP) y subir de nivel antes de partir!»'
+        ]
+      },
+      {
+        c: 22,
+        r: 10,
+        shortName: 'Forja de Brom',
+        title: '🪧 [FORJA] Taller de Brom · Forja de Espadas y Armaduras [Mejora & Venta]',
+        lines: [
+          '«Maestro Forjador Brom: Forjado de Espada de Silicio, Espada Overclockeada y Blindaje Térmico.»',
+          '«Brom trabaja incansablemente en su yunque exterior durante las horas diurnas.»'
+        ]
       }
+    ];
+    for (const sp of kept) {
+      deco[sp.r][sp.c] = TILES.SIGNPOST;
+      collision[sp.r][sp.c] = 0;
+      scene.signposts.push(sp);
     }
-    scene.signposts = (scene.signposts || []).filter((sp) => {
-      const sr = sp.r ?? sp.row;
-      const sc = sp.c ?? sp.col;
-      return kept.has(`${sr},${sc}`);
-    });
   }
 
   _drawFloorDecals(ctx, camera) {
@@ -4874,8 +4732,8 @@ export class Tilemap {
       sy,
       this.tileSize * ATLAS_SCALE,
       this.tileSize * ATLAS_SCALE,
-      screenX + offsetX,
-      screenY + offsetY,
+      Math.round(screenX + offsetX),
+      Math.round(screenY + offsetY),
       this.tileSize,
       this.tileSize
     );

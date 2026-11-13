@@ -1615,6 +1615,28 @@ test('Menú de Pausa Depurado y Cinemática de Mister AI Alex sin Truncamiento',
   }
 });
 
+test('AudioManager: unlock idempotente y diccionario de pistas reutilizable', () => {
+  const audio = new AudioManager();
+  assert.equal(audio.isUnlocked, false);
+  assert.equal(audio.musicTracks, audio._bgmAudio);
+  assert.equal(audio.currentMusic, null);
+  assert.equal(audio.fadeInterval, null);
+  audio.unlockAndStart();
+  assert.equal(audio.isUnlocked, true);
+  assert.doesNotThrow(() => audio.unlockAndStart());
+  assert.equal(audio.isUnlocked, true);
+});
+
+test('AudioManager: buffers SFX polifónicos, preload y fallback sintetizado', () => {
+  const audio = new AudioManager();
+  assert.deepEqual(audio.sfxBuffers, {}, 'Los buffers empiezan vacíos');
+  assert.equal(typeof audio.preloadSFX, 'function');
+  assert.equal(audio.playSFX('sword_slash'), false, 'Sin buffer debe devolver false para el fallback');
+  assert.doesNotThrow(() => audio.playSwordSlash());
+  assert.doesNotThrow(() => audio.playFootstep('stone'));
+  assert.doesNotThrow(() => audio.playCoin());
+});
+
 test('AudioManager: Grafo de 3 buses, 4 canales, calibrador SFX y persistencia de ajustes', () => {
   const destination = { id: 'destination' };
   class MockGainNode {

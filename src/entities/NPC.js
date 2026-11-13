@@ -37,7 +37,7 @@ export class NPC extends Entity {
       width: 16,
       height: 16,
       speed,
-      boundingBox: { offsetX: 4, offsetY: 9, width: 8, height: 6 },
+      boundingBox: { offsetX: 3, offsetY: 10, width: 10, height: 6 },
       animator,
       sceneId
     });
@@ -319,8 +319,8 @@ export class NPC extends Entity {
       if (blockedX && blockedY) {
         this.stuckTimer += dt;
         this.isMoving = false;
-        // (FIX 4) Si lleva >0.5 s bloqueado, salta al tile libre más cercano y cambia de rumbo.
-        if (this.stuckTimer > 0.5) {
+        // (FIX 3) Si lleva >1.5 s bloqueado, salta al tile libre más cercano y cambia de rumbo.
+        if (this.stuckTimer > 1.5) {
           this.stuckTimer = 0;
           const ts = tilemap.tileSize;
           const free = nearestFreeTile(

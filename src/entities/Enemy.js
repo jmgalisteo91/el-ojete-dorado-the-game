@@ -226,7 +226,7 @@ export class Enemy extends Entity {
     if (this.brain) this.brain.cancelAction();
 
     if (soundEngine && typeof soundEngine.playEnemyHit === 'function') {
-      soundEngine.playEnemyHit();
+      soundEngine.playEnemyHit(Boolean(this.isBoss));
     }
 
     if (this.hp <= 0) {

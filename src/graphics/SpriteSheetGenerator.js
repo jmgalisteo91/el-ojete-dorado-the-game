@@ -771,12 +771,13 @@ async function generateTilesetSheet() {
   };
 
   const fillGrass = (ox, oy, variant = 0) => {
-    px(ctx, ox, oy, 16, 16, '#3f7d3c');
-    fillNoise(ox, oy, 31 + variant * 7, ['#4f9649', '#326630', '#5cb054', '#3a7238'], 0.2);
-    for (let i = 0; i < 5; i++) {
+    px(ctx, ox, oy, 16, 16, '#427f3e');
+    // (FIX 4) Ruido más sutil: menos píxeles oscuros que parecían puntos negros.
+    fillNoise(ox, oy, 31 + variant * 7, ['#4c9347', '#3a7336', '#56a24f', '#457d41'], 0.1);
+    for (let i = 0; i < 3; i++) {
       const x = 1 + Math.floor(tileNoise(i, variant, 91) * 14);
       const y = 1 + Math.floor(tileNoise(i, variant, 47) * 14);
-      px(ctx, ox + x, oy + y, 1, 2, i % 2 ? '#5cb054' : '#326630');
+      px(ctx, ox + x, oy + y, 1, 2, i % 2 ? '#56a24f' : '#3a7336');
     }
   };
 
@@ -791,7 +792,7 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.PATH);
     px(ctx, ox, oy, 16, 16, '#b88b5a');
-    fillNoise(ox, oy, 73, ['#a37748', '#c99e6e', '#8c6238', '#bd9463'], 0.2);
+    fillNoise(ox, oy, 73, ['#a37748', '#c99e6e', '#8c6238', '#bd9463'], 0.14);
     for (let i = 0; i < 4; i++) {
       const x = 1 + Math.floor(tileNoise(i, 0, 17) * 14);
       const y = 1 + Math.floor(tileNoise(i, 0, 29) * 14);
@@ -800,15 +801,14 @@ async function generateTilesetSheet() {
   }
   {
     const { ox, oy } = cellOrigin(TILES.COBBLE);
-    px(ctx, ox, oy, 16, 16, '#6f7987');
-    fillNoise(ox, oy, 101, ['#7c8695', '#646e7c', '#8b95a5', '#59616d'], 0.26);
-    const stones = [
-      [1, 2, 5, 4], [8, 1, 6, 5],
-      [2, 9, 4, 5], [7, 8, 5, 4], [12, 10, 3, 4]
-    ];
-    for (const [sx, sy, sw, sh] of stones) {
-      px(ctx, ox + sx, oy + sy, sw, sh, '#8b95a5');
-      px(ctx, ox + sx + 1, oy + sy + 1, Math.max(1, sw - 2), 1, '#a3adbd');
+    px(ctx, ox, oy, 16, 16, '#727c8a');
+    // (FIX 4) Adoquín continuo: base con ruido + guijarros pequeños, sin bloques repetidos por tile.
+    fillNoise(ox, oy, 101, ['#7c8695', '#687281', '#8791a0', '#5c6572'], 0.16);
+    for (let i = 0; i < 7; i++) {
+      const sx = 1 + Math.floor(tileNoise(i, 2, 137) * 13);
+      const sy = 1 + Math.floor(tileNoise(i, 5, 149) * 13);
+      const light = i % 2 === 0;
+      px(ctx, ox + sx, oy + sy, 1 + (i % 2), 1, light ? '#96a0af' : '#5a6371');
     }
   }
   [TILES.WATER_1, TILES.WATER_2].forEach((id, idx) => {
@@ -984,9 +984,11 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.FLOOR_WOOD);
     px(ctx, ox, oy, 16, 16, '#8f5d38');
-    for (let y = 0; y < 16; y += 4) {
-      px(ctx, ox, oy + y, 16, 3, '#a46d44');
-      px(ctx, ox + ((y * 3) % 12), oy + y, 1, 3, '#754929');
+    // (FIX 1) Madera continua: vetas suaves y sin línea pegada al borde del tile.
+    fillNoise(ox, oy, 257, ['#96633d', '#865633', '#a06b43'], 0.12);
+    for (let y = 2; y < 16; y += 5) {
+      px(ctx, ox, oy + y, 16, 1, '#754929');
+      px(ctx, ox + ((y * 3 + 2) % 12), oy + y + 1, 1, 2, '#754929');
     }
   }
   // 26: WALL_INTERIOR (Muro interior de vivienda)
@@ -1078,13 +1080,8 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.STONE_FLOOR);
     px(ctx, ox, oy, 16, 16, '#3b4252');
-    fillNoise(ox, oy, 307, ['#434c5e', '#4c566a', '#323844', '#465067'], 0.3);
-    for (let i = 0; i < 2; i++) {
-      const x = 2 + Math.floor(tileNoise(i, 0, 401) * 10);
-      const y = 2 + Math.floor(tileNoise(i, 0, 409) * 10);
-      px(ctx, ox + x, oy + y, 2, 1, '#2a303d');
-      px(ctx, ox + x + 1, oy + y + 1, 1, 2, '#2a303d');
-    }
+    // (FIX 1/4) Piedra 100% continua: sin borde, sin grieta y con ruido mínimo.
+    fillNoise(ox, oy, 307, ['#3e4657', '#404959', '#39404f'], 0.05);
   }
   // 37: ALTAR_PEDESTAL (Pedestal sagrado para el arma y la armadura)
   {
@@ -1185,11 +1182,13 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.MAINFRAME_FLOOR);
     px(ctx, ox, oy, 16, 16, '#0b0f19'); // Metal oscuro mate
-    px(ctx, ox + 1, oy + 1, 14, 14, '#111827');
-    // Cables de fibra óptica neón
-    px(ctx, ox, oy + 7, 16, 1, '#06b6d4'); // Bus cian
-    px(ctx, ox + 7, oy, 1, 16, '#3b82f6'); // Bus azul
-    px(ctx, ox + 7, oy + 7, 2, 2, '#ec4899'); // Nodo cuántico magenta
+    // (FIX 1) Sin marco de 14x14: metal continuo con ruido y fibra corta irregular.
+    fillNoise(ox, oy, 269, ['#0f1522', '#121a2b', '#0a101c', '#151d30'], 0.18);
+    px(ctx, ox + 2, oy + 5, 9, 1, '#06b6d4');
+    px(ctx, ox + 11, oy + 2, 1, 8, '#3b82f6');
+    px(ctx, ox + 6, oy + 11, 5, 1, '#06b6d4');
+    px(ctx, ox + 11, oy + 10, 2, 2, '#ec4899');
+    px(ctx, ox + 3, oy + 12, 1, 1, '#22d3ee');
   }
   // 48: MAINFRAME_WALL (Racks de Servidores Cuánticos de Mister AI Alex)
   {

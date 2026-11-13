@@ -62,9 +62,24 @@ const BGM_MODE_ALIASES = {
   credits: 'victory'
 };
 
+// (BLOQUE 1) SFX pregrabados: se decodifican a buffers y se reproducen con polifonía.
+const SFX_NAMES = [
+  'sword_slash', 'hit_flesh', 'hit_metal', 'player_hurt', 'parry', 'enemy_death',
+  'boss_roar', 'charge_attack', 'dash', 'throw_log', 'footstep_grass',
+  'footstep_stone', 'pickup_item', 'coin', 'level_up', 'pet_animal',
+  'fish_splash', 'door_open', 'ui_hover', 'ui_click', 'ui_error', 'text_type'
+];
+
+// El asset real venía como "fisg_splash.mp3"; se prueban ambos nombres.
+const SFX_FILE_ALIASES = { fish_splash: ['fish_splash', 'fisg_splash'] };
+const SFX_EXTENSIONS = ['mp3', 'wav', 'ogg'];
+
 export class AudioManager {
   constructor() {
     this.ctx = null;
+    this.audioContext = null;
+    this.sfxBuffers = {};
+    this._sfxPreloadPromise = null;
     this.masterGainNode = null;
     this.musicGainNode = null;
     this.sfxGainNode = null;
@@ -83,6 +98,11 @@ export class AudioManager {
 
     // (BLOQUE 1/3/4) BGM pregrabada y crossfade independiente del sintetizador.
     this._bgmAudio = new Map();
+    // (FIX 2) Diccionario reutilizable de pistas; nunca se recrea por cambio de zona.
+    this.musicTracks = this._bgmAudio;
+    this.currentMusic = null;
+    this.isUnlocked = false;
+    this.fadeInterval = null;
     this._bgmCurrentKey = null;
     this._bgmCurrentAudio = null;
     this._bgmPendingKey = null;
@@ -94,6 +114,7 @@ export class AudioManager {
     this._bgmDuckTimer = null;
     this._bgmDuckRestoreStart = 0;
     this._bgmDuckRestoreFrom = 0;
+    this._bgmDuckRestoreMs = BGM_DUCK_RESTORE_MS;
 
     // Carga de configuración inicial guardada
     this.settings = this._loadSettings();
@@ -370,6 +391,7 @@ export class AudioManager {
 
     try {
       this.ctx = new AudioContextClass();
+      this.audioContext = this.ctx;
 
       // Bus 1: Master
       this.masterGainNode = this.ctx.createGain();
@@ -454,7 +476,15 @@ export class AudioManager {
   }
 
   unlockAndStart() {
-    // (BLOQUE 2) Primer gesto: la BGM pregrabada arranca aquí; los SFX siguen en Web Audio.
+    // (FIX 3) Unlock idempotente: varios clics no deben arrancar la BGM varias veces.
+    if (this.isUnlocked) {
+      this._ensureAudioGraph();
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+      return;
+    }
+    this.isUnlocked = true;
     this._unlocked = true;
     const key = this._bgmPendingKey || this._resolveBgmKey(this.mode);
     if (key) {
@@ -466,6 +496,92 @@ export class AudioManager {
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
+    // (BLOQUE 1.3) Carga en segundo plano; si algo falla, quedan los sintetizadores.
+    this.preloadSFX().catch((err) => {
+      console.warn('[AudioManager] No se pudieron precargar los SFX:', err?.message || err);
+    });
+  }
+
+  /**
+   * (BLOQUE 1) Descarga y decodifica assets/sfx/* en buffers de Web Audio.
+   * Tolera archivos ausentes o corruptos: cada fallo cae al sintetizador.
+   */
+  async preloadSFX() {
+    if (this._sfxPreloadPromise) return this._sfxPreloadPromise;
+    this._sfxPreloadPromise = (async () => {
+      this._ensureAudioGraph();
+      if (!this.ctx || typeof fetch !== 'function') return;
+      await Promise.all(SFX_NAMES.map(async (name) => {
+        if (this.sfxBuffers[name]) return;
+        const bases = SFX_FILE_ALIASES[name] || [name];
+        for (const base of bases) {
+          for (const ext of SFX_EXTENSIONS) {
+            try {
+              const res = await fetch(`assets/sfx/${base}.${ext}`, { cache: 'force-cache' });
+              if (!res.ok) continue;
+              const arrayBuffer = await res.arrayBuffer();
+              const decoded = await new Promise((resolve, reject) => {
+                try {
+                  const p = this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
+                  if (p && typeof p.then === 'function') p.then(resolve, reject);
+                } catch (err) {
+                  reject(err);
+                }
+              });
+              if (decoded) {
+                this.sfxBuffers[name] = decoded;
+                return;
+              }
+            } catch {
+              // Probar siguiente extensión/alias.
+            }
+          }
+        }
+        console.warn(`[AudioManager] SFX no disponible: ${name}; se usará el sintetizador.`);
+      }));
+    })();
+    return this._sfxPreloadPromise;
+  }
+
+  /**
+   * (BLOQUE 2) Dispara un SFX pregrabado con polifonía y variación de tono.
+   * Devuelve false si el buffer no está cargado para que el llamador use el fallback.
+   */
+  playSFX(name, options = {}) {
+    if (!name) return false;
+    const buffer = this.sfxBuffers && this.sfxBuffers[name];
+    if (!buffer) return false;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return false;
+    try {
+      const source = this.ctx.createBufferSource();
+      source.buffer = buffer;
+      const requestedRate = Number.isFinite(options.playbackRate)
+        ? options.playbackRate
+        : 1.0 + (Math.random() * 0.2 - 0.1);
+      source.playbackRate.value = Math.max(0.5, Math.min(2, requestedRate));
+      const gain = this.ctx.createGain();
+      const volume = Math.max(0, Math.min(1, options.volume ?? 0.9));
+      gain.gain.value = volume;
+      source.connect(gain);
+      gain.connect(this.sfxGainNode);
+      if (name === 'player_hurt' || name === 'hit_metal' || name === 'parry') {
+        this._duckMusicForImpact();
+      }
+      source.start(0);
+      this._autoDisconnect(source, gain);
+      return true;
+    } catch (err) {
+      console.warn('[AudioManager] No se pudo reproducir SFX:', name, err?.message || err);
+      return false;
+    }
+  }
+
+  /** (BLOQUE 4) Baja la BGM al 20% del volumen actual y la restaura en 300 ms. */
+  _duckMusicForImpact() {
+    if (!this._bgmCurrentAudio) return;
+    const current = this._bgmCurrentAudio.volume;
+    this.duckMusic(300, Math.max(0.001, current * 0.2), 300);
   }
 
 
@@ -566,19 +682,23 @@ export class AudioManager {
 
     if (old === audio) {
       this._bgmCurrentKey = key;
-      audio.volume = this._bgmBaseVolume();
+      this.currentMusic = audio;
+      audio.volume = this._bgmEffectiveVolume();
       if (audio.paused) {
         const p = audio.play();
         if (p && typeof p.catch === 'function') {
-          p.catch((err) => console.warn('[AudioManager] BGM bloqueada:', err?.message || err));
+          p.catch((err) => this._warnBgmPlayFailure(err));
         }
       }
       return;
     }
 
-    this._clearBgmFade();
+    // (FIX 1/4) Cancelar el fade anterior MATANDO su pista saliente antes de crear otro.
+    this._clearBgmFade(true);
+
     this._bgmCurrentKey = key;
     this._bgmCurrentAudio = audio;
+    this.currentMusic = audio;
     this._bgmPendingKey = null;
 
     audio.loop = true;
@@ -586,9 +706,7 @@ export class AudioManager {
     audio.volume = 0;
     const playPromise = audio.play();
     if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch((err) => {
-        console.warn('[AudioManager] BGM bloqueada o fallida:', err?.message || err);
-      });
+      playPromise.catch((err) => this._warnBgmPlayFailure(err));
     }
 
     const target = this._bgmEffectiveVolume();
@@ -596,6 +714,7 @@ export class AudioManager {
       if (old && old !== audio) {
         old.pause();
         try { old.currentTime = 0; } catch { /* noop */ }
+        old.volume = 0;
       }
       audio.volume = target;
       return;
@@ -606,10 +725,20 @@ export class AudioManager {
       audio,
       old,
       start: now,
-      duration: fadeMs,
+      // (FIX 1) Saliente rápido de 200 ms; entrada suave acotada para no eternizar el cambio.
+      oldDuration: 200,
+      duration: Math.min(900, Math.max(200, fadeMs)),
       oldStart: old ? old.volume : 0
     };
     this._bgmFadeTimer = setInterval(() => this._tickBgmFade(), 30);
+    this.fadeInterval = this._bgmFadeTimer;
+  }
+
+  /** Filtra el AbortError benigno de play() interrumpido por un cambio de pista. */
+  _warnBgmPlayFailure(err) {
+    if (!err) return;
+    if (err.name === 'AbortError' || /interrupted/i.test(String(err.message || ''))) return;
+    console.warn('[AudioManager] BGM bloqueada o fallida:', err?.message || err);
   }
 
   _stopBgm(fadeMs = 800) {
@@ -617,16 +746,35 @@ export class AudioManager {
     const old = this._bgmCurrentAudio;
     this._bgmCurrentAudio = null;
     this._bgmCurrentKey = null;
+    this.currentMusic = null;
     if (!old) return;
-    if (!fadeMs || fadeMs <= 0 || typeof setInterval === 'undefined') {
-      old.pause();
-      try { old.currentTime = 0; } catch { /* noop */ }
+    // (FIX 1) Saliente de 200 ms; pausa + currentTime=0 al terminar (sin destruir la instancia).
+    this.fadeOut(old, 200);
+  }
+
+  /** (FIX 4) Fade-out seguro de una instancia; cancela cualquier fade previo. */
+  fadeOut(audioElement, duration = 200) {
+    if (!audioElement) return;
+    this._clearBgmFade(true);
+    if (!duration || duration <= 0 || typeof setInterval === 'undefined') {
+      try {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+        audioElement.volume = 0;
+      } catch { /* noop */ }
       return;
     }
-    this._clearBgmFade();
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    this._bgmFade = { audio: null, old, start: now, duration: fadeMs, oldStart: old.volume };
+    this._bgmFade = {
+      audio: null,
+      old: audioElement,
+      start: now,
+      oldDuration: duration,
+      duration,
+      oldStart: audioElement.volume
+    };
     this._bgmFadeTimer = setInterval(() => this._tickBgmFade(), 30);
+    this.fadeInterval = this._bgmFadeTimer;
   }
 
   _tickBgmFade() {
@@ -635,27 +783,47 @@ export class AudioManager {
       return;
     }
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const raw = Math.min(1, (now - this._bgmFade.start) / Math.max(1, this._bgmFade.duration));
-    const eased = raw * raw * (3 - 2 * raw);
+    const { audio, old, oldStart, oldDuration, duration } = this._bgmFade;
+    const newRaw = Math.min(1, (now - this._bgmFade.start) / Math.max(1, duration));
+    const oldRaw = Math.min(1, (now - this._bgmFade.start) / Math.max(1, oldDuration || duration));
+    const newEase = newRaw * newRaw * (3 - 2 * newRaw);
+    const oldEase = oldRaw * oldRaw * (3 - 2 * oldRaw);
     const target = this._bgmEffectiveVolume();
-    const { audio, old, oldStart } = this._bgmFade;
-    if (audio) audio.volume = target * eased;
-    if (old) old.volume = Math.max(0, oldStart * (1 - eased));
-    if (raw >= 1) {
-      if (old) {
-        old.pause();
-        try { old.currentTime = 0; } catch { /* noop */ }
+
+    if (audio) audio.volume = target * newEase;
+    if (old) {
+      old.volume = Math.max(0, oldStart * (1 - oldEase));
+      if (oldRaw >= 1) {
+        try {
+          old.pause();
+          old.currentTime = 0;
+        } catch { /* noop */ }
+        old.volume = 0;
       }
+    }
+    if (newRaw >= 1 && oldRaw >= 1) {
       if (audio) audio.volume = target;
-      this._clearBgmFade();
+      this._clearBgmFade(false);
     }
   }
 
-  _clearBgmFade() {
+  _clearBgmFade(pauseOutgoing = true) {
+    // (FIX 1) Al cancelar un crossfade, la pista saliente anterior NUNCA debe quedar sonando.
+    if (pauseOutgoing && this._bgmFade) {
+      const outgoing = this._bgmFade.old;
+      if (outgoing && outgoing !== this._bgmCurrentAudio) {
+        try {
+          outgoing.pause();
+          outgoing.currentTime = 0;
+          outgoing.volume = 0;
+        } catch { /* noop */ }
+      }
+    }
     if (this._bgmFadeTimer) {
       clearInterval(this._bgmFadeTimer);
       this._bgmFadeTimer = null;
     }
+    this.fadeInterval = null;
     this._bgmFade = null;
   }
 
@@ -664,10 +832,18 @@ export class AudioManager {
     const target = this._bgmEffectiveVolume();
     for (const [key, audio] of this._bgmAudio) {
       if (!audio) continue;
+      const inFade = this._bgmFade && (this._bgmFade.audio === audio || this._bgmFade.old === audio);
       if (key === this._bgmCurrentKey && !this._bgmFade) {
         audio.volume = target;
-      } else if (!this._bgmFade || this._bgmFade.audio !== audio) {
+      } else if (!inFade) {
+        // (FIX 1) Cualquier instancia ajena al fade actual se silencia y se pausa.
         audio.volume = 0;
+        if (!audio.paused) {
+          try {
+            audio.pause();
+            audio.currentTime = 0;
+          } catch { /* noop */ }
+        }
       }
     }
   }
@@ -676,8 +852,9 @@ export class AudioManager {
    * (BLOQUE 7) Ducking: baja la BGM a 0.1 durante 0.5 s y la recupera suavemente.
    * Solo afecta a la música; el bus SFX permanece a 1.0.
    */
-  duckMusic(durationMs = 500, level = BGM_DUCK_VOLUME) {
+  duckMusic(durationMs = 500, level = BGM_DUCK_VOLUME, restoreMs = BGM_DUCK_RESTORE_MS) {
     if (!this._bgmCurrentAudio) return;
+    this._bgmDuckRestoreMs = restoreMs;
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     this._bgmDuckUntil = now + Math.max(0, durationMs);
     this._bgmDuckLevel = Math.max(0, Math.min(BGM_MAX_VOLUME, level));
@@ -706,7 +883,7 @@ export class AudioManager {
       this._bgmDuckRestoreStart = now;
       this._bgmDuckRestoreFrom = audio.volume;
     }
-    const raw = Math.min(1, (now - this._bgmDuckRestoreStart) / BGM_DUCK_RESTORE_MS);
+    const raw = Math.min(1, (now - this._bgmDuckRestoreStart) / (this._bgmDuckRestoreMs || BGM_DUCK_RESTORE_MS));
     const eased = raw * raw * (3 - 2 * raw);
     audio.volume = this._bgmDuckRestoreFrom + (base - this._bgmDuckRestoreFrom) * eased;
     if (raw >= 1) this._clearBgmDuck();
@@ -1088,6 +1265,7 @@ export class AudioManager {
   }
 
   playMenuMove() {
+    if (this.playSFX('ui_hover')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1101,6 +1279,7 @@ export class AudioManager {
   }
 
   playMenuSelect() {
+    if (this.playSFX('ui_click')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1144,6 +1323,7 @@ export class AudioManager {
   }
 
   playSwordSlash() {
+    if (this.playSFX('sword_slash')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1165,6 +1345,7 @@ export class AudioManager {
   }
 
   playChargedAttack() {
+    if (this.playSFX('charge_attack')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1186,6 +1367,7 @@ export class AudioManager {
   }
 
   playDashSound() {
+    if (this.playSFX('dash')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const noise = this._getWhiteNoiseBuffer();
@@ -1213,6 +1395,7 @@ export class AudioManager {
   }
 
   playHitHurt() {
+    if (this.playSFX('hit_flesh')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1226,6 +1409,7 @@ export class AudioManager {
   }
 
   playPunch() {
+    if (this.playSFX('hit_flesh')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1238,7 +1422,8 @@ export class AudioManager {
     });
   }
 
-  playEnemyHit() {
+  playEnemyHit(isBoss = false) {
+    if (this.playSFX(isBoss ? 'hit_metal' : 'hit_flesh')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1252,6 +1437,7 @@ export class AudioManager {
   }
 
   playPlayerHurt() {
+    if (this.playSFX('player_hurt')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1272,6 +1458,7 @@ export class AudioManager {
   }
 
   playMetalClink() {
+    if (this.playSFX('hit_metal')) return;
     // (BLOQUE 7) SFX fuerte: bajar la BGM temporalmente.
     this.duckMusic();
     this._ensureAudioGraph();
@@ -1295,6 +1482,7 @@ export class AudioManager {
   }
 
   playBarrier() {
+    if (this.playSFX('parry')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1337,6 +1525,7 @@ export class AudioManager {
   }
 
   playDoorOpenSound() {
+    if (this.playSFX('door_open')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1383,6 +1572,7 @@ export class AudioManager {
   }
 
   playItemPickupSound() {
+    if (this.playSFX('pickup_item')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -1418,6 +1608,125 @@ export class AudioManager {
     }
   }
 
+  // (BLOQUE 3) SFX nuevos: buffer pregrabado y fallback sintetizado.
+  playCoin() {
+    if (this.playSFX('coin', { volume: 0.8 })) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 987.77, type: 'square', startTime: now, duration: 0.05, peakGain: 0.08 });
+    this._playSfxTone({ freq: 1318.51, type: 'square', startTime: now + 0.05, duration: 0.09, peakGain: 0.08 });
+  }
+
+  playLevelUp() {
+    if (this.playSFX('level_up')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((freq, i) => {
+      this._playSfxTone({
+        freq,
+        type: 'triangle',
+        startTime: now + i * 0.07,
+        duration: 0.12,
+        peakGain: 0.1
+      });
+    });
+  }
+
+  playEnemyDeath() {
+    if (this.playSFX('enemy_death')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 320, type: 'sawtooth', startTime: now, duration: 0.25, peakGain: 0.09 });
+    this._playSfxTone({ freq: 90, type: 'sawtooth', startTime: now + 0.08, duration: 0.3, peakGain: 0.09 });
+  }
+
+  playBossRoar() {
+    if (this.playSFX('boss_roar')) return;
+    this.duckMusic(400, 0.12);
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 85, type: 'sawtooth', startTime: now, duration: 0.45, peakGain: 0.12 });
+    this._playSfxTone({ freq: 55, type: 'square', startTime: now + 0.12, duration: 0.4, peakGain: 0.1 });
+  }
+
+  playThrowLog() {
+    if (this.playSFX('throw_log')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 260, type: 'triangle', startTime: now, duration: 0.08, peakGain: 0.06 });
+    this._playSfxTone({ freq: 130, type: 'triangle', startTime: now + 0.06, duration: 0.1, peakGain: 0.05 });
+  }
+
+  playFishSplash() {
+    if (this.playSFX('fish_splash')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    const noise = this._getWhiteNoiseBuffer();
+    if (!noise) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = noise;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1200, now);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.07, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGainNode);
+    this._autoDisconnect(src, gain);
+    src.start(now);
+    src.stop(now + 0.19);
+  }
+
+  playTextType() {
+    if (this.playSFX('text_type', { volume: 0.35, playbackRate: 0.98 + Math.random() * 0.06 })) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    this._playSfxTone({
+      freq: 620,
+      type: 'triangle',
+      startTime: this.ctx.currentTime,
+      duration: 0.018,
+      peakGain: 0.02
+    });
+  }
+
+  playUIError() {
+    if (this.playSFX('ui_error')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 220, type: 'square', startTime: now, duration: 0.08, peakGain: 0.07 });
+    this._playSfxTone({ freq: 180, type: 'square', startTime: now + 0.08, duration: 0.1, peakGain: 0.06 });
+  }
+
+  playFootstep(surface = 'grass') {
+    const stone = surface === 'stone' || surface === 'dungeon';
+    const name = stone ? 'footstep_stone' : 'footstep_grass';
+    if (this.playSFX(name, { volume: 0.5, playbackRate: 0.95 + Math.random() * 0.1 })) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    this._playSfxTone({
+      freq: stone ? 180 : 120,
+      type: 'triangle',
+      startTime: this.ctx.currentTime,
+      duration: 0.03,
+      peakGain: 0.035
+    });
+  }
+
+  // Alias con los nombres de la especificación.
+  playItemPickup() { this.playItemPickupSound(); }
+  playChargeAttack() { this.playChargedAttack(); }
+
   playVoiceBlip(speakerName = '', char = 'a') {
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
@@ -1450,6 +1759,7 @@ export class AudioManager {
   }
 
   playAnimalSound(species) {
+    if (this.playSFX('pet_animal')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;

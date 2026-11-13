@@ -265,6 +265,9 @@ export class ShopUI {
 
     const listY = content.y + 8;
     const listH = VISIBLE_ROWS * ROW_H;
+    const pointer = this.game.input || {};
+    const pointerX = pointer.pointerX;
+    const pointerY = pointer.pointerY;
     ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
     ctx.fillRect(content.x, listY - 1, content.w, listH + 2);
 
@@ -274,24 +277,38 @@ export class ShopUI {
       if (!item) continue;
       const y = listY + i * ROW_H;
       const selected = idx === this.selectedIndex;
-      if (selected) {
-        ctx.fillStyle = 'rgba(229, 192, 123, 0.16)';
+      const isHover = pointerX >= content.x && pointerX <= content.x + content.w &&
+        pointerY >= y - 1 && pointerY <= y - 1 + ROW_H;
+
+      // (DIRECTRIZ UI) Fila glass con gradiente, hover con brillo y borde.
+      if (selected || isHover) {
+        const strength = selected ? 0.22 : 0.10;
+        const grad = ctx.createLinearGradient(content.x, y, content.x + content.w, y);
+        grad.addColorStop(0, `rgba(253, 224, 71, ${strength})`);
+        grad.addColorStop(0.65, `rgba(253, 224, 71, ${strength * 0.3})`);
+        grad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = grad;
         ctx.fillRect(content.x, y - 1, content.w, ROW_H);
-        ctx.fillStyle = UI_COLORS.accentBright;
-      } else {
-        ctx.fillStyle = UI_COLORS.textSecondary;
+        ctx.strokeStyle = selected ? 'rgba(253, 224, 71, 0.5)' : 'rgba(253, 224, 71, 0.22)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(content.x + 0.5, y - 0.5, content.w - 1, ROW_H - 1);
       }
+      ctx.fillStyle = selected ? UI_COLORS.accentBright : (isHover ? UI_COLORS.textPrimary : UI_COLORS.textSecondary);
       ctx.font = `${selected ? 'bold ' : ''}5px ${UI_FONT}`;
       const prefix = selected ? '► ' : '  ';
-      ctx.fillText(`${prefix}${item.icon || ''} ${item.name}`.slice(0, 32), content.x + 2, y);
+      const rowText = `${prefix}${item.icon || ''} ${item.name}`.slice(0, 32);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillText(rowText, content.x + 3, y + 1);
+      ctx.fillStyle = selected ? UI_COLORS.accentBright : (isHover ? UI_COLORS.textPrimary : UI_COLORS.textSecondary);
+      ctx.fillText(rowText, content.x + 2, y);
       ctx.textAlign = 'right';
+      const priceText = this.mode === 'sell'
+        ? `${this.game.inventory.getItemCount(item.id)}x · ${item.price}🪙`
+        : `${item.price} 🪙`;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillText(priceText, content.x + content.w - 1, y + 1);
       ctx.fillStyle = selected ? UI_COLORS.gold : UI_COLORS.textDim;
-      if (this.mode === 'sell') {
-        const owned = this.game.inventory.getItemCount(item.id);
-        ctx.fillText(`${owned}x · ${item.price}🪙`, content.x + content.w - 2, y);
-      } else {
-        ctx.fillText(`${item.price} 🪙`, content.x + content.w - 2, y);
-      }
+      ctx.fillText(priceText, content.x + content.w - 2, y);
       ctx.textAlign = 'left';
     }
 

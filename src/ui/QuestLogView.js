@@ -48,7 +48,9 @@ export class QuestLogView {
 
   /** (FIX M3.4) Toque para seleccionar y arrastre vertical para hacer scroll. */
   handleTouchInput(input) {
-    if (!this.isOpen || !this.isTouchDevice || !input) return false;
+    if (!this.isOpen || !input) return false;
+    this._hoverPointer = { x: input.pointerX, y: input.pointerY };
+    if (!this.isTouchDevice) return false;
     const px = input.pointerX;
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
@@ -212,6 +214,15 @@ export class QuestLogView {
       const tx = content.x + i * (tabW + tabGap);
       this._tabRects.push({ x: tx, y: content.y, w: tabW, h: tabH, id: tab.id });
       const active = this.activeTab === tab.id;
+      const hp = this._hoverPointer;
+      const isHover = !active && hp && hp.x >= tx && hp.x <= tx + tabW && hp.y >= content.y && hp.y <= content.y + tabH;
+      if (isHover) {
+        ctx.fillStyle = 'rgba(253, 224, 71, 0.08)';
+        ctx.fillRect(tx, content.y, tabW, tabH);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(tx + 0.5, content.y + 0.5, tabW - 1, tabH - 1);
+      }
       if (active) {
         const g = ctx.createLinearGradient(tx, content.y, tx, content.y + tabH);
         g.addColorStop(0, 'rgba(253, 224, 71, 0.28)');
@@ -264,6 +275,8 @@ export class QuestLogView {
       const fullIndex = this.scrollOffset + idx;
       const isSelected = fullIndex === this.selectedIndex;
       const isCompleted = q.status === 'COMPLETED';
+      const hp = this._hoverPointer;
+      const isHover = !isSelected && hp && hp.x >= listStartX && hp.x <= listStartX + rowW && hp.y >= ry && hp.y <= ry + rowH;
       const ry = listStartY + idx * (rowH + 2);
       this._rowRects.push({ x: listStartX, y: ry, w: rowW, h: rowH, index: fullIndex });
 
@@ -278,7 +291,7 @@ export class QuestLogView {
       }
       ctx.fillStyle = g;
       ctx.fillRect(listStartX, ry, rowW, rowH);
-      ctx.strokeStyle = isSelected ? UI_COLORS.gold : (isCompleted ? 'rgba(74, 222, 128, 0.4)' : UI_COLORS.slotBorder);
+      ctx.strokeStyle = isSelected ? UI_COLORS.gold : (isHover ? 'rgba(253, 224, 71, 0.45)' : (isCompleted ? 'rgba(74, 222, 128, 0.4)' : UI_COLORS.slotBorder));
       ctx.lineWidth = 1;
       ctx.strokeRect(listStartX + 0.5, ry + 0.5, rowW - 1, rowH - 1);
 

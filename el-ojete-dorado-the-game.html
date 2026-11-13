@@ -3318,6 +3318,17 @@ const UI_COLORS = {
 
 const UI_FONT = 'monospace';
 
+// (DIRECTRIZ UI) Curvas de easing compartidas: nunca movimientos lineales en UI.
+const UI_EASE = {
+  outCubic: (t) => 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3),
+  outBack: (t) => {
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    const x = Math.max(0, Math.min(1, t)) - 1;
+    return 1 + c3 * x * x * x + c1 * x * x;
+  }
+};
+
 /**
  * (FIX M1.5) El HUD móvil necesita tipografía más grande: 320×180 lógicos es muy
  * pequeño para leerlo en un teléfono.
@@ -3452,6 +3463,294 @@ class UILayout {
     return from + (1 - from) * (1 - Math.pow(1 - t, 3));
   }
 
+  /** (DIRECTRIZ UI) Drop shadow paralela en dos capas, sin blur. */
+  static drawShadow(ctx, x, y, w, h, alpha = 0.32) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(0.5, alpha * 0.6)})`;
+    ctx.fillRect(x + 3, y + 4, w, h);
+    ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+    ctx.fillRect(x + 1, y + 2, w, h);
+  }
+
+  /** (DIRECTRIZ UI) Texto pixel con sombra fuerte y contorno opcional. */
+  static drawText(ctx, text, x, y, opts = {}) {
+    const {
+      font = `bold 6px ${UI_FONT}`,
+      color = UI_COLORS.textPrimary,
+      align = 'left',
+      baseline = 'middle',
+      shadow = true,
+      outline = false,
+      maxWidth = undefined
+    } = opts;
+    ctx.save();
+    ctx.font = font;
+    ctx.textAlign = align;
+    ctx.textBaseline = baseline;
+    if (outline) {
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+      ctx.lineWidth = 2;
+      if (maxWidth !== undefined) ctx.strokeText(text, x, y, maxWidth);
+      else ctx.strokeText(text, x, y);
+    }
+    if (shadow) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      if (maxWidth !== undefined) ctx.fillText(text, x + 1, y + 1, maxWidth);
+      else ctx.fillText(text, x + 1, y + 1);
+    }
+    ctx.fillStyle = color;
+    if (maxWidth !== undefined) ctx.fillText(text, x, y, maxWidth);
+    else ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+
+  /**
+   * (DIRECTRIZ UI) Iconos procedurales de 12×12, dibujados con píxeles.
+   * Evita depender de emojis y mantiene el look pixel art.
+   */
+  static drawIcon(ctx, key, cx, cy, size = 10, color = UI_COLORS.gold) {
+    const s = size / 12;
+    const u = (v) => Math.round(v * s);
+    const px = (dx, dy, w, h, c = color) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(Math.round(cx + dx * s), Math.round(cy + dy * s), Math.max(1, u(w)), Math.max(1, u(h)));
+    };
+    ctx.save();
+    switch (key) {
+      case 'sword':
+        px(-1, -5, 2, 7);
+        px(-3, 2, 6, 1);
+        px(-1, 3, 2, 2);
+        break;
+      case 'shield':
+        px(-4, -4, 8, 1);
+        px(-4, -3, 8, 4);
+        px(-3, 1, 6, 1);
+        px(-2, 2, 4, 1);
+        px(-1, 3, 2, 1);
+        break;
+      case 'coin':
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(2, 4.5 * s), 0, Math.PI * 2);
+        ctx.fill();
+        px(-1, -2, 2, 4, '#151006');
+        px(-2, -1, 4, 1, '#151006');
+        break;
+      case 'heart':
+        px(-3, -3, 2, 2);
+        px(1, -3, 2, 2);
+        px(-4, -2, 8, 3);
+        px(-3, 1, 6, 2);
+        px(-2, 3, 4, 1);
+        break;
+      case 'star':
+        px(-1, -5, 2, 10);
+        px(-5, -1, 10, 2);
+        px(-3, -3, 2, 2);
+        px(1, -3, 2, 2);
+        px(-3, 2, 2, 2);
+        px(1, 2, 2, 2);
+        break;
+      case 'gear':
+        px(-4, -2, 8, 4);
+        px(-2, -4, 4, 8);
+        px(-3, -3, 6, 6, 'rgba(0,0,0,0)');
+        px(-1, -1, 2, 2, '#151006');
+        break;
+      case 'bag':
+        px(-3, -3, 6, 1);
+        px(-2, -4, 4, 1);
+        px(-2, 2, 5, 3);
+        px(-1, -2, 3, 2);
+        break;
+      case 'scroll':
+        px(-4, -4, 8, 8);
+        px(-3, -3, 6, 1, '#151006');
+        px(-3, -1, 6, 1, '#151006');
+        px(-3, 1, 4, 1, '#151006');
+        break;
+      case 'map':
+        px(-4, -3, 3, 7);
+        px(-1, -4, 3, 8);
+        px(2, -3, 3, 7);
+        break;
+      case 'trophy':
+        px(-3, -4, 6, 4);
+        px(-2, 0, 4, 1);
+        px(-1, 1, 2, 3);
+        px(-3, 4, 6, 1);
+        break;
+      case 'lock':
+        px(-2, -4, 4, 1);
+        px(-3, -3, 6, 1);
+        px(-3, -1, 6, 4);
+        px(-1, 0, 2, 2, '#151006');
+        break;
+      case 'play':
+        px(-2, -4, 2, 8);
+        px(0, -3, 2, 6);
+        px(2, -2, 2, 4);
+        px(4, -1, 1, 2);
+        break;
+      case 'close':
+        px(-3, -3, 2, 2);
+        px(1, -3, 2, 2);
+        px(-1, -1, 2, 2);
+        px(-3, 1, 2, 2);
+        px(1, 1, 2, 2);
+        break;
+      case 'back':
+        px(-4, -1, 2, 2);
+        px(-2, -3, 2, 2);
+        px(-2, 1, 2, 2);
+        px(0, -1, 4, 2);
+        break;
+      case 'sound':
+        px(-4, -1, 2, 3);
+        px(-2, -3, 2, 7);
+        px(1, -3, 1, 2);
+        px(2, -1, 1, 4);
+        px(3, -3, 1, 6);
+        break;
+      case 'music':
+        px(-1, -4, 6, 1);
+        px(-1, -4, 1, 4);
+        px(4, -4, 1, 5);
+        px(-2, 1, 2, 2);
+        px(3, 1, 2, 2);
+        break;
+      case 'gamepad':
+        px(-4, -2, 8, 5);
+        px(-3, 0, 1, 1, '#151006');
+        px(-5, 0, 1, 1, '#151006');
+        px(2, -1, 1, 1, '#151006');
+        break;
+      case 'save':
+        px(-3, -4, 6, 8);
+        px(-2, -3, 4, 2, '#151006');
+        px(-2, 1, 4, 2, '#151006');
+        break;
+      case 'folder':
+        px(-4, -3, 3, 1);
+        px(-4, -2, 8, 5);
+        px(-3, -1, 6, 1, '#151006');
+        break;
+      case 'scroll-open':
+      case 'quest':
+        px(-4, -3, 8, 7);
+        px(-3, -2, 6, 1, '#151006');
+        px(-3, 0, 6, 1, '#151006');
+        px(-3, 2, 4, 1, '#151006');
+        break;
+      case 'valley':
+      case 'house':
+        px(-4, 0, 8, 5);
+        px(-5, 0, 10, 1);
+        px(-3, -4, 6, 4);
+        px(-1, 2, 2, 3, '#151006');
+        px(3, 1, 1, 1, '#fff3b0');
+        break;
+      case 'tree':
+        px(-1, 1, 2, 4);
+        px(-4, -2, 8, 3);
+        px(-3, -4, 6, 2);
+        px(-2, -5, 4, 1, '#86efac');
+        break;
+      case 'mountain':
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(cx - 5, cy + 4);
+        ctx.lineTo(cx - 1, cy - 4);
+        ctx.lineTo(cx + 3, cy + 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + 4);
+        ctx.lineTo(cx + 3, cy - 1);
+        ctx.lineTo(cx + 6, cy + 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath();
+        ctx.moveTo(cx - 1, cy - 4);
+        ctx.lineTo(cx - 2.4, cy - 1);
+        ctx.lineTo(cx + 0.4, cy - 1);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case 'pick':
+        px(-4, 3, 1, 1);
+        px(-3, 2, 1, 1);
+        px(-2, 1, 1, 1);
+        px(-1, 0, 1, 1);
+        px(0, -1, 1, 1);
+        px(1, -2, 1, 1);
+        px(-1, -3, 5, 1);
+        px(3, -2, 2, 1);
+        px(-3, 0, 1, 2);
+        break;
+      case 'pipe':
+        px(-4, -3, 3, 8);
+        px(-4, -4, 8, 2);
+        px(1, -2, 2, 2);
+        px(-2, 0, 1, 1, '#151006');
+        break;
+      case 'skull':
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy - 1, Math.max(2, 4 * s), 0, Math.PI * 2);
+        ctx.fill();
+        px(-2, -2, 1, 2, '#151006');
+        px(1, -2, 1, 2, '#151006');
+        px(-1, 1, 2, 3);
+        px(-2, 4, 4, 1);
+        break;
+      case 'castle':
+        px(-5, 0, 10, 5);
+        px(-5, -3, 2, 3);
+        px(-1, -3, 2, 3);
+        px(3, -3, 2, 3);
+        px(-1, 2, 2, 3, '#151006');
+        break;
+      case 'eye':
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, Math.max(3, 5 * s), Math.max(2, 3 * s), 0, 0, Math.PI * 2);
+        ctx.fill();
+        px(-1, -1, 2, 2, '#151006');
+        break;
+      case 'temple':
+        px(-5, 4, 10, 1);
+        px(-4, 0, 2, 4);
+        px(-1, 0, 2, 4);
+        px(2, 0, 2, 4);
+        px(-5, -2, 10, 2);
+        px(-3, -4, 6, 2);
+        break;
+      case 'compass':
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(3, 4.5 * s), 0, Math.PI * 2);
+        ctx.stroke();
+        px(-1, -3, 2, 3);
+        px(-1, 0, 2, 3, '#151006');
+        break;
+      case 'spark':
+      case 'star4':
+        px(-1, -4, 2, 3);
+        px(-1, 2, 2, 3);
+        px(-4, -1, 3, 2);
+        px(2, -1, 3, 2);
+        px(-1, -1, 2, 2, '#fff3b0');
+        break;
+      default:
+        px(-2, -2, 4, 4);
+        break;
+    }
+    ctx.restore();
+  }
+
   /** Divide una lista de líneas en páginas de `linesPerPage` líneas. */
   static paginate(lines, linesPerPage) {
     const pages = [];
@@ -3529,9 +3828,11 @@ class UILayout {
 
     const fullTitle = icon ? `${icon} ${title}` : title;
     if (fullTitle) {
-      ctx.font = `bold 6.5px ${UI_FONT}`;
-      ctx.fillStyle = UI_COLORS.title;
+      ctx.font = `bold 7px ${UI_FONT}`;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
       ctx.textAlign = 'left';
+      ctx.fillText(fullTitle, cursorX + 1, headY + 1);
+      ctx.fillStyle = UI_COLORS.title;
       ctx.fillText(fullTitle, cursorX, headY);
       cursorX += Math.ceil(ctx.measureText(fullTitle).width) + 6;
     }
@@ -3610,6 +3911,8 @@ class UILayout {
     const bg = popts.bg || popts.fill || UI_COLORS.slotBg || UI_COLORS.slot;
     const border = popts.border || UI_COLORS.slotBorder;
     ctx.save();
+    // (DIRECTRIZ UI) Sombra paralela para que cada tarjeta flote.
+    if (!popts.noShadow) UILayout.drawShadow(ctx, px, py, pw, ph, 0.26);
     ctx.fillStyle = bg;
     ctx.fillRect(px, py, pw, ph);
     // (BLOQUE 4) Brillo superior de tarjeta.
@@ -5010,12 +5313,13 @@ async function generateTilesetSheet() {
   };
 
   const fillGrass = (ox, oy, variant = 0) => {
-    px(ctx, ox, oy, 16, 16, '#3f7d3c');
-    fillNoise(ox, oy, 31 + variant * 7, ['#4f9649', '#326630', '#5cb054', '#3a7238'], 0.2);
-    for (let i = 0; i < 5; i++) {
+    px(ctx, ox, oy, 16, 16, '#427f3e');
+    // (FIX 4) Ruido más sutil: menos píxeles oscuros que parecían puntos negros.
+    fillNoise(ox, oy, 31 + variant * 7, ['#4c9347', '#3a7336', '#56a24f', '#457d41'], 0.1);
+    for (let i = 0; i < 3; i++) {
       const x = 1 + Math.floor(tileNoise(i, variant, 91) * 14);
       const y = 1 + Math.floor(tileNoise(i, variant, 47) * 14);
-      px(ctx, ox + x, oy + y, 1, 2, i % 2 ? '#5cb054' : '#326630');
+      px(ctx, ox + x, oy + y, 1, 2, i % 2 ? '#56a24f' : '#3a7336');
     }
   };
 
@@ -5030,7 +5334,7 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.PATH);
     px(ctx, ox, oy, 16, 16, '#b88b5a');
-    fillNoise(ox, oy, 73, ['#a37748', '#c99e6e', '#8c6238', '#bd9463'], 0.2);
+    fillNoise(ox, oy, 73, ['#a37748', '#c99e6e', '#8c6238', '#bd9463'], 0.14);
     for (let i = 0; i < 4; i++) {
       const x = 1 + Math.floor(tileNoise(i, 0, 17) * 14);
       const y = 1 + Math.floor(tileNoise(i, 0, 29) * 14);
@@ -5039,15 +5343,14 @@ async function generateTilesetSheet() {
   }
   {
     const { ox, oy } = cellOrigin(TILES.COBBLE);
-    px(ctx, ox, oy, 16, 16, '#6f7987');
-    fillNoise(ox, oy, 101, ['#7c8695', '#646e7c', '#8b95a5', '#59616d'], 0.26);
-    const stones = [
-      [1, 2, 5, 4], [8, 1, 6, 5],
-      [2, 9, 4, 5], [7, 8, 5, 4], [12, 10, 3, 4]
-    ];
-    for (const [sx, sy, sw, sh] of stones) {
-      px(ctx, ox + sx, oy + sy, sw, sh, '#8b95a5');
-      px(ctx, ox + sx + 1, oy + sy + 1, Math.max(1, sw - 2), 1, '#a3adbd');
+    px(ctx, ox, oy, 16, 16, '#727c8a');
+    // (FIX 4) Adoquín continuo: base con ruido + guijarros pequeños, sin bloques repetidos por tile.
+    fillNoise(ox, oy, 101, ['#7c8695', '#687281', '#8791a0', '#5c6572'], 0.16);
+    for (let i = 0; i < 7; i++) {
+      const sx = 1 + Math.floor(tileNoise(i, 2, 137) * 13);
+      const sy = 1 + Math.floor(tileNoise(i, 5, 149) * 13);
+      const light = i % 2 === 0;
+      px(ctx, ox + sx, oy + sy, 1 + (i % 2), 1, light ? '#96a0af' : '#5a6371');
     }
   }
   [TILES.WATER_1, TILES.WATER_2].forEach((id, idx) => {
@@ -5223,9 +5526,11 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.FLOOR_WOOD);
     px(ctx, ox, oy, 16, 16, '#8f5d38');
-    for (let y = 0; y < 16; y += 4) {
-      px(ctx, ox, oy + y, 16, 3, '#a46d44');
-      px(ctx, ox + ((y * 3) % 12), oy + y, 1, 3, '#754929');
+    // (FIX 1) Madera continua: vetas suaves y sin línea pegada al borde del tile.
+    fillNoise(ox, oy, 257, ['#96633d', '#865633', '#a06b43'], 0.12);
+    for (let y = 2; y < 16; y += 5) {
+      px(ctx, ox, oy + y, 16, 1, '#754929');
+      px(ctx, ox + ((y * 3 + 2) % 12), oy + y + 1, 1, 2, '#754929');
     }
   }
   // 26: WALL_INTERIOR (Muro interior de vivienda)
@@ -5317,13 +5622,8 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.STONE_FLOOR);
     px(ctx, ox, oy, 16, 16, '#3b4252');
-    fillNoise(ox, oy, 307, ['#434c5e', '#4c566a', '#323844', '#465067'], 0.3);
-    for (let i = 0; i < 2; i++) {
-      const x = 2 + Math.floor(tileNoise(i, 0, 401) * 10);
-      const y = 2 + Math.floor(tileNoise(i, 0, 409) * 10);
-      px(ctx, ox + x, oy + y, 2, 1, '#2a303d');
-      px(ctx, ox + x + 1, oy + y + 1, 1, 2, '#2a303d');
-    }
+    // (FIX 1/4) Piedra 100% continua: sin borde, sin grieta y con ruido mínimo.
+    fillNoise(ox, oy, 307, ['#3e4657', '#404959', '#39404f'], 0.05);
   }
   // 37: ALTAR_PEDESTAL (Pedestal sagrado para el arma y la armadura)
   {
@@ -5424,11 +5724,13 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.MAINFRAME_FLOOR);
     px(ctx, ox, oy, 16, 16, '#0b0f19'); // Metal oscuro mate
-    px(ctx, ox + 1, oy + 1, 14, 14, '#111827');
-    // Cables de fibra óptica neón
-    px(ctx, ox, oy + 7, 16, 1, '#06b6d4'); // Bus cian
-    px(ctx, ox + 7, oy, 1, 16, '#3b82f6'); // Bus azul
-    px(ctx, ox + 7, oy + 7, 2, 2, '#ec4899'); // Nodo cuántico magenta
+    // (FIX 1) Sin marco de 14x14: metal continuo con ruido y fibra corta irregular.
+    fillNoise(ox, oy, 269, ['#0f1522', '#121a2b', '#0a101c', '#151d30'], 0.18);
+    px(ctx, ox + 2, oy + 5, 9, 1, '#06b6d4');
+    px(ctx, ox + 11, oy + 2, 1, 8, '#3b82f6');
+    px(ctx, ox + 6, oy + 11, 5, 1, '#06b6d4');
+    px(ctx, ox + 11, oy + 10, 2, 2, '#ec4899');
+    px(ctx, ox + 3, oy + 12, 1, 1, '#22d3ee');
   }
   // 48: MAINFRAME_WALL (Racks de Servidores Cuánticos de Mister AI Alex)
   {
@@ -7104,9 +7406,9 @@ class Tilemap {
     if (this.layers.decoration && this.layers.decoration[row][col] === TILES.SIGNPOST) {
       return false;
     }
-    // (FIX 4) Los NPCs no deben engancharse con vallas, bancos, cajas o arbustos.
+    // (FIX 2) Vallas, mesas, bancos, cajas, arbustos y yunques: decorativos y pisables
+    // para TODOS (jugador incluido). Solo muros de casa y límites bloquean.
     if (
-      options.ignoreSmallProps &&
       this.layers.decoration &&
       NPC_PASSABLE_PROPS.has(this.layers.decoration[row][col])
     ) {
@@ -8578,78 +8880,11 @@ class Tilemap {
       });
     }
 
-    // === LETREROS DE SEÑALIZACIÓN VISIBLES DE TIENDAS Y CAMINOS ===
+    // === (FIX 1) SOLO 2 CARTELES EN TODO VALLEVERDE: entrada/tutorial y plaza/tienda ===
     const signposts = [
-      // 1. Tienda de Panadería de Clara
       {
-        c: 13,
-        r: 11,
-        shortName: 'Panadería Clara',
-        title: '🪧 [MERCADO] Panadería y Frutas de Clara · Alimentos & Fruta [Comprar / Vender]',
-        lines: [
-          '«Panadería y Frutas de Clara: Pan campesino recién horneado, manzanas jugosas y pasteles de bayas.»',
-          '«¡Acércate a Clara tras el mostrador para comprar provisiones o vender tus cosechas!»'
-        ]
-      },
-      // 2. Tienda de Software de Byte
-      {
-        c: 21,
-        r: 11,
-        shortName: 'Almacén Byte',
-        title: '🪧 [TIENDA] Almacén de Byte · Software & Café [Comprar / Vender]',
-        lines: [
-          '«Almacén de Dependencias de Byte: Café Compilado, Parches Hotfix y optimizaciones de software.»',
-          '«¡Acércate a Byte tras el mostrador para adquirir mejoras o vender chatarra de silicio!»'
-        ]
-      },
-      // 3. Botica de Pip
-      {
-        c: 13,
-        r: 16,
-        shortName: 'Botica de Pip',
-        title: '🪧 [BOTICA] Pociones de Pip · Herboristería [Pociones & Remedios]',
-        lines: [
-          '«Herboristería y Pociones de Pip: Elixires herbales, brebajes curativos y ungüentos anti-robotización.»',
-          '«¡Acércate a Pip tras el mostrador para reponer tus pociones!»'
-        ]
-      },
-      // 4. Pescadería de Finn
-      {
-        c: 21,
-        r: 16,
-        shortName: 'Pescadería Finn',
-        title: '🪧 [PESCADERÍA] Muelle de Finn · Pescado del Río Alba [Comprar / Vender]',
-        lines: [
-          '«Pescadería de Finn: Truchas plateadas y salmones frescos pescados en el Río Alba.»',
-          '«¡Acércate a Finn tras el mostrador para vender capturas de pesca o comprar pescado fresco!»'
-        ]
-      },
-      // 5. Forja de Brom
-      {
-        c: 23,
-        r: 7,
-        shortName: 'Forja de Brom',
-        title: '🪧 [FORJA] Taller de Brom · Forja de Espadas y Armaduras [Mejora & Venta]',
-        lines: [
-          '«Maestro Forjador Brom: Forjado de Espada de Silicio, Espada Overclockeada y Blindaje Térmico.»',
-          '«Brom trabaja incansablemente en su yunque exterior durante las horas diurnas.»'
-        ]
-      },
-      // 6. Invernadero de Lyra
-      {
-        c: 9,
-        r: 18,
-        shortName: 'Invernadero Lyra',
-        title: '🪧 [BOTICA] Invernadero de Lyra · Alquimia & Silicio [Pociones & Remedios]',
-        lines: [
-          '«Cabaña Botánica y Alambique de Lyra: Recolección de Flores de Silicio y elixires mágicos.»',
-          '«Lyra cuida sus plantas y atiende a los viajeros en su huerto aromático.»'
-        ]
-      },
-      // 7. Campo de Entrenamiento del Binario
-      {
-        c: 20,
-        r: 18,
+        c: 19,
+        r: 20,
         shortName: 'Campo Entrenamiento',
         title: '🪧 [CUARTEL] Guardia del Binario · Campo de Entrenamiento [Práctica & Nivel]',
         lines: [
@@ -8657,103 +8892,14 @@ class Tilemap {
           '«¡Derrota los drones y bugs de prueba para ganar experiencia (XP) y subir de nivel antes de partir!»'
         ]
       },
-      // 8. Casa del Programador
       {
-        c: 5,
-        r: 11,
-        shortName: 'Tu Hogar',
-        title: '🪧 [HOGAR] Casa del Programador · Tu Refugio',
+        c: 22,
+        r: 10,
+        shortName: 'Forja de Brom',
+        title: '🪧 [FORJA] Taller de Brom · Forja de Espadas y Armaduras [Mejora & Venta]',
         lines: [
-          '«Tu residencia en Valleverde. Usa tu cama en el interior con [E] para descansar y cambiar el ciclo día/noche.»',
-          '«Dormir purga al 100% la robotización binaria y restaura tu salud y energía.»'
-        ]
-      },
-      // 9. Mansión de Aurelio
-      {
-        c: 9,
-        r: 6,
-        shortName: 'Mansión Aurelio',
-        title: '🪧 [ARCHIVO] Mansión del Sabio Aurelio · Cronista de Valleverde',
-        lines: [
-          '«Residencia y archivo histórico del Gran Sabio Aurelio. Consulta la crónica del Reino y tramita el Pase del Puente.»'
-        ]
-      },
-      // 10. Observatorio de Orion
-      {
-        c: 15,
-        r: 6,
-        shortName: 'Torre de Orion',
-        title: '🪧 [OBSERVATORIO] Torre de Orion · Astrología Cuántica e IA',
-        lines: [
-          '«Observatorio Astronómico y Computacional del Oráculo Orion [IA]. Consulta predicciones y charla con la IA.»'
-        ]
-      },
-      // 11. Frontera Oeste
-      {
-        c: 4,
-        r: 11,
-        shortName: 'Frontera Oeste',
-        title: '🪧 Frontera Oeste · Páramo de Mister AI Alex',
-        lines: [
-          '«← OESTE: Camino al Páramo Corrupto de Mister AI Alex y la Gran Puerta del Núcleo Cuántico.»',
-          '«¡PRECAUCIÓN! Más allá de los límites protegidos de Valleverde acechan drones y anomalías corruptas. Requieres equipo completo.»'
-        ]
-      },
-      // 12. Puente Este
-      {
-        c: 26,
-        r: 11,
-        shortName: 'Puente Este',
-        title: '🪧 Camino Este · Puente sobre el Río Alba',
-        lines: [
-          '«→ ESTE: Puente hacia el Valle de la Consagración.»',
-          '«Conduce a los Santuarios Sagrados de la Armadura Binaria y la Espada de la Recursividad.»',
-          '«(Valleverde es una aldea pacífica de descanso. El entrenamiento se realiza en el cuartel sur).»'
-        ]
-      },
-      // 13. Plaza Central
-      {
-        c: 16,
-        r: 12,
-        shortName: 'Plaza Mayor (Mercado)',
-        title: '🪧 Plaza Mayor de Valleverde · Mercado Central',
-        lines: [
-          '«¡Bienvenido al Mercado Central de Valleverde! Puestos disponibles:»',
-          '«• Noreste: Tienda de Software de Byte (Café Compilado y Parches Hotfix).»',
-          '«• Noroeste: Panadería de Clara (Pan Campesino y Manzanas frescas).»',
-          '«• Suroeste: Alquimia de Pip (Pociones Herbales y Ungüentos).»',
-          '«• Sureste: Pescadería de Finn (Truchas plateadas y Agua fresca).»',
-          '«← Oeste: Casa del Programador. ↑ Norte: Casa del Sabio. ↓ Sur: Cuartel y Campo de Entrenamiento.»'
-        ]
-      },
-      {
-        c: 16,
-        r: 7,
-        shortName: 'Cruce Norte',
-        title: '🪧 Cruce Norte de Valleverde · Cumbres de la Recursión',
-        lines: [
-          '«↑ NORTE: Ascenso a las Cumbres de la Recursión (Picos de Silicio y Minas de la Recursión).»',
-          '«← Casa del Sabio Aurelio. → Herrería de Brom.»'
-        ]
-      },
-      {
-        c: 18,
-        r: 17,
-        shortName: 'Cruce Sur',
-        title: '🪧 Cruce Sur de Valleverde · Marismas del Hardware Legacy',
-        lines: [
-          '«↓ SUR: Descenso a las Marismas del Hardware Legacy (Cloacas y La Forja del Prototipo).»',
-          '«← Cabaña de Lyra. → Cuartel de Kael y Campo de Entrenamiento.»'
-        ]
-      },
-      {
-        c: 10,
-        r: 20,
-        shortName: 'Jardín Sur',
-        title: '🪧 Jardín Sur de Valleverde',
-        lines: [
-          '«Jardín botánico y zona de paseo municipal de Valleverde.»',
-          '«Un rincón apacible cuidado por la comunidad donde florecen las orquídeas del Alba.»'
+          '«Maestro Forjador Brom: Forjado de Espada de Silicio, Espada Overclockeada y Blindaje Térmico.»',
+          '«Brom trabaja incansablemente en su yunque exterior durante las horas diurnas.»'
         ]
       }
     ];
@@ -10326,8 +10472,9 @@ class Tilemap {
 
     for (let r = startRow; r <= endRow; r++) {
       for (let c = startCol; c <= endCol; c++) {
-        const screenX = c * this.tileSize - camX;
-        const screenY = r * this.tileSize - camY;
+        // (FIX 1) Tiles en coordenadas enteras: sin costuras de 1 px entre celdas.
+        const screenX = Math.round(c * this.tileSize - camX);
+        const screenY = Math.round(r * this.tileSize - camY);
 
         let groundTile = ground[r][c];
         const isWater = groundTile === TILES.WATER_1 || groundTile === TILES.WATER_2;
@@ -10623,7 +10770,7 @@ class Tilemap {
   }
 
   _generateHouseShadows(sceneId, scene) {
-    if (sceneId !== 'overworld') return [];
+    // (FIX 1/4) Sombras de aleros globales: cualquier escena con muros de casa.
     const { decoration } = scene.layers;
     const walls = new Set([TILES.WALL_FRONT, TILES.WALL_WINDOW, TILES.WALL_DOOR]);
     const shadows = [];
@@ -10690,37 +10837,50 @@ class Tilemap {
 
   /** (FIX 2) Máximo 2 carteles por zona; el resto se retira y su dato de lectura se elimina. */
   _pruneSignposts(sceneId, scene) {
+    // (FIX 1) Exterminio estricto: se borran TODOS los carteles de la capa y sus datos.
     const deco = scene.layers.decoration;
     const collision = scene.layers.collision;
-    const cells = [];
     for (let r = 0; r < scene.rows; r++) {
       for (let c = 0; c < scene.cols; c++) {
-        if (deco[r][c] === TILES.SIGNPOST) cells.push({ r, c });
+        if (deco[r][c] === TILES.SIGNPOST) {
+          deco[r][c] = -1;
+          collision[r][c] = 0;
+        }
       }
     }
-    if (cells.length <= 2) return;
-    const signAt = (cell) =>
-      (scene.signposts || []).find(
-        (sp) => (sp.r ?? sp.row) === cell.r && (sp.c ?? sp.col) === cell.c
-      );
-    const priority = ['Entrenamiento', 'Forja de Brom', 'Camino a Valleverde', 'Templo'];
-    const priorityCells = cells.filter((cell) => {
-      const sp = signAt(cell);
-      return sp && priority.some((p) => (sp.shortName || '').includes(p));
-    });
-    const ordered = [...priorityCells, ...cells.filter((c) => !priorityCells.includes(c))];
-    const kept = new Set(ordered.slice(0, 2).map((x) => `${x.r},${x.c}`));
-    for (const { r, c } of cells) {
-      if (!kept.has(`${r},${c}`)) {
-        deco[r][c] = -1;
-        collision[r][c] = 0;
+    scene.signposts = [];
+
+    // Mazmorras, templos, minas e interiores: CERO carteles.
+    if (sceneId !== 'overworld') return;
+
+    // (FIX 1) Solo dos carteles manuales, fuera de caminos de tierra y puertas.
+    const kept = [
+      {
+        c: 19,
+        r: 20,
+        shortName: 'Campo Entrenamiento',
+        title: '🪧 [CUARTEL] Guardia del Binario · Campo de Entrenamiento [Práctica & Nivel]',
+        lines: [
+          '«Campo de Entrenamiento de Valleverde: Área cercada para combate de práctica militar.»',
+          '«¡Derrota los drones y bugs de prueba para ganar experiencia (XP) y subir de nivel antes de partir!»'
+        ]
+      },
+      {
+        c: 22,
+        r: 10,
+        shortName: 'Forja de Brom',
+        title: '🪧 [FORJA] Taller de Brom · Forja de Espadas y Armaduras [Mejora & Venta]',
+        lines: [
+          '«Maestro Forjador Brom: Forjado de Espada de Silicio, Espada Overclockeada y Blindaje Térmico.»',
+          '«Brom trabaja incansablemente en su yunque exterior durante las horas diurnas.»'
+        ]
       }
+    ];
+    for (const sp of kept) {
+      deco[sp.r][sp.c] = TILES.SIGNPOST;
+      collision[sp.r][sp.c] = 0;
+      scene.signposts.push(sp);
     }
-    scene.signposts = (scene.signposts || []).filter((sp) => {
-      const sr = sp.r ?? sp.row;
-      const sc = sp.c ?? sp.col;
-      return kept.has(`${sr},${sc}`);
-    });
   }
 
   _drawFloorDecals(ctx, camera) {
@@ -11305,8 +11465,8 @@ class Tilemap {
       sy,
       this.tileSize * ATLAS_SCALE,
       this.tileSize * ATLAS_SCALE,
-      screenX + offsetX,
-      screenY + offsetY,
+      Math.round(screenX + offsetX),
+      Math.round(screenY + offsetY),
       this.tileSize,
       this.tileSize
     );
@@ -12112,6 +12272,8 @@ class Player extends Entity {
       this.attackDuration = 0.18;
       this.attackCooldown = 0.28;
       this.attackTimer = this.attackDuration;
+      // (FIX ESTRICTO) Sin espada no puede existir ni un tajo de energía residual.
+      this.energySlashes.length = 0;
       if (soundEngine && typeof soundEngine.playPunch === 'function') {
         soundEngine.playPunch();
       } else if (soundEngine && typeof soundEngine.playAttackSound === 'function') {
@@ -12145,8 +12307,9 @@ class Player extends Entity {
     }
     this.attackTimer = this.attackDuration;
 
-    // Espada Overclockeada (Nivel 3): Si la salud está al máximo, emite un tajo de energía a distancia
-    if (this.swordLevel >= 3 && this.hp >= this.effectiveMaxHp) {
+    // Espada Overclockeada (Nivel 3): Si la salud está al máximo, emite un tajo de energía a distancia.
+    // (FIX ESTRICTO) Doble guarda: sin espada este bloque NUNCA puede ejecutarse.
+    if (this.hasSword && this.swordLevel >= 3 && this.hp >= this.effectiveMaxHp) {
       const vec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.direction] || [1, 0];
       this.energySlashes.push({
         x: this.centerX,
@@ -12559,6 +12722,11 @@ class Player extends Entity {
   }
 
   _updateEnergySlashes(dt, tilemap) {
+    // (FIX ESTRICTO) Sin espada no se actualizan proyectiles de energía.
+    if (!this.hasSword) {
+      this.energySlashes.length = 0;
+      return;
+    }
     for (let i = this.energySlashes.length - 1; i >= 0; i--) {
       const s = this.energySlashes[i];
       s.x += s.vx * dt;
@@ -12628,7 +12796,8 @@ class Player extends Entity {
     }
 
     // Tajos de energía proyectados por la Espada Overclockeada (Nivel 3)
-    if (this.energySlashes && this.energySlashes.length > 0) {
+    // (FIX ESTRICTO) Solo se dibujan si el jugador tiene espada.
+    if (this.hasSword && this.energySlashes && this.energySlashes.length > 0) {
       ctx.save();
       for (const s of this.energySlashes) {
         const sx = Math.round(s.x - camera.renderX);
@@ -12686,7 +12855,8 @@ class Player extends Entity {
     const cy = this.centerY - camera.renderY;
 
     // 2. Aura de concentración de energía al cargar el Corte en Cascada
-    if (this.chargeTimer > 0) {
+    // (FIX ESTRICTO) Sin espada no se muestra aura dorada/cian.
+    if (this.hasSword && this.chargeTimer > 0) {
       ctx.save();
       const isReady = this.chargeTimer >= 1.0;
       const now = performance.now() / 1000;
@@ -12803,13 +12973,13 @@ class Player extends Entity {
         const fx = cx + Math.cos(baseAngle) * reach;
         const fy = cy + Math.sin(baseAngle) * reach;
         ctx.save();
-        // Líneas de movimiento detrás del puño.
-        ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+        // (FIX ESTRICTO) Solo 3 líneas blancas/grises de velocidad + polvo. Cero energía.
+        ctx.strokeStyle = 'rgba(241, 245, 249, 0.75)';
         ctx.lineWidth = 1;
         for (let i = -1; i <= 1; i++) {
           const off = i * 3;
-          const sx = cx - Math.cos(baseAngle) * 4 - Math.sin(baseAngle) * off;
-          const sy = cy - Math.sin(baseAngle) * 4 + Math.cos(baseAngle) * off;
+          const sx = cx - Math.cos(baseAngle) * 3 - Math.sin(baseAngle) * off;
+          const sy = cy - Math.sin(baseAngle) * 3 + Math.cos(baseAngle) * off;
           const ex = fx - Math.cos(baseAngle) * 4 - Math.sin(baseAngle) * off;
           const ey = fy - Math.sin(baseAngle) * 4 + Math.cos(baseAngle) * off;
           ctx.beginPath();
@@ -12817,31 +12987,18 @@ class Player extends Entity {
           ctx.lineTo(ex, ey);
           ctx.stroke();
         }
+        // Polvo del impacto (gris, sin aura ni estrella).
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.55)';
+        const dustX = cx + Math.cos(baseAngle) * (reach + 2);
+        const dustY = cy + Math.sin(baseAngle) * (reach + 2);
+        ctx.fillRect(Math.round(dustX) - 2, Math.round(dustY) - 2, 2, 2);
+        ctx.fillRect(Math.round(dustX) + 2, Math.round(dustY) - 1, 1, 1);
+        ctx.fillRect(Math.round(dustX), Math.round(dustY) + 2, 1, 1);
         // Puño/guantelete.
         ctx.fillStyle = '#e8c39e';
         ctx.fillRect(Math.round(fx) - 1, Math.round(fy) - 1, 3, 3);
         ctx.fillStyle = '#b8860b';
         ctx.fillRect(Math.round(fx) - 2, Math.round(fy) - 2, 4, 1);
-        // Estrella de impacto delante del puño.
-        const ix = cx + Math.cos(baseAngle) * (reach + 3);
-        const iy = cy + Math.sin(baseAngle) * (reach + 3);
-        ctx.strokeStyle = '#ffd166';
-        ctx.lineWidth = 1.2;
-        for (let i = 0; i < 4; i++) {
-          const a = baseAngle + Math.PI / 4 + (i * Math.PI) / 2;
-          ctx.beginPath();
-          ctx.moveTo(ix - Math.cos(a) * 3, iy - Math.sin(a) * 3);
-          ctx.lineTo(ix + Math.cos(a) * 3, iy + Math.sin(a) * 3);
-          ctx.stroke();
-        }
-        ctx.fillStyle = '#fff3b0';
-        ctx.fillRect(Math.round(ix) - 1, Math.round(iy) - 1, 2, 2);
-        // Arco de velocidad (no relleno).
-        ctx.strokeStyle = 'rgba(251,191,36,0.5)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(cx, cy, reach + 2, baseAngle - 0.5, baseAngle + 0.5);
-        ctx.stroke();
         ctx.restore();
       } else {
         const progress = 1 - this.attackTimer / this.attackDuration;
@@ -12952,7 +13109,7 @@ class NPC extends Entity {
       width: 16,
       height: 16,
       speed,
-      boundingBox: { offsetX: 4, offsetY: 9, width: 8, height: 6 },
+      boundingBox: { offsetX: 3, offsetY: 10, width: 10, height: 6 },
       animator,
       sceneId
     });
@@ -13234,8 +13391,8 @@ class NPC extends Entity {
       if (blockedX && blockedY) {
         this.stuckTimer += dt;
         this.isMoving = false;
-        // (FIX 4) Si lleva >0.5 s bloqueado, salta al tile libre más cercano y cambia de rumbo.
-        if (this.stuckTimer > 0.5) {
+        // (FIX 3) Si lleva >1.5 s bloqueado, salta al tile libre más cercano y cambia de rumbo.
+        if (this.stuckTimer > 1.5) {
           this.stuckTimer = 0;
           const ts = tilemap.tileSize;
           const free = nearestFreeTile(
@@ -14821,7 +14978,7 @@ class Enemy extends Entity {
     if (this.brain) this.brain.cancelAction();
 
     if (soundEngine && typeof soundEngine.playEnemyHit === 'function') {
-      soundEngine.playEnemyHit();
+      soundEngine.playEnemyHit(Boolean(this.isBoss));
     }
 
     if (this.hp <= 0) {
@@ -15473,7 +15630,7 @@ class Boss extends Enemy {
     }
 
     // Chequeo de impacto con Tajos de Energía (Espada Overclockeada)
-    if (player && Array.isArray(player.energySlashes)) {
+    if (player && player.hasSword && Array.isArray(player.energySlashes)) {
       for (const slash of player.energySlashes) {
         if (slash.life > 0 && Math.hypot(this.centerX - slash.x, this.centerY - slash.y) <= (this.width / 2 + 8)) {
           slash.life = 0;
@@ -18588,6 +18745,7 @@ class DialogueBox {
     this.selectedChoiceIndex = 0;
 
     this.visibleChars = 0;
+    this.openAnim = 1;
     this.lastBlipCharIndex = -1;
     this.lastMenuBounds = null;
     this.baseCharSpeed = 40;
@@ -18683,6 +18841,7 @@ class DialogueBox {
     this.caughtSkippingCount = 0;
     this.caughtBannerTimer = 0;
     this.timeSinceLineCompleted = 0;
+    this.openAnim = 0;
 
     let rawLines = ['...'];
     if (customLines) {
@@ -18719,6 +18878,7 @@ class DialogueBox {
     this.currentNPC = this._findPortraitNPC(title);
     this.portraitNPC = this.currentNPC;
     this.speakerName = title || '';
+    this.openAnim = 0;
     const rawLines = Array.isArray(lines) ? [...lines] : [lines];
     this.lines = this._paginateLines(rawLines);
     this.choices = choices || [];
@@ -18916,6 +19076,7 @@ class DialogueBox {
     }
 
     this.blinkTimer += dt * 5;
+    if (this.openAnim < 1) this.openAnim = Math.min(1, this.openAnim + dt / 0.2);
   }
 
   _findPortraitNPC(name) {
@@ -18975,7 +19136,10 @@ class DialogueBox {
     const hasPortrait = Boolean(portraitNPC && portraitNPC.animator && portraitNPC.animator.spriteSheet);
     const boxX = 12;
     const boxH = hasPortrait ? (isTouch ? 64 : 56) : (isTouch ? 54 : 48);
-    const boxY = this.viewportHeight - boxH - 8;
+    const appear = Math.min(1, this.openAnim ?? 1);
+    const ease = 1 - Math.pow(1 - appear, 3);
+    const enter = (1 - ease) * 6;
+    const boxY = this.viewportHeight - boxH - 8 + enter;
     const boxW = this.viewportWidth - 24;
     const portraitSize = Math.min(44, boxH - 10);
     const textX = boxX + (hasPortrait ? portraitSize + 12 : 9);
@@ -18985,6 +19149,7 @@ class DialogueBox {
     const maxVisibleLines = isTouch ? 2 : 3;
 
     ctx.save();
+    ctx.globalAlpha = 0.55 + 0.45 * ease;
 
     // Sombra y caja JRPG: fondo azul noche 90 % + borde dorado de 2 px.
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
@@ -19046,6 +19211,9 @@ class DialogueBox {
     const wrappedLines = this._wrapText(ctx, shownText, textW);
     const startTextY = boxY + (isTouch ? 8 : 9);
     wrappedLines.slice(0, maxVisibleLines).forEach((line, idx) => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillText(line, textX + 1, startTextY + idx * lineHeight + 1);
+      ctx.fillStyle = '#f0f4f8';
       ctx.fillText(line, textX, startTextY + idx * lineHeight);
     });
 
@@ -19094,15 +19262,20 @@ class DialogueBox {
     const menuY = Math.max(isTouch ? 6 : 16, boxY - menuH - (isTouch ? 8 : 4));
     this.lastMenuBounds = { menuX, menuY, menuW, menuH, itemHeight, paddingV };
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx.fillRect(menuX + 2, menuY + 2, menuW, menuH);
-
-    ctx.fillStyle = '#121624';
+    // (DIRECTRIZ UI) Panel glass, drop shadow, borde dorado y selección con gradiente.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+    ctx.fillRect(menuX + 3, menuY + 4, menuW, menuH);
+    const glass = ctx.createLinearGradient(menuX, menuY, menuX, menuY + menuH);
+    glass.addColorStop(0, 'rgba(15, 23, 42, 0.96)');
+    glass.addColorStop(1, 'rgba(10, 15, 26, 0.96)');
+    ctx.fillStyle = glass;
     ctx.fillRect(menuX, menuY, menuW, menuH);
-    ctx.fillStyle = '#4cc9f0';
-    ctx.fillRect(menuX + 1, menuY + 1, menuW - 2, menuH - 2);
-    ctx.fillStyle = '#192036';
-    ctx.fillRect(menuX + 2, menuY + 2, menuW - 4, menuH - 4);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(menuX + 1, menuY + 1, menuW - 2, menuH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(menuX + 3.5, menuY + 3.5, menuW - 7, menuH - 7);
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -19112,11 +19285,21 @@ class DialogueBox {
       const isSelected = idx === this.selectedChoiceIndex;
 
       if (isSelected) {
-        ctx.fillStyle = '#2d3b63';
+        const g = ctx.createLinearGradient(menuX + 4, cy, menuX + menuW - 4, cy);
+        g.addColorStop(0, 'rgba(253, 224, 71, 0.26)');
+        g.addColorStop(1, 'rgba(253, 224, 71, 0.02)');
+        ctx.fillStyle = g;
         ctx.fillRect(menuX + 4, cy - 1, menuW - 8, itemHeight - 1);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(menuX + 4.5, cy - 0.5, menuW - 9, itemHeight - 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillText(`▶ ${choice.label}`, menuX + 8, cy + 2);
         ctx.fillStyle = '#ffd885';
         ctx.fillText(`▶ ${choice.label}`, menuX + 7, cy + 1);
       } else {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillText(`  ${choice.label}`, menuX + 8, cy + 2);
         ctx.fillStyle = '#cfd8e3';
         ctx.fillText(`  ${choice.label}`, menuX + 7, cy + 1);
       }
@@ -19234,6 +19417,7 @@ class Inventory {
     this._lastSlots = [];
     this._lastSelected = -1;
     this._detailBobStart = 0;
+    this._lastPointer = { x: -1, y: -1, down: false };
     this._touchActions = [];
     this._pageButtons = [];
     this._pointerWasDown = false;
@@ -19306,6 +19490,7 @@ class Inventory {
     const px = input.pointerX;
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
+    this._lastPointer = { x: px, y: py, down };
 
     if (input.pointerJustClicked) {
       for (const action of this._touchActions) {
@@ -19773,22 +19958,36 @@ class Inventory {
       const useRect = { id: 'use', x: padX, y: actY, w: btnW, h: btnH };
       const dropRect = { id: 'drop', x: padX + btnW + gap, y: actY, w: btnW, h: btnH };
 
-      ctx.fillStyle = 'rgba(20, 60, 45, 0.95)';
-      ctx.fillRect(useRect.x, useRect.y, useRect.w, useRect.h);
-      ctx.strokeStyle = UI_COLORS.emerald;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(useRect.x + 0.5, useRect.y + 0.5, useRect.w - 1, useRect.h - 1);
-      ctx.font = `bold 6px ${UI_FONT}`;
-      ctx.fillStyle = UI_COLORS.emerald;
-      ctx.textAlign = 'center';
-      ctx.fillText('USAR / EQUIPAR', useRect.x + useRect.w / 2, useRect.y + 5);
+      const pointer = this._lastPointer || { x: -1, y: -1, down: false };
+      const hoverUse = pointer.x >= useRect.x && pointer.x <= useRect.x + useRect.w &&
+        pointer.y >= useRect.y && pointer.y <= useRect.y + useRect.h;
+      const hoverDrop = pointer.x >= dropRect.x && pointer.x <= dropRect.x + dropRect.w &&
+        pointer.y >= dropRect.y && pointer.y <= dropRect.y + dropRect.h;
+      const useSink = hoverUse && pointer.down ? 1 : 0;
+      const dropSink = hoverDrop && pointer.down ? 1 : 0;
 
-      ctx.fillStyle = 'rgba(70, 20, 26, 0.95)';
-      ctx.fillRect(dropRect.x, dropRect.y, dropRect.w, dropRect.h);
-      ctx.strokeStyle = UI_COLORS.crimson;
-      ctx.strokeRect(dropRect.x + 0.5, dropRect.y + 0.5, dropRect.w - 1, dropRect.h - 1);
-      ctx.fillStyle = UI_COLORS.crimson;
-      ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5);
+      // (DIRECTRIZ UI) Drop shadow + hover brillante + hundido de 1 px.
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(useRect.x + 2, useRect.y + 3, useRect.w, useRect.h);
+      ctx.fillRect(dropRect.x + 2, dropRect.y + 3, dropRect.w, dropRect.h);
+
+      ctx.fillStyle = hoverUse ? 'rgba(34, 104, 76, 0.98)' : 'rgba(20, 60, 45, 0.95)';
+      ctx.fillRect(useRect.x, useRect.y + useSink, useRect.w, useRect.h);
+      ctx.strokeStyle = hoverUse ? '#86efac' : UI_COLORS.emerald;
+      ctx.lineWidth = hoverUse ? 2 : 1;
+      ctx.strokeRect(useRect.x + 0.5, useRect.y + useSink + 0.5, useRect.w - 1, useRect.h - 1);
+      ctx.font = `bold 6px ${UI_FONT}`;
+      ctx.fillStyle = hoverUse ? '#dcfce7' : UI_COLORS.emerald;
+      ctx.textAlign = 'center';
+      ctx.fillText('USAR / EQUIPAR', useRect.x + useRect.w / 2, useRect.y + 5 + useSink);
+
+      ctx.fillStyle = hoverDrop ? 'rgba(118, 32, 42, 0.98)' : 'rgba(70, 20, 26, 0.95)';
+      ctx.fillRect(dropRect.x, dropRect.y + dropSink, dropRect.w, dropRect.h);
+      ctx.strokeStyle = hoverDrop ? '#fca5a5' : UI_COLORS.crimson;
+      ctx.lineWidth = hoverDrop ? 2 : 1;
+      ctx.strokeRect(dropRect.x + 0.5, dropRect.y + dropSink + 0.5, dropRect.w - 1, dropRect.h - 1);
+      ctx.fillStyle = hoverDrop ? '#fee2e2' : UI_COLORS.crimson;
+      ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5 + dropSink);
 
       ctx.textAlign = 'left';
       this._touchActions = [useRect, dropRect];
@@ -19903,6 +20102,7 @@ class CharacterStats {
    */
   handleInput(input, player = null) {
     if (!this.isOpen || !input) return false;
+    this._hoverPointer = { x: input.pointerX, y: input.pointerY };
 
     if (this.activeTab === 'skills') {
       if (input.consumeKey('KeyW') || input.consumeKey('ArrowUp')) {
@@ -20056,6 +20256,15 @@ class CharacterStats {
       const tx = content.x + idx * (tabW + tabGap);
       this._tabRects.push({ x: tx, y: tabBarY, w: tabW, h: tabH, id: tab.id });
       const isActive = this.activeTab === tab.id;
+      const hp = this._hoverPointer;
+      const isHover = !isActive && hp && hp.x >= tx && hp.x <= tx + tabW && hp.y >= tabBarY && hp.y <= tabBarY + tabH;
+      if (isHover) {
+        ctx.fillStyle = 'rgba(253, 224, 71, 0.08)';
+        ctx.fillRect(tx, tabBarY, tabW, tabH);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(tx + 0.5, tabBarY + 0.5, tabW - 1, tabH - 1);
+      }
       if (isActive) {
         const g = ctx.createLinearGradient(tx, tabBarY, tx, tabBarY + tabH);
         g.addColorStop(0, 'rgba(253, 224, 71, 0.28)');
@@ -20339,6 +20548,8 @@ class CharacterStats {
       const y = startY + row * (cardH + gap);
       const owned = Boolean(player && player.skills && player.skills[def.key]);
       const selected = i === this.skillCursor;
+      const hp = this._hoverPointer;
+      const hovered = !selected && hp && hp.x >= x && hp.x <= x + cardW && hp.y >= y && hp.y <= y + cardH;
       this._skillRowRects.push({ x, y, w: cardW, h: cardH, index: i });
 
       // Tarjeta: brillante si está desbloqueada, oscura si está bloqueada.
@@ -20352,7 +20563,7 @@ class CharacterStats {
       }
       ctx.fillStyle = g;
       ctx.fillRect(x, y, cardW, cardH);
-      ctx.strokeStyle = selected ? UI_COLORS.gold : (owned ? 'rgba(74, 222, 128, 0.7)' : UI_COLORS.slotBorder);
+      ctx.strokeStyle = selected ? UI_COLORS.gold : (hovered ? 'rgba(253, 224, 71, 0.55)' : (owned ? 'rgba(74, 222, 128, 0.7)' : UI_COLORS.slotBorder));
       ctx.lineWidth = selected ? 1.4 : 1;
       ctx.strokeRect(x + 0.5, y + 0.5, cardW - 1, cardH - 1);
       if (selected) {
@@ -20864,6 +21075,9 @@ class ShopUI {
 
     const listY = content.y + 8;
     const listH = VISIBLE_ROWS * ROW_H;
+    const pointer = this.game.input || {};
+    const pointerX = pointer.pointerX;
+    const pointerY = pointer.pointerY;
     ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
     ctx.fillRect(content.x, listY - 1, content.w, listH + 2);
 
@@ -20873,24 +21087,38 @@ class ShopUI {
       if (!item) continue;
       const y = listY + i * ROW_H;
       const selected = idx === this.selectedIndex;
-      if (selected) {
-        ctx.fillStyle = 'rgba(229, 192, 123, 0.16)';
+      const isHover = pointerX >= content.x && pointerX <= content.x + content.w &&
+        pointerY >= y - 1 && pointerY <= y - 1 + ROW_H;
+
+      // (DIRECTRIZ UI) Fila glass con gradiente, hover con brillo y borde.
+      if (selected || isHover) {
+        const strength = selected ? 0.22 : 0.10;
+        const grad = ctx.createLinearGradient(content.x, y, content.x + content.w, y);
+        grad.addColorStop(0, `rgba(253, 224, 71, ${strength})`);
+        grad.addColorStop(0.65, `rgba(253, 224, 71, ${strength * 0.3})`);
+        grad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = grad;
         ctx.fillRect(content.x, y - 1, content.w, ROW_H);
-        ctx.fillStyle = UI_COLORS.accentBright;
-      } else {
-        ctx.fillStyle = UI_COLORS.textSecondary;
+        ctx.strokeStyle = selected ? 'rgba(253, 224, 71, 0.5)' : 'rgba(253, 224, 71, 0.22)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(content.x + 0.5, y - 0.5, content.w - 1, ROW_H - 1);
       }
+      ctx.fillStyle = selected ? UI_COLORS.accentBright : (isHover ? UI_COLORS.textPrimary : UI_COLORS.textSecondary);
       ctx.font = `${selected ? 'bold ' : ''}5px ${UI_FONT}`;
       const prefix = selected ? '► ' : '  ';
-      ctx.fillText(`${prefix}${item.icon || ''} ${item.name}`.slice(0, 32), content.x + 2, y);
+      const rowText = `${prefix}${item.icon || ''} ${item.name}`.slice(0, 32);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillText(rowText, content.x + 3, y + 1);
+      ctx.fillStyle = selected ? UI_COLORS.accentBright : (isHover ? UI_COLORS.textPrimary : UI_COLORS.textSecondary);
+      ctx.fillText(rowText, content.x + 2, y);
       ctx.textAlign = 'right';
+      const priceText = this.mode === 'sell'
+        ? `${this.game.inventory.getItemCount(item.id)}x · ${item.price}🪙`
+        : `${item.price} 🪙`;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillText(priceText, content.x + content.w - 1, y + 1);
       ctx.fillStyle = selected ? UI_COLORS.gold : UI_COLORS.textDim;
-      if (this.mode === 'sell') {
-        const owned = this.game.inventory.getItemCount(item.id);
-        ctx.fillText(`${owned}x · ${item.price}🪙`, content.x + content.w - 2, y);
-      } else {
-        ctx.fillText(`${item.price} 🪙`, content.x + content.w - 2, y);
-      }
+      ctx.fillText(priceText, content.x + content.w - 2, y);
       ctx.textAlign = 'left';
     }
 
@@ -20975,6 +21203,9 @@ class WorldMap {
     this._dragStart = null;
     this._pinchDist = null;
     this._closeRequested = false;
+    // (BLOQUE 5) Región bajo el cursor y seleccionada con teclado.
+    this._hoverRegion = null;
+    this._selectedRegion = null;
   }
 
   setTouchMode(isTouch) {
@@ -20982,7 +21213,7 @@ class WorldMap {
   }
 
   _mapRect() {
-    return { x: 6, y: 16, w: LOGICAL_WIDTH - 12, h: 140 };
+    return { x: 6, y: 16, w: LOGICAL_WIDTH - 12, h: 136 };
   }
 
   _clampView() {
@@ -21031,6 +21262,20 @@ class WorldMap {
     const px = input.pointerX;
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
+
+    // (BLOQUE 5.B) Hover / clic de región + selección por teclado.
+    const mapRect = this._mapRect();
+    if (px >= mapRect.x && px <= mapRect.x + mapRect.w && py >= mapRect.y && py <= mapRect.y + mapRect.h) {
+      const hit = this._regionAt(px, py);
+      this._hoverRegion = hit ? hit.id : null;
+      if (input.pointerJustClicked && hit) this._selectedRegion = hit.id;
+    } else {
+      this._hoverRegion = null;
+    }
+    if (typeof input.consumeMenuDirection === 'function') {
+      const dir = input.consumeMenuDirection();
+      if (dir) this._cycleSelection(dir);
+    }
 
     // Botones de pantalla (sin transformar)
     if (input.pointerJustClicked && this.isTouchDevice) {
@@ -21103,6 +21348,186 @@ class WorldMap {
     }
   }
 
+  /** (BLOQUE 5.B) Definición cartográfica de las cinco regiones. */
+  _getRegionDefs() {
+    return [
+      { id: 'north', name: 'Cumbres de la Recursión', short: 'CUMBRES', cx: 160, cy: 35, rx: 46, ry: 17, color: '#94a3b8', icon: 'mountain', desc: 'Minas y Guardián del Stack' },
+      { id: 'west', name: 'Dominio de AI Alex', short: 'DOMINIO ALEX', cx: 55, cy: 85, rx: 37, ry: 28, color: '#a855f7', icon: 'eye', desc: 'Ciudadela y Puerta Cuántica' },
+      { id: 'center', name: 'Aldea de Valleverde', short: 'VALLEVERDE', cx: 160, cy: 85, rx: 48, ry: 23, color: '#4ade80', icon: 'valley', desc: 'Refugio, mercado y herrería' },
+      { id: 'east', name: 'Valle de la Consagración', short: 'VALLE SAGRADO', cx: 265, cy: 85, rx: 37, ry: 28, color: '#fbbf24', icon: 'temple', desc: 'Templos de Espada y Armadura' },
+      { id: 'south', name: 'Marismas del Legacy', short: 'MARISMAS', cx: 160, cy: 134, rx: 46, ry: 16, color: '#22c55e', icon: 'skull', desc: 'Cloacas y Forja del Microondas' }
+    ];
+  }
+
+  /** Región bajo un punto de pantalla, compensando pan/zoom. */
+  _regionAt(px, py) {
+    const rect = this._mapRect();
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    const localX = (px - (cx + this.view.panX)) / this.view.zoom + cx;
+    const localY = (py - (cy + this.view.panY)) / this.view.zoom + cy;
+    for (const def of this._getRegionDefs()) {
+      const dx = (localX - def.cx) / def.rx;
+      const dy = (localY - def.cy) / def.ry;
+      if (dx * dx + dy * dy <= 1.2) return def;
+    }
+    return null;
+  }
+
+  _cycleSelection(direction) {
+    const defs = this._getRegionDefs();
+    if (defs.length === 0) return;
+    let idx = defs.findIndex((d) => d.id === (this._selectedRegion || this._lastZoneId));
+    if (idx < 0) idx = 0;
+    const delta = direction === 'up' || direction === 'left' ? -1 : 1;
+    this._selectedRegion = defs[(idx + delta + defs.length) % defs.length].id;
+  }
+
+  _getExploredZones(currentZone, status) {
+    const visited = new Set(['center', currentZone]);
+    if (status.hasDash || status.gcDefeated) visited.add('south');
+    if (status.hasChargedAttack || status.stackDefeated) visited.add('north');
+    if (status.hasBarrier || status.microwaveDefeated) visited.add('south');
+    if (status.hasArmor || status.hasSword) visited.add('east');
+    if (status.placedCount > 0 || status.alexDefeated) visited.add('west');
+    return visited;
+  }
+
+  _getQuestZone(status) {
+    if (!status.hasArmor || !status.hasSword) return 'east';
+    if (!status.gcDefeated) return 'south';
+    if (!status.stackDefeated) return 'north';
+    if (!status.microwaveDefeated) return 'south';
+    if (!status.alexDefeated) return 'west';
+    return null;
+  }
+
+  _drawRegions(ctx, defs, currentZone, explored, questZone, status, t) {
+    for (const def of defs) {
+      const active = def.id === currentZone;
+      const hover = this._hoverRegion === def.id || this._selectedRegion === def.id;
+      this._drawRegionIsland(ctx, def, active, hover, explored.has(def.id), questZone === def.id, t);
+    }
+  }
+
+  _drawRegionIsland(ctx, def, active, hover, explored, hasQuest, t) {
+    ctx.save();
+    const makePath = () => {
+      const pts = [];
+      const n = 14;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const wob = 1 + Math.sin(a * 3 + def.cx * 0.05) * 0.06 + Math.sin(a * 5 + def.cy * 0.07) * 0.04;
+        pts.push([def.cx + Math.cos(a) * def.rx * wob, def.cy + Math.sin(a) * def.ry * wob]);
+      }
+      ctx.beginPath();
+      const last = pts[pts.length - 1];
+      ctx.moveTo((last[0] + pts[0][0]) / 2, (last[1] + pts[0][1]) / 2);
+      for (let i = 0; i < n; i++) {
+        const p = pts[i];
+        const next = pts[(i + 1) % n];
+        ctx.quadraticCurveTo(p[0], p[1], (p[0] + next[0]) / 2, (p[1] + next[1]) / 2);
+      }
+      ctx.closePath();
+    };
+
+    // (BLOQUE 5.B) Relleno tenue + borde brillante.
+    ctx.fillStyle = def.color;
+    ctx.globalAlpha = active ? 0.30 : (hover ? 0.28 : (explored ? 0.20 : 0.12));
+    makePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    if (active || hover) {
+      ctx.strokeStyle = `rgba(253, 224, 71, ${active ? 0.22 : 0.14})`;
+      ctx.lineWidth = 4;
+      makePath();
+      ctx.stroke();
+    }
+    ctx.strokeStyle = active ? '#ffd700' : (hover ? '#fef08a' : (explored ? def.color : 'rgba(100, 116, 139, 0.65)'));
+    ctx.lineWidth = active ? 2 : (hover ? 1.8 : 1.2);
+    makePath();
+    ctx.stroke();
+
+    // Icono representativo centrado.
+    UILayout.drawIcon(ctx, def.icon, def.cx, def.cy - 2, 16, active ? '#ffd700' : def.color);
+    UILayout.drawText(ctx, def.short, def.cx, def.cy + 11, {
+      font: 'bold 4.2px monospace',
+      color: active ? '#ffd700' : '#e2e8f0',
+      align: 'center',
+      baseline: 'middle',
+      shadow: true,
+      maxWidth: def.rx * 1.7
+    });
+
+    // (BLOQUE 5.E) "!" dorado si la misión principal está en esta región.
+    if (hasQuest) {
+      const bob = Math.sin(t * 5) * 1.5;
+      const qx = def.cx + def.rx * 0.65;
+      const qy = def.cy - def.ry * 0.8 + bob;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.beginPath();
+      ctx.arc(qx + 1, qy + 1, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.arc(qx, qy, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#151006';
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('!', qx, qy + 0.5);
+    }
+    ctx.restore();
+  }
+
+  _drawRegionTooltip(ctx, def, locInfo, explored, questZone) {
+    const W = LOGICAL_WIDTH;
+    const H = LOGICAL_HEIGHT;
+    const rect = this._mapRect();
+    const mapCX = rect.x + rect.w / 2;
+    const mapCY = rect.y + rect.h / 2;
+    const sx = (def.cx - mapCX) * this.view.zoom + mapCX + this.view.panX;
+    const sy = (def.cy - mapCY) * this.view.zoom + mapCY + this.view.panY;
+    const boxW = 104;
+    const boxH = 28;
+    const x = Math.max(8, Math.min(W - boxW - 8, sx - boxW / 2));
+    const y = sy > H * 0.55 ? sy - boxH - 14 : sy + 14;
+    const statusText = def.id === locInfo.zone
+      ? 'ZONA ACTUAL'
+      : (questZone === def.id ? 'MISIÓN PRINCIPAL' : (explored.has(def.id) ? 'EXPLORADA' : 'SIN EXPLORAR'));
+
+    UILayout.drawShadow(ctx, x, y, boxW, boxH, 0.42);
+    const g = ctx.createLinearGradient(0, y, 0, y + boxH);
+    g.addColorStop(0, 'rgba(15, 23, 42, 0.96)');
+    g.addColorStop(1, 'rgba(8, 13, 24, 0.96)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, boxW, boxH);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, boxW - 1, boxH - 1);
+
+    UILayout.drawIcon(ctx, def.icon, x + 10, y + 9, 10, def.color);
+    UILayout.drawText(ctx, def.name, x + 19, y + 7, {
+      font: 'bold 4.6px monospace',
+      color: '#ffd700',
+      baseline: 'middle',
+      maxWidth: boxW - 23
+    });
+    UILayout.drawText(ctx, statusText, x + 6, y + 17, {
+      font: 'bold 3.8px monospace',
+      color: questZone === def.id ? '#fde047' : '#94a3b8',
+      baseline: 'middle'
+    });
+    UILayout.drawText(ctx, def.desc, x + 6, y + 23, {
+      font: '3.6px monospace',
+      color: '#cbd5e1',
+      baseline: 'middle',
+      maxWidth: boxW - 12
+    });
+  }
+
   /**
    * Renderiza el mapa completo sobre el canvas lógico (320x180).
    * @param {CanvasRenderingContext2D} ctx
@@ -21111,24 +21536,20 @@ class WorldMap {
    * @param {Array|null} enemies
    */
   render(ctx, currentSceneId = 'overworld', player = null, enemies = null) {
-    // El contexto llega escalado x4 sobre un canvas físico de 1280x720: dibujar en coordenadas lógicas
     const W = LOGICAL_WIDTH;
     const H = LOGICAL_HEIGHT;
     const t = performance.now() * 0.001;
-
-    // Lienzo interior del mapa (marco de 308x156)
     const mapX = 6;
     const mapY = 16;
-    const mapW = W - 12; // 308
-    const mapH = 140;
+    const mapW = W - 12;
+    const mapH = 136;
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
 
-    // 1. Marco pergamino exterior estilo Zelda clásico
+    // (BLOQUE 5.A) Marco glass premium.
     this._drawZeldaFrame(ctx, W, H);
 
-    // (FIX M3.3) Contenido del mapa con pan/zoom (recortado al marco interior)
     const mapCX = mapX + mapW / 2;
     const mapCY = mapY + mapH / 2;
     ctx.save();
@@ -21139,41 +21560,29 @@ class WorldMap {
     ctx.scale(this.view.zoom, this.view.zoom);
     ctx.translate(-mapCX, -mapCY);
 
-    // 2. Fondo oceánico y cuadrícula topográfica
-    this._drawTopographyBackground(ctx, mapX, mapY, mapW, mapH);
+    this._drawTopographyBackground(ctx, mapX, mapY, mapW, mapH, t);
 
-    // 3. Senderos y conexiones viales entre provincias
-    // 4. Determinar estado de progreso (Núcleos, Reliquias y Bosses)
     const status = this._computeProgressStatus(player, enemies);
-
-    // 5. Determinar la zona y posición del jugador
     const locInfo = this._resolvePlayerLocation(currentSceneId);
     this._lastLocationName = locInfo.title;
     this._lastZoneId = locInfo.zone;
+    const defs = this._getRegionDefs();
+    const explored = this._getExploredZones(locInfo.zone, status);
+    const questZone = this._getQuestZone(status);
 
-    // 6. Dibujar las 5 Provincias Cardinales
-    this._drawNorthPeaksRegion(ctx, locInfo.zone === 'north', status, t);
-    this._drawWestWastesRegion(ctx, locInfo.zone === 'west', status, t);
-    this._drawCenterVillageRegion(ctx, locInfo.zone === 'center', status, t);
-    this._drawEastSanctuaryRegion(ctx, locInfo.zone === 'east', status, t);
-    this._drawSouthSwampRegion(ctx, locInfo.zone === 'south', status, t);
-
-    // (BLOQUE 3.3) Conexiones discontinuas por encima de las islas.
-    this._drawInterconnectingRoads(ctx);
-
-    // 7. Decoraciones cartográficas (Rosa de los Vientos)
+    // Caminos primero, islas encima.
+    this._drawInterconnectingRoads(ctx, defs, explored, locInfo.zone, t);
+    this._drawRegions(ctx, defs, locInfo.zone, explored, questZone, status, t);
     this._drawCompassRose(ctx, 22, 140);
-
-    // 8. Marcador de Posición del Héroe "★ TÚ"
     this._drawHeroLocationMarker(ctx, locInfo, t);
-
-    // 9. El contenido del mapa termina aquí (fin del clip/transform)
     ctx.restore();
 
-    // 10. Encabezado superior, barra HUD y botones de navegación (sin transformar)
     this._drawZeldaHeader(ctx, W);
     this._drawZeldaHUD(ctx, W, H, locInfo, status, player);
     this._drawMapButtons(ctx, W, H);
+
+    const tooltipDef = defs.find((d) => d.id === (this._selectedRegion || this._hoverRegion));
+    if (tooltipDef) this._drawRegionTooltip(ctx, tooltipDef, locInfo, explored, questZone);
 
     ctx.restore();
   }
@@ -21316,64 +21725,58 @@ class WorldMap {
    * Marco antiguo de doble ribete dorado estilo Zelda (A Link to the Past).
    */
   _drawZeldaFrame(ctx, W, H) {
-    ctx.fillStyle = '#100b07';
+    // (BLOQUE 5.A) Fondo glass + borde dorado 2 px + brillo cian interior.
+    ctx.fillStyle = '#03060c';
     ctx.fillRect(0, 0, W, H);
-
-    ctx.fillStyle = '#1c140d';
+    const glass = ctx.createLinearGradient(0, 0, 0, H);
+    glass.addColorStop(0, 'rgba(17, 29, 48, 0.94)');
+    glass.addColorStop(1, 'rgba(4, 8, 15, 0.97)');
+    ctx.fillStyle = glass;
     ctx.fillRect(2, 2, W - 4, H - 4);
-
-    ctx.strokeStyle = '#7c5f32';
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(3, 3, W - 6, H - 6);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(3.5, 3.5, W - 7, H - 7);
-
-    ctx.strokeStyle = '#d4af37';
-    ctx.strokeRect(5.5, 5.5, W - 11, H - 11);
-
-    // Remaches dorados esquineros
-    const corners = [
-      [4, 4], [W - 8, 4], [4, H - 8], [W - 8, H - 8]
-    ];
+    ctx.strokeRect(6.5, 6.5, W - 13, H - 13);
     ctx.fillStyle = '#ffd700';
-    for (const [cx, cy] of corners) {
-      ctx.fillRect(cx, cy, 4, 4);
-      ctx.fillStyle = '#996515';
-      ctx.fillRect(cx + 1, cy + 1, 2, 2);
-      ctx.fillStyle = '#ffd700';
+    for (const [cx, cy] of [[4, 4], [W - 6, 4], [4, H - 6], [W - 6, H - 6]]) {
+      ctx.fillRect(cx, cy, 2, 2);
     }
   }
 
   /**
    * Fondo cartográfico: mar antiguo y cuadrícula náutica tenue.
    */
-  _drawTopographyBackground(ctx, mapX, mapY, mapW, mapH) {
-    // (BLOQUE 3) Noche profunda + retícula estelar sutil.
-    const night = ctx.createLinearGradient(0, mapY, 0, mapY + mapH);
-    night.addColorStop(0, '#0a1626');
-    night.addColorStop(1, '#050b14');
-    ctx.fillStyle = night;
+  _drawTopographyBackground(ctx, mapX, mapY, mapW, mapH, t = 0) {
+    // (BLOQUE 5.A) Gradiente radial azul noche → negro + retícula cian + estrellas.
+    const cx = mapX + mapW / 2;
+    const cy = mapY + mapH / 2;
+    const radial = ctx.createRadialGradient(cx, cy, 8, cx, cy, Math.max(mapW, mapH) * 0.68);
+    radial.addColorStop(0, '#142947');
+    radial.addColorStop(0.45, '#0a1729');
+    radial.addColorStop(1, '#02050b');
+    ctx.fillStyle = radial;
     ctx.fillRect(mapX, mapY, mapW, mapH);
 
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.07)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.1)';
     ctx.lineWidth = 0.5;
-    for (let x = mapX + 20; x < mapX + mapW; x += 32) {
-      ctx.beginPath();
-      ctx.moveTo(x, mapY);
-      ctx.lineTo(x, mapY + mapH);
-      ctx.stroke();
+    for (let x = mapX + 16; x < mapX + mapW; x += 24) {
+      ctx.beginPath(); ctx.moveTo(x, mapY); ctx.lineTo(x, mapY + mapH); ctx.stroke();
     }
-    for (let y = mapY + 16; y < mapY + mapH; y += 24) {
-      ctx.beginPath();
-      ctx.moveTo(mapX, y);
-      ctx.lineTo(mapX + mapW, y);
-      ctx.stroke();
+    for (let y = mapY + 12; y < mapY + mapH; y += 24) {
+      ctx.beginPath(); ctx.moveTo(mapX, y); ctx.lineTo(mapX + mapW, y); ctx.stroke();
     }
-
-    const vignette = ctx.createRadialGradient(
-      mapX + mapW / 2, mapY + mapH / 2, mapH * 0.25,
-      mapX + mapW / 2, mapY + mapH / 2, mapW * 0.65
-    );
+    for (let i = 0; i < 44; i++) {
+      const sx = mapX + ((i * 73 + 17) % mapW);
+      const sy = mapY + ((i * 47 + 11) % mapH);
+      const twinkle = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2 + i));
+      ctx.fillStyle = `rgba(186, 230, 253, ${twinkle.toFixed(2)})`;
+      ctx.fillRect(sx, sy, i % 7 === 0 ? 2 : 1, 1);
+    }
+    const vignette = ctx.createRadialGradient(cx, cy, mapH * 0.3, cx, cy, mapW * 0.62);
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
     ctx.fillStyle = vignette;
     ctx.fillRect(mapX, mapY, mapW, mapH);
   }
@@ -21381,32 +21784,31 @@ class WorldMap {
   /**
    * Traza los caminos adoquinados y puentes que comunican Valleverde con las 4 direcciones.
    */
-  _drawInterconnectingRoads(ctx) {
-    const t = performance.now() * 0.001;
+  _drawInterconnectingRoads(ctx, defs, explored, currentZone, t) {
+    // (BLOQUE 5.C) Caminos curvos discontinuos: oro si explorados, gris si no.
+    const center = defs.find((d) => d.id === 'center');
+    if (!center) return;
     ctx.save();
-    // (BLOQUE 3.3) Rutas discontinuas animadas entre provincias.
-    ctx.strokeStyle = 'rgba(229, 192, 123, 0.8)';
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([4, 3]);
-    ctx.lineDashOffset = -(t * 14) % 7;
-    const routes = [
-      [160, 54, 160, 76],
-      [160, 96, 160, 116],
-      [100, 84, 144, 84],
-      [176, 84, 208, 84]
-    ];
-    for (const [x1, y1, x2, y2] of routes) {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const def of defs) {
+      if (def.id === 'center') continue;
+      const visited = explored.has(def.id);
+      ctx.strokeStyle = visited ? 'rgba(253, 224, 71, 0.92)' : 'rgba(100, 116, 139, 0.32)';
+      ctx.lineWidth = visited ? 1.5 : 1;
+      ctx.setLineDash(visited ? [4, 3] : [2, 4]);
+      ctx.lineDashOffset = -(t * 14) % 7;
+      const midX = (center.cx + def.cx) / 2;
+      const midY = (center.cy + def.cy) / 2;
+      const dx = def.cx - center.cx;
+      const dy = def.cy - center.cy;
+      const len = Math.hypot(dx, dy) || 1;
+      const curve = def.id === 'north' || def.id === 'south' ? 10 : 7;
       ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.moveTo(center.cx, center.cy);
+      ctx.quadraticCurveTo(midX + (-dy / len) * curve, midY + (dx / len) * curve, def.cx, def.cy);
       ctx.stroke();
     }
-    ctx.setLineDash([]);
-    // Puente de madera del camino este.
-    ctx.fillStyle = '#5c3a21';
-    ctx.fillRect(208, 81, 14, 6);
-    ctx.fillStyle = '#b38243';
-    ctx.fillRect(209, 82, 12, 4);
     ctx.restore();
   }
 
@@ -21773,144 +22175,135 @@ class WorldMap {
   _drawHeroLocationMarker(ctx, locInfo, t) {
     const px = locInfo.x;
     const py = locInfo.y;
-
+    const pulse = 1 + Math.sin(t * 5) * 0.15;
+    const rotation = Math.sin(t * 0.7) * 0.3;
     ctx.save();
-
-    // 1. Onda radar concéntrica en expansión
-    const ringRadius = 5 + Math.sin(t * 6) * 3;
-    ctx.strokeStyle = 'rgba(255, 215, 0, 0.75)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(px, py, ringRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // 2. (BLOQUE 3.2) Estrella dorada pulsante que representa al héroe.
-    const bob = Math.sin(t * 6) * 1.5;
-    const hy = py - 4 + bob;
-    const pulse = 1 + Math.sin(t * 5) * 0.18;
-    const glow = ctx.createRadialGradient(px, hy, 1, px, hy, 9 * pulse);
-    glow.addColorStop(0, 'rgba(253, 224, 71, 0.45)');
+    const glow = ctx.createRadialGradient(px, py, 1, px, py, 18 * pulse);
+    glow.addColorStop(0, 'rgba(253, 224, 71, 0.5)');
+    glow.addColorStop(0.55, 'rgba(253, 224, 71, 0.16)');
     glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
     ctx.fillStyle = glow;
-    ctx.fillRect(px - 10, hy - 10, 20, 20);
+    ctx.fillRect(px - 19, py - 19, 38, 38);
+    ctx.strokeStyle = 'rgba(253, 224, 71, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(px, py, 7 * pulse, 0, Math.PI * 2); ctx.stroke();
+    ctx.translate(px, py);
+    ctx.rotate(rotation);
+    ctx.scale(pulse, pulse);
     ctx.fillStyle = '#ffd700';
     ctx.beginPath();
-    for (let i = 0; i < 10; i++) {
-      const a = -Math.PI / 2 + (i * Math.PI) / 5;
-      const r = (i % 2 === 0 ? 5.5 : 2.3) * pulse;
-      const sx = px + Math.cos(a) * r;
-      const sy = hy + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(sx, sy);
-      else ctx.lineTo(sx, sy);
+    for (let i = 0; i < 8; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 4;
+      const r = i % 2 === 0 ? 7 : 2.2;
+      const sx = Math.cos(a) * r;
+      const sy = Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
     }
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = '#fff3b0';
-    ctx.beginPath();
-    ctx.arc(px, hy, 1.3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 3. Cartel "★ TÚ" flotante
-    ctx.fillStyle = '#090705';
-    ctx.fillRect(px - 10, hy - 13, 20, 8);
-    ctx.strokeStyle = '#ffd700';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(px - 9.5, hy - 12.5, 19, 7);
-
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 5px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('★ TÚ', px, hy - 8.5);
-
+    ctx.beginPath(); ctx.arc(0, 0, 1.4, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
+    UILayout.drawText(ctx, '★ TÚ', px, py - 13, {
+      font: 'bold 5px monospace', color: '#ffd700', align: 'center', baseline: 'middle', shadow: true
+    });
   }
 
   /**
    * Encabezado superior del mapa estilo pergamino Zelda.
    */
   _drawZeldaHeader(ctx, W) {
-    ctx.fillStyle = 'rgba(15, 11, 7, 0.94)';
+    // (BLOQUE 5.A) Cabecera glass con subrayado luminoso.
+    UILayout.drawShadow(ctx, 6, 4, W - 12, 11, 0.4);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
     ctx.fillRect(6, 4, W - 12, 11);
-    ctx.strokeStyle = '#d4af37';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(6.5, 4.5, W - 13, 10);
-
-    ctx.fillStyle = '#ffd700';
-    ctx.font = `bold 5px ${UI_FONT}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🗺️ MAPA DEL REINO DEL GRAN OJAL · CARTOGRAFÍA SAGRADA', 12, 9.5);
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = `bold 4.5px ${UI_FONT}`;
-    ctx.textAlign = 'right';
-    ctx.fillText('[Esc / M] Cerrar Mapa', W - 12, 9.5);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(6.75, 4.75, W - 13.5, 9.5);
+    UILayout.drawIcon(ctx, 'map', 13, 9.5, 8, '#e5c07b');
+    UILayout.drawText(ctx, 'MAPA DEL REINO DEL GRAN OJAL · CARTOGRAFÍA SAGRADA', 20, 9.5, {
+      font: 'bold 5px monospace', color: '#ffd700', shadow: true
+    });
+    UILayout.drawText(ctx, '[Esc / M] Cerrar', W - 12, 9.5, {
+      font: 'bold 4.5px monospace', color: '#e2e8f0', align: 'right', shadow: true
+    });
   }
 
   /**
    * Barra inferior HUD estilo Zelda (Zócalos de Cristales/Núcleos, Equipo del Héroe y Misión).
    */
   _drawZeldaHUD(ctx, W, H, locInfo, status, player) {
+    // (BLOQUE 5.E) Panel inferior glass: Zona Actual · Progreso · Núcleos.
     const barX = 6;
-    const barY = H - 22;
+    const barY = H - 24;
     const barW = W - 12;
-    const barH = 18;
+    const barH = 21;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(12, 9, 6, 0.96)';
+    UILayout.drawShadow(ctx, barX, barY, barW, barH, 0.42);
+    const glass = ctx.createLinearGradient(0, barY, 0, barY + barH);
+    glass.addColorStop(0, 'rgba(15, 23, 42, 0.95)');
+    glass.addColorStop(1, 'rgba(7, 12, 22, 0.96)');
+    ctx.fillStyle = glass;
     ctx.fillRect(barX, barY, barW, barH);
-    ctx.strokeStyle = '#d4af37';
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(barX + 1, barY + 1, barW - 2, barH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+    ctx.strokeRect(barX + 4.5, barY + 4.5, barW - 9, barH - 9);
 
-    // 1. Zócalos de los 3 Núcleos de Mazmorra (Cristales estilo Zelda Pendants)
-    ctx.font = 'bold 4.5px monospace';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
+    // Columna 1: Zona actual.
+    UILayout.drawIcon(ctx, 'compass', barX + 12, barY + 8, 8, '#38bdf8');
+    UILayout.drawText(ctx, 'ZONA ACTUAL', barX + 21, barY + 5.5, {
+      font: 'bold 3.8px monospace', color: '#38bdf8', shadow: true
+    });
+    // Nombre de zona sin el paréntesis de sub-área para que respire.
+    const zoneName = locInfo.title.split(' (')[0];
+    UILayout.drawText(ctx, UILayout.fitText(ctx, zoneName, 112), barX + 8, barY + 15.5, {
+      font: 'bold 4.6px monospace', color: '#f8fafc', shadow: true, maxWidth: 112
+    });
 
-    ctx.fillStyle = '#ffd700';
-    ctx.fillText('NÚCLEOS (3):', barX + 5, barY + 3);
+    ctx.strokeStyle = 'rgba(229, 192, 123, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(barX + 137, barY + 4); ctx.lineTo(barX + 137, barY + barH - 4); ctx.stroke();
 
-    // Núcleo Verde (Garbage Collector)
-    this._drawCrystalGem(ctx, barX + 46, barY + 5, status.gcDefeated, '#22c55e', 'GC');
-
-    // Núcleo Cian (Stack Overflow)
-    this._drawCrystalGem(ctx, barX + 72, barY + 5, status.stackDefeated, '#06b6d4', 'STACK');
-
-    // Núcleo Carmesí (Microondas)
-    this._drawCrystalGem(ctx, barX + 104, barY + 5, status.microwaveDefeated, '#ef4444', 'FORJA');
-
-    // 2. Reliquias y Nivel de Equipo del Héroe
-    const swordLvl = player?.swordLevel || (status.hasSword ? 1 : 0);
-    const armorLvl = player?.armorLevel || (status.hasArmor ? 1 : 0);
-
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText(`🛡️Armadura: Nv.${armorLvl}`, barX + 145, barY + 3);
-    ctx.fillText(`⚔️Espada: Nv.${swordLvl}`, barX + 210, barY + 3);
-
-    // 3. Línea inferior: Ubicación precisa y Objetivo de la misión
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillText(`📍 ${locInfo.title}`, barX + 5, barY + 11);
-
-    let questText = '';
-    if (!status.hasArmor) {
-      questText = '🎯 Misión: Consagrar la Armadura Binaria en el Valle del Este.';
-    } else if (!status.hasSword) {
-      questText = '🎯 Misión: Empuñar la Espada de la Recursividad en el Valle del Este.';
-    } else if (status.coresCount < 3) {
-      questText = `🎯 Misión: Conseguir los 3 Núcleos (${status.coresCount}/3): Templo de la Espada (Este) y Marismas (Sur).`;
-    } else if (status.placedCount < 3 && !status.alexDefeated) {
-      questText = `🎯 Misión: Engarza los Núcleos en la Gran Puerta del Oeste (${status.placedCount}/3).`;
-    } else if (!status.alexDefeated) {
-      questText = '🎯 ¡FINAL! Cruza la Gran Puerta del Núcleo (Nivel 10) y purga a Mister AI Alex.';
-    } else {
-      questText = '🏆 ¡VICTORIA! El Reino del Gran Ojal ha sido liberado de Mister AI Alex.';
+    // Columna 2: Progreso de misiones.
+    const questLog = this.menuSystem?.worldMapContext?.questLog;
+    let done = 0;
+    let total = 0;
+    if (questLog && typeof questLog.getAllQuests === 'function') {
+      const all = questLog.getAllQuests();
+      total = all.length;
+      done = all.filter((q) => q.status === 'COMPLETED').length;
     }
+    if (total === 0) {
+      total = 6;
+      done = [
+        status.hasArmor, status.hasSword, status.gcDefeated,
+        status.stackDefeated, status.microwaveDefeated, status.alexDefeated
+      ].filter(Boolean).length;
+    }
+    UILayout.drawIcon(ctx, 'scroll', barX + 147, barY + 8, 8, '#fde047');
+    UILayout.drawText(ctx, 'PROGRESO', barX + 156, barY + 5.5, {
+      font: 'bold 3.8px monospace', color: '#fde047', shadow: true
+    });
+    UILayout.drawText(ctx, `${done}/${total} MISIONES`, barX + 143, barY + 15.5, {
+      font: 'bold 4.6px monospace', color: '#f8fafc', shadow: true
+    });
 
-    ctx.fillStyle = status.coresCount >= 3 ? '#fde047' : '#e2e8f0';
-    ctx.textAlign = 'right';
-    ctx.fillText(UILayout.fitText(ctx, questText, 180), barX + barW - 6, barY + 11);
+    ctx.beginPath(); ctx.moveTo(barX + 222, barY + 4); ctx.lineTo(barX + 222, barY + barH - 4); ctx.stroke();
+
+    // Columna 3: Núcleos.
+    UILayout.drawText(ctx, 'NÚCLEOS', barX + 230, barY + 5.5, {
+      font: 'bold 3.8px monospace', color: '#a7f3d0', shadow: true
+    });
+    this._drawCrystalGem(ctx, barX + 238, barY + 12, status.gcDefeated, '#22c55e', 'GC');
+    this._drawCrystalGem(ctx, barX + 258, barY + 12, status.stackDefeated, '#06b6d4', 'STACK');
+    this._drawCrystalGem(ctx, barX + 283, barY + 12, status.microwaveDefeated, '#ef4444', 'FORJA');
+    UILayout.drawText(ctx, `${status.coresCount}/3`, barX + barW - 6, barY + 15.5, {
+      font: 'bold 4.4px monospace', color: '#ffd700', align: 'right', shadow: true
+    });
 
     ctx.restore();
   }
@@ -22155,7 +22548,9 @@ class QuestLogView {
 
   /** (FIX M3.4) Toque para seleccionar y arrastre vertical para hacer scroll. */
   handleTouchInput(input) {
-    if (!this.isOpen || !this.isTouchDevice || !input) return false;
+    if (!this.isOpen || !input) return false;
+    this._hoverPointer = { x: input.pointerX, y: input.pointerY };
+    if (!this.isTouchDevice) return false;
     const px = input.pointerX;
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
@@ -22319,6 +22714,15 @@ class QuestLogView {
       const tx = content.x + i * (tabW + tabGap);
       this._tabRects.push({ x: tx, y: content.y, w: tabW, h: tabH, id: tab.id });
       const active = this.activeTab === tab.id;
+      const hp = this._hoverPointer;
+      const isHover = !active && hp && hp.x >= tx && hp.x <= tx + tabW && hp.y >= content.y && hp.y <= content.y + tabH;
+      if (isHover) {
+        ctx.fillStyle = 'rgba(253, 224, 71, 0.08)';
+        ctx.fillRect(tx, content.y, tabW, tabH);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(tx + 0.5, content.y + 0.5, tabW - 1, tabH - 1);
+      }
       if (active) {
         const g = ctx.createLinearGradient(tx, content.y, tx, content.y + tabH);
         g.addColorStop(0, 'rgba(253, 224, 71, 0.28)');
@@ -22371,6 +22775,8 @@ class QuestLogView {
       const fullIndex = this.scrollOffset + idx;
       const isSelected = fullIndex === this.selectedIndex;
       const isCompleted = q.status === 'COMPLETED';
+      const hp = this._hoverPointer;
+      const isHover = !isSelected && hp && hp.x >= listStartX && hp.x <= listStartX + rowW && hp.y >= ry && hp.y <= ry + rowH;
       const ry = listStartY + idx * (rowH + 2);
       this._rowRects.push({ x: listStartX, y: ry, w: rowW, h: rowH, index: fullIndex });
 
@@ -22385,7 +22791,7 @@ class QuestLogView {
       }
       ctx.fillStyle = g;
       ctx.fillRect(listStartX, ry, rowW, rowH);
-      ctx.strokeStyle = isSelected ? UI_COLORS.gold : (isCompleted ? 'rgba(74, 222, 128, 0.4)' : UI_COLORS.slotBorder);
+      ctx.strokeStyle = isSelected ? UI_COLORS.gold : (isHover ? 'rgba(253, 224, 71, 0.45)' : (isCompleted ? 'rgba(74, 222, 128, 0.4)' : UI_COLORS.slotBorder));
       ctx.lineWidth = 1;
       ctx.strokeRect(listStartX + 0.5, ry + 0.5, rowW - 1, rowH - 1);
 
@@ -24261,6 +24667,7 @@ class MainMenuAndScenes {
     if (input) {
       this._lastPointerX = input.pointerX;
       this._lastPointerY = input.pointerY;
+      this._lastPointerDown = Boolean(input.isPointerDown);
     }
 
     // Actualización del fundido suave (Fade to Black / Fade in)
@@ -25523,21 +25930,29 @@ class MainMenuAndScenes {
       return;
     }
     ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+
+    const pointerX = this._lastPointerX;
+    const pointerY = this._lastPointerY;
 
     items.forEach((item, idx) => {
       const b = hitboxes[idx];
       const isSelected = idx === this.selectedIndex;
-      const cy = b.y + b.h / 2;
+      const isHover = pointerX >= b.x && pointerX <= b.x + b.w && pointerY >= b.y && pointerY <= b.y + b.h;
+      const isPressed = isHover && this._lastPointerDown;
+      const sink = isPressed ? 1 : 0;
+      const cy = b.y + b.h / 2 + sink;
 
-      // (BLOQUE 2) Fila glass: gradiente dorado sutil en la seleccionada.
-      if (isSelected) {
+      // Fila glass: gradiente dorado en seleccionada, brillo suave al hover.
+      if (isSelected || isHover) {
+        const strength = isSelected ? 0.24 : 0.12;
         const grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y);
-        grad.addColorStop(0, 'rgba(253, 224, 71, 0.24)');
-        grad.addColorStop(0.6, 'rgba(253, 224, 71, 0.08)');
+        grad.addColorStop(0, `rgba(253, 224, 71, ${strength})`);
+        grad.addColorStop(0.6, `rgba(253, 224, 71, ${strength * 0.35})`);
         grad.addColorStop(1, 'rgba(253, 224, 71, 0)');
         ctx.fillStyle = grad;
         ctx.fillRect(b.x, b.y, b.w, b.h);
-        ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+        ctx.strokeStyle = isSelected ? 'rgba(253, 224, 71, 0.55)' : 'rgba(253, 224, 71, 0.25)';
         ctx.lineWidth = 1;
         ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
       } else {
@@ -25545,22 +25960,18 @@ class MainMenuAndScenes {
         ctx.fillRect(b.x, b.y, b.w, b.h);
       }
 
-      const icon = this._menuIcon(item.label);
-      ctx.font = 'bold 8px monospace';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = isSelected ? '#ffd700' : '#94a3b8';
-      ctx.fillText(icon, b.x + 7, cy);
+      const iconColor = isSelected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8');
+      UILayout.drawIcon(ctx, this._menuIcon(item.label), b.x + 12, cy, 10, iconColor);
 
-      const scale = isSelected ? 1.1 : 1;
+      const scale = isSelected ? 1.1 : (isHover ? 1.05 : 1);
       ctx.save();
-      ctx.translate(b.x + 18, cy);
+      ctx.translate(b.x + 19, cy);
       ctx.scale(scale, scale);
       ctx.font = 'bold 7px monospace';
-      if (item.disabled) {
-        ctx.fillStyle = '#636e85';
-      } else {
-        ctx.fillStyle = isSelected ? '#ffd700' : '#e2e8f0';
-      }
+      const color = item.disabled ? '#636e85' : (isSelected || isHover ? '#ffd700' : '#e2e8f0');
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillText(item.label, 1, 1);
+      ctx.fillStyle = color;
       ctx.fillText(item.label, 0, 0);
       ctx.restore();
     });
@@ -25570,19 +25981,18 @@ class MainMenuAndScenes {
 
   _menuIcon(label) {
     const l = String(label).toLowerCase();
-    if (l.includes('continuar')) return '▶';
-    if (l.includes('guardar') || l.includes('nube')) return '💾';
-    if (l.includes('salón') || l.includes('récord')) return '🏆';
-    if (l.includes('ajuste') || l.includes('opciones')) return '⚙';
-    if (l.includes('volumen') || l.includes('efectos')) return '🔊';
-    if (l.includes('música')) return '🎵';
-    if (l.includes('control')) return '🎮';
-    if (l.includes('volver') || l.includes('salir')) return '↩';
-    if (l.includes('nueva')) return '✦';
-    if (l.includes('cargar')) return '📂';
-    if (l.includes('equipo')) return '🛡';
-    if (l.includes('habilidad')) return '⚔';
-    return '◆';
+    if (l.includes('continuar')) return 'play';
+    if (l.includes('guardar') || l.includes('nube') || l.includes('cargar')) return 'save';
+    if (l.includes('salón') || l.includes('récord')) return 'trophy';
+    if (l.includes('ajuste') || l.includes('opciones')) return 'gear';
+    if (l.includes('volumen') || l.includes('efectos')) return 'sound';
+    if (l.includes('música')) return 'music';
+    if (l.includes('control')) return 'gamepad';
+    if (l.includes('volver') || l.includes('salir')) return 'back';
+    if (l.includes('nueva')) return 'spark';
+    if (l.includes('equipo')) return 'shield';
+    if (l.includes('habilidad')) return 'sword';
+    return 'star4';
   }
 
   _renderTitleMenu(ctx, items, hitboxes) {
@@ -25592,35 +26002,63 @@ class MainMenuAndScenes {
     const panelW = 180;
     const panelH = 72;
 
-    // Panel semitransparente negro para legibilidad.
+    // (DIRECTRIZ UI) Panel glass con sombra, borde dorado 2 px y brillo interior.
     ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    UILayout.drawShadow(ctx, panelX, panelY, panelW, panelH, 0.4);
+    const glass = ctx.createLinearGradient(0, panelY, 0, panelY + panelH);
+    glass.addColorStop(0, 'rgba(15, 23, 42, 0.9)');
+    glass.addColorStop(1, 'rgba(8, 13, 24, 0.9)');
+    ctx.fillStyle = glass;
     ctx.fillRect(panelX, panelY, panelW, panelH);
-    ctx.strokeStyle = 'rgba(255, 215, 0, 0.35)';
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX + 1, panelY + 1, panelW - 2, panelH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
+    ctx.strokeRect(panelX + 4.5, panelY + 4.5, panelW - 9, panelH - 9);
 
     ctx.font = `600 6.5px ${GAME_FONT_UI}`;
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 
     items.forEach((item, idx) => {
       const b = hitboxes[idx];
       const selected = idx === this.selectedIndex;
-      const cx = b.x + b.w / 2;
-      const cy = b.y + b.h / 2;
-      const scale = selected ? 1.1 : 1;
-      const label = item.label;
+      const pointerX = this._lastPointerX;
+      const pointerY = this._lastPointerY;
+      const isHover = pointerX >= b.x && pointerX <= b.x + b.w && pointerY >= b.y && pointerY <= b.y + b.h;
+      const cx = b.x + 20;
+      const cy = b.y + b.h / 2 + ((isHover && this._lastPointerDown) ? 1 : 0);
+      const scale = selected ? 1.1 : (isHover ? 1.05 : 1);
+      const label = UILayout.fitText(ctx, item.label, b.w - 28);
+
+      if (selected || isHover) {
+        const row = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0);
+        row.addColorStop(0, `rgba(253, 224, 71, ${selected ? 0.2 : 0.09})`);
+        row.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = row;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+      }
+
+      UILayout.drawIcon(
+        ctx,
+        this._menuIcon(item.label),
+        b.x + 10,
+        cy,
+        9,
+        selected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8')
+      );
 
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(scale, scale);
+      ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
       ctx.fillText(label, 1, 1);
       if (item.disabled) {
         ctx.fillStyle = '#64748b';
       } else {
-        ctx.fillStyle = selected ? '#ffd700' : '#f8fafc';
+        ctx.fillStyle = selected ? '#ffd700' : (isHover ? '#ffd885' : '#f8fafc');
       }
       ctx.fillText(label, 0, 0);
       ctx.restore();
@@ -30204,9 +30642,24 @@ const BGM_MODE_ALIASES = {
   credits: 'victory'
 };
 
+// (BLOQUE 1) SFX pregrabados: se decodifican a buffers y se reproducen con polifonía.
+const SFX_NAMES = [
+  'sword_slash', 'hit_flesh', 'hit_metal', 'player_hurt', 'parry', 'enemy_death',
+  'boss_roar', 'charge_attack', 'dash', 'throw_log', 'footstep_grass',
+  'footstep_stone', 'pickup_item', 'coin', 'level_up', 'pet_animal',
+  'fish_splash', 'door_open', 'ui_hover', 'ui_click', 'ui_error', 'text_type'
+];
+
+// El asset real venía como "fisg_splash.mp3"; se prueban ambos nombres.
+const SFX_FILE_ALIASES = { fish_splash: ['fish_splash', 'fisg_splash'] };
+const SFX_EXTENSIONS = ['mp3', 'wav', 'ogg'];
+
 class AudioManager {
   constructor() {
     this.ctx = null;
+    this.audioContext = null;
+    this.sfxBuffers = {};
+    this._sfxPreloadPromise = null;
     this.masterGainNode = null;
     this.musicGainNode = null;
     this.sfxGainNode = null;
@@ -30225,6 +30678,11 @@ class AudioManager {
 
     // (BLOQUE 1/3/4) BGM pregrabada y crossfade independiente del sintetizador.
     this._bgmAudio = new Map();
+    // (FIX 2) Diccionario reutilizable de pistas; nunca se recrea por cambio de zona.
+    this.musicTracks = this._bgmAudio;
+    this.currentMusic = null;
+    this.isUnlocked = false;
+    this.fadeInterval = null;
     this._bgmCurrentKey = null;
     this._bgmCurrentAudio = null;
     this._bgmPendingKey = null;
@@ -30236,6 +30694,7 @@ class AudioManager {
     this._bgmDuckTimer = null;
     this._bgmDuckRestoreStart = 0;
     this._bgmDuckRestoreFrom = 0;
+    this._bgmDuckRestoreMs = BGM_DUCK_RESTORE_MS;
 
     // Carga de configuración inicial guardada
     this.settings = this._loadSettings();
@@ -30512,6 +30971,7 @@ class AudioManager {
 
     try {
       this.ctx = new AudioContextClass();
+      this.audioContext = this.ctx;
 
       // Bus 1: Master
       this.masterGainNode = this.ctx.createGain();
@@ -30596,7 +31056,15 @@ class AudioManager {
   }
 
   unlockAndStart() {
-    // (BLOQUE 2) Primer gesto: la BGM pregrabada arranca aquí; los SFX siguen en Web Audio.
+    // (FIX 3) Unlock idempotente: varios clics no deben arrancar la BGM varias veces.
+    if (this.isUnlocked) {
+      this._ensureAudioGraph();
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+      return;
+    }
+    this.isUnlocked = true;
     this._unlocked = true;
     const key = this._bgmPendingKey || this._resolveBgmKey(this.mode);
     if (key) {
@@ -30608,6 +31076,92 @@ class AudioManager {
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
+    // (BLOQUE 1.3) Carga en segundo plano; si algo falla, quedan los sintetizadores.
+    this.preloadSFX().catch((err) => {
+      console.warn('[AudioManager] No se pudieron precargar los SFX:', err?.message || err);
+    });
+  }
+
+  /**
+   * (BLOQUE 1) Descarga y decodifica assets/sfx/* en buffers de Web Audio.
+   * Tolera archivos ausentes o corruptos: cada fallo cae al sintetizador.
+   */
+  async preloadSFX() {
+    if (this._sfxPreloadPromise) return this._sfxPreloadPromise;
+    this._sfxPreloadPromise = (async () => {
+      this._ensureAudioGraph();
+      if (!this.ctx || typeof fetch !== 'function') return;
+      await Promise.all(SFX_NAMES.map(async (name) => {
+        if (this.sfxBuffers[name]) return;
+        const bases = SFX_FILE_ALIASES[name] || [name];
+        for (const base of bases) {
+          for (const ext of SFX_EXTENSIONS) {
+            try {
+              const res = await fetch(`assets/sfx/${base}.${ext}`, { cache: 'force-cache' });
+              if (!res.ok) continue;
+              const arrayBuffer = await res.arrayBuffer();
+              const decoded = await new Promise((resolve, reject) => {
+                try {
+                  const p = this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
+                  if (p && typeof p.then === 'function') p.then(resolve, reject);
+                } catch (err) {
+                  reject(err);
+                }
+              });
+              if (decoded) {
+                this.sfxBuffers[name] = decoded;
+                return;
+              }
+            } catch {
+              // Probar siguiente extensión/alias.
+            }
+          }
+        }
+        console.warn(`[AudioManager] SFX no disponible: ${name}; se usará el sintetizador.`);
+      }));
+    })();
+    return this._sfxPreloadPromise;
+  }
+
+  /**
+   * (BLOQUE 2) Dispara un SFX pregrabado con polifonía y variación de tono.
+   * Devuelve false si el buffer no está cargado para que el llamador use el fallback.
+   */
+  playSFX(name, options = {}) {
+    if (!name) return false;
+    const buffer = this.sfxBuffers && this.sfxBuffers[name];
+    if (!buffer) return false;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return false;
+    try {
+      const source = this.ctx.createBufferSource();
+      source.buffer = buffer;
+      const requestedRate = Number.isFinite(options.playbackRate)
+        ? options.playbackRate
+        : 1.0 + (Math.random() * 0.2 - 0.1);
+      source.playbackRate.value = Math.max(0.5, Math.min(2, requestedRate));
+      const gain = this.ctx.createGain();
+      const volume = Math.max(0, Math.min(1, options.volume ?? 0.9));
+      gain.gain.value = volume;
+      source.connect(gain);
+      gain.connect(this.sfxGainNode);
+      if (name === 'player_hurt' || name === 'hit_metal' || name === 'parry') {
+        this._duckMusicForImpact();
+      }
+      source.start(0);
+      this._autoDisconnect(source, gain);
+      return true;
+    } catch (err) {
+      console.warn('[AudioManager] No se pudo reproducir SFX:', name, err?.message || err);
+      return false;
+    }
+  }
+
+  /** (BLOQUE 4) Baja la BGM al 20% del volumen actual y la restaura en 300 ms. */
+  _duckMusicForImpact() {
+    if (!this._bgmCurrentAudio) return;
+    const current = this._bgmCurrentAudio.volume;
+    this.duckMusic(300, Math.max(0.001, current * 0.2), 300);
   }
 
 
@@ -30708,19 +31262,23 @@ class AudioManager {
 
     if (old === audio) {
       this._bgmCurrentKey = key;
-      audio.volume = this._bgmBaseVolume();
+      this.currentMusic = audio;
+      audio.volume = this._bgmEffectiveVolume();
       if (audio.paused) {
         const p = audio.play();
         if (p && typeof p.catch === 'function') {
-          p.catch((err) => console.warn('[AudioManager] BGM bloqueada:', err?.message || err));
+          p.catch((err) => this._warnBgmPlayFailure(err));
         }
       }
       return;
     }
 
-    this._clearBgmFade();
+    // (FIX 1/4) Cancelar el fade anterior MATANDO su pista saliente antes de crear otro.
+    this._clearBgmFade(true);
+
     this._bgmCurrentKey = key;
     this._bgmCurrentAudio = audio;
+    this.currentMusic = audio;
     this._bgmPendingKey = null;
 
     audio.loop = true;
@@ -30728,9 +31286,7 @@ class AudioManager {
     audio.volume = 0;
     const playPromise = audio.play();
     if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch((err) => {
-        console.warn('[AudioManager] BGM bloqueada o fallida:', err?.message || err);
-      });
+      playPromise.catch((err) => this._warnBgmPlayFailure(err));
     }
 
     const target = this._bgmEffectiveVolume();
@@ -30738,6 +31294,7 @@ class AudioManager {
       if (old && old !== audio) {
         old.pause();
         try { old.currentTime = 0; } catch { /* noop */ }
+        old.volume = 0;
       }
       audio.volume = target;
       return;
@@ -30748,10 +31305,20 @@ class AudioManager {
       audio,
       old,
       start: now,
-      duration: fadeMs,
+      // (FIX 1) Saliente rápido de 200 ms; entrada suave acotada para no eternizar el cambio.
+      oldDuration: 200,
+      duration: Math.min(900, Math.max(200, fadeMs)),
       oldStart: old ? old.volume : 0
     };
     this._bgmFadeTimer = setInterval(() => this._tickBgmFade(), 30);
+    this.fadeInterval = this._bgmFadeTimer;
+  }
+
+  /** Filtra el AbortError benigno de play() interrumpido por un cambio de pista. */
+  _warnBgmPlayFailure(err) {
+    if (!err) return;
+    if (err.name === 'AbortError' || /interrupted/i.test(String(err.message || ''))) return;
+    console.warn('[AudioManager] BGM bloqueada o fallida:', err?.message || err);
   }
 
   _stopBgm(fadeMs = 800) {
@@ -30759,16 +31326,35 @@ class AudioManager {
     const old = this._bgmCurrentAudio;
     this._bgmCurrentAudio = null;
     this._bgmCurrentKey = null;
+    this.currentMusic = null;
     if (!old) return;
-    if (!fadeMs || fadeMs <= 0 || typeof setInterval === 'undefined') {
-      old.pause();
-      try { old.currentTime = 0; } catch { /* noop */ }
+    // (FIX 1) Saliente de 200 ms; pausa + currentTime=0 al terminar (sin destruir la instancia).
+    this.fadeOut(old, 200);
+  }
+
+  /** (FIX 4) Fade-out seguro de una instancia; cancela cualquier fade previo. */
+  fadeOut(audioElement, duration = 200) {
+    if (!audioElement) return;
+    this._clearBgmFade(true);
+    if (!duration || duration <= 0 || typeof setInterval === 'undefined') {
+      try {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+        audioElement.volume = 0;
+      } catch { /* noop */ }
       return;
     }
-    this._clearBgmFade();
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    this._bgmFade = { audio: null, old, start: now, duration: fadeMs, oldStart: old.volume };
+    this._bgmFade = {
+      audio: null,
+      old: audioElement,
+      start: now,
+      oldDuration: duration,
+      duration,
+      oldStart: audioElement.volume
+    };
     this._bgmFadeTimer = setInterval(() => this._tickBgmFade(), 30);
+    this.fadeInterval = this._bgmFadeTimer;
   }
 
   _tickBgmFade() {
@@ -30777,27 +31363,47 @@ class AudioManager {
       return;
     }
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const raw = Math.min(1, (now - this._bgmFade.start) / Math.max(1, this._bgmFade.duration));
-    const eased = raw * raw * (3 - 2 * raw);
+    const { audio, old, oldStart, oldDuration, duration } = this._bgmFade;
+    const newRaw = Math.min(1, (now - this._bgmFade.start) / Math.max(1, duration));
+    const oldRaw = Math.min(1, (now - this._bgmFade.start) / Math.max(1, oldDuration || duration));
+    const newEase = newRaw * newRaw * (3 - 2 * newRaw);
+    const oldEase = oldRaw * oldRaw * (3 - 2 * oldRaw);
     const target = this._bgmEffectiveVolume();
-    const { audio, old, oldStart } = this._bgmFade;
-    if (audio) audio.volume = target * eased;
-    if (old) old.volume = Math.max(0, oldStart * (1 - eased));
-    if (raw >= 1) {
-      if (old) {
-        old.pause();
-        try { old.currentTime = 0; } catch { /* noop */ }
+
+    if (audio) audio.volume = target * newEase;
+    if (old) {
+      old.volume = Math.max(0, oldStart * (1 - oldEase));
+      if (oldRaw >= 1) {
+        try {
+          old.pause();
+          old.currentTime = 0;
+        } catch { /* noop */ }
+        old.volume = 0;
       }
+    }
+    if (newRaw >= 1 && oldRaw >= 1) {
       if (audio) audio.volume = target;
-      this._clearBgmFade();
+      this._clearBgmFade(false);
     }
   }
 
-  _clearBgmFade() {
+  _clearBgmFade(pauseOutgoing = true) {
+    // (FIX 1) Al cancelar un crossfade, la pista saliente anterior NUNCA debe quedar sonando.
+    if (pauseOutgoing && this._bgmFade) {
+      const outgoing = this._bgmFade.old;
+      if (outgoing && outgoing !== this._bgmCurrentAudio) {
+        try {
+          outgoing.pause();
+          outgoing.currentTime = 0;
+          outgoing.volume = 0;
+        } catch { /* noop */ }
+      }
+    }
     if (this._bgmFadeTimer) {
       clearInterval(this._bgmFadeTimer);
       this._bgmFadeTimer = null;
     }
+    this.fadeInterval = null;
     this._bgmFade = null;
   }
 
@@ -30806,10 +31412,18 @@ class AudioManager {
     const target = this._bgmEffectiveVolume();
     for (const [key, audio] of this._bgmAudio) {
       if (!audio) continue;
+      const inFade = this._bgmFade && (this._bgmFade.audio === audio || this._bgmFade.old === audio);
       if (key === this._bgmCurrentKey && !this._bgmFade) {
         audio.volume = target;
-      } else if (!this._bgmFade || this._bgmFade.audio !== audio) {
+      } else if (!inFade) {
+        // (FIX 1) Cualquier instancia ajena al fade actual se silencia y se pausa.
         audio.volume = 0;
+        if (!audio.paused) {
+          try {
+            audio.pause();
+            audio.currentTime = 0;
+          } catch { /* noop */ }
+        }
       }
     }
   }
@@ -30818,8 +31432,9 @@ class AudioManager {
    * (BLOQUE 7) Ducking: baja la BGM a 0.1 durante 0.5 s y la recupera suavemente.
    * Solo afecta a la música; el bus SFX permanece a 1.0.
    */
-  duckMusic(durationMs = 500, level = BGM_DUCK_VOLUME) {
+  duckMusic(durationMs = 500, level = BGM_DUCK_VOLUME, restoreMs = BGM_DUCK_RESTORE_MS) {
     if (!this._bgmCurrentAudio) return;
+    this._bgmDuckRestoreMs = restoreMs;
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     this._bgmDuckUntil = now + Math.max(0, durationMs);
     this._bgmDuckLevel = Math.max(0, Math.min(BGM_MAX_VOLUME, level));
@@ -30848,7 +31463,7 @@ class AudioManager {
       this._bgmDuckRestoreStart = now;
       this._bgmDuckRestoreFrom = audio.volume;
     }
-    const raw = Math.min(1, (now - this._bgmDuckRestoreStart) / BGM_DUCK_RESTORE_MS);
+    const raw = Math.min(1, (now - this._bgmDuckRestoreStart) / (this._bgmDuckRestoreMs || BGM_DUCK_RESTORE_MS));
     const eased = raw * raw * (3 - 2 * raw);
     audio.volume = this._bgmDuckRestoreFrom + (base - this._bgmDuckRestoreFrom) * eased;
     if (raw >= 1) this._clearBgmDuck();
@@ -31230,6 +31845,7 @@ class AudioManager {
   }
 
   playMenuMove() {
+    if (this.playSFX('ui_hover')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31243,6 +31859,7 @@ class AudioManager {
   }
 
   playMenuSelect() {
+    if (this.playSFX('ui_click')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31286,6 +31903,7 @@ class AudioManager {
   }
 
   playSwordSlash() {
+    if (this.playSFX('sword_slash')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31307,6 +31925,7 @@ class AudioManager {
   }
 
   playChargedAttack() {
+    if (this.playSFX('charge_attack')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31328,6 +31947,7 @@ class AudioManager {
   }
 
   playDashSound() {
+    if (this.playSFX('dash')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const noise = this._getWhiteNoiseBuffer();
@@ -31355,6 +31975,7 @@ class AudioManager {
   }
 
   playHitHurt() {
+    if (this.playSFX('hit_flesh')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31368,6 +31989,7 @@ class AudioManager {
   }
 
   playPunch() {
+    if (this.playSFX('hit_flesh')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31380,7 +32002,8 @@ class AudioManager {
     });
   }
 
-  playEnemyHit() {
+  playEnemyHit(isBoss = false) {
+    if (this.playSFX(isBoss ? 'hit_metal' : 'hit_flesh')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31394,6 +32017,7 @@ class AudioManager {
   }
 
   playPlayerHurt() {
+    if (this.playSFX('player_hurt')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31414,6 +32038,7 @@ class AudioManager {
   }
 
   playMetalClink() {
+    if (this.playSFX('hit_metal')) return;
     // (BLOQUE 7) SFX fuerte: bajar la BGM temporalmente.
     this.duckMusic();
     this._ensureAudioGraph();
@@ -31437,6 +32062,7 @@ class AudioManager {
   }
 
   playBarrier() {
+    if (this.playSFX('parry')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31479,6 +32105,7 @@ class AudioManager {
   }
 
   playDoorOpenSound() {
+    if (this.playSFX('door_open')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31525,6 +32152,7 @@ class AudioManager {
   }
 
   playItemPickupSound() {
+    if (this.playSFX('pickup_item')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31560,6 +32188,125 @@ class AudioManager {
     }
   }
 
+  // (BLOQUE 3) SFX nuevos: buffer pregrabado y fallback sintetizado.
+  playCoin() {
+    if (this.playSFX('coin', { volume: 0.8 })) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 987.77, type: 'square', startTime: now, duration: 0.05, peakGain: 0.08 });
+    this._playSfxTone({ freq: 1318.51, type: 'square', startTime: now + 0.05, duration: 0.09, peakGain: 0.08 });
+  }
+
+  playLevelUp() {
+    if (this.playSFX('level_up')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((freq, i) => {
+      this._playSfxTone({
+        freq,
+        type: 'triangle',
+        startTime: now + i * 0.07,
+        duration: 0.12,
+        peakGain: 0.1
+      });
+    });
+  }
+
+  playEnemyDeath() {
+    if (this.playSFX('enemy_death')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 320, type: 'sawtooth', startTime: now, duration: 0.25, peakGain: 0.09 });
+    this._playSfxTone({ freq: 90, type: 'sawtooth', startTime: now + 0.08, duration: 0.3, peakGain: 0.09 });
+  }
+
+  playBossRoar() {
+    if (this.playSFX('boss_roar')) return;
+    this.duckMusic(400, 0.12);
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 85, type: 'sawtooth', startTime: now, duration: 0.45, peakGain: 0.12 });
+    this._playSfxTone({ freq: 55, type: 'square', startTime: now + 0.12, duration: 0.4, peakGain: 0.1 });
+  }
+
+  playThrowLog() {
+    if (this.playSFX('throw_log')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 260, type: 'triangle', startTime: now, duration: 0.08, peakGain: 0.06 });
+    this._playSfxTone({ freq: 130, type: 'triangle', startTime: now + 0.06, duration: 0.1, peakGain: 0.05 });
+  }
+
+  playFishSplash() {
+    if (this.playSFX('fish_splash')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    const noise = this._getWhiteNoiseBuffer();
+    if (!noise) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = noise;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1200, now);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.07, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGainNode);
+    this._autoDisconnect(src, gain);
+    src.start(now);
+    src.stop(now + 0.19);
+  }
+
+  playTextType() {
+    if (this.playSFX('text_type', { volume: 0.35, playbackRate: 0.98 + Math.random() * 0.06 })) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    this._playSfxTone({
+      freq: 620,
+      type: 'triangle',
+      startTime: this.ctx.currentTime,
+      duration: 0.018,
+      peakGain: 0.02
+    });
+  }
+
+  playUIError() {
+    if (this.playSFX('ui_error')) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    const now = this.ctx.currentTime;
+    this._playSfxTone({ freq: 220, type: 'square', startTime: now, duration: 0.08, peakGain: 0.07 });
+    this._playSfxTone({ freq: 180, type: 'square', startTime: now + 0.08, duration: 0.1, peakGain: 0.06 });
+  }
+
+  playFootstep(surface = 'grass') {
+    const stone = surface === 'stone' || surface === 'dungeon';
+    const name = stone ? 'footstep_stone' : 'footstep_grass';
+    if (this.playSFX(name, { volume: 0.5, playbackRate: 0.95 + Math.random() * 0.1 })) return;
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
+    this._playSfxTone({
+      freq: stone ? 180 : 120,
+      type: 'triangle',
+      startTime: this.ctx.currentTime,
+      duration: 0.03,
+      peakGain: 0.035
+    });
+  }
+
+  // Alias con los nombres de la especificación.
+  playItemPickup() { this.playItemPickupSound(); }
+  playChargeAttack() { this.playChargedAttack(); }
+
   playVoiceBlip(speakerName = '', char = 'a') {
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
@@ -31592,6 +32339,7 @@ class AudioManager {
   }
 
   playAnimalSound(species) {
+    if (this.playSFX('pet_animal')) return;
     this._ensureAudioGraph();
     if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) return;
     const now = this.ctx.currentTime;
@@ -31955,6 +32703,9 @@ class RPGGame {
       armoredAnimator: new SpriteAnimator(assets.charactersSheet, CHARACTER_TYPES.HERO_ARMORED)
     });
 
+    // (BLOQUE 1) Director de cinemáticas in-engine.
+    this.cinematicDirector = new CinematicDirector(this);
+
     // (FIX SHOP) Modal Canvas 2D de compra/venta por cantidad
     this.shopUI = new ShopUI(this);
 
@@ -32313,6 +33064,10 @@ class RPGGame {
     this._saveGameToStorage();
     // Inicio natural sin diálogos forzados: libertad total de movimiento y exploración
     this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
+    // (BLOQUE 4) Prólogo de Alex al empezar una partida nueva.
+    if (this.cinematicDirector) {
+      this.cinematicDirector.play(PROLOGUE_ALEX);
+    }
   }
 
   _buildSavePayload() {
@@ -37433,6 +38188,13 @@ class RPGGame {
   }
 
   update(dt) {
+    // (BLOQUE 1) La cinemática in-engine dirige actores, cámara y UI.
+    if (this.cinematicDirector && this.cinematicDirector.isActive) {
+      this.cinematicDirector.update(dt, this.input);
+      this.input.endFrame();
+      return;
+    }
+
     // (FIX SHOP) El modal de tienda pausa el mundo y captura toda la entrada.
     if (this.shopUI && this.shopUI.isOpen) {
       this.shopUI.update(dt);
@@ -37453,7 +38215,8 @@ class RPGGame {
         if (this.questLogView) this.questLogView.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
           player: this.player,
-          enemies: this.enemies
+          enemies: this.enemies,
+          questLog: this.questLog
         });
         this.input.endFrame();
         return;
@@ -37622,7 +38385,8 @@ class RPGGame {
         this.questLogView.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
           player: this.player,
-          enemies: this.enemies
+          enemies: this.enemies,
+          questLog: this.questLog
         });
         this.input.endFrame();
         return;
@@ -37668,7 +38432,8 @@ class RPGGame {
         this.inventory.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
           player: this.player,
-          enemies: this.enemies
+          enemies: this.enemies,
+          questLog: this.questLog
         });
         this.input.endFrame();
         return;
@@ -37716,7 +38481,8 @@ class RPGGame {
         this.characterStats.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
           player: this.player,
-          enemies: this.enemies
+          enemies: this.enemies,
+          questLog: this.questLog
         });
         this.input.endFrame();
         return;
@@ -37849,6 +38615,37 @@ class RPGGame {
       this.dialogueBox.active,
       this.music
     );
+
+    // (BLOQUE 5) Pasos dinámicos: cada 0.3 s según la superficie bajo los pies.
+    this.footstepTimer = (this.footstepTimer || 0) + dt;
+    if (this.player.isMoving) {
+      if (this.footstepTimer >= 0.3) {
+        this.footstepTimer = 0;
+        if (this.music && typeof this.music.playFootstep === 'function') {
+          const ts = this.tilemap.tileSize;
+          const footX = Math.floor((this.player.x + this.player.width * 0.5) / ts);
+          const footY = Math.floor((this.player.y + this.player.height - 2) / ts);
+          const groundRow = this.tilemap.layers && this.tilemap.layers.ground
+            ? this.tilemap.layers.ground[footY]
+            : null;
+          const groundTile = groundRow ? groundRow[footX] : null;
+          const stoneScenes = new Set([
+            'mines_puzzle', 'mines_boss_arena', 'sword_temple', 'armor_temple',
+            'sewers_dungeon', 'forge', 'mainframe', 'citadel', 'jail_cell'
+          ]);
+          const stoneTiles = new Set([
+            TILES.STONE_FLOOR, TILES.MINE_CRYSTAL_FLOOR, TILES.SEWER_SLIME_FLOOR,
+            TILES.FORGE_LAVA_FLOOR, TILES.MAINFRAME_FLOOR
+          ]);
+          const surface = stoneScenes.has(this.tilemap.currentSceneId) || stoneTiles.has(groundTile)
+            ? 'stone'
+            : 'grass';
+          this.music.playFootstep(surface);
+        }
+      }
+    } else {
+      this.footstepTimer = 0;
+    }
 
     // Detección y Conmutación de Baldosas de Presión (Puzle: Templo de la Armadura)
     if (this.tilemap.currentSceneId === 'armor_temple' && this.tilemap.armorPuzzle) {
@@ -38360,6 +39157,12 @@ class RPGGame {
     ctx.setTransform(this.renderScale, 0, 0, this.renderScale, 0, 0);
     ctx.imageSmoothingEnabled = false;
 
+    // (BLOQUE 2) La cinemática renderiza la escena in-engine y su UI.
+    if (this.cinematicDirector && this.cinematicDirector.isActive) {
+      this.cinematicDirector.render(ctx);
+      return;
+    }
+
     if (
       this.menuSystem.state === 'title' ||
       this.menuSystem.state === 'cutscene' ||
@@ -38641,6 +39444,11 @@ class RPGGame {
     // (FIX M1.5) HUD móvil: tipografía 1.35x y menos información secundaria
     const isTouchHud = Boolean(this.touchControls && this.touchControls.isTouchEnabled());
     const hudFont = (size, bold = false) => hudFontSize(size, isTouchHud, bold);
+    // (DIRECTRIZ UI) Sombra paralela de los paneles del HUD.
+    const hudShadow = (x, y, w, h) => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
+      ctx.fillRect(x + 2, y + 2, w, h);
+    };
 
     // =========================================================================
     // 1. SUPERIOR DERECHA: Cápsula translúcida con reloj digital, icono solar/lunar y micro-indicador cloud (☁️)
@@ -38655,6 +39463,7 @@ class RPGGame {
     const capsuleX = VIEWPORT_WIDTH - capsuleW - 6;
     const capsuleY = 6;
 
+    hudShadow(capsuleX, capsuleY, capsuleW, capsuleH);
     ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
     ctx.fillRect(capsuleX, capsuleY, capsuleW, capsuleH);
     ctx.strokeStyle = 'rgba(229, 192, 123, 0.45)';
@@ -38668,6 +39477,8 @@ class RPGGame {
 
     // Hora digital
     ctx.font = hudFont(5.5, true);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillText(timeStr, capsuleX + 17, capsuleY + 8.5);
     ctx.fillStyle = '#ffe599';
     ctx.fillText(timeStr, capsuleX + 16, capsuleY + 7.5);
 
@@ -38689,6 +39500,7 @@ class RPGGame {
     const heartsX = 6;
     const heartsY = 6;
 
+    hudShadow(heartsX, heartsY, heartsW, heartsH);
     ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
     ctx.fillRect(heartsX, heartsY, heartsW, heartsH);
     ctx.strokeStyle = this.player.hasBrokenHeartCurse
@@ -38770,6 +39582,7 @@ class RPGGame {
       const robBadgeH = 15;
       const isCrit = robVal > 80;
 
+      hudShadow(robBadgeX, robBadgeY, robBadgeW, robBadgeH);
       ctx.fillStyle = 'rgba(13, 17, 23, 0.86)';
       ctx.fillRect(robBadgeX, robBadgeY, robBadgeW, robBadgeH);
       ctx.strokeStyle = isCrit ? '#ef4444' : '#f59e0b';
@@ -38786,6 +39599,7 @@ class RPGGame {
     if (this.player.hasSword && (this.player.stamina < this.player.maxStamina - 0.5 || this.player.comboStep > 0)) {
       const sw = heartsW;
       const sy = heartsY + heartsH + 2;
+      hudShadow(heartsX, sy, sw, 4);
       ctx.fillStyle = 'rgba(14, 18, 30, 0.75)';
       ctx.fillRect(heartsX, sy, sw, 4);
       const pct = Math.max(0, Math.min(1, this.player.stamina / this.player.maxStamina));
@@ -38823,14 +39637,17 @@ class RPGGame {
     const coinY = heartsY;
     const coinW = 50;
     const coinH = 15;
+    hudShadow(coinX, coinY, coinW, coinH);
     ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
     ctx.fillRect(coinX, coinY, coinW, coinH);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
     ctx.strokeRect(coinX + 0.5, coinY + 0.5, coinW - 1, coinH - 1);
     ctx.font = hudFont(5, true);
-    ctx.fillStyle = '#fde047';
     ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2 + 1, coinY + 8.5);
+    ctx.fillStyle = '#fde047';
     ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
 
     if (this.player.parryFlashTimer > 0) {
@@ -38869,6 +39686,7 @@ class RPGGame {
       // la barra de jefe pasa arriba y centrada para no quedar tapada.
       const barY = isTouchHud ? 30 : VIEWPORT_HEIGHT - 22;
 
+      hudShadow(barX, barY - 7, barW, barH + 7);
       ctx.fillStyle = 'rgba(10, 14, 24, 0.88)';
       ctx.fillRect(barX, barY - 7, barW, barH + 7);
       ctx.strokeStyle = activeBoss.dead ? '#10b981' : '#ffd885';
@@ -38924,6 +39742,7 @@ class RPGGame {
     const qsW = 16;
     const qsH = 16;
 
+    hudShadow(qsX, qsY, qsW, qsH);
     ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
     ctx.fillRect(qsX, qsY, qsW, qsH);
     ctx.strokeStyle = quickItem ? '#38bdf8' : 'rgba(229, 192, 123, 0.45)';

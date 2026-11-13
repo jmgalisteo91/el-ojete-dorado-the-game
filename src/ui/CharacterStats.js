@@ -81,6 +81,7 @@ export class CharacterStats {
    */
   handleInput(input, player = null) {
     if (!this.isOpen || !input) return false;
+    this._hoverPointer = { x: input.pointerX, y: input.pointerY };
 
     if (this.activeTab === 'skills') {
       if (input.consumeKey('KeyW') || input.consumeKey('ArrowUp')) {
@@ -234,6 +235,15 @@ export class CharacterStats {
       const tx = content.x + idx * (tabW + tabGap);
       this._tabRects.push({ x: tx, y: tabBarY, w: tabW, h: tabH, id: tab.id });
       const isActive = this.activeTab === tab.id;
+      const hp = this._hoverPointer;
+      const isHover = !isActive && hp && hp.x >= tx && hp.x <= tx + tabW && hp.y >= tabBarY && hp.y <= tabBarY + tabH;
+      if (isHover) {
+        ctx.fillStyle = 'rgba(253, 224, 71, 0.08)';
+        ctx.fillRect(tx, tabBarY, tabW, tabH);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(tx + 0.5, tabBarY + 0.5, tabW - 1, tabH - 1);
+      }
       if (isActive) {
         const g = ctx.createLinearGradient(tx, tabBarY, tx, tabBarY + tabH);
         g.addColorStop(0, 'rgba(253, 224, 71, 0.28)');
@@ -517,6 +527,8 @@ export class CharacterStats {
       const y = startY + row * (cardH + gap);
       const owned = Boolean(player && player.skills && player.skills[def.key]);
       const selected = i === this.skillCursor;
+      const hp = this._hoverPointer;
+      const hovered = !selected && hp && hp.x >= x && hp.x <= x + cardW && hp.y >= y && hp.y <= y + cardH;
       this._skillRowRects.push({ x, y, w: cardW, h: cardH, index: i });
 
       // Tarjeta: brillante si está desbloqueada, oscura si está bloqueada.
@@ -530,7 +542,7 @@ export class CharacterStats {
       }
       ctx.fillStyle = g;
       ctx.fillRect(x, y, cardW, cardH);
-      ctx.strokeStyle = selected ? UI_COLORS.gold : (owned ? 'rgba(74, 222, 128, 0.7)' : UI_COLORS.slotBorder);
+      ctx.strokeStyle = selected ? UI_COLORS.gold : (hovered ? 'rgba(253, 224, 71, 0.55)' : (owned ? 'rgba(74, 222, 128, 0.7)' : UI_COLORS.slotBorder));
       ctx.lineWidth = selected ? 1.4 : 1;
       ctx.strokeRect(x + 0.5, y + 0.5, cardW - 1, cardH - 1);
       if (selected) {

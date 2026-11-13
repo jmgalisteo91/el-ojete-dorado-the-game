@@ -60,6 +60,17 @@ export const UI_COLORS = {
 
 export const UI_FONT = 'monospace';
 
+// (DIRECTRIZ UI) Curvas de easing compartidas: nunca movimientos lineales en UI.
+export const UI_EASE = {
+  outCubic: (t) => 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3),
+  outBack: (t) => {
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    const x = Math.max(0, Math.min(1, t)) - 1;
+    return 1 + c3 * x * x * x + c1 * x * x;
+  }
+};
+
 /**
  * (FIX M1.5) El HUD móvil necesita tipografía más grande: 320×180 lógicos es muy
  * pequeño para leerlo en un teléfono.
@@ -194,6 +205,294 @@ export class UILayout {
     return from + (1 - from) * (1 - Math.pow(1 - t, 3));
   }
 
+  /** (DIRECTRIZ UI) Drop shadow paralela en dos capas, sin blur. */
+  static drawShadow(ctx, x, y, w, h, alpha = 0.32) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(0.5, alpha * 0.6)})`;
+    ctx.fillRect(x + 3, y + 4, w, h);
+    ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+    ctx.fillRect(x + 1, y + 2, w, h);
+  }
+
+  /** (DIRECTRIZ UI) Texto pixel con sombra fuerte y contorno opcional. */
+  static drawText(ctx, text, x, y, opts = {}) {
+    const {
+      font = `bold 6px ${UI_FONT}`,
+      color = UI_COLORS.textPrimary,
+      align = 'left',
+      baseline = 'middle',
+      shadow = true,
+      outline = false,
+      maxWidth = undefined
+    } = opts;
+    ctx.save();
+    ctx.font = font;
+    ctx.textAlign = align;
+    ctx.textBaseline = baseline;
+    if (outline) {
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+      ctx.lineWidth = 2;
+      if (maxWidth !== undefined) ctx.strokeText(text, x, y, maxWidth);
+      else ctx.strokeText(text, x, y);
+    }
+    if (shadow) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      if (maxWidth !== undefined) ctx.fillText(text, x + 1, y + 1, maxWidth);
+      else ctx.fillText(text, x + 1, y + 1);
+    }
+    ctx.fillStyle = color;
+    if (maxWidth !== undefined) ctx.fillText(text, x, y, maxWidth);
+    else ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+
+  /**
+   * (DIRECTRIZ UI) Iconos procedurales de 12×12, dibujados con píxeles.
+   * Evita depender de emojis y mantiene el look pixel art.
+   */
+  static drawIcon(ctx, key, cx, cy, size = 10, color = UI_COLORS.gold) {
+    const s = size / 12;
+    const u = (v) => Math.round(v * s);
+    const px = (dx, dy, w, h, c = color) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(Math.round(cx + dx * s), Math.round(cy + dy * s), Math.max(1, u(w)), Math.max(1, u(h)));
+    };
+    ctx.save();
+    switch (key) {
+      case 'sword':
+        px(-1, -5, 2, 7);
+        px(-3, 2, 6, 1);
+        px(-1, 3, 2, 2);
+        break;
+      case 'shield':
+        px(-4, -4, 8, 1);
+        px(-4, -3, 8, 4);
+        px(-3, 1, 6, 1);
+        px(-2, 2, 4, 1);
+        px(-1, 3, 2, 1);
+        break;
+      case 'coin':
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(2, 4.5 * s), 0, Math.PI * 2);
+        ctx.fill();
+        px(-1, -2, 2, 4, '#151006');
+        px(-2, -1, 4, 1, '#151006');
+        break;
+      case 'heart':
+        px(-3, -3, 2, 2);
+        px(1, -3, 2, 2);
+        px(-4, -2, 8, 3);
+        px(-3, 1, 6, 2);
+        px(-2, 3, 4, 1);
+        break;
+      case 'star':
+        px(-1, -5, 2, 10);
+        px(-5, -1, 10, 2);
+        px(-3, -3, 2, 2);
+        px(1, -3, 2, 2);
+        px(-3, 2, 2, 2);
+        px(1, 2, 2, 2);
+        break;
+      case 'gear':
+        px(-4, -2, 8, 4);
+        px(-2, -4, 4, 8);
+        px(-3, -3, 6, 6, 'rgba(0,0,0,0)');
+        px(-1, -1, 2, 2, '#151006');
+        break;
+      case 'bag':
+        px(-3, -3, 6, 1);
+        px(-2, -4, 4, 1);
+        px(-2, 2, 5, 3);
+        px(-1, -2, 3, 2);
+        break;
+      case 'scroll':
+        px(-4, -4, 8, 8);
+        px(-3, -3, 6, 1, '#151006');
+        px(-3, -1, 6, 1, '#151006');
+        px(-3, 1, 4, 1, '#151006');
+        break;
+      case 'map':
+        px(-4, -3, 3, 7);
+        px(-1, -4, 3, 8);
+        px(2, -3, 3, 7);
+        break;
+      case 'trophy':
+        px(-3, -4, 6, 4);
+        px(-2, 0, 4, 1);
+        px(-1, 1, 2, 3);
+        px(-3, 4, 6, 1);
+        break;
+      case 'lock':
+        px(-2, -4, 4, 1);
+        px(-3, -3, 6, 1);
+        px(-3, -1, 6, 4);
+        px(-1, 0, 2, 2, '#151006');
+        break;
+      case 'play':
+        px(-2, -4, 2, 8);
+        px(0, -3, 2, 6);
+        px(2, -2, 2, 4);
+        px(4, -1, 1, 2);
+        break;
+      case 'close':
+        px(-3, -3, 2, 2);
+        px(1, -3, 2, 2);
+        px(-1, -1, 2, 2);
+        px(-3, 1, 2, 2);
+        px(1, 1, 2, 2);
+        break;
+      case 'back':
+        px(-4, -1, 2, 2);
+        px(-2, -3, 2, 2);
+        px(-2, 1, 2, 2);
+        px(0, -1, 4, 2);
+        break;
+      case 'sound':
+        px(-4, -1, 2, 3);
+        px(-2, -3, 2, 7);
+        px(1, -3, 1, 2);
+        px(2, -1, 1, 4);
+        px(3, -3, 1, 6);
+        break;
+      case 'music':
+        px(-1, -4, 6, 1);
+        px(-1, -4, 1, 4);
+        px(4, -4, 1, 5);
+        px(-2, 1, 2, 2);
+        px(3, 1, 2, 2);
+        break;
+      case 'gamepad':
+        px(-4, -2, 8, 5);
+        px(-3, 0, 1, 1, '#151006');
+        px(-5, 0, 1, 1, '#151006');
+        px(2, -1, 1, 1, '#151006');
+        break;
+      case 'save':
+        px(-3, -4, 6, 8);
+        px(-2, -3, 4, 2, '#151006');
+        px(-2, 1, 4, 2, '#151006');
+        break;
+      case 'folder':
+        px(-4, -3, 3, 1);
+        px(-4, -2, 8, 5);
+        px(-3, -1, 6, 1, '#151006');
+        break;
+      case 'scroll-open':
+      case 'quest':
+        px(-4, -3, 8, 7);
+        px(-3, -2, 6, 1, '#151006');
+        px(-3, 0, 6, 1, '#151006');
+        px(-3, 2, 4, 1, '#151006');
+        break;
+      case 'valley':
+      case 'house':
+        px(-4, 0, 8, 5);
+        px(-5, 0, 10, 1);
+        px(-3, -4, 6, 4);
+        px(-1, 2, 2, 3, '#151006');
+        px(3, 1, 1, 1, '#fff3b0');
+        break;
+      case 'tree':
+        px(-1, 1, 2, 4);
+        px(-4, -2, 8, 3);
+        px(-3, -4, 6, 2);
+        px(-2, -5, 4, 1, '#86efac');
+        break;
+      case 'mountain':
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(cx - 5, cy + 4);
+        ctx.lineTo(cx - 1, cy - 4);
+        ctx.lineTo(cx + 3, cy + 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + 4);
+        ctx.lineTo(cx + 3, cy - 1);
+        ctx.lineTo(cx + 6, cy + 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath();
+        ctx.moveTo(cx - 1, cy - 4);
+        ctx.lineTo(cx - 2.4, cy - 1);
+        ctx.lineTo(cx + 0.4, cy - 1);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case 'pick':
+        px(-4, 3, 1, 1);
+        px(-3, 2, 1, 1);
+        px(-2, 1, 1, 1);
+        px(-1, 0, 1, 1);
+        px(0, -1, 1, 1);
+        px(1, -2, 1, 1);
+        px(-1, -3, 5, 1);
+        px(3, -2, 2, 1);
+        px(-3, 0, 1, 2);
+        break;
+      case 'pipe':
+        px(-4, -3, 3, 8);
+        px(-4, -4, 8, 2);
+        px(1, -2, 2, 2);
+        px(-2, 0, 1, 1, '#151006');
+        break;
+      case 'skull':
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy - 1, Math.max(2, 4 * s), 0, Math.PI * 2);
+        ctx.fill();
+        px(-2, -2, 1, 2, '#151006');
+        px(1, -2, 1, 2, '#151006');
+        px(-1, 1, 2, 3);
+        px(-2, 4, 4, 1);
+        break;
+      case 'castle':
+        px(-5, 0, 10, 5);
+        px(-5, -3, 2, 3);
+        px(-1, -3, 2, 3);
+        px(3, -3, 2, 3);
+        px(-1, 2, 2, 3, '#151006');
+        break;
+      case 'eye':
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, Math.max(3, 5 * s), Math.max(2, 3 * s), 0, 0, Math.PI * 2);
+        ctx.fill();
+        px(-1, -1, 2, 2, '#151006');
+        break;
+      case 'temple':
+        px(-5, 4, 10, 1);
+        px(-4, 0, 2, 4);
+        px(-1, 0, 2, 4);
+        px(2, 0, 2, 4);
+        px(-5, -2, 10, 2);
+        px(-3, -4, 6, 2);
+        break;
+      case 'compass':
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(3, 4.5 * s), 0, Math.PI * 2);
+        ctx.stroke();
+        px(-1, -3, 2, 3);
+        px(-1, 0, 2, 3, '#151006');
+        break;
+      case 'spark':
+      case 'star4':
+        px(-1, -4, 2, 3);
+        px(-1, 2, 2, 3);
+        px(-4, -1, 3, 2);
+        px(2, -1, 3, 2);
+        px(-1, -1, 2, 2, '#fff3b0');
+        break;
+      default:
+        px(-2, -2, 4, 4);
+        break;
+    }
+    ctx.restore();
+  }
+
   /** Divide una lista de líneas en páginas de `linesPerPage` líneas. */
   static paginate(lines, linesPerPage) {
     const pages = [];
@@ -271,9 +570,11 @@ export class UILayout {
 
     const fullTitle = icon ? `${icon} ${title}` : title;
     if (fullTitle) {
-      ctx.font = `bold 6.5px ${UI_FONT}`;
-      ctx.fillStyle = UI_COLORS.title;
+      ctx.font = `bold 7px ${UI_FONT}`;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
       ctx.textAlign = 'left';
+      ctx.fillText(fullTitle, cursorX + 1, headY + 1);
+      ctx.fillStyle = UI_COLORS.title;
       ctx.fillText(fullTitle, cursorX, headY);
       cursorX += Math.ceil(ctx.measureText(fullTitle).width) + 6;
     }
@@ -352,6 +653,8 @@ export class UILayout {
     const bg = popts.bg || popts.fill || UI_COLORS.slotBg || UI_COLORS.slot;
     const border = popts.border || UI_COLORS.slotBorder;
     ctx.save();
+    // (DIRECTRIZ UI) Sombra paralela para que cada tarjeta flote.
+    if (!popts.noShadow) UILayout.drawShadow(ctx, px, py, pw, ph, 0.26);
     ctx.fillStyle = bg;
     ctx.fillRect(px, py, pw, ph);
     // (BLOQUE 4) Brillo superior de tarjeta.

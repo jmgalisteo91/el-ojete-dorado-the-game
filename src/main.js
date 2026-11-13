@@ -39,6 +39,7 @@ import {
   getSavedCloudCode,
   setSavedCloudCode
 } from './core/ScoreSystem.js?v=8';
+import { CinematicDirector, PROLOGUE_ALEX } from './ui/CinematicDirector.js?v=8';
 import {
   AnimeCutsceneManager,
   SCENE_JAIL_ARREST,
@@ -354,6 +355,9 @@ export class RPGGame {
       animator: new SpriteAnimator(assets.charactersSheet, CHARACTER_TYPES.HERO),
       armoredAnimator: new SpriteAnimator(assets.charactersSheet, CHARACTER_TYPES.HERO_ARMORED)
     });
+
+    // (BLOQUE 1) Director de cinemáticas in-engine.
+    this.cinematicDirector = new CinematicDirector(this);
 
     // (FIX SHOP) Modal Canvas 2D de compra/venta por cantidad
     this.shopUI = new ShopUI(this);
@@ -713,6 +717,10 @@ export class RPGGame {
     this._saveGameToStorage();
     // Inicio natural sin diálogos forzados: libertad total de movimiento y exploración
     this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
+    // (BLOQUE 4) Prólogo de Alex al empezar una partida nueva.
+    if (this.cinematicDirector) {
+      this.cinematicDirector.play(PROLOGUE_ALEX);
+    }
   }
 
   _buildSavePayload() {
@@ -5833,6 +5841,13 @@ export class RPGGame {
   }
 
   update(dt) {
+    // (BLOQUE 1) La cinemática in-engine dirige actores, cámara y UI.
+    if (this.cinematicDirector && this.cinematicDirector.isActive) {
+      this.cinematicDirector.update(dt, this.input);
+      this.input.endFrame();
+      return;
+    }
+
     // (FIX SHOP) El modal de tienda pausa el mundo y captura toda la entrada.
     if (this.shopUI && this.shopUI.isOpen) {
       this.shopUI.update(dt);
@@ -5853,7 +5868,8 @@ export class RPGGame {
         if (this.questLogView) this.questLogView.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
           player: this.player,
-          enemies: this.enemies
+          enemies: this.enemies,
+          questLog: this.questLog
         });
         this.input.endFrame();
         return;
@@ -6022,7 +6038,8 @@ export class RPGGame {
         this.questLogView.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
           player: this.player,
-          enemies: this.enemies
+          enemies: this.enemies,
+          questLog: this.questLog
         });
         this.input.endFrame();
         return;
@@ -6068,7 +6085,8 @@ export class RPGGame {
         this.inventory.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
           player: this.player,
-          enemies: this.enemies
+          enemies: this.enemies,
+          questLog: this.questLog
         });
         this.input.endFrame();
         return;
@@ -6116,7 +6134,8 @@ export class RPGGame {
         this.characterStats.close();
         this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
           player: this.player,
-          enemies: this.enemies
+          enemies: this.enemies,
+          questLog: this.questLog
         });
         this.input.endFrame();
         return;
@@ -6249,6 +6268,37 @@ export class RPGGame {
       this.dialogueBox.active,
       this.music
     );
+
+    // (BLOQUE 5) Pasos dinámicos: cada 0.3 s según la superficie bajo los pies.
+    this.footstepTimer = (this.footstepTimer || 0) + dt;
+    if (this.player.isMoving) {
+      if (this.footstepTimer >= 0.3) {
+        this.footstepTimer = 0;
+        if (this.music && typeof this.music.playFootstep === 'function') {
+          const ts = this.tilemap.tileSize;
+          const footX = Math.floor((this.player.x + this.player.width * 0.5) / ts);
+          const footY = Math.floor((this.player.y + this.player.height - 2) / ts);
+          const groundRow = this.tilemap.layers && this.tilemap.layers.ground
+            ? this.tilemap.layers.ground[footY]
+            : null;
+          const groundTile = groundRow ? groundRow[footX] : null;
+          const stoneScenes = new Set([
+            'mines_puzzle', 'mines_boss_arena', 'sword_temple', 'armor_temple',
+            'sewers_dungeon', 'forge', 'mainframe', 'citadel', 'jail_cell'
+          ]);
+          const stoneTiles = new Set([
+            TILES.STONE_FLOOR, TILES.MINE_CRYSTAL_FLOOR, TILES.SEWER_SLIME_FLOOR,
+            TILES.FORGE_LAVA_FLOOR, TILES.MAINFRAME_FLOOR
+          ]);
+          const surface = stoneScenes.has(this.tilemap.currentSceneId) || stoneTiles.has(groundTile)
+            ? 'stone'
+            : 'grass';
+          this.music.playFootstep(surface);
+        }
+      }
+    } else {
+      this.footstepTimer = 0;
+    }
 
     // Detección y Conmutación de Baldosas de Presión (Puzle: Templo de la Armadura)
     if (this.tilemap.currentSceneId === 'armor_temple' && this.tilemap.armorPuzzle) {
@@ -6760,6 +6810,12 @@ export class RPGGame {
     ctx.setTransform(this.renderScale, 0, 0, this.renderScale, 0, 0);
     ctx.imageSmoothingEnabled = false;
 
+    // (BLOQUE 2) La cinemática renderiza la escena in-engine y su UI.
+    if (this.cinematicDirector && this.cinematicDirector.isActive) {
+      this.cinematicDirector.render(ctx);
+      return;
+    }
+
     if (
       this.menuSystem.state === 'title' ||
       this.menuSystem.state === 'cutscene' ||
@@ -7041,6 +7097,11 @@ export class RPGGame {
     // (FIX M1.5) HUD móvil: tipografía 1.35x y menos información secundaria
     const isTouchHud = Boolean(this.touchControls && this.touchControls.isTouchEnabled());
     const hudFont = (size, bold = false) => hudFontSize(size, isTouchHud, bold);
+    // (DIRECTRIZ UI) Sombra paralela de los paneles del HUD.
+    const hudShadow = (x, y, w, h) => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
+      ctx.fillRect(x + 2, y + 2, w, h);
+    };
 
     // =========================================================================
     // 1. SUPERIOR DERECHA: Cápsula translúcida con reloj digital, icono solar/lunar y micro-indicador cloud (☁️)
@@ -7055,6 +7116,7 @@ export class RPGGame {
     const capsuleX = VIEWPORT_WIDTH - capsuleW - 6;
     const capsuleY = 6;
 
+    hudShadow(capsuleX, capsuleY, capsuleW, capsuleH);
     ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
     ctx.fillRect(capsuleX, capsuleY, capsuleW, capsuleH);
     ctx.strokeStyle = 'rgba(229, 192, 123, 0.45)';
@@ -7068,6 +7130,8 @@ export class RPGGame {
 
     // Hora digital
     ctx.font = hudFont(5.5, true);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillText(timeStr, capsuleX + 17, capsuleY + 8.5);
     ctx.fillStyle = '#ffe599';
     ctx.fillText(timeStr, capsuleX + 16, capsuleY + 7.5);
 
@@ -7089,6 +7153,7 @@ export class RPGGame {
     const heartsX = 6;
     const heartsY = 6;
 
+    hudShadow(heartsX, heartsY, heartsW, heartsH);
     ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
     ctx.fillRect(heartsX, heartsY, heartsW, heartsH);
     ctx.strokeStyle = this.player.hasBrokenHeartCurse
@@ -7170,6 +7235,7 @@ export class RPGGame {
       const robBadgeH = 15;
       const isCrit = robVal > 80;
 
+      hudShadow(robBadgeX, robBadgeY, robBadgeW, robBadgeH);
       ctx.fillStyle = 'rgba(13, 17, 23, 0.86)';
       ctx.fillRect(robBadgeX, robBadgeY, robBadgeW, robBadgeH);
       ctx.strokeStyle = isCrit ? '#ef4444' : '#f59e0b';
@@ -7186,6 +7252,7 @@ export class RPGGame {
     if (this.player.hasSword && (this.player.stamina < this.player.maxStamina - 0.5 || this.player.comboStep > 0)) {
       const sw = heartsW;
       const sy = heartsY + heartsH + 2;
+      hudShadow(heartsX, sy, sw, 4);
       ctx.fillStyle = 'rgba(14, 18, 30, 0.75)';
       ctx.fillRect(heartsX, sy, sw, 4);
       const pct = Math.max(0, Math.min(1, this.player.stamina / this.player.maxStamina));
@@ -7223,14 +7290,17 @@ export class RPGGame {
     const coinY = heartsY;
     const coinW = 50;
     const coinH = 15;
+    hudShadow(coinX, coinY, coinW, coinH);
     ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
     ctx.fillRect(coinX, coinY, coinW, coinH);
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 1;
     ctx.strokeRect(coinX + 0.5, coinY + 0.5, coinW - 1, coinH - 1);
     ctx.font = hudFont(5, true);
-    ctx.fillStyle = '#fde047';
     ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2 + 1, coinY + 8.5);
+    ctx.fillStyle = '#fde047';
     ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
 
     if (this.player.parryFlashTimer > 0) {
@@ -7269,6 +7339,7 @@ export class RPGGame {
       // la barra de jefe pasa arriba y centrada para no quedar tapada.
       const barY = isTouchHud ? 30 : VIEWPORT_HEIGHT - 22;
 
+      hudShadow(barX, barY - 7, barW, barH + 7);
       ctx.fillStyle = 'rgba(10, 14, 24, 0.88)';
       ctx.fillRect(barX, barY - 7, barW, barH + 7);
       ctx.strokeStyle = activeBoss.dead ? '#10b981' : '#ffd885';
@@ -7324,6 +7395,7 @@ export class RPGGame {
     const qsW = 16;
     const qsH = 16;
 
+    hudShadow(qsX, qsY, qsW, qsH);
     ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
     ctx.fillRect(qsX, qsY, qsW, qsH);
     ctx.strokeStyle = quickItem ? '#38bdf8' : 'rgba(229, 192, 123, 0.45)';

@@ -26,6 +26,7 @@ export class DialogueBox {
     this.selectedChoiceIndex = 0;
 
     this.visibleChars = 0;
+    this.openAnim = 1;
     this.lastBlipCharIndex = -1;
     this.lastMenuBounds = null;
     this.baseCharSpeed = 40;
@@ -121,6 +122,7 @@ export class DialogueBox {
     this.caughtSkippingCount = 0;
     this.caughtBannerTimer = 0;
     this.timeSinceLineCompleted = 0;
+    this.openAnim = 0;
 
     let rawLines = ['...'];
     if (customLines) {
@@ -157,6 +159,7 @@ export class DialogueBox {
     this.currentNPC = this._findPortraitNPC(title);
     this.portraitNPC = this.currentNPC;
     this.speakerName = title || '';
+    this.openAnim = 0;
     const rawLines = Array.isArray(lines) ? [...lines] : [lines];
     this.lines = this._paginateLines(rawLines);
     this.choices = choices || [];
@@ -354,6 +357,7 @@ export class DialogueBox {
     }
 
     this.blinkTimer += dt * 5;
+    if (this.openAnim < 1) this.openAnim = Math.min(1, this.openAnim + dt / 0.2);
   }
 
   _findPortraitNPC(name) {
@@ -413,7 +417,10 @@ export class DialogueBox {
     const hasPortrait = Boolean(portraitNPC && portraitNPC.animator && portraitNPC.animator.spriteSheet);
     const boxX = 12;
     const boxH = hasPortrait ? (isTouch ? 64 : 56) : (isTouch ? 54 : 48);
-    const boxY = this.viewportHeight - boxH - 8;
+    const appear = Math.min(1, this.openAnim ?? 1);
+    const ease = 1 - Math.pow(1 - appear, 3);
+    const enter = (1 - ease) * 6;
+    const boxY = this.viewportHeight - boxH - 8 + enter;
     const boxW = this.viewportWidth - 24;
     const portraitSize = Math.min(44, boxH - 10);
     const textX = boxX + (hasPortrait ? portraitSize + 12 : 9);
@@ -423,6 +430,7 @@ export class DialogueBox {
     const maxVisibleLines = isTouch ? 2 : 3;
 
     ctx.save();
+    ctx.globalAlpha = 0.55 + 0.45 * ease;
 
     // Sombra y caja JRPG: fondo azul noche 90 % + borde dorado de 2 px.
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
@@ -484,6 +492,9 @@ export class DialogueBox {
     const wrappedLines = this._wrapText(ctx, shownText, textW);
     const startTextY = boxY + (isTouch ? 8 : 9);
     wrappedLines.slice(0, maxVisibleLines).forEach((line, idx) => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillText(line, textX + 1, startTextY + idx * lineHeight + 1);
+      ctx.fillStyle = '#f0f4f8';
       ctx.fillText(line, textX, startTextY + idx * lineHeight);
     });
 
@@ -532,15 +543,20 @@ export class DialogueBox {
     const menuY = Math.max(isTouch ? 6 : 16, boxY - menuH - (isTouch ? 8 : 4));
     this.lastMenuBounds = { menuX, menuY, menuW, menuH, itemHeight, paddingV };
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx.fillRect(menuX + 2, menuY + 2, menuW, menuH);
-
-    ctx.fillStyle = '#121624';
+    // (DIRECTRIZ UI) Panel glass, drop shadow, borde dorado y selección con gradiente.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+    ctx.fillRect(menuX + 3, menuY + 4, menuW, menuH);
+    const glass = ctx.createLinearGradient(menuX, menuY, menuX, menuY + menuH);
+    glass.addColorStop(0, 'rgba(15, 23, 42, 0.96)');
+    glass.addColorStop(1, 'rgba(10, 15, 26, 0.96)');
+    ctx.fillStyle = glass;
     ctx.fillRect(menuX, menuY, menuW, menuH);
-    ctx.fillStyle = '#4cc9f0';
-    ctx.fillRect(menuX + 1, menuY + 1, menuW - 2, menuH - 2);
-    ctx.fillStyle = '#192036';
-    ctx.fillRect(menuX + 2, menuY + 2, menuW - 4, menuH - 4);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(menuX + 1, menuY + 1, menuW - 2, menuH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(menuX + 3.5, menuY + 3.5, menuW - 7, menuH - 7);
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -550,11 +566,21 @@ export class DialogueBox {
       const isSelected = idx === this.selectedChoiceIndex;
 
       if (isSelected) {
-        ctx.fillStyle = '#2d3b63';
+        const g = ctx.createLinearGradient(menuX + 4, cy, menuX + menuW - 4, cy);
+        g.addColorStop(0, 'rgba(253, 224, 71, 0.26)');
+        g.addColorStop(1, 'rgba(253, 224, 71, 0.02)');
+        ctx.fillStyle = g;
         ctx.fillRect(menuX + 4, cy - 1, menuW - 8, itemHeight - 1);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(menuX + 4.5, cy - 0.5, menuW - 9, itemHeight - 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillText(`▶ ${choice.label}`, menuX + 8, cy + 2);
         ctx.fillStyle = '#ffd885';
         ctx.fillText(`▶ ${choice.label}`, menuX + 7, cy + 1);
       } else {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillText(`  ${choice.label}`, menuX + 8, cy + 2);
         ctx.fillStyle = '#cfd8e3';
         ctx.fillText(`  ${choice.label}`, menuX + 7, cy + 1);
       }

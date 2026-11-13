@@ -998,6 +998,7 @@ export class MainMenuAndScenes {
     if (input) {
       this._lastPointerX = input.pointerX;
       this._lastPointerY = input.pointerY;
+      this._lastPointerDown = Boolean(input.isPointerDown);
     }
 
     // Actualización del fundido suave (Fade to Black / Fade in)
@@ -2260,21 +2261,29 @@ export class MainMenuAndScenes {
       return;
     }
     ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+
+    const pointerX = this._lastPointerX;
+    const pointerY = this._lastPointerY;
 
     items.forEach((item, idx) => {
       const b = hitboxes[idx];
       const isSelected = idx === this.selectedIndex;
-      const cy = b.y + b.h / 2;
+      const isHover = pointerX >= b.x && pointerX <= b.x + b.w && pointerY >= b.y && pointerY <= b.y + b.h;
+      const isPressed = isHover && this._lastPointerDown;
+      const sink = isPressed ? 1 : 0;
+      const cy = b.y + b.h / 2 + sink;
 
-      // (BLOQUE 2) Fila glass: gradiente dorado sutil en la seleccionada.
-      if (isSelected) {
+      // Fila glass: gradiente dorado en seleccionada, brillo suave al hover.
+      if (isSelected || isHover) {
+        const strength = isSelected ? 0.24 : 0.12;
         const grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y);
-        grad.addColorStop(0, 'rgba(253, 224, 71, 0.24)');
-        grad.addColorStop(0.6, 'rgba(253, 224, 71, 0.08)');
+        grad.addColorStop(0, `rgba(253, 224, 71, ${strength})`);
+        grad.addColorStop(0.6, `rgba(253, 224, 71, ${strength * 0.35})`);
         grad.addColorStop(1, 'rgba(253, 224, 71, 0)');
         ctx.fillStyle = grad;
         ctx.fillRect(b.x, b.y, b.w, b.h);
-        ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+        ctx.strokeStyle = isSelected ? 'rgba(253, 224, 71, 0.55)' : 'rgba(253, 224, 71, 0.25)';
         ctx.lineWidth = 1;
         ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
       } else {
@@ -2282,22 +2291,18 @@ export class MainMenuAndScenes {
         ctx.fillRect(b.x, b.y, b.w, b.h);
       }
 
-      const icon = this._menuIcon(item.label);
-      ctx.font = 'bold 8px monospace';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = isSelected ? '#ffd700' : '#94a3b8';
-      ctx.fillText(icon, b.x + 7, cy);
+      const iconColor = isSelected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8');
+      UILayout.drawIcon(ctx, this._menuIcon(item.label), b.x + 12, cy, 10, iconColor);
 
-      const scale = isSelected ? 1.1 : 1;
+      const scale = isSelected ? 1.1 : (isHover ? 1.05 : 1);
       ctx.save();
-      ctx.translate(b.x + 18, cy);
+      ctx.translate(b.x + 19, cy);
       ctx.scale(scale, scale);
       ctx.font = 'bold 7px monospace';
-      if (item.disabled) {
-        ctx.fillStyle = '#636e85';
-      } else {
-        ctx.fillStyle = isSelected ? '#ffd700' : '#e2e8f0';
-      }
+      const color = item.disabled ? '#636e85' : (isSelected || isHover ? '#ffd700' : '#e2e8f0');
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillText(item.label, 1, 1);
+      ctx.fillStyle = color;
       ctx.fillText(item.label, 0, 0);
       ctx.restore();
     });
@@ -2307,19 +2312,18 @@ export class MainMenuAndScenes {
 
   _menuIcon(label) {
     const l = String(label).toLowerCase();
-    if (l.includes('continuar')) return '▶';
-    if (l.includes('guardar') || l.includes('nube')) return '💾';
-    if (l.includes('salón') || l.includes('récord')) return '🏆';
-    if (l.includes('ajuste') || l.includes('opciones')) return '⚙';
-    if (l.includes('volumen') || l.includes('efectos')) return '🔊';
-    if (l.includes('música')) return '🎵';
-    if (l.includes('control')) return '🎮';
-    if (l.includes('volver') || l.includes('salir')) return '↩';
-    if (l.includes('nueva')) return '✦';
-    if (l.includes('cargar')) return '📂';
-    if (l.includes('equipo')) return '🛡';
-    if (l.includes('habilidad')) return '⚔';
-    return '◆';
+    if (l.includes('continuar')) return 'play';
+    if (l.includes('guardar') || l.includes('nube') || l.includes('cargar')) return 'save';
+    if (l.includes('salón') || l.includes('récord')) return 'trophy';
+    if (l.includes('ajuste') || l.includes('opciones')) return 'gear';
+    if (l.includes('volumen') || l.includes('efectos')) return 'sound';
+    if (l.includes('música')) return 'music';
+    if (l.includes('control')) return 'gamepad';
+    if (l.includes('volver') || l.includes('salir')) return 'back';
+    if (l.includes('nueva')) return 'spark';
+    if (l.includes('equipo')) return 'shield';
+    if (l.includes('habilidad')) return 'sword';
+    return 'star4';
   }
 
   _renderTitleMenu(ctx, items, hitboxes) {
@@ -2329,35 +2333,63 @@ export class MainMenuAndScenes {
     const panelW = 180;
     const panelH = 72;
 
-    // Panel semitransparente negro para legibilidad.
+    // (DIRECTRIZ UI) Panel glass con sombra, borde dorado 2 px y brillo interior.
     ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    UILayout.drawShadow(ctx, panelX, panelY, panelW, panelH, 0.4);
+    const glass = ctx.createLinearGradient(0, panelY, 0, panelY + panelH);
+    glass.addColorStop(0, 'rgba(15, 23, 42, 0.9)');
+    glass.addColorStop(1, 'rgba(8, 13, 24, 0.9)');
+    ctx.fillStyle = glass;
     ctx.fillRect(panelX, panelY, panelW, panelH);
-    ctx.strokeStyle = 'rgba(255, 215, 0, 0.35)';
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX + 1, panelY + 1, panelW - 2, panelH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
+    ctx.strokeRect(panelX + 4.5, panelY + 4.5, panelW - 9, panelH - 9);
 
     ctx.font = `600 6.5px ${GAME_FONT_UI}`;
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 
     items.forEach((item, idx) => {
       const b = hitboxes[idx];
       const selected = idx === this.selectedIndex;
-      const cx = b.x + b.w / 2;
-      const cy = b.y + b.h / 2;
-      const scale = selected ? 1.1 : 1;
-      const label = item.label;
+      const pointerX = this._lastPointerX;
+      const pointerY = this._lastPointerY;
+      const isHover = pointerX >= b.x && pointerX <= b.x + b.w && pointerY >= b.y && pointerY <= b.y + b.h;
+      const cx = b.x + 20;
+      const cy = b.y + b.h / 2 + ((isHover && this._lastPointerDown) ? 1 : 0);
+      const scale = selected ? 1.1 : (isHover ? 1.05 : 1);
+      const label = UILayout.fitText(ctx, item.label, b.w - 28);
+
+      if (selected || isHover) {
+        const row = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0);
+        row.addColorStop(0, `rgba(253, 224, 71, ${selected ? 0.2 : 0.09})`);
+        row.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = row;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+      }
+
+      UILayout.drawIcon(
+        ctx,
+        this._menuIcon(item.label),
+        b.x + 10,
+        cy,
+        9,
+        selected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8')
+      );
 
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(scale, scale);
+      ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
       ctx.fillText(label, 1, 1);
       if (item.disabled) {
         ctx.fillStyle = '#64748b';
       } else {
-        ctx.fillStyle = selected ? '#ffd700' : '#f8fafc';
+        ctx.fillStyle = selected ? '#ffd700' : (isHover ? '#ffd885' : '#f8fafc');
       }
       ctx.fillText(label, 0, 0);
       ctx.restore();

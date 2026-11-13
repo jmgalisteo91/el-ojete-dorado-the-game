@@ -34,6 +34,9 @@ export class WorldMap {
     this._dragStart = null;
     this._pinchDist = null;
     this._closeRequested = false;
+    // (BLOQUE 5) Región bajo el cursor y seleccionada con teclado.
+    this._hoverRegion = null;
+    this._selectedRegion = null;
   }
 
   setTouchMode(isTouch) {
@@ -41,7 +44,7 @@ export class WorldMap {
   }
 
   _mapRect() {
-    return { x: 6, y: 16, w: LOGICAL_WIDTH - 12, h: 140 };
+    return { x: 6, y: 16, w: LOGICAL_WIDTH - 12, h: 136 };
   }
 
   _clampView() {
@@ -90,6 +93,20 @@ export class WorldMap {
     const px = input.pointerX;
     const py = input.pointerY;
     const down = Boolean(input.isPointerDown);
+
+    // (BLOQUE 5.B) Hover / clic de región + selección por teclado.
+    const mapRect = this._mapRect();
+    if (px >= mapRect.x && px <= mapRect.x + mapRect.w && py >= mapRect.y && py <= mapRect.y + mapRect.h) {
+      const hit = this._regionAt(px, py);
+      this._hoverRegion = hit ? hit.id : null;
+      if (input.pointerJustClicked && hit) this._selectedRegion = hit.id;
+    } else {
+      this._hoverRegion = null;
+    }
+    if (typeof input.consumeMenuDirection === 'function') {
+      const dir = input.consumeMenuDirection();
+      if (dir) this._cycleSelection(dir);
+    }
 
     // Botones de pantalla (sin transformar)
     if (input.pointerJustClicked && this.isTouchDevice) {
@@ -162,6 +179,186 @@ export class WorldMap {
     }
   }
 
+  /** (BLOQUE 5.B) Definición cartográfica de las cinco regiones. */
+  _getRegionDefs() {
+    return [
+      { id: 'north', name: 'Cumbres de la Recursión', short: 'CUMBRES', cx: 160, cy: 35, rx: 46, ry: 17, color: '#94a3b8', icon: 'mountain', desc: 'Minas y Guardián del Stack' },
+      { id: 'west', name: 'Dominio de AI Alex', short: 'DOMINIO ALEX', cx: 55, cy: 85, rx: 37, ry: 28, color: '#a855f7', icon: 'eye', desc: 'Ciudadela y Puerta Cuántica' },
+      { id: 'center', name: 'Aldea de Valleverde', short: 'VALLEVERDE', cx: 160, cy: 85, rx: 48, ry: 23, color: '#4ade80', icon: 'valley', desc: 'Refugio, mercado y herrería' },
+      { id: 'east', name: 'Valle de la Consagración', short: 'VALLE SAGRADO', cx: 265, cy: 85, rx: 37, ry: 28, color: '#fbbf24', icon: 'temple', desc: 'Templos de Espada y Armadura' },
+      { id: 'south', name: 'Marismas del Legacy', short: 'MARISMAS', cx: 160, cy: 134, rx: 46, ry: 16, color: '#22c55e', icon: 'skull', desc: 'Cloacas y Forja del Microondas' }
+    ];
+  }
+
+  /** Región bajo un punto de pantalla, compensando pan/zoom. */
+  _regionAt(px, py) {
+    const rect = this._mapRect();
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    const localX = (px - (cx + this.view.panX)) / this.view.zoom + cx;
+    const localY = (py - (cy + this.view.panY)) / this.view.zoom + cy;
+    for (const def of this._getRegionDefs()) {
+      const dx = (localX - def.cx) / def.rx;
+      const dy = (localY - def.cy) / def.ry;
+      if (dx * dx + dy * dy <= 1.2) return def;
+    }
+    return null;
+  }
+
+  _cycleSelection(direction) {
+    const defs = this._getRegionDefs();
+    if (defs.length === 0) return;
+    let idx = defs.findIndex((d) => d.id === (this._selectedRegion || this._lastZoneId));
+    if (idx < 0) idx = 0;
+    const delta = direction === 'up' || direction === 'left' ? -1 : 1;
+    this._selectedRegion = defs[(idx + delta + defs.length) % defs.length].id;
+  }
+
+  _getExploredZones(currentZone, status) {
+    const visited = new Set(['center', currentZone]);
+    if (status.hasDash || status.gcDefeated) visited.add('south');
+    if (status.hasChargedAttack || status.stackDefeated) visited.add('north');
+    if (status.hasBarrier || status.microwaveDefeated) visited.add('south');
+    if (status.hasArmor || status.hasSword) visited.add('east');
+    if (status.placedCount > 0 || status.alexDefeated) visited.add('west');
+    return visited;
+  }
+
+  _getQuestZone(status) {
+    if (!status.hasArmor || !status.hasSword) return 'east';
+    if (!status.gcDefeated) return 'south';
+    if (!status.stackDefeated) return 'north';
+    if (!status.microwaveDefeated) return 'south';
+    if (!status.alexDefeated) return 'west';
+    return null;
+  }
+
+  _drawRegions(ctx, defs, currentZone, explored, questZone, status, t) {
+    for (const def of defs) {
+      const active = def.id === currentZone;
+      const hover = this._hoverRegion === def.id || this._selectedRegion === def.id;
+      this._drawRegionIsland(ctx, def, active, hover, explored.has(def.id), questZone === def.id, t);
+    }
+  }
+
+  _drawRegionIsland(ctx, def, active, hover, explored, hasQuest, t) {
+    ctx.save();
+    const makePath = () => {
+      const pts = [];
+      const n = 14;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const wob = 1 + Math.sin(a * 3 + def.cx * 0.05) * 0.06 + Math.sin(a * 5 + def.cy * 0.07) * 0.04;
+        pts.push([def.cx + Math.cos(a) * def.rx * wob, def.cy + Math.sin(a) * def.ry * wob]);
+      }
+      ctx.beginPath();
+      const last = pts[pts.length - 1];
+      ctx.moveTo((last[0] + pts[0][0]) / 2, (last[1] + pts[0][1]) / 2);
+      for (let i = 0; i < n; i++) {
+        const p = pts[i];
+        const next = pts[(i + 1) % n];
+        ctx.quadraticCurveTo(p[0], p[1], (p[0] + next[0]) / 2, (p[1] + next[1]) / 2);
+      }
+      ctx.closePath();
+    };
+
+    // (BLOQUE 5.B) Relleno tenue + borde brillante.
+    ctx.fillStyle = def.color;
+    ctx.globalAlpha = active ? 0.30 : (hover ? 0.28 : (explored ? 0.20 : 0.12));
+    makePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    if (active || hover) {
+      ctx.strokeStyle = `rgba(253, 224, 71, ${active ? 0.22 : 0.14})`;
+      ctx.lineWidth = 4;
+      makePath();
+      ctx.stroke();
+    }
+    ctx.strokeStyle = active ? '#ffd700' : (hover ? '#fef08a' : (explored ? def.color : 'rgba(100, 116, 139, 0.65)'));
+    ctx.lineWidth = active ? 2 : (hover ? 1.8 : 1.2);
+    makePath();
+    ctx.stroke();
+
+    // Icono representativo centrado.
+    UILayout.drawIcon(ctx, def.icon, def.cx, def.cy - 2, 16, active ? '#ffd700' : def.color);
+    UILayout.drawText(ctx, def.short, def.cx, def.cy + 11, {
+      font: 'bold 4.2px monospace',
+      color: active ? '#ffd700' : '#e2e8f0',
+      align: 'center',
+      baseline: 'middle',
+      shadow: true,
+      maxWidth: def.rx * 1.7
+    });
+
+    // (BLOQUE 5.E) "!" dorado si la misión principal está en esta región.
+    if (hasQuest) {
+      const bob = Math.sin(t * 5) * 1.5;
+      const qx = def.cx + def.rx * 0.65;
+      const qy = def.cy - def.ry * 0.8 + bob;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.beginPath();
+      ctx.arc(qx + 1, qy + 1, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.arc(qx, qy, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#151006';
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('!', qx, qy + 0.5);
+    }
+    ctx.restore();
+  }
+
+  _drawRegionTooltip(ctx, def, locInfo, explored, questZone) {
+    const W = LOGICAL_WIDTH;
+    const H = LOGICAL_HEIGHT;
+    const rect = this._mapRect();
+    const mapCX = rect.x + rect.w / 2;
+    const mapCY = rect.y + rect.h / 2;
+    const sx = (def.cx - mapCX) * this.view.zoom + mapCX + this.view.panX;
+    const sy = (def.cy - mapCY) * this.view.zoom + mapCY + this.view.panY;
+    const boxW = 104;
+    const boxH = 28;
+    const x = Math.max(8, Math.min(W - boxW - 8, sx - boxW / 2));
+    const y = sy > H * 0.55 ? sy - boxH - 14 : sy + 14;
+    const statusText = def.id === locInfo.zone
+      ? 'ZONA ACTUAL'
+      : (questZone === def.id ? 'MISIÓN PRINCIPAL' : (explored.has(def.id) ? 'EXPLORADA' : 'SIN EXPLORAR'));
+
+    UILayout.drawShadow(ctx, x, y, boxW, boxH, 0.42);
+    const g = ctx.createLinearGradient(0, y, 0, y + boxH);
+    g.addColorStop(0, 'rgba(15, 23, 42, 0.96)');
+    g.addColorStop(1, 'rgba(8, 13, 24, 0.96)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, boxW, boxH);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, boxW - 1, boxH - 1);
+
+    UILayout.drawIcon(ctx, def.icon, x + 10, y + 9, 10, def.color);
+    UILayout.drawText(ctx, def.name, x + 19, y + 7, {
+      font: 'bold 4.6px monospace',
+      color: '#ffd700',
+      baseline: 'middle',
+      maxWidth: boxW - 23
+    });
+    UILayout.drawText(ctx, statusText, x + 6, y + 17, {
+      font: 'bold 3.8px monospace',
+      color: questZone === def.id ? '#fde047' : '#94a3b8',
+      baseline: 'middle'
+    });
+    UILayout.drawText(ctx, def.desc, x + 6, y + 23, {
+      font: '3.6px monospace',
+      color: '#cbd5e1',
+      baseline: 'middle',
+      maxWidth: boxW - 12
+    });
+  }
+
   /**
    * Renderiza el mapa completo sobre el canvas lógico (320x180).
    * @param {CanvasRenderingContext2D} ctx
@@ -170,24 +367,20 @@ export class WorldMap {
    * @param {Array|null} enemies
    */
   render(ctx, currentSceneId = 'overworld', player = null, enemies = null) {
-    // El contexto llega escalado x4 sobre un canvas físico de 1280x720: dibujar en coordenadas lógicas
     const W = LOGICAL_WIDTH;
     const H = LOGICAL_HEIGHT;
     const t = performance.now() * 0.001;
-
-    // Lienzo interior del mapa (marco de 308x156)
     const mapX = 6;
     const mapY = 16;
-    const mapW = W - 12; // 308
-    const mapH = 140;
+    const mapW = W - 12;
+    const mapH = 136;
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
 
-    // 1. Marco pergamino exterior estilo Zelda clásico
+    // (BLOQUE 5.A) Marco glass premium.
     this._drawZeldaFrame(ctx, W, H);
 
-    // (FIX M3.3) Contenido del mapa con pan/zoom (recortado al marco interior)
     const mapCX = mapX + mapW / 2;
     const mapCY = mapY + mapH / 2;
     ctx.save();
@@ -198,41 +391,29 @@ export class WorldMap {
     ctx.scale(this.view.zoom, this.view.zoom);
     ctx.translate(-mapCX, -mapCY);
 
-    // 2. Fondo oceánico y cuadrícula topográfica
-    this._drawTopographyBackground(ctx, mapX, mapY, mapW, mapH);
+    this._drawTopographyBackground(ctx, mapX, mapY, mapW, mapH, t);
 
-    // 3. Senderos y conexiones viales entre provincias
-    // 4. Determinar estado de progreso (Núcleos, Reliquias y Bosses)
     const status = this._computeProgressStatus(player, enemies);
-
-    // 5. Determinar la zona y posición del jugador
     const locInfo = this._resolvePlayerLocation(currentSceneId);
     this._lastLocationName = locInfo.title;
     this._lastZoneId = locInfo.zone;
+    const defs = this._getRegionDefs();
+    const explored = this._getExploredZones(locInfo.zone, status);
+    const questZone = this._getQuestZone(status);
 
-    // 6. Dibujar las 5 Provincias Cardinales
-    this._drawNorthPeaksRegion(ctx, locInfo.zone === 'north', status, t);
-    this._drawWestWastesRegion(ctx, locInfo.zone === 'west', status, t);
-    this._drawCenterVillageRegion(ctx, locInfo.zone === 'center', status, t);
-    this._drawEastSanctuaryRegion(ctx, locInfo.zone === 'east', status, t);
-    this._drawSouthSwampRegion(ctx, locInfo.zone === 'south', status, t);
-
-    // (BLOQUE 3.3) Conexiones discontinuas por encima de las islas.
-    this._drawInterconnectingRoads(ctx);
-
-    // 7. Decoraciones cartográficas (Rosa de los Vientos)
+    // Caminos primero, islas encima.
+    this._drawInterconnectingRoads(ctx, defs, explored, locInfo.zone, t);
+    this._drawRegions(ctx, defs, locInfo.zone, explored, questZone, status, t);
     this._drawCompassRose(ctx, 22, 140);
-
-    // 8. Marcador de Posición del Héroe "★ TÚ"
     this._drawHeroLocationMarker(ctx, locInfo, t);
-
-    // 9. El contenido del mapa termina aquí (fin del clip/transform)
     ctx.restore();
 
-    // 10. Encabezado superior, barra HUD y botones de navegación (sin transformar)
     this._drawZeldaHeader(ctx, W);
     this._drawZeldaHUD(ctx, W, H, locInfo, status, player);
     this._drawMapButtons(ctx, W, H);
+
+    const tooltipDef = defs.find((d) => d.id === (this._selectedRegion || this._hoverRegion));
+    if (tooltipDef) this._drawRegionTooltip(ctx, tooltipDef, locInfo, explored, questZone);
 
     ctx.restore();
   }
@@ -375,64 +556,58 @@ export class WorldMap {
    * Marco antiguo de doble ribete dorado estilo Zelda (A Link to the Past).
    */
   _drawZeldaFrame(ctx, W, H) {
-    ctx.fillStyle = '#100b07';
+    // (BLOQUE 5.A) Fondo glass + borde dorado 2 px + brillo cian interior.
+    ctx.fillStyle = '#03060c';
     ctx.fillRect(0, 0, W, H);
-
-    ctx.fillStyle = '#1c140d';
+    const glass = ctx.createLinearGradient(0, 0, 0, H);
+    glass.addColorStop(0, 'rgba(17, 29, 48, 0.94)');
+    glass.addColorStop(1, 'rgba(4, 8, 15, 0.97)');
+    ctx.fillStyle = glass;
     ctx.fillRect(2, 2, W - 4, H - 4);
-
-    ctx.strokeStyle = '#7c5f32';
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(3, 3, W - 6, H - 6);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(3.5, 3.5, W - 7, H - 7);
-
-    ctx.strokeStyle = '#d4af37';
-    ctx.strokeRect(5.5, 5.5, W - 11, H - 11);
-
-    // Remaches dorados esquineros
-    const corners = [
-      [4, 4], [W - 8, 4], [4, H - 8], [W - 8, H - 8]
-    ];
+    ctx.strokeRect(6.5, 6.5, W - 13, H - 13);
     ctx.fillStyle = '#ffd700';
-    for (const [cx, cy] of corners) {
-      ctx.fillRect(cx, cy, 4, 4);
-      ctx.fillStyle = '#996515';
-      ctx.fillRect(cx + 1, cy + 1, 2, 2);
-      ctx.fillStyle = '#ffd700';
+    for (const [cx, cy] of [[4, 4], [W - 6, 4], [4, H - 6], [W - 6, H - 6]]) {
+      ctx.fillRect(cx, cy, 2, 2);
     }
   }
 
   /**
    * Fondo cartográfico: mar antiguo y cuadrícula náutica tenue.
    */
-  _drawTopographyBackground(ctx, mapX, mapY, mapW, mapH) {
-    // (BLOQUE 3) Noche profunda + retícula estelar sutil.
-    const night = ctx.createLinearGradient(0, mapY, 0, mapY + mapH);
-    night.addColorStop(0, '#0a1626');
-    night.addColorStop(1, '#050b14');
-    ctx.fillStyle = night;
+  _drawTopographyBackground(ctx, mapX, mapY, mapW, mapH, t = 0) {
+    // (BLOQUE 5.A) Gradiente radial azul noche → negro + retícula cian + estrellas.
+    const cx = mapX + mapW / 2;
+    const cy = mapY + mapH / 2;
+    const radial = ctx.createRadialGradient(cx, cy, 8, cx, cy, Math.max(mapW, mapH) * 0.68);
+    radial.addColorStop(0, '#142947');
+    radial.addColorStop(0.45, '#0a1729');
+    radial.addColorStop(1, '#02050b');
+    ctx.fillStyle = radial;
     ctx.fillRect(mapX, mapY, mapW, mapH);
 
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.07)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.1)';
     ctx.lineWidth = 0.5;
-    for (let x = mapX + 20; x < mapX + mapW; x += 32) {
-      ctx.beginPath();
-      ctx.moveTo(x, mapY);
-      ctx.lineTo(x, mapY + mapH);
-      ctx.stroke();
+    for (let x = mapX + 16; x < mapX + mapW; x += 24) {
+      ctx.beginPath(); ctx.moveTo(x, mapY); ctx.lineTo(x, mapY + mapH); ctx.stroke();
     }
-    for (let y = mapY + 16; y < mapY + mapH; y += 24) {
-      ctx.beginPath();
-      ctx.moveTo(mapX, y);
-      ctx.lineTo(mapX + mapW, y);
-      ctx.stroke();
+    for (let y = mapY + 12; y < mapY + mapH; y += 24) {
+      ctx.beginPath(); ctx.moveTo(mapX, y); ctx.lineTo(mapX + mapW, y); ctx.stroke();
     }
-
-    const vignette = ctx.createRadialGradient(
-      mapX + mapW / 2, mapY + mapH / 2, mapH * 0.25,
-      mapX + mapW / 2, mapY + mapH / 2, mapW * 0.65
-    );
+    for (let i = 0; i < 44; i++) {
+      const sx = mapX + ((i * 73 + 17) % mapW);
+      const sy = mapY + ((i * 47 + 11) % mapH);
+      const twinkle = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2 + i));
+      ctx.fillStyle = `rgba(186, 230, 253, ${twinkle.toFixed(2)})`;
+      ctx.fillRect(sx, sy, i % 7 === 0 ? 2 : 1, 1);
+    }
+    const vignette = ctx.createRadialGradient(cx, cy, mapH * 0.3, cx, cy, mapW * 0.62);
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
     ctx.fillStyle = vignette;
     ctx.fillRect(mapX, mapY, mapW, mapH);
   }
@@ -440,32 +615,31 @@ export class WorldMap {
   /**
    * Traza los caminos adoquinados y puentes que comunican Valleverde con las 4 direcciones.
    */
-  _drawInterconnectingRoads(ctx) {
-    const t = performance.now() * 0.001;
+  _drawInterconnectingRoads(ctx, defs, explored, currentZone, t) {
+    // (BLOQUE 5.C) Caminos curvos discontinuos: oro si explorados, gris si no.
+    const center = defs.find((d) => d.id === 'center');
+    if (!center) return;
     ctx.save();
-    // (BLOQUE 3.3) Rutas discontinuas animadas entre provincias.
-    ctx.strokeStyle = 'rgba(229, 192, 123, 0.8)';
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([4, 3]);
-    ctx.lineDashOffset = -(t * 14) % 7;
-    const routes = [
-      [160, 54, 160, 76],
-      [160, 96, 160, 116],
-      [100, 84, 144, 84],
-      [176, 84, 208, 84]
-    ];
-    for (const [x1, y1, x2, y2] of routes) {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const def of defs) {
+      if (def.id === 'center') continue;
+      const visited = explored.has(def.id);
+      ctx.strokeStyle = visited ? 'rgba(253, 224, 71, 0.92)' : 'rgba(100, 116, 139, 0.32)';
+      ctx.lineWidth = visited ? 1.5 : 1;
+      ctx.setLineDash(visited ? [4, 3] : [2, 4]);
+      ctx.lineDashOffset = -(t * 14) % 7;
+      const midX = (center.cx + def.cx) / 2;
+      const midY = (center.cy + def.cy) / 2;
+      const dx = def.cx - center.cx;
+      const dy = def.cy - center.cy;
+      const len = Math.hypot(dx, dy) || 1;
+      const curve = def.id === 'north' || def.id === 'south' ? 10 : 7;
       ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.moveTo(center.cx, center.cy);
+      ctx.quadraticCurveTo(midX + (-dy / len) * curve, midY + (dx / len) * curve, def.cx, def.cy);
       ctx.stroke();
     }
-    ctx.setLineDash([]);
-    // Puente de madera del camino este.
-    ctx.fillStyle = '#5c3a21';
-    ctx.fillRect(208, 81, 14, 6);
-    ctx.fillStyle = '#b38243';
-    ctx.fillRect(209, 82, 12, 4);
     ctx.restore();
   }
 
@@ -832,144 +1006,135 @@ export class WorldMap {
   _drawHeroLocationMarker(ctx, locInfo, t) {
     const px = locInfo.x;
     const py = locInfo.y;
-
+    const pulse = 1 + Math.sin(t * 5) * 0.15;
+    const rotation = Math.sin(t * 0.7) * 0.3;
     ctx.save();
-
-    // 1. Onda radar concéntrica en expansión
-    const ringRadius = 5 + Math.sin(t * 6) * 3;
-    ctx.strokeStyle = 'rgba(255, 215, 0, 0.75)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(px, py, ringRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // 2. (BLOQUE 3.2) Estrella dorada pulsante que representa al héroe.
-    const bob = Math.sin(t * 6) * 1.5;
-    const hy = py - 4 + bob;
-    const pulse = 1 + Math.sin(t * 5) * 0.18;
-    const glow = ctx.createRadialGradient(px, hy, 1, px, hy, 9 * pulse);
-    glow.addColorStop(0, 'rgba(253, 224, 71, 0.45)');
+    const glow = ctx.createRadialGradient(px, py, 1, px, py, 18 * pulse);
+    glow.addColorStop(0, 'rgba(253, 224, 71, 0.5)');
+    glow.addColorStop(0.55, 'rgba(253, 224, 71, 0.16)');
     glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
     ctx.fillStyle = glow;
-    ctx.fillRect(px - 10, hy - 10, 20, 20);
+    ctx.fillRect(px - 19, py - 19, 38, 38);
+    ctx.strokeStyle = 'rgba(253, 224, 71, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(px, py, 7 * pulse, 0, Math.PI * 2); ctx.stroke();
+    ctx.translate(px, py);
+    ctx.rotate(rotation);
+    ctx.scale(pulse, pulse);
     ctx.fillStyle = '#ffd700';
     ctx.beginPath();
-    for (let i = 0; i < 10; i++) {
-      const a = -Math.PI / 2 + (i * Math.PI) / 5;
-      const r = (i % 2 === 0 ? 5.5 : 2.3) * pulse;
-      const sx = px + Math.cos(a) * r;
-      const sy = hy + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(sx, sy);
-      else ctx.lineTo(sx, sy);
+    for (let i = 0; i < 8; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 4;
+      const r = i % 2 === 0 ? 7 : 2.2;
+      const sx = Math.cos(a) * r;
+      const sy = Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
     }
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = '#fff3b0';
-    ctx.beginPath();
-    ctx.arc(px, hy, 1.3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 3. Cartel "★ TÚ" flotante
-    ctx.fillStyle = '#090705';
-    ctx.fillRect(px - 10, hy - 13, 20, 8);
-    ctx.strokeStyle = '#ffd700';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(px - 9.5, hy - 12.5, 19, 7);
-
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 5px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('★ TÚ', px, hy - 8.5);
-
+    ctx.beginPath(); ctx.arc(0, 0, 1.4, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
+    UILayout.drawText(ctx, '★ TÚ', px, py - 13, {
+      font: 'bold 5px monospace', color: '#ffd700', align: 'center', baseline: 'middle', shadow: true
+    });
   }
 
   /**
    * Encabezado superior del mapa estilo pergamino Zelda.
    */
   _drawZeldaHeader(ctx, W) {
-    ctx.fillStyle = 'rgba(15, 11, 7, 0.94)';
+    // (BLOQUE 5.A) Cabecera glass con subrayado luminoso.
+    UILayout.drawShadow(ctx, 6, 4, W - 12, 11, 0.4);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
     ctx.fillRect(6, 4, W - 12, 11);
-    ctx.strokeStyle = '#d4af37';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(6.5, 4.5, W - 13, 10);
-
-    ctx.fillStyle = '#ffd700';
-    ctx.font = `bold 5px ${UI_FONT}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🗺️ MAPA DEL REINO DEL GRAN OJAL · CARTOGRAFÍA SAGRADA', 12, 9.5);
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = `bold 4.5px ${UI_FONT}`;
-    ctx.textAlign = 'right';
-    ctx.fillText('[Esc / M] Cerrar Mapa', W - 12, 9.5);
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(6.75, 4.75, W - 13.5, 9.5);
+    UILayout.drawIcon(ctx, 'map', 13, 9.5, 8, '#e5c07b');
+    UILayout.drawText(ctx, 'MAPA DEL REINO DEL GRAN OJAL · CARTOGRAFÍA SAGRADA', 20, 9.5, {
+      font: 'bold 5px monospace', color: '#ffd700', shadow: true
+    });
+    UILayout.drawText(ctx, '[Esc / M] Cerrar', W - 12, 9.5, {
+      font: 'bold 4.5px monospace', color: '#e2e8f0', align: 'right', shadow: true
+    });
   }
 
   /**
    * Barra inferior HUD estilo Zelda (Zócalos de Cristales/Núcleos, Equipo del Héroe y Misión).
    */
   _drawZeldaHUD(ctx, W, H, locInfo, status, player) {
+    // (BLOQUE 5.E) Panel inferior glass: Zona Actual · Progreso · Núcleos.
     const barX = 6;
-    const barY = H - 22;
+    const barY = H - 24;
     const barW = W - 12;
-    const barH = 18;
+    const barH = 21;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(12, 9, 6, 0.96)';
+    UILayout.drawShadow(ctx, barX, barY, barW, barH, 0.42);
+    const glass = ctx.createLinearGradient(0, barY, 0, barY + barH);
+    glass.addColorStop(0, 'rgba(15, 23, 42, 0.95)');
+    glass.addColorStop(1, 'rgba(7, 12, 22, 0.96)');
+    ctx.fillStyle = glass;
     ctx.fillRect(barX, barY, barW, barH);
-    ctx.strokeStyle = '#d4af37';
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(barX + 1, barY + 1, barW - 2, barH - 2);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+    ctx.strokeRect(barX + 4.5, barY + 4.5, barW - 9, barH - 9);
 
-    // 1. Zócalos de los 3 Núcleos de Mazmorra (Cristales estilo Zelda Pendants)
-    ctx.font = 'bold 4.5px monospace';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
+    // Columna 1: Zona actual.
+    UILayout.drawIcon(ctx, 'compass', barX + 12, barY + 8, 8, '#38bdf8');
+    UILayout.drawText(ctx, 'ZONA ACTUAL', barX + 21, barY + 5.5, {
+      font: 'bold 3.8px monospace', color: '#38bdf8', shadow: true
+    });
+    // Nombre de zona sin el paréntesis de sub-área para que respire.
+    const zoneName = locInfo.title.split(' (')[0];
+    UILayout.drawText(ctx, UILayout.fitText(ctx, zoneName, 112), barX + 8, barY + 15.5, {
+      font: 'bold 4.6px monospace', color: '#f8fafc', shadow: true, maxWidth: 112
+    });
 
-    ctx.fillStyle = '#ffd700';
-    ctx.fillText('NÚCLEOS (3):', barX + 5, barY + 3);
+    ctx.strokeStyle = 'rgba(229, 192, 123, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(barX + 137, barY + 4); ctx.lineTo(barX + 137, barY + barH - 4); ctx.stroke();
 
-    // Núcleo Verde (Garbage Collector)
-    this._drawCrystalGem(ctx, barX + 46, barY + 5, status.gcDefeated, '#22c55e', 'GC');
-
-    // Núcleo Cian (Stack Overflow)
-    this._drawCrystalGem(ctx, barX + 72, barY + 5, status.stackDefeated, '#06b6d4', 'STACK');
-
-    // Núcleo Carmesí (Microondas)
-    this._drawCrystalGem(ctx, barX + 104, barY + 5, status.microwaveDefeated, '#ef4444', 'FORJA');
-
-    // 2. Reliquias y Nivel de Equipo del Héroe
-    const swordLvl = player?.swordLevel || (status.hasSword ? 1 : 0);
-    const armorLvl = player?.armorLevel || (status.hasArmor ? 1 : 0);
-
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText(`🛡️Armadura: Nv.${armorLvl}`, barX + 145, barY + 3);
-    ctx.fillText(`⚔️Espada: Nv.${swordLvl}`, barX + 210, barY + 3);
-
-    // 3. Línea inferior: Ubicación precisa y Objetivo de la misión
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillText(`📍 ${locInfo.title}`, barX + 5, barY + 11);
-
-    let questText = '';
-    if (!status.hasArmor) {
-      questText = '🎯 Misión: Consagrar la Armadura Binaria en el Valle del Este.';
-    } else if (!status.hasSword) {
-      questText = '🎯 Misión: Empuñar la Espada de la Recursividad en el Valle del Este.';
-    } else if (status.coresCount < 3) {
-      questText = `🎯 Misión: Conseguir los 3 Núcleos (${status.coresCount}/3): Templo de la Espada (Este) y Marismas (Sur).`;
-    } else if (status.placedCount < 3 && !status.alexDefeated) {
-      questText = `🎯 Misión: Engarza los Núcleos en la Gran Puerta del Oeste (${status.placedCount}/3).`;
-    } else if (!status.alexDefeated) {
-      questText = '🎯 ¡FINAL! Cruza la Gran Puerta del Núcleo (Nivel 10) y purga a Mister AI Alex.';
-    } else {
-      questText = '🏆 ¡VICTORIA! El Reino del Gran Ojal ha sido liberado de Mister AI Alex.';
+    // Columna 2: Progreso de misiones.
+    const questLog = this.menuSystem?.worldMapContext?.questLog;
+    let done = 0;
+    let total = 0;
+    if (questLog && typeof questLog.getAllQuests === 'function') {
+      const all = questLog.getAllQuests();
+      total = all.length;
+      done = all.filter((q) => q.status === 'COMPLETED').length;
     }
+    if (total === 0) {
+      total = 6;
+      done = [
+        status.hasArmor, status.hasSword, status.gcDefeated,
+        status.stackDefeated, status.microwaveDefeated, status.alexDefeated
+      ].filter(Boolean).length;
+    }
+    UILayout.drawIcon(ctx, 'scroll', barX + 147, barY + 8, 8, '#fde047');
+    UILayout.drawText(ctx, 'PROGRESO', barX + 156, barY + 5.5, {
+      font: 'bold 3.8px monospace', color: '#fde047', shadow: true
+    });
+    UILayout.drawText(ctx, `${done}/${total} MISIONES`, barX + 143, barY + 15.5, {
+      font: 'bold 4.6px monospace', color: '#f8fafc', shadow: true
+    });
 
-    ctx.fillStyle = status.coresCount >= 3 ? '#fde047' : '#e2e8f0';
-    ctx.textAlign = 'right';
-    ctx.fillText(UILayout.fitText(ctx, questText, 180), barX + barW - 6, barY + 11);
+    ctx.beginPath(); ctx.moveTo(barX + 222, barY + 4); ctx.lineTo(barX + 222, barY + barH - 4); ctx.stroke();
+
+    // Columna 3: Núcleos.
+    UILayout.drawText(ctx, 'NÚCLEOS', barX + 230, barY + 5.5, {
+      font: 'bold 3.8px monospace', color: '#a7f3d0', shadow: true
+    });
+    this._drawCrystalGem(ctx, barX + 238, barY + 12, status.gcDefeated, '#22c55e', 'GC');
+    this._drawCrystalGem(ctx, barX + 258, barY + 12, status.stackDefeated, '#06b6d4', 'STACK');
+    this._drawCrystalGem(ctx, barX + 283, barY + 12, status.microwaveDefeated, '#ef4444', 'FORJA');
+    UILayout.drawText(ctx, `${status.coresCount}/3`, barX + barW - 6, barY + 15.5, {
+      font: 'bold 4.4px monospace', color: '#ffd700', align: 'right', shadow: true
+    });
 
     ctx.restore();
   }

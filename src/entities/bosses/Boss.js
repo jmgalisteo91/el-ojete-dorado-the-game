@@ -237,7 +237,7 @@ export class Boss extends Enemy {
     }
 
     // Chequeo de impacto con Tajos de Energía (Espada Overclockeada)
-    if (player && Array.isArray(player.energySlashes)) {
+    if (player && player.hasSword && Array.isArray(player.energySlashes)) {
       for (const slash of player.energySlashes) {
         if (slash.life > 0 && Math.hypot(this.centerX - slash.x, this.centerY - slash.y) <= (this.width / 2 + 8)) {
           slash.life = 0;

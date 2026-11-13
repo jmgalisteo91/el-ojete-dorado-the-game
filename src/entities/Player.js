@@ -373,6 +373,8 @@ export class Player extends Entity {
       this.attackDuration = 0.18;
       this.attackCooldown = 0.28;
       this.attackTimer = this.attackDuration;
+      // (FIX ESTRICTO) Sin espada no puede existir ni un tajo de energía residual.
+      this.energySlashes.length = 0;
       if (soundEngine && typeof soundEngine.playPunch === 'function') {
         soundEngine.playPunch();
       } else if (soundEngine && typeof soundEngine.playAttackSound === 'function') {
@@ -406,8 +408,9 @@ export class Player extends Entity {
     }
     this.attackTimer = this.attackDuration;
 
-    // Espada Overclockeada (Nivel 3): Si la salud está al máximo, emite un tajo de energía a distancia
-    if (this.swordLevel >= 3 && this.hp >= this.effectiveMaxHp) {
+    // Espada Overclockeada (Nivel 3): Si la salud está al máximo, emite un tajo de energía a distancia.
+    // (FIX ESTRICTO) Doble guarda: sin espada este bloque NUNCA puede ejecutarse.
+    if (this.hasSword && this.swordLevel >= 3 && this.hp >= this.effectiveMaxHp) {
       const vec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.direction] || [1, 0];
       this.energySlashes.push({
         x: this.centerX,
@@ -820,6 +823,11 @@ export class Player extends Entity {
   }
 
   _updateEnergySlashes(dt, tilemap) {
+    // (FIX ESTRICTO) Sin espada no se actualizan proyectiles de energía.
+    if (!this.hasSword) {
+      this.energySlashes.length = 0;
+      return;
+    }
     for (let i = this.energySlashes.length - 1; i >= 0; i--) {
       const s = this.energySlashes[i];
       s.x += s.vx * dt;
@@ -889,7 +897,8 @@ export class Player extends Entity {
     }
 
     // Tajos de energía proyectados por la Espada Overclockeada (Nivel 3)
-    if (this.energySlashes && this.energySlashes.length > 0) {
+    // (FIX ESTRICTO) Solo se dibujan si el jugador tiene espada.
+    if (this.hasSword && this.energySlashes && this.energySlashes.length > 0) {
       ctx.save();
       for (const s of this.energySlashes) {
         const sx = Math.round(s.x - camera.renderX);
@@ -947,7 +956,8 @@ export class Player extends Entity {
     const cy = this.centerY - camera.renderY;
 
     // 2. Aura de concentración de energía al cargar el Corte en Cascada
-    if (this.chargeTimer > 0) {
+    // (FIX ESTRICTO) Sin espada no se muestra aura dorada/cian.
+    if (this.hasSword && this.chargeTimer > 0) {
       ctx.save();
       const isReady = this.chargeTimer >= 1.0;
       const now = performance.now() / 1000;
@@ -1064,13 +1074,13 @@ export class Player extends Entity {
         const fx = cx + Math.cos(baseAngle) * reach;
         const fy = cy + Math.sin(baseAngle) * reach;
         ctx.save();
-        // Líneas de movimiento detrás del puño.
-        ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+        // (FIX ESTRICTO) Solo 3 líneas blancas/grises de velocidad + polvo. Cero energía.
+        ctx.strokeStyle = 'rgba(241, 245, 249, 0.75)';
         ctx.lineWidth = 1;
         for (let i = -1; i <= 1; i++) {
           const off = i * 3;
-          const sx = cx - Math.cos(baseAngle) * 4 - Math.sin(baseAngle) * off;
-          const sy = cy - Math.sin(baseAngle) * 4 + Math.cos(baseAngle) * off;
+          const sx = cx - Math.cos(baseAngle) * 3 - Math.sin(baseAngle) * off;
+          const sy = cy - Math.sin(baseAngle) * 3 + Math.cos(baseAngle) * off;
           const ex = fx - Math.cos(baseAngle) * 4 - Math.sin(baseAngle) * off;
           const ey = fy - Math.sin(baseAngle) * 4 + Math.cos(baseAngle) * off;
           ctx.beginPath();
@@ -1078,31 +1088,18 @@ export class Player extends Entity {
           ctx.lineTo(ex, ey);
           ctx.stroke();
         }
+        // Polvo del impacto (gris, sin aura ni estrella).
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.55)';
+        const dustX = cx + Math.cos(baseAngle) * (reach + 2);
+        const dustY = cy + Math.sin(baseAngle) * (reach + 2);
+        ctx.fillRect(Math.round(dustX) - 2, Math.round(dustY) - 2, 2, 2);
+        ctx.fillRect(Math.round(dustX) + 2, Math.round(dustY) - 1, 1, 1);
+        ctx.fillRect(Math.round(dustX), Math.round(dustY) + 2, 1, 1);
         // Puño/guantelete.
         ctx.fillStyle = '#e8c39e';
         ctx.fillRect(Math.round(fx) - 1, Math.round(fy) - 1, 3, 3);
         ctx.fillStyle = '#b8860b';
         ctx.fillRect(Math.round(fx) - 2, Math.round(fy) - 2, 4, 1);
-        // Estrella de impacto delante del puño.
-        const ix = cx + Math.cos(baseAngle) * (reach + 3);
-        const iy = cy + Math.sin(baseAngle) * (reach + 3);
-        ctx.strokeStyle = '#ffd166';
-        ctx.lineWidth = 1.2;
-        for (let i = 0; i < 4; i++) {
-          const a = baseAngle + Math.PI / 4 + (i * Math.PI) / 2;
-          ctx.beginPath();
-          ctx.moveTo(ix - Math.cos(a) * 3, iy - Math.sin(a) * 3);
-          ctx.lineTo(ix + Math.cos(a) * 3, iy + Math.sin(a) * 3);
-          ctx.stroke();
-        }
-        ctx.fillStyle = '#fff3b0';
-        ctx.fillRect(Math.round(ix) - 1, Math.round(iy) - 1, 2, 2);
-        // Arco de velocidad (no relleno).
-        ctx.strokeStyle = 'rgba(251,191,36,0.5)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(cx, cy, reach + 2, baseAngle - 0.5, baseAngle + 0.5);
-        ctx.stroke();
         ctx.restore();
       } else {
         const progress = 1 - this.attackTimer / this.attackDuration;
