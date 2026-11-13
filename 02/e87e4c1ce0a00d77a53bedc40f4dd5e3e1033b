@@ -1,0 +1,30 @@
+build-portable.mjs
+  h_e1bbc662b18209 36-39,56
+el-ojete-dorado-the-game.html
+  h_e1bbc662b18209 18562-19075,24229,24888-24896,24934-24948,25231-25245,25538,25636,25672-25684,25788,26492,26566-26598,26604-26605,26632,26634-26635,26638,26650,26652,26654,26663,26665-26666,26673-26685,30781-31474
+src/expansion/ExpansionData.js
+  h_e1bbc662b18209 1-86
+src/expansion/entities/FrancoPancho.js
+  h_e1bbc662b18209 1-53
+src/expansion/entities/IñakitoBoss.js
+  h_e1bbc662b18209 1-308
+src/expansion/entities/TonyCuleiro.js
+  h_e1bbc662b18209 1-53
+src/ui/MainMenuAndScenes.js
+  h_e1bbc662b18209 8,47,706-714,752-766,1049-1063,1356,1454,1490-1502,1606,2310,2384-2416,2422-2423,2450,2452-2453,2456,2468,2470,2472,2481,2483-2484,2491-2503
+sw.js
+  h_e1bbc662b18209 16
+tests/regression.mjs
+  h_e1bbc662b18209 54-57,2439-2540
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "02e87e4c1ce0a00d77a53bedc40f4dd5e3e1033b",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
