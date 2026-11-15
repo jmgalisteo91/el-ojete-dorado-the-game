@@ -2826,6 +2826,22 @@ test('CinematicDirector._finalize limpia estado, menú, diálogo, input y jugado
   assert.equal(completed, true);
 });
 
+test('Elementos estéticos (toldos, faroles, pozo, mesas, cajas, mobiliario y copas) son atravesables', () => {
+  const tm = new Tilemap(null, 16);
+  tm.loadScene('overworld');
+
+  // Plaza del mercado en Valleverde: toldos (ROOF_RED/BLUE), faroles (LAMPPOST), mesas (TABLE), cajas (CRATE) y pozo (WELL)
+  assert.equal(tm.isSolidAtTile(14, 8), false, 'Toldo rojo debe ser atravesable (CAPA 2 overhead)');
+  assert.equal(tm.isSolidAtTile(19, 8), false, 'Toldo azul debe ser atravesable (CAPA 2 overhead)');
+  assert.equal(tm.isSolidAtTile(13, 9), false, 'Farol del mercado debe ser atravesable');
+  assert.equal(tm.isSolidAtTile(14, 10), false, 'Mostrador/mesa debe ser atravesable');
+  assert.equal(tm.isSolidAtTile(13, 10), false, 'Caja decorativa debe ser atravesable');
+  assert.equal(tm.isSolidAtTile(17, 12), false, 'Pozo de la plaza debe ser atravesable');
+
+  // Los muros de edificios siguen siendo sólidos
+  assert.equal(tm.isSolidAtTile(2, 10), true, 'Muro de fachada debe seguir bloqueando');
+});
+
 await Promise.all(asyncQueue);
 
 console.log(`\n${passed} pruebas OK, ${failures.length} fallos.`);

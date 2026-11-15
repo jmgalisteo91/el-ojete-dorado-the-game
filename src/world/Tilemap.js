@@ -2,13 +2,23 @@ import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=8';
 import { SpeechBubble } from '../ui/SpeechBubble.js?v=8';
 
 /**
- * Tiles de la CAPA 2 (estructuras elevadas) del pipeline 2.5D: se dibujan siempre por encima
- * de las entidades (copas de árboles y tejados).
+ * Elementos estéticos y decorativos atravesables por jugador, NPCs y animales:
+ * nunca bloquean el paso en `isSolidAtTile()`, independientemente de su capa visual
+ * (CAPA 0 suelo, CAPA 1 Y-sorted o CAPA 2 overhead).
  */
-const NPC_PASSABLE_PROPS = new Set([
-  TILES.FENCE_H, TILES.FENCE_POST, TILES.CRATE, TILES.BUSH, TILES.TABLE, TILES.ANVIL
+const PASSABLE_AESTHETIC_TILES = new Set([
+  TILES.FLOWERS_1, TILES.FLOWERS_2, TILES.SIGNPOST,
+  TILES.FENCE_H, TILES.FENCE_POST, TILES.CRATE, TILES.BUSH, TILES.TABLE, TILES.ANVIL,
+  TILES.LAMPPOST, TILES.WELL,
+  TILES.BOOKSHELF, TILES.BED, TILES.FIREPLACE,
+  TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE,
+  TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM
 ]);
 
+/**
+ * Tiles de la CAPA 2 (estructuras elevadas) del pipeline 2.5D: se dibujan siempre por encima
+ * de las entidades (copas de árboles, tejados y toldos).
+ */
 const OVERHEAD_TILE_IDS = new Set([
   TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE,
   TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM
@@ -669,15 +679,11 @@ export class Tilemap {
     if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) {
       return true;
     }
-    // (FIX 1) Un cartel es siempre pisable, aunque alguna escena lo marcara sólido
-    if (this.layers.decoration && this.layers.decoration[row][col] === TILES.SIGNPOST) {
-      return false;
-    }
-    // (FIX 2) Vallas, mesas, bancos, cajas, arbustos y yunques: decorativos y pisables
-    // para TODOS (jugador incluido). Solo muros de casa y límites bloquean.
+    // Todos los elementos estéticos/decorativos son atravesables por jugador, NPCs y animales;
+    // solo muros, agua, abismos, puertas cerradas y barreras de puzle bloquean el paso.
     if (
       this.layers.decoration &&
-      NPC_PASSABLE_PROPS.has(this.layers.decoration[row][col])
+      PASSABLE_AESTHETIC_TILES.has(this.layers.decoration[row][col])
     ) {
       return false;
     }
