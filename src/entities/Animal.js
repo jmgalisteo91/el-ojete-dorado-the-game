@@ -47,6 +47,7 @@ export class Animal extends Entity {
     this.fleeTimer = 0;
     this.fleeDir = { x: 0, y: -1 };
     this.panicText = '';
+    this.idleClock = Math.random() * Math.PI * 2;
 
     // (FIX NPC.4) El dash del jugador no se bloquea con animales del pueblo
     this.isAnimal = true;
@@ -68,6 +69,12 @@ export class Animal extends Entity {
     this.hitCooldown = 0;
     this.fleeTimer = 0;
     this.panicText = '';
+    this.idleClock = Math.random() * Math.PI * 2;
+  }
+
+  getIdleOffset() {
+    if (this.isMoving) return { x: 0, y: 0 };
+    return { x: 0, y: Math.round(Math.sin(this.idleClock * Math.PI)) };
   }
 
   canInteract(player) {
@@ -222,11 +229,20 @@ export class Animal extends Entity {
       }
     }
 
+    this.idleClock += dt;
     super.update(dt);
   }
 
   render(ctx, camera) {
-    super.render(ctx, camera);
+    const idleOffset = this.getIdleOffset();
+    const renderCam =
+      idleOffset.x !== 0 || idleOffset.y !== 0
+        ? {
+            renderX: camera.renderX - idleOffset.x,
+            renderY: camera.renderY - idleOffset.y
+          }
+        : camera;
+    super.render(ctx, renderCam);
 
     // Si acaba de ser acariciado o alimentado, muestra un pequeño corazón flotante
     if (this.heartTimer > 0) {

@@ -2,6 +2,125 @@ import { TILES } from '../../graphics/SpriteSheetGenerator.js?v=8';
 
 const CHASM_COLLISION_VALUE = 2;
 
+export const TEMPLE_TILES = Object.freeze({
+  BINARY_RUNE_CYAN: 101,
+  ABYSS_VOID: 102,
+  COBWEB: 201,
+  TORCH_CYAN: 202,
+  TORCH_AMBER: 203,
+  CANDLE_CLUSTER: 204,
+  FLOATING_MONOLITH: 205,
+  STATUE_KNIGHT: 206,
+  STATUE_SENTINEL: 207,
+  BANNER_CYAN: 208,
+  BANNER_CRIMSON: 209,
+  TORCH_UNLIT: 210
+});
+
+/**
+ * Compila plantillas ASCII por capas a un objeto JSON estándar de Tiled (.tmj)
+ * con capas separadas: `ground`, `walls`, `decor_over`, `lights` y `props`.
+ */
+function buildTiledTemplateScene({
+  title,
+  cols,
+  rows,
+  legend,
+  groundRows,
+  wallsRows,
+  decorOverRows,
+  lights = [],
+  props = [],
+  torchTriggers = [],
+  exitDoor
+}) {
+  const FIRST_GID = 1;
+  const encodeRows = (charRows) => {
+    const data = new Array(cols * rows).fill(0);
+    for (let r = 0; r < rows; r++) {
+      const line = charRows[r] || '';
+      for (let c = 0; c < cols; c++) {
+        const ch = line[c] || '.';
+        const tileId = legend[ch];
+        if (tileId !== undefined && tileId !== null && tileId >= 0) {
+          data[r * cols + c] = tileId + FIRST_GID;
+        }
+      }
+    }
+    return data;
+  };
+
+  return {
+    type: 'map',
+    tiledversion: '1.10.2',
+    orientation: 'orthogonal',
+    renderorder: 'right-down',
+    width: cols,
+    height: rows,
+    tilewidth: 16,
+    tileheight: 16,
+    title,
+    torchTriggers,
+    exitDoor,
+    tilesets: [
+      { firstgid: FIRST_GID, name: 'el_ojete_tiles' }
+    ],
+    layers: [
+      {
+        id: 1,
+        name: 'ground',
+        type: 'tilelayer',
+        width: cols,
+        height: rows,
+        visible: true,
+        opacity: 1,
+        data: encodeRows(groundRows)
+      },
+      {
+        id: 2,
+        name: 'walls',
+        type: 'tilelayer',
+        width: cols,
+        height: rows,
+        visible: true,
+        opacity: 1,
+        data: encodeRows(wallsRows)
+      },
+      {
+        id: 3,
+        name: 'decor_over',
+        type: 'tilelayer',
+        width: cols,
+        height: rows,
+        visible: true,
+        opacity: 1,
+        data: encodeRows(decorOverRows)
+      },
+      {
+        id: 4,
+        name: 'lights',
+        type: 'objectgroup',
+        visible: true,
+        objects: lights.map((l, idx) => ({ id: idx + 1, ...l }))
+      },
+      {
+        id: 5,
+        name: 'props',
+        type: 'objectgroup',
+        visible: true,
+        objects: props.map((p, idx) => ({
+          id: idx + 1,
+          x: p.col * 16,
+          y: p.row * 16,
+          width: 16,
+          height: 16,
+          ...p
+        }))
+      }
+    ]
+  };
+}
+
 function createSceneHelpers(tilemap, cols, rows, defaultGround) {
   const createGrid = tilemap?._createGrid
     ? (c, r, val) => tilemap._createGrid(c, r, val)
@@ -61,88 +180,191 @@ function applyPuzzleBarrier(scene, puzzleState, barrierRow = 3) {
 function buildArmorTempleScene(tilemap) {
   const cols = 22;
   const rows = 18;
-  const { ground, decoration, collision, fillRect, setDeco } = createSceneHelpers(tilemap, cols, rows, TILES.STONE_FLOOR);
-  const lightSources = [];
-
-  applyRoomBorderWalls(setDeco, cols, rows, TILES.WALL_INTERIOR);
-
-  // Portal místico hacia la arena del Guardián del Stack Overflow
-  const portalOpen = Boolean(tilemap?.swordPuzzle?.portalOpen);
-  if (portalOpen) {
-    setDeco(11, 1, TILES.PORTAL_GATE_OPEN, false);
-    setDeco(12, 1, TILES.PORTAL_GATE_OPEN, false);
-  } else {
-    setDeco(11, 1, TILES.PORTAL_GATE_CLOSED, true);
-    setDeco(12, 1, TILES.PORTAL_GATE_CLOSED, true);
-  }
-
-  fillRect(ground, 9, 13, 4, 4, TILES.COBBLE);
-  fillRect(ground, 3, 6, 4, 8, TILES.COBBLE);
-  fillRect(ground, 15, 6, 4, 8, TILES.COBBLE);
-  fillRect(ground, 3, 6, 16, 2, TILES.COBBLE);
-  fillRect(ground, 8, 2, 6, 4, TILES.RUG_RED);
-
-  fillRect(decoration, 2, 13, 7, 1, TILES.WALL_INTERIOR);
-  fillRect(collision, 2, 13, 7, 1, 1);
-  fillRect(decoration, 13, 13, 7, 1, TILES.WALL_INTERIOR);
-  fillRect(collision, 13, 13, 7, 1, 1);
-
-  fillRect(decoration, 8, 8, 6, 4, TILES.WALL_INTERIOR);
-  fillRect(collision, 8, 8, 6, 4, 1);
-
-  const pillars = [
-    [5, 8], [5, 11], [16, 8], [16, 11],
-    [7, 4], [14, 4], [8, 5], [13, 5]
-  ];
-  for (const [pc, pr] of pillars) {
-    setDeco(pc, pr, TILES.WALL_INTERIOR, true);
-  }
-
-  setDeco(10, 4, TILES.ALTAR_PEDESTAL, false);
-  setDeco(9, 3, TILES.LAMPPOST, true);
-  setDeco(12, 3, TILES.LAMPPOST, true);
-
   const barrierActive = tilemap?.armorPuzzle ? tilemap.armorPuzzle.barrierActive : true;
-  if (barrierActive) {
-    setDeco(9, 5, TILES.FIREPLACE, true);
-    setDeco(10, 5, TILES.FIREPLACE, true);
-    setDeco(11, 5, TILES.FIREPLACE, true);
-  }
-  lightSources.push(
-    { x: 10.5 * 16, y: 4.5 * 16, radius: 64, intensity: 1.0 },
-    { x: 9.5 * 16, y: 3.5 * 16, radius: 44, intensity: 0.9 },
-    { x: 12.5 * 16, y: 3.5 * 16, radius: 44, intensity: 0.9 },
-    { x: 10.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.95 }
-  );
+  const fCh = barrierActive ? 'F' : '.';
 
-  setDeco(9, 14, TILES.LAMPPOST, true);
-  setDeco(12, 14, TILES.LAMPPOST, true);
-  setDeco(3, 7, TILES.LAMPPOST, true);
-  setDeco(18, 7, TILES.LAMPPOST, true);
-  lightSources.push(
-    { x: 9.5 * 16, y: 14.5 * 16, radius: 46, intensity: 0.85 },
-    { x: 12.5 * 16, y: 14.5 * 16, radius: 46, intensity: 0.85 },
-    { x: 3.5 * 16, y: 7.5 * 16, radius: 44, intensity: 0.8 },
-    { x: 18.5 * 16, y: 7.5 * 16, radius: 44, intensity: 0.8 }
-  );
+  const legend = {
+    '.': -1,
+    S: TILES.STONE_FLOOR,
+    c: TILES.COBBLE,
+    R: TILES.RUG_RED,
+    B: TEMPLE_TILES.BINARY_RUNE_CYAN,
+    W: TILES.WALL_INTERIOR,
+    M: TILES.MAINFRAME_WALL,
+    A: TILES.ALTAR_PEDESTAL,
+    F: TILES.FIREPLACE,
+    E: TILES.EXIT_MAT,
+    L: TILES.LAMPPOST,
+    w: TEMPLE_TILES.COBWEB,
+    t: TEMPLE_TILES.TORCH_CYAN,
+    u: TEMPLE_TILES.TORCH_UNLIT,
+    k: TEMPLE_TILES.CANDLE_CLUSTER,
+    s: TEMPLE_TILES.STATUE_SENTINEL,
+    n: TEMPLE_TILES.BANNER_CYAN
+  };
 
-  for (let r = 13; r <= 16; r++) {
-    for (let c = 9; c <= 12; c++) {
-      collision[r][c] = 0;
-      decoration[r][c] = -1;
+  // 22 cols (0..21) x 18 rows (0..17)
+  const groundRows = [
+    'SSSSSSSSSSSSSSSSSSSSSS', // 00
+    'SSSSSSSSSSSSSSSSSSSSSS', // 01
+    'SScSSccBRRRRRRBccSScSS', // 02 Altar wing & red carpet
+    'SScSSccSRRRRRRSccSScSS', // 03
+    'SScBSSSBRRRRRRBSSSBcSS', // 04 Altar pedestal (10,4)
+    'SScBSSSScRRRRcSSSSBcSS', // 05 Barrier row 5
+    'SScccBccSRRRRSccBcccSS', // 06 Alfa (4,6), Gamma (17,6)
+    'SSccccccSRRRRSccccccSS', // 07 Beta (10,7)
+    'SSccBcccSSSSSScccBccSS', // 08
+    'SSccBcccSSSSSScccBccSS', // 09
+    'SSccccccSSSSSSccccccSS', // 10 Switches A(4,10) B(6,10) C(15,10) D(17,10)
+    'SSccBcccSSSSSScccBccSS', // 11
+    'SScccBccccRRccccBcccSS', // 12
+    'SSSSSSSSScRRcSSSSSSSSS', // 13 Entrance carpet path
+    'SSSSSSSSScRRcSSSSSSSSS', // 14 Player spawn (10,14)
+    'SSSSSSSSScRRcSSSSSSSSS', // 15
+    'SSSSSSSSScEEcSSSSSSSSS', // 16 Exit mats (10..11, 16)
+    'SSSSSSSSSSSSSSSSSSSSSS'  // 17
+  ];
+
+  const wallsRows = [
+    'WWWWWWWWWWWWWWWWWWWWWW', // 00
+    'WWWWWWWWWWWWWWWWWWWWWW', // 01
+    'WW..................WW', // 02
+    'WW.......L..L.......WW', // 03
+    'WW.....W..A..W......WW', // 04 Altar at (10,4) non-solid; pillars at (7,4),(14,4)
+    `WW......W${fCh}${fCh}${fCh}W......WW`, // 05 Fire barrier (9..11,5)
+    'WW..................WW', // 06 Monoliths Alfa (4,6), Gamma (17,6)
+    'WW...L..........L...WW', // 07 Lamps (5,7)? Wait keep (3,7) & (18,7) walkable near statues -> lamps at (5,7),(16,7)
+    'WW....W.WWWWWW.W....WW', // 08 Central sanctum divider (8..13,8..11) + pillars (6? Wait: 5,8 and 16,8) -> shifted nicely clear of switches!
+    'WW......WWWWWW......WW', // 09
+    'WW......WWWWWW......WW', // 10 Switches (4,10),(6,10),(15,10),(17,10) completely clear
+    'WW....W.WWWWWW.W....WW', // 11
+    'WW..................WW', // 12
+    'WWWWWWWW......WWWWWWWW', // 13 Divider walls flanking grand hall (2..7,13) & (14..19,13)
+    'WW.......L..L.......WW', // 14 Lamps (9,14),(12,14)
+    'WW..................WW', // 15
+    'WW........EE........WW', // 16 Clear exit mat path
+    'WWWWWWWWWWWWWWWWWWWWWW'  // 17
+  ];
+
+  const decorOverRows = [
+    '......................', // 00
+    '..w.....n....n.....w..', // 01 Corner cobwebs & cyan banners over altar arch
+    '..w................w..', // 02
+    '..t......k..k......t..', // 03 Wall torches & altar candles
+    '.......u.....u........', // 04 Unlit sanctum pillar torches
+    '......................', // 05
+    '......................', // 06
+    '..ts..............st..', // 07 Wing Sentinel Statues at (3,7) & (18,7) + torches (2,7),(19,7)
+    '......................', // 08
+    '......................', // 09
+    '..t................t..', // 10 Side corridor cyan torches
+    '......................', // 11
+    '..w................w..', // 12 Corner cobwebs above wing wall
+    '.......u......u.......', // 13 Unlit entry archway torches (ignited when stepping into hall)
+    '.......s......s.......', // 14 Entrance Sentinel Statues (7,14) & (14,14)
+    '..t................t..', // 15
+    '..w................w..', // 16
+    '......................'  // 17
+  ];
+
+  const lights = [
+    { x: 10.5 * 16, y: 4.5 * 16, radius: 52, intensity: 0.78, glow: 'cyan', color: '#38bdf8' },
+    { x: 9.5 * 16, y: 3.5 * 16, radius: 38, intensity: 0.65, glow: 'warm', color: '#fde047' },
+    { x: 12.5 * 16, y: 3.5 * 16, radius: 38, intensity: 0.65, glow: 'warm', color: '#fde047' },
+    { x: 10.5 * 16, y: 5.5 * 16, radius: 46, intensity: 0.72, glow: 'warm', color: '#f97316' },
+    { x: 4.5 * 16, y: 6.5 * 16, radius: 38, intensity: 0.58, glow: 'cyan', color: '#38bdf8' },
+    { x: 17.5 * 16, y: 6.5 * 16, radius: 38, intensity: 0.58, glow: 'cyan', color: '#38bdf8' },
+    { x: 5.5 * 16, y: 10.5 * 16, radius: 42, intensity: 0.55, glow: 'cyan', color: '#38bdf8' },
+    { x: 16.5 * 16, y: 10.5 * 16, radius: 42, intensity: 0.55, glow: 'cyan', color: '#38bdf8' },
+    { x: 9.5 * 16, y: 14.5 * 16, radius: 44, intensity: 0.68, glow: 'warm', color: '#fbbf24' },
+    { x: 12.5 * 16, y: 14.5 * 16, radius: 44, intensity: 0.68, glow: 'warm', color: '#fbbf24' },
+    { x: 2.5 * 16, y: 7.5 * 16, radius: 34, intensity: 0.52, glow: 'cyan', color: '#38bdf8' },
+    { x: 19.5 * 16, y: 7.5 * 16, radius: 34, intensity: 0.52, glow: 'cyan', color: '#38bdf8' }
+  ];
+
+  const props = [
+    {
+      id: 'armor_statue_west',
+      kind: 'statue',
+      col: 7,
+      row: 14,
+      solid: true,
+      name: 'Estatua del Centinela Binario (Oeste)',
+      title: '🛡️ [ESTATUA DEL CENTINELA BINARIO]',
+      lines: [
+        '«Solo quien equilibra dos pulsos entre cuatro compuertas merece vestir el código del alba.»',
+        'Su coraza de obsidiana vibra suavemente en armonía con las runas cian del suelo.'
+      ]
+    },
+    {
+      id: 'armor_statue_east',
+      kind: 'statue',
+      col: 14,
+      row: 14,
+      solid: true,
+      name: 'Estatua del Arquitecto de Paridad (Este)',
+      title: '🏛️ [ESTATUA DEL ARQUITECTO DE PARIDAD]',
+      lines: [
+        '«La fuerza bruta quiebra los circuitos; la lógica pura apaga las llamas del bastión.»',
+        'A sus pies yacen antiguos grabados sobre puertas XOR y paridad binaria.'
+      ]
+    },
+    {
+      id: 'armor_statue_wing_w',
+      kind: 'statue',
+      col: 3,
+      row: 7,
+      solid: true,
+      name: 'Efigie del Custodio de Bits (Ala Oeste)',
+      title: '💠 [EFIGIE DEL CUSTODIO DE BITS]',
+      lines: [
+        '«Cuando los compiladores dormían, nosotros forjamos cada bit de la Armadura con paciencia eterna.»'
+      ]
+    },
+    {
+      id: 'armor_statue_wing_e',
+      kind: 'statue',
+      col: 18,
+      row: 7,
+      solid: true,
+      name: 'Efigie del Custodio de Bits (Ala Este)',
+      title: '💠 [EFIGIE DEL CUSTODIO DE BITS]',
+      lines: [
+        '«Cuidado con los bucles sin reposo: si la armadura acumula estática binaria, busca café o descanso.»'
+      ]
     }
-  }
-  fillRect(ground, 9, 13, 4, 4, TILES.COBBLE);
-  fillRect(decoration, 10, 16, 2, 1, TILES.EXIT_MAT);
-  collision[16][10] = 0;
-  collision[16][11] = 0;
+  ];
 
-  return {
+  return buildTiledTemplateScene({
     title: 'Templo de la Armadura Binaria · Santuario del Bastión',
     cols,
     rows,
-    layers: { ground, decoration, collision },
-    lightSources,
+    legend,
+    groundRows,
+    wallsRows,
+    decorOverRows,
+    lights,
+    props,
+    torchTriggers: [
+      {
+        id: 'armor_entry_torches',
+        stepTiles: [{ col: 10, row: 13 }, { col: 11, row: 13 }],
+        torches: [
+          { col: 7, row: 13, tile: TEMPLE_TILES.TORCH_CYAN, color: '#38bdf8', glow: 'cyan', radius: 44, intensity: 0.72 },
+          { col: 14, row: 13, tile: TEMPLE_TILES.TORCH_CYAN, color: '#38bdf8', glow: 'cyan', radius: 44, intensity: 0.72 }
+        ],
+        notice: '🔥 Las antorchas de entrada despiertan con luz binaria.'
+      },
+      {
+        id: 'armor_sanctum_torches',
+        stepTiles: [{ col: 9, row: 6 }, { col: 10, row: 6 }, { col: 11, row: 6 }, { col: 12, row: 6 }],
+        torches: [
+          { col: 7, row: 4, tile: TEMPLE_TILES.TORCH_CYAN, color: '#38bdf8', glow: 'cyan', radius: 46, intensity: 0.78 },
+          { col: 13, row: 4, tile: TEMPLE_TILES.TORCH_CYAN, color: '#38bdf8', glow: 'cyan', radius: 46, intensity: 0.78 }
+        ],
+        notice: '🔥 Las antorchas del sagrario cian iluminan el altar.'
+      }
+    ],
     exitDoor: {
       worldX: 10.5 * 16,
       worldY: 16.5 * 16,
@@ -150,86 +372,200 @@ function buildArmorTempleScene(tilemap) {
       returnY: 10 * 16,
       returnScene: 'first_stage'
     }
-  };
+  });
 }
 
 function buildSwordTempleScene(tilemap) {
   const cols = 24;
   const rows = 18;
-  const { ground, decoration, collision, fillRect, setDeco } = createSceneHelpers(tilemap, cols, rows, TILES.STONE_FLOOR);
-  const lightSources = [];
-
-  applyRoomBorderWalls(setDeco, cols, rows, TILES.WALL_INTERIOR);
-
   const portalOpen = Boolean(tilemap?.swordPuzzle?.portalOpen);
-  if (portalOpen) {
-    setDeco(11, 1, TILES.PORTAL_GATE_OPEN, false);
-    setDeco(12, 1, TILES.PORTAL_GATE_OPEN, false);
-  } else {
-    setDeco(11, 1, TILES.PORTAL_GATE_CLOSED, true);
-    setDeco(12, 1, TILES.PORTAL_GATE_CLOSED, true);
-  }
+  const pCh = portalOpen ? 'P' : 'G';
 
-  fillRect(ground, 10, 13, 4, 4, TILES.COBBLE);
-  fillRect(ground, 8, 6, 8, 8, TILES.COBBLE);
-  fillRect(ground, 3, 7, 5, 6, TILES.COBBLE);
-  fillRect(ground, 16, 7, 5, 6, TILES.COBBLE);
-  fillRect(ground, 9, 2, 6, 4, TILES.RUG_RED);
+  const legend = {
+    '.': -1,
+    S: TILES.STONE_FLOOR,
+    c: TILES.COBBLE,
+    R: TILES.RUG_RED,
+    V: TEMPLE_TILES.ABYSS_VOID,
+    W: TILES.WALL_INTERIOR,
+    A: TILES.ALTAR_PEDESTAL,
+    G: TILES.PORTAL_GATE_CLOSED,
+    P: TILES.PORTAL_GATE_OPEN,
+    E: TILES.EXIT_MAT,
+    L: TILES.LAMPPOST,
+    w: TEMPLE_TILES.COBWEB,
+    t: TEMPLE_TILES.TORCH_AMBER,
+    u: TEMPLE_TILES.TORCH_UNLIT,
+    k: TEMPLE_TILES.CANDLE_CLUSTER,
+    m: TEMPLE_TILES.FLOATING_MONOLITH,
+    K: TEMPLE_TILES.STATUE_KNIGHT,
+    b: TEMPLE_TILES.BANNER_CRIMSON
+  };
 
-  fillRect(decoration, 2, 13, 4, 1, TILES.WALL_INTERIOR);
-  fillRect(collision, 2, 13, 4, 1, 1);
-  fillRect(decoration, 18, 13, 4, 1, TILES.WALL_INTERIOR);
-  fillRect(collision, 18, 13, 4, 1, 1);
-
-  const holyPillars = [
-    [5, 5], [18, 5],
-    [5, 12], [18, 12]
+  // 24 cols (0..23) x 18 rows (0..17)
+  const groundRows = [
+    'SSSSSSSSSSSSSSSSSSSSSSSS', // 00
+    'SSSSSSSSSSSSSSSSSSSSSSSS', // 01 Portal (11..12,1)
+    'SScSSSSSSRRRRRRSSSSSScSS', // 02 Red carpet corridor from altar to portal
+    'SScSSSSSSRRRRRRSSSSSScSS', // 03
+    'SScSSccSSRRRRRRSSccSScSS', // 04 Altar pedestal (11,4)
+    'SScccccSSRRRRRRSScccccSS', // 05 North bridge clear walkway
+    'SScccccSSVVVVVVSScccccSS', // 06 Central Abyss Chasm (cols 9..14, rows 6..8)
+    'SScccccSSVVVVVVSScccccSS', // 07 Side walkways at cols 7..8 & 15..16
+    'SScccccSSVVVVVVSScccccSS', // 08 Monoliths at (6,8) & (17,8)
+    'SScccccSSccccccSScccccSS', // 09 South terrace bridge
+    'SSccccccSRRRRRRSccccccSS', // 10 Monolith 2 at (11,10)
+    'SSccccccSRRRRRRSccccccSS', // 11
+    'SSccccccSRRRRRRSccccccSS', // 12 Knight boss patrol (9..14,12..13)
+    'SScSSSSSScRRRRcSSSSSScSS', // 13
+    'SScSSSSSScRRRRcSSSSSScSS', // 14 Player spawn (11.5,14.5)
+    'SScSSSSSScRRRRcSSSSSScSS', // 15
+    'SSSSSSSSScREERcSSSSSSSSS', // 16 Exit mats (11..12, 16)
+    'SSSSSSSSSSSSSSSSSSSSSSSS'  // 17
   ];
-  for (const [hc, hr] of holyPillars) {
-    setDeco(hc, hr, TILES.WALL_INTERIOR, true);
-  }
 
-  setDeco(6, 8, -1, true);
-  setDeco(11, 10, -1, true);
-  setDeco(17, 8, -1, true);
+  const wallsRows = [
+    'WWWWWWWWWWWWWWWWWWWWWWWW', // 00
+    `WWWWWWWWWWW${pCh}${pCh}WWWWWWWWWWW`, // 01 Portal at (11..12,1)
+    'WW....................WW', // 02
+    'WW........L..L........WW', // 03 Lamps (10,3),(13,3)
+    'WW.........A..........WW', // 04 Altar pedestal at (11,4) (non-solid)
+    'WW...W............W...WW', // 05 Pillars (5,5),(18,5)
+    'WW....................WW', // 06
+    'WW.L................L.WW', // 07 Lamps (3,7),(20,7)
+    'WW....................WW', // 08 Monolith 1 (6,8), Monolith 3 (17,8)
+    'WW....................WW', // 09
+    'WW....................WW', // 10 Monolith 2 (11,10)
+    'WW....................WW', // 11
+    'WW...W............W...WW', // 12 Pillars (5,12),(18,12)
+    'WW....................WW', // 13 Clear walkways to bottom corner statues
+    'WW....L..........L....WW', // 14 Lamps (6,14),(17,14)
+    'WW....................WW', // 15
+    'WW.........EE.........WW', // 16 Clear exit mat path
+    'WWWWWWWWWWWWWWWWWWWWWWWW'  // 17
+  ];
 
-  setDeco(11, 4, TILES.ALTAR_PEDESTAL, false);
-  setDeco(10, 3, TILES.LAMPPOST, true);
-  setDeco(13, 3, TILES.LAMPPOST, true);
-  lightSources.push(
-    { x: 11.5 * 16, y: 4.5 * 16, radius: 72, intensity: 1.0 },
-    { x: 10.5 * 16, y: 3.5 * 16, radius: 48, intensity: 0.9 },
-    { x: 13.5 * 16, y: 3.5 * 16, radius: 48, intensity: 0.9 }
-  );
+  const decorOverRows = [
+    '........................', // 00
+    '..w......b....b......w..', // 01 Crimson banners framing portal + corner cobwebs
+    '..w..................w..', // 02
+    '...K................K...', // 03 Corner Fallen Knight statues (3,3) & (20,3)
+    '........................', // 04
+    '..t..u............u..t..', // 05 Wall & pillar torches (unlit north sconces)
+    '........................', // 06
+    '..........m..m..........', // 07 Floating monoliths hovering above the central Abyss (10,7) & (13,7)
+    '........................', // 08
+    '........................', // 09
+    '..t..................t..', // 10 Side torches
+    '........................', // 11
+    '.....u............u.....', // 12 Unlit south pillar torches (ignited when stepping forward)
+    '..w..................w..', // 13
+    '........................', // 14
+    '...K................K...', // 15 Corner Fallen Knight statues (3,15) & (20,15)
+    '..w..................w..', // 16 Corner cobwebs
+    '........................'  // 17
+  ];
 
-  setDeco(5, 14, TILES.LAMPPOST, true);
-  setDeco(18, 14, TILES.LAMPPOST, true);
-  setDeco(3, 7, TILES.LAMPPOST, true);
-  setDeco(20, 7, TILES.LAMPPOST, true);
-  lightSources.push(
-    { x: 5.5 * 16, y: 14.5 * 16, radius: 48, intensity: 0.85 },
-    { x: 18.5 * 16, y: 14.5 * 16, radius: 48, intensity: 0.85 },
-    { x: 3.5 * 16, y: 7.5 * 16, radius: 46, intensity: 0.85 },
-    { x: 20.5 * 16, y: 7.5 * 16, radius: 46, intensity: 0.85 }
-  );
+  const lights = [
+    { x: 11.5 * 16, y: 4.5 * 16, radius: 68, intensity: 0.92, glow: 'warm', color: '#fbbf24' },
+    { x: 10.5 * 16, y: 3.5 * 16, radius: 46, intensity: 0.78, glow: 'warm', color: '#f59e0b' },
+    { x: 13.5 * 16, y: 3.5 * 16, radius: 46, intensity: 0.78, glow: 'warm', color: '#f59e0b' },
+    { x: 11.5 * 16, y: 7.5 * 16, radius: 56, intensity: 0.6, glow: 'cyan', color: '#38bdf8' },
+    { x: 6.5 * 16, y: 14.5 * 16, radius: 46, intensity: 0.75, glow: 'warm', color: '#f59e0b' },
+    { x: 17.5 * 16, y: 14.5 * 16, radius: 46, intensity: 0.75, glow: 'warm', color: '#f59e0b' },
+    { x: 3.5 * 16, y: 7.5 * 16, radius: 44, intensity: 0.72, glow: 'warm', color: '#f59e0b' },
+    { x: 20.5 * 16, y: 7.5 * 16, radius: 44, intensity: 0.72, glow: 'warm', color: '#f59e0b' },
+    { x: 3.5 * 16, y: 3.5 * 16, radius: 36, intensity: 0.55, glow: 'amber', color: '#fde047' },
+    { x: 20.5 * 16, y: 3.5 * 16, radius: 36, intensity: 0.55, glow: 'amber', color: '#fde047' }
+  ];
 
-  for (let r = 13; r <= 16; r++) {
-    for (let c = 10; c <= 13; c++) {
-      collision[r][c] = 0;
-      decoration[r][c] = -1;
+  const props = [
+    {
+      id: 'sword_knight_nw',
+      kind: 'statue',
+      col: 3,
+      row: 3,
+      solid: true,
+      name: 'Estatua del Caballero Caído (Noroeste)',
+      title: '⚔️ [ESTATUA DEL CABALLERO CAÍDO]',
+      lines: [
+        '«Olvidó definir el Caso Base antes de invocar su filo. Su alma aún cae en el Abismo sin retorno.»',
+        'La hoja de piedra yace partida frente al foso central.'
+      ]
+    },
+    {
+      id: 'sword_knight_ne',
+      kind: 'statue',
+      col: 20,
+      row: 3,
+      solid: true,
+      name: 'Estatua del Caballero Caído (Noreste)',
+      title: '⚔️ [ESTATUA DEL CABALLERO CAÍDO]',
+      lines: [
+        '«Primero invoca el Límite N, desciende a la Singularidad 0 y solo entonces desenreda la pila.»',
+        'Su yelmo agrietado apunta hacia las runas luminosas.'
+      ]
+    },
+    {
+      id: 'sword_knight_sw',
+      kind: 'statue',
+      col: 3,
+      row: 15,
+      solid: true,
+      name: 'Estatua del Caballero Caído (Suroeste)',
+      title: '🪦 [MEMORIAL DEL PRIMER RECURSIVO]',
+      lines: [
+        '«Aquí cayó Sir Iterador, convencido de poder cruzar el Abismo sin comprender la recursión.»'
+      ]
+    },
+    {
+      id: 'sword_knight_se',
+      kind: 'statue',
+      col: 20,
+      row: 15,
+      solid: true,
+      name: 'Estatua del Caballero Caído (Sureste)',
+      title: '🪦 [MEMORIAL DE LA PILA ROTA]',
+      lines: [
+        '«Cada monolito que flota sobre el foso sostiene un marco de memoria del santuario.»'
+      ]
     }
-  }
-  fillRect(ground, 10, 13, 4, 4, TILES.COBBLE);
-  fillRect(decoration, 11, 16, 2, 1, TILES.EXIT_MAT);
-  collision[16][11] = 0;
-  collision[16][12] = 0;
+  ];
 
-  return {
+  return buildTiledTemplateScene({
     title: 'Templo de la Espada de la Recursividad · Altar del Abismo',
     cols,
     rows,
-    layers: { ground, decoration, collision },
-    lightSources,
+    legend,
+    groundRows,
+    wallsRows,
+    decorOverRows,
+    lights,
+    props,
+    torchTriggers: [
+      {
+        id: 'sword_hall_torches',
+        stepTiles: [{ col: 11, row: 13 }, { col: 12, row: 13 }, { col: 11, row: 12 }, { col: 12, row: 12 }],
+        torches: [
+          { col: 5, row: 12, tile: TEMPLE_TILES.TORCH_AMBER, color: '#f59e0b', glow: 'warm', radius: 48, intensity: 0.78 },
+          { col: 18, row: 12, tile: TEMPLE_TILES.TORCH_AMBER, color: '#f59e0b', glow: 'warm', radius: 48, intensity: 0.78 }
+        ],
+        notice: '🔥 Los hacheros del templo arden al sentir tus pasos.'
+      },
+      {
+        id: 'sword_north_torches',
+        stepTiles: [
+          { col: 7, row: 5 }, { col: 8, row: 5 },
+          { col: 11, row: 5 }, { col: 12, row: 5 },
+          { col: 15, row: 5 }, { col: 16, row: 5 }
+        ],
+        torches: [
+          { col: 5, row: 5, tile: TEMPLE_TILES.TORCH_AMBER, color: '#fbbf24', glow: 'warm', radius: 48, intensity: 0.82 },
+          { col: 18, row: 5, tile: TEMPLE_TILES.TORCH_AMBER, color: '#fbbf24', glow: 'warm', radius: 48, intensity: 0.82 }
+        ],
+        notice: '🔥 Las antorchas del altar iluminan el filo ancestral.'
+      }
+    ],
     exitDoor: {
       worldX: 11.5 * 16,
       worldY: 16.5 * 16,
@@ -237,7 +573,7 @@ function buildSwordTempleScene(tilemap) {
       returnY: 4.5 * 16,
       returnScene: 'first_stage'
     }
-  };
+  });
 }
 
 function buildCondemnedRealmsScene(tilemap) {

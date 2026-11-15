@@ -76,6 +76,7 @@ import {
 } from './ui/AnimeCutsceneManager.js?v=8';
 import { DayNightCycle } from './world/DayNightCycle.js?v=8';
 import { RenderPipeline } from './graphics/RenderPipeline.js?v=8';
+import { PremiumEffectsManager } from './graphics/PremiumEffectsManager.js?v=8';
 import { UILayout, UI_FONT } from './ui/UILayout.js?v=8';
 import { CloudStorage } from './services/CloudStorage.js?v=8';
 import { AIBotBrain } from './ai/AIBotBrain.js?v=8';
@@ -141,6 +142,33 @@ const STAGE_SCENE_IDS = new Set([
   'ai_citadel',
   'condemned_realms'
 ]);
+
+const DUNGEON_PAN_SCENES = new Set([
+  'sewers_entry',
+  'sewers_puzzle',
+  'sewers_dungeon',
+  'mines_entry',
+  'mines_puzzle',
+  'mines_boss_arena',
+  'forge_entry',
+  'forge_puzzle',
+  'sword_temple',
+  'armor_temple'
+]);
+
+const BASE_AMBIENT_BARKS = [
+  'Qué calor hace hoy...',
+  'He oído que el Oráculo anda raro.',
+  'Ojalá Brom haga más pan antes del anochecer.',
+  '¿Habrá bajado la latencia del puente este?',
+  'Vigila tus Bytes si cruzas al bosque.'
+];
+
+const BASE_CROSS_TALK_PAIRS = [
+  ['Qué calor hace hoy...', 'Y que lo digas, ni la brisa del río refresca.'],
+  ['He oído que el Oráculo anda raro.', 'Normal, lleva toda la semana recalibrando estrellas.'],
+  ['¿Oíste golpes en la herrería?', 'Será Brom dándole caña al yunque otra vez.']
+];
 
 export class RPGGame {
   constructor(canvas, assets) {
@@ -276,6 +304,11 @@ export class RPGGame {
     // (FIX M2.6) Modo degradado: sin niebla, sin viñeta y con menos partículas
     this.renderPipeline.setQuality(this.performanceProfile);
     setParticleScale(this.performanceProfile === 'low' ? 0.45 : 1);
+    this.premiumEffects = new PremiumEffectsManager(canvas, {
+      width: VIEWPORT_WIDTH,
+      height: VIEWPORT_HEIGHT,
+      quality: this.performanceProfile
+    });
 
     // (FIX M2.3) Pausa automática al perder el foco (móvil y desktop)
     this._installAutoPause();
@@ -341,12 +374,21 @@ export class RPGGame {
     this._setupAIChatDOM();
 
     this.npcs = this._createVillageNPCs();
+    for (const npc of this.npcs) {
+      npc._managedAmbientBarks = true;
+    }
     this.dialogueBox.npcRegistry = this.npcs;
     this.animals = this._createVillageAnimals();
     this.enemies = this._createFirstStageEnemies();
     this.worldItems = this._createWorldItems();
 
     this.promptTimer = 0;
+    this.ambientBarkTimer = 15 + Math.random() * 5;
+    this.pendingCrossBark = null;
+    this.expansionAmbientConfig = null;
+    this.visitedDungeons = new Set();
+    this.dungeonPan = null;
+    this.triggeredTempleTorches = new Set();
 
     this.animeCutscenes = new AnimeCutsceneManager(
       VIEWPORT_WIDTH,
@@ -571,6 +613,9 @@ export class RPGGame {
     if (this.animeCutscenes) {
       this.animeCutscenes.effectsEnabled = effectsOn && this.performanceProfile !== 'low';
     }
+    if (this.premiumEffects) {
+      this.premiumEffects.setEnabled(effectsOn);
+    }
   }
 
   _resetWorldToInitialState() {
@@ -608,7 +653,14 @@ export class RPGGame {
     this.isExpansionMode = false;
     this.isExpansionActive = false;
     this.expansionEquipment = null;
+    this.expansionAmbientConfig = null;
     this.rosaShop = null;
+    this.visitedDungeons = new Set();
+    this.dungeonPan = null;
+    this.triggeredTempleTorches = new Set();
+    this.ambientBarkTimer = 15 + Math.random() * 5;
+    this.pendingCrossBark = null;
+    this.tilemap.resetTempleTorches?.();
     this._initExpansionState();
     // (FIX 2.4) Los templos vuelven a su salida de diseño al reiniciar la partida
     this.templeReturn = null;
@@ -860,6 +912,8 @@ export class RPGGame {
       achievementsData: this.achievementManager ? this.achievementManager.serialize() : null,
       collectedItemIds: this.worldItems.filter((w) => w.collected).map((w) => w.id),
       defeatedEnemyIds: this.enemies.filter((e) => e.dead && !e.respawnOnEnter).map((e) => e.id),
+      visitedDungeons: [...(this.visitedDungeons || [])],
+      triggeredTempleTorches: [...(this.triggeredTempleTorches || [])],
       curriculum: Math.max(0, Math.floor(this.curriculum || 0)),
       francoRescued: Boolean(this.francoRescued),
       alexCoreUnlocked: Boolean(this.tilemap && this.tilemap.alexCoreUnlocked),
@@ -1303,6 +1357,15 @@ export class RPGGame {
       // (FIX 2.3) Restaurar los puzles de mazmorra
       if (data.dungeonPuzzles) {
         this.tilemap.applyDungeonPuzzleState(data.dungeonPuzzles);
+      }
+
+      this.visitedDungeons = new Set(Array.isArray(data.visitedDungeons) ? data.visitedDungeons : []);
+      this.triggeredTempleTorches = new Set(Array.isArray(data.triggeredTempleTorches) ? data.triggeredTempleTorches : []);
+      for (const entry of this.triggeredTempleTorches) {
+        const sep = entry.indexOf(':');
+        if (sep > 0) {
+          this.tilemap.igniteTorchTrigger?.(entry.slice(0, sep), entry.slice(sep + 1));
+        }
       }
 
       const hasValidScene = typeof data.sceneId === 'string' && Boolean(this.tilemap.scenes[data.sceneId]);
@@ -3503,6 +3566,13 @@ export class RPGGame {
       return signpostAction;
     }
 
+    if (typeof this.tilemap.findNearbyProp === 'function') {
+      const propAction = this.tilemap.findNearbyProp(this.player);
+      if (propAction) {
+        return propAction;
+      }
+    }
+
     const bed = this.tilemap.findNearbyBed(this.player);
     if (bed && this.housePermissions[this.tilemap.currentSceneId]) {
       return { kind: 'bed', target: bed, label: '[E] Descansar' };
@@ -3956,6 +4026,15 @@ export class RPGGame {
     if (action.kind === 'compiler_sign') {
       const sign = action.target;
       this.dialogueBox.showMessage(sign.title, [sign.text]);
+      return;
+    }
+
+    if (action.kind === 'temple_prop') {
+      const prop = action.target;
+      if (this.music && typeof this.music.playMenuSelect === 'function') {
+        this.music.playMenuSelect();
+      }
+      this.dialogueBox.showMessage(prop.title || prop.name, prop.lines || [prop.lore || '...']);
       return;
     }
 
@@ -5307,6 +5386,31 @@ export class RPGGame {
       return;
     }
 
+    if (this.dungeonPan) {
+      this._updateDungeonIntroPan(dt);
+      this.tilemap.update(dt, this.dayNight.timeOfDayHours);
+      if (this.renderPipeline) {
+        this.renderPipeline.update(dt, {
+          sceneId: this.tilemap.currentSceneId,
+          isNight: this._isNightTime(),
+          camera: this.camera,
+          player: this.player,
+          chimneys: this.tilemap.chimneys || [],
+          paused: false
+        });
+      }
+      if (this.premiumEffects) {
+        this.premiumEffects.update(dt, {
+          sceneId: this.tilemap.currentSceneId,
+          tilemap: this.tilemap,
+          camera: this.camera,
+          paused: false
+        });
+      }
+      this.input.endFrame();
+      return;
+    }
+
     if (this.isJailedForever && this.tilemap.currentSceneId === 'jail_cell' && this.menuSystem.state !== 'game_over') {
       this.dialogueBox.close();
       this.menuSystem.openGameOverScreen(false, 'jail_disrespect');
@@ -5656,6 +5760,14 @@ export class RPGGame {
         paused: this.menuSystem ? this.menuSystem.isBlockingGameplay() : false
       });
     }
+    if (this.premiumEffects) {
+      this.premiumEffects.update(dt, {
+        sceneId: this.tilemap.currentSceneId,
+        tilemap: this.tilemap,
+        camera: this.camera,
+        paused: this.menuSystem ? this.menuSystem.isBlockingGameplay() : false
+      });
+    }
     if (Math.floor(prevHour) !== Math.floor(this.dayNight.timeOfDayHours)) {
       this._updateNPCSchedules();
     } else if (this._npcsSchedulePending && !this.dialogueBox.active) {
@@ -5791,6 +5903,9 @@ export class RPGGame {
       }
     }
 
+    // Disparadores de antorchas por baldosa en los templos
+    this._checkTempleTorchTriggers();
+
     this.combatManager.handleMonolithCollisions(dt);
     this.combatManager.checkCrystalBarrierCollisions();
 
@@ -5824,6 +5939,7 @@ export class RPGGame {
         this.music
       );
     }
+    this._updateAmbientBarks(dt, npcs);
     this.sceneTransitions.checkEdgeTransitions();
 
     this._checkBossIntroTriggers();
@@ -5922,6 +6038,180 @@ export class RPGGame {
     this.input.endFrame();
   }
 
+  _isDungeonPanScene(sceneId) {
+    if (DUNGEON_PAN_SCENES.has(sceneId)) return true;
+    if ((this.isExpansionActive || this.isExpansionMode) && typeof sceneId === 'string' && sceneId.startsWith('vertedero_')) {
+      return true;
+    }
+    return false;
+  }
+
+  maybeStartDungeonIntroPan(sceneId) {
+    if (!this._isDungeonPanScene(sceneId) || !this.visitedDungeons || this.visitedDungeons.has(sceneId)) {
+      return false;
+    }
+    if (!this.camera || !this.tilemap) return false;
+
+    this.visitedDungeons.add(sceneId);
+    const vw = this.camera.viewportWidth || VIEWPORT_WIDTH;
+    const vh = this.camera.viewportHeight || VIEWPORT_HEIGHT;
+    const maxCamX = Math.max(0, (this.tilemap.width || vw) - vw);
+    const maxCamY = Math.max(0, (this.tilemap.height || vh) - vh);
+    const startX = this.camera.x;
+    const startY = this.camera.y;
+    const focusX = Math.max(0, Math.min(maxCamX, (this.tilemap.width || vw) * 0.5 - vw * 0.5));
+    const focusY = Math.max(0, Math.min(maxCamY, (this.tilemap.height || vh) * 0.35 - vh * 0.5));
+
+    this.dungeonPan = {
+      sceneId,
+      elapsed: 0,
+      duration: 2.0,
+      startX,
+      startY,
+      focusX,
+      focusY
+    };
+    return true;
+  }
+
+  _updateDungeonIntroPan(dt) {
+    const pan = this.dungeonPan;
+    if (!pan) return;
+    pan.elapsed += dt;
+    const p = Math.min(1, Math.max(0, pan.elapsed / pan.duration));
+    const smooth = (t) => t * t * (3 - 2 * t);
+    let k = 0;
+    if (p < 0.45) {
+      k = smooth(p / 0.45);
+    } else if (p < 0.6) {
+      k = 1;
+    } else if (p < 1.0) {
+      k = 1 - smooth((p - 0.6) / 0.4);
+    } else {
+      k = 0;
+    }
+
+    this.camera.x = pan.startX + (pan.focusX - pan.startX) * k;
+    this.camera.y = pan.startY + (pan.focusY - pan.startY) * k;
+    if (typeof this.camera.updateShake === 'function') {
+      this.camera.updateShake(dt);
+    }
+    if (p >= 1) {
+      this.dungeonPan = null;
+    }
+  }
+
+  _checkTempleTorchTriggers() {
+    const triggers = this.tilemap?.torchTriggers;
+    if (!Array.isArray(triggers) || triggers.length === 0 || !this.player) return;
+    const sceneId = this.tilemap.currentSceneId;
+    for (const trigger of triggers) {
+      const key = `${sceneId}:${trigger.id}`;
+      if (this.triggeredTempleTorches.has(key)) continue;
+      const stepped = (trigger.stepTiles || []).some((st) =>
+        CollisionSystem.isEntityOnTile(this.player, st.col, st.row, this.tilemap.tileSize)
+      );
+      if (!stepped) continue;
+      this.triggeredTempleTorches.add(key);
+      const lit = this.tilemap.igniteTorchTrigger(sceneId, trigger.id);
+      if (lit) {
+        if (this.music && typeof this.music.playMenuSelect === 'function') {
+          this.music.playMenuSelect();
+        }
+        if (trigger.notice && this.menuSystem) {
+          this.menuSystem.showNotice(trigger.notice, 2.2);
+        }
+      }
+    }
+  }
+
+  _updateAmbientBarks(dt, npcs, options = {}) {
+    if (this.dialogueBox?.active || this.dungeonPan || this.menuSystem?.isBlockingGameplay?.()) {
+      return false;
+    }
+    if (!Array.isArray(npcs) || npcs.length === 0 || !this.player) return false;
+
+    if (this.pendingCrossBark) {
+      this.pendingCrossBark.delay -= dt;
+      if (this.pendingCrossBark.delay <= 0) {
+        const { initiator, partner, reply } = this.pendingCrossBark;
+        this.pendingCrossBark = null;
+        if (
+          partner &&
+          npcs.includes(partner) &&
+          !partner.isSleeping &&
+          !partner.inCombat &&
+          partner.ambientBubbleTimer <= 0
+        ) {
+          if (initiator && typeof partner.faceEntity === 'function') {
+            partner.faceEntity(initiator);
+          }
+          partner.triggerAmbientBark(reply);
+          return true;
+        }
+      }
+    }
+
+    this.ambientBarkTimer -= dt;
+    if (this.ambientBarkTimer > 0) return false;
+    this.ambientBarkTimer = 15 + Math.random() * 5;
+
+    const eligible = npcs.filter(
+      (n) =>
+        n &&
+        !n.isSleeping &&
+        !n.inCombat &&
+        n.ambientBubbleTimer <= 0 &&
+        n.distanceTo(this.player) < 100
+    );
+    if (eligible.length === 0) return false;
+
+    const useExpansionPool = Boolean(
+      (this.isExpansionActive || this.isExpansionMode) &&
+      this.expansionAmbientConfig &&
+      (this.tilemap?.currentSceneId === 'valleverde_corp' || this.tilemap?.currentSceneId === 'rosa_bar')
+    );
+
+    // Buscar un par cercano para conversación breve entre NPCs
+    let pair = null;
+    for (let i = 0; i < eligible.length && !pair; i++) {
+      for (let j = i + 1; j < eligible.length; j++) {
+        if (eligible[i].distanceTo(eligible[j]) <= 72) {
+          pair = [eligible[i], eligible[j]];
+          break;
+        }
+      }
+    }
+
+    if (pair && (options.forceGroup || Math.random() < 0.55)) {
+      const pairsPool = useExpansionPool
+        ? this.expansionAmbientConfig.crossTalkPairs
+        : BASE_CROSS_TALK_PAIRS;
+      const [lineA, lineB] = pairsPool[Math.floor(Math.random() * pairsPool.length)];
+      const [speakerA, speakerB] = pair;
+      speakerA.faceEntity?.(speakerB);
+      speakerB.faceEntity?.(speakerA);
+      speakerA.triggerAmbientBark(lineA);
+      this.pendingCrossBark = {
+        initiator: speakerA,
+        partner: speakerB,
+        reply: lineB,
+        delay: 2.3
+      };
+      return true;
+    }
+
+    const speaker = eligible[Math.floor(Math.random() * eligible.length)];
+    const generalPool = useExpansionPool
+      ? this.expansionAmbientConfig.barks
+      : BASE_AMBIENT_BARKS;
+    const hasPersonal = Array.isArray(speaker.ambientPhrases) && speaker.ambientPhrases.length > 0;
+    const pool = hasPersonal && Math.random() < 0.5 ? speaker.ambientPhrases : generalPool;
+    const text = pool[Math.floor(Math.random() * pool.length)];
+    speaker.triggerAmbientBark(text);
+    return true;
+  }
+
   /**
    * Dificultad adaptativa: cada muerte seguida en la misma zona reduce un 8% la velocidad
    * de los enemigos normales (mínimo 72%). Se restablece al sobrevivir 90 s en la zona.
@@ -5982,6 +6272,7 @@ export class RPGGame {
 
     // (BLOQUE 2) La cinemática renderiza la escena in-engine y su UI.
     if (this.cinematicDirector && this.cinematicDirector.isActive) {
+      if (this.premiumEffects) this.premiumEffects.setVisible(false);
       this.cinematicDirector.render(ctx);
       this._renderCustomCursor(ctx);
       return;
@@ -6000,16 +6291,20 @@ export class RPGGame {
       (this.menuSystem.state === 'controls' && this.menuSystem.previousStateBeforeControls === 'title') ||
       (this.menuSystem.state === 'confirm_exit' && this.menuSystem.previousStateBeforeExit === 'title')
     ) {
+      if (this.premiumEffects) this.premiumEffects.setVisible(false);
       this.menuSystem.render(ctx);
       this._renderCustomCursor(ctx);
       return;
     }
 
     if (this.animeCutscenes && this.animeCutscenes.isActive) {
+      if (this.premiumEffects) this.premiumEffects.setVisible(false);
       this.animeCutscenes.render(ctx);
       this._renderCustomCursor(ctx);
       return;
     }
+
+    if (this.premiumEffects) this.premiumEffects.setVisible(true);
 
     ctx.fillStyle = '#0e111a';
     ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
@@ -6160,6 +6455,9 @@ export class RPGGame {
       ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, this.arrestFadeAlpha).toFixed(3)})`;
       ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
       ctx.restore();
+    }
+    if (this.premiumEffects) {
+      this.premiumEffects.render();
     }
     this._renderCustomCursor(ctx);
   }

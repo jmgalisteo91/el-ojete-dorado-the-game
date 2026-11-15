@@ -74,6 +74,7 @@ export class ExpansionManager {
       y: 6 * 16,
       animator: new SpriteAnimator(sheet, CHARACTER_TYPES.ELDER),
       behavior: 'idle',
+      isSeated: true,
       initialDirection: 'down',
       talkSfx: cepData.talkSfx,
       dialogues: cepData.dialogues,
@@ -161,6 +162,7 @@ export class ExpansionManager {
       y: 2.1 * 16,
       animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERBALIST),
       behavior: 'idle',
+      isSeated: true,
       initialDirection: 'down',
       talkSfx: 'keyboard_type',
       ambientPhrases: ['¿Un chupito de 10W-40?', 'Acepto Currículums en B.'],
@@ -251,6 +253,19 @@ export class ExpansionManager {
     if (!game || !this._cachedModules) return false;
     const mods = this._cachedModules;
     game.expansionEquipment = mods.EXPANSION_EQUIPMENT;
+    game.expansionAmbientConfig = {
+      barks: [
+        '¡Mi nivel de felicidad es del 98%!',
+        'El café de la máquina sabe a código binario.',
+        'Recuerda fichar antes de optimizar tu alma.',
+        'Todo bajo control según el informe trimestral.'
+      ],
+      crossTalkPairs: [
+        ['¡Mi nivel de felicidad es del 98%!', '¿Solo 98%? Cuidado con la auditoría emocional.'],
+        ['El café de la máquina sabe a código binario.', 'Es descafeinado 0xCAFE, tómalo con fe.'],
+        ['¿Viste al becario nuevo?', 'Sigue compilando su café en B.']
+      ]
+    };
 
     if (!game.rosaShop) {
       game.rosaShop = new mods.RosaShop(game);
@@ -261,6 +276,7 @@ export class ExpansionManager {
       for (const npc of this._buildExpansionNPCs(game, mods)) {
         const key = npc.expansionId || npc.name;
         if (!existingNpcKeys.has(key)) {
+          npc._managedAmbientBarks = true;
           game.npcs.push(npc);
           existingNpcKeys.add(key);
         }

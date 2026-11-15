@@ -1,7 +1,7 @@
 import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=8';
 import { SpeechBubble } from '../ui/SpeechBubble.js?v=8';
 import { buildValleverdeScenes } from './scenes/ValleverdeScenes.js?v=8';
-import { buildDungeonScenes } from './scenes/DungeonScenes.js?v=8';
+import { buildDungeonScenes, TEMPLE_TILES } from './scenes/DungeonScenes.js?v=8';
 
 /**
  * Elementos estéticos y decorativos atravesables por jugador, NPCs y animales:
@@ -224,6 +224,11 @@ export class Tilemap {
       ...buildValleverdeScenes(this),
       ...buildDungeonScenes(this)
     };
+    for (const [sceneId, rawScene] of Object.entries(this.scenes)) {
+      if (this._isTiledScene(rawScene)) {
+        this.scenes[sceneId] = this.parseTiledScene(sceneId, rawScene);
+      }
+    }
 
     // (FIX 1) Los carteles son decorativos: nunca deben bloquear el paso.
     // Se normaliza después de construir TODAS las escenas para cubrir también
@@ -254,6 +259,129 @@ export class Tilemap {
     );
   }
 
+  _isTiledScene(scene) {
+    return Boolean(scene && scene.type === 'map' && Array.isArray(scene.layers));
+  }
+
+  /**
+   * Convierte una definición en formato JSON de Tiled (`ground`, `walls`, `decor_over`,
+   * `lights`, `props`) a las capas y estructuras internas del motor Tilemap.
+   */
+  parseTiledScene(sceneId, tiledMap) {
+    const cols = tiledMap.width || tiledMap.cols || 24;
+    const rows = tiledMap.height || tiledMap.rows || 18;
+    const firstgid = (tiledMap.tilesets && tiledMap.tilesets[0] && tiledMap.tilesets[0].firstgid) ?? 1;
+
+    const findLayer = (name) => tiledMap.layers.find((l) => l && l.name === name) || null;
+    const decodeTileLayer = (layer, defaultVal = -1) => {
+      const grid = this._createGrid(cols, rows, defaultVal);
+      if (!layer) return grid;
+      if (Array.isArray(layer.data)) {
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const gid = layer.data[r * cols + c] || 0;
+            if (gid > 0) grid[r][c] = gid - firstgid;
+          }
+        }
+      }
+      return grid;
+    };
+
+    const ground = decodeTileLayer(findLayer('ground'), TILES.STONE_FLOOR);
+    const walls = decodeTileLayer(findLayer('walls'), -1);
+    const decor_over = decodeTileLayer(findLayer('decor_over'), -1);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+
+    const nonSolidWallTiles = new Set([
+      TILES.PORTAL_GATE_OPEN,
+      TILES.EXIT_MAT,
+      TILES.ALTAR_PEDESTAL,
+      TILES.SIGNPOST,
+      TILES.DOOR
+    ]);
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (ground[r][c] === TEMPLE_TILES.ABYSS_VOID || ground[r][c] === TILES.MINE_CHASM) {
+          collision[r][c] = CHASM_COLLISION;
+        }
+        const wallTile = walls[r][c];
+        if (wallTile >= 0) {
+          decoration[r][c] = wallTile;
+          if (!nonSolidWallTiles.has(wallTile)) {
+            collision[r][c] = 1;
+          }
+        }
+      }
+    }
+
+    const lightsLayer = findLayer('lights');
+    const lights = (lightsLayer && Array.isArray(lightsLayer.objects) ? lightsLayer.objects : (tiledMap.lights || []))
+      .map((l) => ({ ...l }));
+
+    const propsLayer = findLayer('props');
+    const rawProps = propsLayer && Array.isArray(propsLayer.objects) ? propsLayer.objects : (tiledMap.props || []);
+    const props = rawProps.map((p, idx) => {
+      const col = p.col !== undefined ? p.col : Math.floor((p.x || 0) / this.tileSize);
+      const row = p.row !== undefined ? p.row : Math.floor((p.y || 0) / this.tileSize);
+      const prop = {
+        id: p.id || `prop_${idx + 1}`,
+        kind: p.kind || 'statue',
+        col,
+        row,
+        x: p.x !== undefined ? p.x : col * this.tileSize,
+        y: p.y !== undefined ? p.y : row * this.tileSize,
+        name: p.name || 'Relieve Antiguo',
+        title: p.title || `🏛️ [${p.name || 'RELIQUIA ANTIGUA'}]`,
+        lines: Array.isArray(p.lines) ? p.lines : [p.lore || '...'],
+        solid: p.solid !== false
+      };
+      if (prop.solid && row >= 0 && row < rows && col >= 0 && col < cols) {
+        collision[row][col] = 1;
+      }
+      return prop;
+    });
+
+    if (sceneId === 'sword_temple' && this.swordPuzzle && this.swordPuzzle.monoliths) {
+      for (const mono of Object.values(this.swordPuzzle.monoliths)) {
+        if (mono.row >= 0 && mono.row < rows && mono.col >= 0 && mono.col < cols) {
+          collision[mono.row][mono.col] = 1;
+        }
+      }
+    }
+
+    return {
+      title: tiledMap.title || sceneId,
+      cols,
+      rows,
+      tiledFormat: true,
+      tiledMap,
+      layers: { ground, walls, decor_over, decoration, collision },
+      lights,
+      lightSources: lights,
+      props,
+      torchTriggers: Array.isArray(tiledMap.torchTriggers)
+        ? tiledMap.torchTriggers.map((t) => ({
+            ...t,
+            stepTiles: (t.stepTiles || []).map((st) => ({ ...st })),
+            torches: (t.torches || []).map((tr) => ({ ...tr }))
+          }))
+        : [],
+      exitDoor: tiledMap.exitDoor || null
+    };
+  }
+
+  /** Registra y carga dinámicamente una escena en formato JSON de Tiled. */
+  loadTiledScene(sceneId, tiledMap) {
+    this.scenes[sceneId] = this.parseTiledScene(sceneId, tiledMap);
+    this.decorateScene(sceneId);
+    if (this.currentSceneId === sceneId) {
+      this.loadScene(sceneId);
+    }
+    return this.scenes[sceneId];
+  }
+
   /**
    * Cambia entre escenas ('first_stage', 'overworld' o interiores).
    */
@@ -266,7 +394,10 @@ export class Tilemap {
     this.width = scene.cols * this.tileSize;
     this.height = scene.rows * this.tileSize;
     this.layers = scene.layers;
-    this.lightSources = scene.lightSources;
+    this.lightSources = scene.lightSources || scene.lights || [];
+    this.lights = scene.lights || this.lightSources;
+    this.props = scene.props || [];
+    this.torchTriggers = scene.torchTriggers || [];
     this.floorDecals = scene.floorDecals || [];
     this.houseShadows = scene.houseShadows || [];
     this.caveProps = scene.caveProps || [];
@@ -400,6 +531,7 @@ export class Tilemap {
     for (let c = 9; c <= 11; c++) {
       temple.layers.collision[5][c] = active ? 1 : 0;
       temple.layers.decoration[5][c] = active ? TILES.FIREPLACE : -1;
+      if (temple.layers.walls) temple.layers.walls[5][c] = active ? TILES.FIREPLACE : -1;
     }
   }
 
@@ -447,6 +579,75 @@ export class Tilemap {
     for (const c of [11, 12]) {
       temple.layers.collision[1][c] = open ? 0 : 1;
       temple.layers.decoration[1][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.PORTAL_GATE_CLOSED;
+      if (temple.layers.walls) {
+        temple.layers.walls[1][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.PORTAL_GATE_CLOSED;
+      }
+    }
+  }
+
+  /** Enciende las antorchas asociadas a un disparador de baldosa en templos y añade su luz. */
+  igniteTorchTrigger(sceneId, triggerId) {
+    const scene = this.scenes[sceneId];
+    if (!scene || !Array.isArray(scene.torchTriggers)) return null;
+    const trigger = scene.torchTriggers.find((t) => t.id === triggerId);
+    if (!trigger) return null;
+
+    let changed = false;
+    const lights = scene.lightSources || scene.lights || [];
+    for (const torch of trigger.torches || []) {
+      const decorOver = scene.layers?.decor_over;
+      if (decorOver && decorOver[torch.row]?.[torch.col] !== undefined) {
+        if (decorOver[torch.row][torch.col] !== torch.tile) {
+          decorOver[torch.row][torch.col] = torch.tile;
+          changed = true;
+        }
+      }
+      const lx = (torch.col + 0.5) * this.tileSize;
+      const ly = (torch.row + 0.5) * this.tileSize;
+      const alreadyLit = lights.some(
+        (l) => Math.abs(l.x - lx) < 2 && Math.abs(l.y - ly) < 2
+      );
+      if (!alreadyLit) {
+        lights.push({
+          x: lx,
+          y: ly,
+          radius: torch.radius || 46,
+          intensity: torch.intensity || 0.75,
+          glow: torch.glow || 'warm',
+          color: torch.color || '#fbbf24',
+          triggeredBy: triggerId
+        });
+        changed = true;
+      }
+    }
+    scene.lightSources = lights;
+    scene.lights = lights;
+    if (this.currentSceneId === sceneId) {
+      this.lightSources = lights;
+      this.lights = lights;
+    }
+    return changed ? trigger : null;
+  }
+
+  /** Apaga las antorchas activadas dinámicamente en los templos al iniciar una nueva partida. */
+  resetTempleTorches() {
+    for (const sceneId of ['armor_temple', 'sword_temple']) {
+      const scene = this.scenes[sceneId];
+      if (!scene || !Array.isArray(scene.torchTriggers)) continue;
+      for (const trigger of scene.torchTriggers) {
+        for (const torch of trigger.torches || []) {
+          if (scene.layers?.decor_over?.[torch.row]?.[torch.col] !== undefined) {
+            scene.layers.decor_over[torch.row][torch.col] = TEMPLE_TILES.TORCH_UNLIT;
+          }
+        }
+      }
+      const baseLights = (scene.lightSources || scene.lights || []).filter((l) => !l.triggeredBy);
+      scene.lightSources = baseLights;
+      scene.lights = baseLights;
+      if (this.currentSceneId === sceneId) {
+        this.lightSources = baseLights;
+        this.lights = baseLights;
+      }
     }
   }
 
@@ -1488,6 +1689,35 @@ export class Tilemap {
     return null;
   }
 
+  /** Detecta props interactivos (estatuas, relieves de lore) cercanos al jugador. */
+  findNearbyProp(player) {
+    const scene = this.scenes[this.currentSceneId];
+    const props = scene && scene.props;
+    if (!props || !props.length) return null;
+
+    let closest = null;
+    let bestDist = Infinity;
+    for (const prop of props) {
+      const px = prop.col * this.tileSize + 8;
+      const py = prop.row * this.tileSize + 8;
+      const dist = Math.hypot(player.centerX - px, player.centerY - py);
+      if (dist <= 26 && dist < bestDist) {
+        bestDist = dist;
+        closest = prop;
+      }
+    }
+    if (!closest) return null;
+    return {
+      kind: 'temple_prop',
+      target: {
+        ...closest,
+        centerX: closest.col * this.tileSize + 8,
+        y: closest.row * this.tileSize + 8
+      },
+      label: `[E] Examinar: ${closest.name}`
+    };
+  }
+
 
   /** Carga dinámica y perezosa de las escenas v2.0 desde scenes/ExpansionScenes.js. */
   async loadExpansionScenes(order = null) {
@@ -1845,7 +2075,14 @@ export class Tilemap {
       const c = 1 + Math.floor(rand() * (cols - 2));
       const r = 1 + Math.floor(rand() * (rows - 2));
       const tile = ground[r][c];
-      if (tile === TILES.WATER_1 || tile === TILES.WATER_2 || tile === TILES.FORGE_LAVA_FLOOR || tile === TILES.MINE_CHASM) continue;
+      if (
+        tile === TILES.WATER_1 ||
+        tile === TILES.WATER_2 ||
+        tile === TILES.FORGE_LAVA_FLOOR ||
+        tile === TILES.MINE_CHASM ||
+        tile === TEMPLE_TILES.BINARY_RUNE_CYAN ||
+        tile === TEMPLE_TILES.ABYSS_VOID
+      ) continue;
       const ti = Math.floor(rand() * types.length);
       decals.push({
         x: c * this.tileSize + 2 + rand() * 12,
@@ -2219,6 +2456,22 @@ export class Tilemap {
       }
     }
 
+    // Capa `decor_over` (formato Tiled: estatuas, telarañas, antorchas, monolitos flotantes)
+    if (this.layers.decor_over) {
+      const decorOver = this.layers.decor_over;
+      for (let r = startRow; r <= endRow; r++) {
+        const row = decorOver[r];
+        if (!row) continue;
+        for (let c = startCol; c <= endCol; c++) {
+          const overTile = row[c];
+          if (overTile === -1 || overTile === undefined || overTile === null) continue;
+          const sx = c * this.tileSize - camX;
+          const sy = r * this.tileSize - camY;
+          this._drawTile(ctx, overTile, sx, sy);
+        }
+      }
+    }
+
     // (BLOQUE 1.2) Alero de 4 px y sombra bajo el tejado.
     this._drawRoofEaves(ctx, camera);
     // (BLOQUE 2.1/2.2) Estalactitas, rocas y vigas de cueva en la capa superior.
@@ -2548,6 +2801,10 @@ export class Tilemap {
   }
 
   _drawTile(ctx, tileId, screenX, screenY, offsetX = 0, offsetY = 0) {
+    if (tileId >= 100) {
+      this._drawTempleProceduralTile(ctx, tileId, screenX + offsetX, screenY + offsetY);
+      return;
+    }
     const sx = (tileId % this.tilesetCols) * this.tileSize * ATLAS_SCALE;
     const sy = Math.floor(tileId / this.tilesetCols) * this.tileSize * ATLAS_SCALE;
     ctx.drawImage(
@@ -2561,6 +2818,177 @@ export class Tilemap {
       this.tileSize,
       this.tileSize
     );
+  }
+
+  /** Renderizado pixel-art procedural para las capas enriquecidas de los Templos (Tiled). */
+  _drawTempleProceduralTile(ctx, tileId, screenX, screenY) {
+    const x = Math.round(screenX);
+    const y = Math.round(screenY);
+    const t = this.animationClock;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    if (tileId === TEMPLE_TILES.BINARY_RUNE_CYAN) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 2.6 + x * 0.08 + y * 0.06);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(x, y, 16, 16);
+      ctx.strokeStyle = '#1e293b';
+      ctx.strokeRect(x + 0.5, y + 0.5, 15, 15);
+      ctx.strokeStyle = `rgba(56, 189, 248, ${(0.28 + pulse * 0.42).toFixed(3)})`;
+      ctx.strokeRect(x + 2.5, y + 2.5, 11, 11);
+      ctx.fillStyle = `rgba(103, 232, 249, ${(0.45 + pulse * 0.5).toFixed(3)})`;
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(((Math.floor(t * 1.2 + x + y)) % 2 === 0) ? '0' : '1', x + 8, y + 8);
+      this._drawLightHalo(ctx, x + 8, y + 8, 12, '56, 189, 248', 0.06 + pulse * 0.08);
+      ctx.restore();
+      return;
+    }
+
+    if (tileId === TEMPLE_TILES.ABYSS_VOID) {
+      const swirl = Math.sin(t * 2.1 + x * 0.1 + y * 0.1);
+      ctx.fillStyle = '#02040a';
+      ctx.fillRect(x, y, 16, 16);
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.strokeRect(x + 0.5, y + 0.5, 15, 15);
+      ctx.strokeStyle = `rgba(139, 92, 246, ${(0.22 + (swirl * 0.5 + 0.5) * 0.25).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(x + 8, y + 8, 4.5 + swirl * 1.2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+      ctx.fillRect(x + 7 + Math.round(swirl * 2), y + 7, 1, 1);
+      ctx.restore();
+      return;
+    }
+
+    if (tileId === TEMPLE_TILES.COBWEB) {
+      ctx.strokeStyle = 'rgba(203, 213, 225, 0.42)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 15, y + 15);
+      ctx.moveTo(x, y + 8);
+      ctx.lineTo(x + 15, y + 3);
+      ctx.moveTo(x + 8, y);
+      ctx.lineTo(x + 3, y + 15);
+      ctx.arc(x + 2, y + 2, 6, 0, Math.PI * 0.5);
+      ctx.arc(x + 2, y + 2, 11, 0, Math.PI * 0.5);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    if (tileId === TEMPLE_TILES.TORCH_UNLIT) {
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(x + 6, y + 7, 4, 7);
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(x + 7, y + 5, 2, 7);
+      ctx.restore();
+      return;
+    }
+
+    if (tileId === TEMPLE_TILES.TORCH_CYAN || tileId === TEMPLE_TILES.TORCH_AMBER) {
+      const isCyan = tileId === TEMPLE_TILES.TORCH_CYAN;
+      const flicker = Math.sin(t * 11 + x * 0.15 + y * 0.09);
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(x + 6, y + 7, 4, 7);
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(x + 7, y + 6, 2, 7);
+      ctx.fillStyle = isCyan ? '#06b6d4' : '#f97316';
+      ctx.fillRect(x + 6 + Math.round(flicker * 0.6), y + 2, 4, 4);
+      ctx.fillStyle = isCyan ? '#cffafe' : '#fde047';
+      ctx.fillRect(x + 7 + Math.round(flicker * 0.6), y + 3, 2, 2);
+      this._drawLightHalo(
+        ctx,
+        x + 8,
+        y + 4,
+        18,
+        isCyan ? '34, 211, 238' : '251, 146, 60',
+        0.16 + (flicker * 0.5 + 0.5) * 0.08
+      );
+      ctx.restore();
+      return;
+    }
+
+    if (tileId === TEMPLE_TILES.CANDLE_CLUSTER) {
+      const flk = Math.sin(t * 9 + x);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(x + 4, y + 9, 2, 5);
+      ctx.fillRect(x + 7, y + 7, 2, 7);
+      ctx.fillRect(x + 10, y + 10, 2, 4);
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(x + 4, y + 7 + Math.round(flk * 0.4), 2, 2);
+      ctx.fillRect(x + 7, y + 5 - Math.round(flk * 0.4), 2, 2);
+      ctx.fillRect(x + 10, y + 8, 2, 2);
+      this._drawLightHalo(ctx, x + 8, y + 7, 14, '253, 224, 71', 0.14);
+      ctx.restore();
+      return;
+    }
+
+    if (tileId === TEMPLE_TILES.FLOATING_MONOLITH) {
+      const bob = Math.sin(t * 2.2 + x * 0.07) * 2.2;
+      const my = Math.round(y + bob);
+      // Sombra proyectada en el abismo debajo
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(x + 4, y + 13, 8, 2);
+      // Obelisco levitante
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(x + 4, my + 1, 8, 12);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeRect(x + 4.5, my + 1.5, 7, 11);
+      ctx.fillStyle = '#7dd3fc';
+      ctx.fillRect(x + 7, my + 3, 2, 7);
+      this._drawLightHalo(ctx, x + 8, my + 6, 16, '56, 189, 248', 0.18);
+      ctx.restore();
+      return;
+    }
+
+    if (tileId === TEMPLE_TILES.STATUE_KNIGHT) {
+      // Plinto y estatua de caballero caído con espada partida
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(x + 2, y + 11, 12, 4);
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(x + 4, y + 5, 8, 6);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(x + 5, y + 2, 6, 4); // yelmo
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(x + 11, y + 6, 2, 6); // espada apoyada
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(x + 7, y + 3, 2, 1); // visera tenue
+      ctx.restore();
+      return;
+    }
+
+    if (tileId === TEMPLE_TILES.STATUE_SENTINEL) {
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(x + 2, y + 11, 12, 4);
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(x + 4, y + 4, 8, 7);
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(x + 5, y + 1, 6, 4);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(x + 6, y + 2, 4, 1);
+      ctx.fillRect(x + 7, y + 6, 2, 3);
+      ctx.restore();
+      return;
+    }
+
+    if (tileId === TEMPLE_TILES.BANNER_CYAN || tileId === TEMPLE_TILES.BANNER_CRIMSON) {
+      const isCyan = tileId === TEMPLE_TILES.BANNER_CYAN;
+      ctx.fillStyle = '#ca8a04';
+      ctx.fillRect(x + 2, y + 1, 12, 2);
+      ctx.fillStyle = isCyan ? '#0284c7' : '#991b1b';
+      ctx.fillRect(x + 3, y + 3, 10, 10);
+      ctx.fillStyle = isCyan ? '#7dd3fc' : '#f59e0b';
+      ctx.fillRect(x + 7, y + 5, 2, 5);
+      ctx.fillRect(x + 6, y + 6, 4, 2);
+      ctx.restore();
+      return;
+    }
+
+    ctx.restore();
   }
 }
 

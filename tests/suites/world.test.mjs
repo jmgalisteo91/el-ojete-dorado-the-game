@@ -7,6 +7,7 @@ import { FinalBossAlex } from '../../src/entities/bosses/FinalBossAlex.js';
 import { RPGGame } from '../../src/main.js';
 import { DEFAULT_LEADERBOARD } from '../../src/core/ScoreSystem.js';
 import { Tilemap, CHASM_COLLISION } from '../../src/world/Tilemap.js';
+import { TEMPLE_TILES } from '../../src/world/scenes/DungeonScenes.js';
 import { DialogueBox } from '../../src/ui/DialogueBox.js';
 import { CollisionSystem } from '../../src/physics/CollisionSystem.js';
 import { Camera2D } from '../../src/core/Camera2D.js';
@@ -16,6 +17,7 @@ import { NPC, getBromForgeChoices } from '../../src/entities/NPC.js';
 import { TILES } from '../../src/graphics/SpriteSheetGenerator.js';
 import { DayNightCycle } from '../../src/world/DayNightCycle.js';
 import { RenderPipeline } from '../../src/graphics/RenderPipeline.js';
+import { PremiumEffectsManager, resolveSceneBiome, BIOME_PRESETS } from '../../src/graphics/PremiumEffectsManager.js';
 import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT } from '../../src/ui/UILayout.js';
 import { KernelBoss } from '../../src/expansion/entities/KernelBoss.js';
 import { RosaShop } from '../../src/expansion/entities/RosaShop.js';
@@ -1818,5 +1820,449 @@ export async function run(test, assert) {
       globalThis.Audio = prevAudio;
       for (const key of Object.keys(EXPANSION_BGM)) delete BGM_TRACKS[key];
     }
+  });
+
+  test('PremiumEffectsManager: Clasificación de biomas y degradación segura en entorno headless', async () => {
+    assert.equal(resolveSceneBiome('overworld'), 'valleverde');
+    assert.equal(resolveSceneBiome('first_stage'), 'valleverde');
+    assert.equal(resolveSceneBiome('sewers_entry'), 'cloacas');
+    assert.equal(resolveSceneBiome('forge_entry'), 'forja');
+    assert.equal(resolveSceneBiome('ai_fortress_gate'), 'forja');
+    assert.equal(resolveSceneBiome('armor_temple'), 'templos');
+    assert.equal(resolveSceneBiome('sword_temple'), 'templos');
+    assert.equal(resolveSceneBiome('ai_citadel'), 'ciudadela');
+    assert.equal(resolveSceneBiome('valleverde_corp'), 'ciudadela');
+    assert.equal(resolveSceneBiome('kernel_arena'), 'ciudadela');
+    assert.equal(resolveSceneBiome('house_player'), 'interior');
+    assert.equal(resolveSceneBiome('rosa_bar'), 'interior');
+
+    const mgr = new PremiumEffectsManager(null);
+    const ok = await mgr.init();
+    assert.equal(ok, false);
+    assert.equal(mgr.ready, false);
+    assert.equal(mgr.setScene('forge_entry'), 'forja');
+    mgr.update(0.016, { sceneId: 'overworld' });
+    mgr.render();
+    mgr.destroy();
+  });
+
+  test('PremiumEffectsManager: Capa PixiJS v8 transparente, partículas por bioma y shaders de calor/agua', async () => {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+
+    const makeMockCanvas = () => ({
+      width: 1280,
+      height: 720,
+      clientWidth: 1280,
+      clientHeight: 720,
+      offsetLeft: 10,
+      offsetTop: 20,
+      clientLeft: 2,
+      clientTop: 2,
+      style: {},
+      attributes: {},
+      parentNode: null,
+      setAttribute(k, v) {
+        this.attributes[k] = v;
+      },
+      getContext() {
+        return {
+          fillStyle: '',
+          font: '',
+          textAlign: '',
+          textBaseline: '',
+          fillRect() {},
+          fillText() {},
+          beginPath() {},
+          arc() {},
+          fill() {},
+          createRadialGradient() {
+            return { addColorStop() {} };
+          }
+        };
+      }
+    });
+
+    const parentChildren = [];
+    const parentNode = {
+      insertBefore(node, ref) {
+        const idx = parentChildren.indexOf(node);
+        if (idx >= 0) parentChildren.splice(idx, 1);
+        const refIdx = ref ? parentChildren.indexOf(ref) : -1;
+        if (refIdx >= 0) parentChildren.splice(refIdx, 0, node);
+        else parentChildren.push(node);
+        node.parentNode = this;
+        node.nextSibling = parentChildren[parentChildren.indexOf(node) + 1] || null;
+      },
+      removeChild(node) {
+        const idx = parentChildren.indexOf(node);
+        if (idx >= 0) parentChildren.splice(idx, 1);
+        node.parentNode = null;
+      }
+    };
+
+    const gameCanvas = makeMockCanvas();
+    parentNode.insertBefore(gameCanvas, null);
+    const overlayCanvas = makeMockCanvas();
+
+    let initOpts = null;
+    let renderCalls = 0;
+
+    class MockContainer {
+      constructor() {
+        this.children = [];
+        this.visible = true;
+      }
+      addChild(c) {
+        this.children.push(c);
+        return c;
+      }
+      removeChildren() {
+        this.children.length = 0;
+      }
+    }
+
+    class MockParticleContainer extends MockContainer {
+      constructor(opts) {
+        super();
+        this.opts = opts;
+        this.particleChildren = [];
+      }
+      addParticle(p) {
+        this.particleChildren.push(p);
+        return p;
+      }
+      removeParticles() {
+        this.particleChildren.length = 0;
+      }
+    }
+
+    class MockParticle {
+      constructor(opts) {
+        Object.assign(this, { x: 0, y: 0, rotation: 0, alpha: 1, scaleX: 1, scaleY: 1 }, opts);
+      }
+    }
+
+    class MockSprite {
+      constructor(texture) {
+        this.texture = texture;
+        this.x = 0;
+        this.y = 0;
+        this.width = 0;
+        this.height = 0;
+        this.visible = true;
+        this.alpha = 1;
+        this.filters = null;
+      }
+    }
+
+    class MockUniformGroup {
+      constructor(defs) {
+        this.uniforms = {};
+        for (const [k, def] of Object.entries(defs)) {
+          this.uniforms[k] = def.value;
+        }
+      }
+    }
+
+    class MockFilter {
+      constructor(opts) {
+        this.glProgram = opts.glProgram;
+        this.resources = opts.resources;
+      }
+    }
+
+    const MockTexture = function Texture(opts) {
+      this.source = opts?.source || {};
+      this.frame = opts?.frame || null;
+    };
+    MockTexture.from = () => ({ source: { mock: true } });
+    MockTexture.WHITE = { white: true };
+
+    const listeners = {};
+    const mockPixi = {
+      Application: class {
+        constructor() {
+          this.stage = new MockContainer();
+          this.ticker = { stop() {} };
+          this.canvas = overlayCanvas;
+        }
+        async init(opts) {
+          initOpts = opts;
+        }
+        render() {
+          renderCalls++;
+        }
+        destroy() {}
+      },
+      Container: MockContainer,
+      ParticleContainer: MockParticleContainer,
+      Particle: MockParticle,
+      Sprite: MockSprite,
+      UniformGroup: MockUniformGroup,
+      Filter: MockFilter,
+      GlProgram: {
+        from(cfg) {
+          return { vertex: cfg.vertex || 'default', fragment: cfg.fragment };
+        }
+      },
+      Rectangle: class {
+        constructor(x, y, w, h) {
+          this.x = x; this.y = y; this.width = w; this.height = h;
+        }
+      },
+      Texture: MockTexture
+    };
+
+    try {
+      globalThis.document = {
+        createElement: () => makeMockCanvas()
+      };
+      globalThis.window = {
+        addEventListener(ev, fn) { listeners[ev] = fn; },
+        removeEventListener(ev, fn) { if (listeners[ev] === fn) delete listeners[ev]; }
+      };
+
+      const mgr = new PremiumEffectsManager(gameCanvas, { pixi: mockPixi, width: 320, height: 180 });
+      const initialized = await mgr.init();
+      assert.equal(initialized, true);
+      assert.equal(initOpts.backgroundAlpha, 0, 'Pixi debe inicializar con fondo transparente');
+      assert.equal(initOpts.width, 320);
+      assert.equal(initOpts.height, 180);
+      assert.equal(overlayCanvas.style.pointerEvents, 'none', 'El canvas de Pixi debe dejar pasar los clics');
+      assert.equal(parentChildren[0], gameCanvas);
+      assert.equal(parentChildren[1], overlayCanvas, 'Pixi canvas debe apilarse inmediatamente encima de #game-canvas');
+      assert.equal(overlayCanvas.style.left, '12px');
+      assert.equal(overlayCanvas.style.top, '22px');
+      assert.equal(overlayCanvas.style.width, '1280px');
+      assert.equal(overlayCanvas.style.height, '720px');
+
+      // Biomas y partículas
+      const tm = new Tilemap();
+      tm.loadScene('overworld');
+      mgr.update(0.05, { sceneId: 'overworld', tilemap: tm, camera: { renderX: 0, renderY: 0 } });
+      assert.equal(mgr.biome, 'valleverde');
+      assert.equal(mgr.particles.length, BIOME_PRESETS.valleverde.maxParticles);
+      assert.ok(mgr.particles.every((p) => p.type === 'leaf' || p.type === 'pollen'));
+
+      // Agua visible en Valleverde activa el shader de agua; escena sin agua lo oculta
+      const waterTm = {
+        tileSize: 16,
+        cols: 6,
+        rows: 4,
+        layers: {
+          ground: [
+            [1, 1, 1, 1, 1, 1],
+            [1, TILES.WATER_1, TILES.WATER_1, 1, 1, 1],
+            [1, TILES.WATER_1, TILES.WATER_1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1]
+          ]
+        }
+      };
+      mgr.update(0.05, { sceneId: 'overworld', tilemap: waterTm, camera: { renderX: 0, renderY: 0 } });
+      assert.equal(mgr.waterSprite.visible, true, 'El shader de agua debe activarse cuando hay agua visible en Valleverde');
+      assert.equal(mgr.heatSprite.visible, false);
+
+      // Forja: chispas + humo + shader de calor inferior
+      mgr.update(0.05, { sceneId: 'forge_entry', tilemap: tm, camera: { renderX: 0, renderY: 0 } });
+      assert.equal(mgr.biome, 'forja');
+      assert.equal(mgr.particles.length, BIOME_PRESETS.forja.maxParticles);
+      assert.ok(mgr.particles.every((p) => p.type === 'spark' || p.type === 'smoke'));
+      assert.equal(mgr.heatSprite.visible, true, 'El shader de calor debe activarse en la Forja');
+      assert.equal(mgr.waterSprite.visible, false);
+
+      // Cloacas / Templos / Ciudadela
+      mgr.update(0.05, { sceneId: 'sewers_entry' });
+      assert.ok(mgr.particles.every((p) => p.type === 'drip' || p.type === 'fly'));
+      mgr.update(0.05, { sceneId: 'armor_temple' });
+      assert.ok(mgr.particles.every((p) => p.type === 'dust'));
+      mgr.update(0.05, { sceneId: 'ai_citadel' });
+      assert.ok(mgr.particles.every((p) => p.type === 'bit0' || p.type === 'bit1' || p.type === 'glitch'));
+
+      mgr.render();
+      assert.equal(renderCalls, 1);
+
+      // Calidad baja reduce partículas y desactiva shaders pesados
+      mgr.setQuality('low');
+      assert.ok(mgr.particles.length < BIOME_PRESETS.ciudadela.maxParticles);
+      mgr.update(0.05, { sceneId: 'forge_entry' });
+      assert.equal(mgr.heatSprite.visible, false);
+
+      // Interior limpia partículas y oculta el overlay
+      mgr.setScene('house_player');
+      assert.equal(mgr.particles.length, 0);
+      assert.equal(overlayCanvas.style.display, 'none');
+
+      mgr.destroy();
+      assert.equal(parentChildren.includes(overlayCanvas), false);
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  });
+
+  test('Templos en formato JSON de Tiled: capas (ground, walls, decor_over, lights, props), ambientación y caminos despejados', () => {
+    const tm = new Tilemap();
+
+    // 1. Verificar estructura Tiled JSON y capas en ambos templos
+    for (const id of ['armor_temple', 'sword_temple']) {
+      const scene = tm.scenes[id];
+      assert.equal(scene.tiledFormat, true, `${id} debe haberse cargado desde formato Tiled`);
+      assert.equal(scene.tiledMap.type, 'map');
+      const layerNames = scene.tiledMap.layers.map((l) => l.name);
+      assert.deepEqual(layerNames, ['ground', 'walls', 'decor_over', 'lights', 'props']);
+      assert.ok(scene.layers.ground && scene.layers.walls && scene.layers.decor_over);
+      assert.ok(Array.isArray(scene.lights) && scene.lights.length >= 6);
+      assert.ok(Array.isArray(scene.props) && scene.props.length >= 4);
+    }
+
+    // 2. Templo de la Armadura: runas cian animadas, luces tenues y estatuas interactivas
+    const armor = tm.scenes.armor_temple;
+    let cyanRunes = 0;
+    for (let r = 0; r < armor.rows; r++) {
+      for (let c = 0; c < armor.cols; c++) {
+        if (armor.layers.ground[r][c] === TEMPLE_TILES.BINARY_RUNE_CYAN) cyanRunes++;
+      }
+    }
+    assert.ok(cyanRunes >= 8, 'El Templo de la Armadura debe incluir runas cian en el suelo');
+    assert.ok(armor.lights.some((l) => l.glow === 'cyan'), 'Debe incluir luces tenues cian');
+
+    // Probar interacción con prop de estatua y camino de entrada/salida despejado
+    tm.loadScene('armor_temple');
+    for (let r = 13; r <= 16; r++) {
+      assert.equal(tm.layers.collision[r][10], 0, `Camino entrada armor_temple libre en (10,${r})`);
+      assert.equal(tm.layers.collision[r][11], 0, `Camino entrada armor_temple libre en (11,${r})`);
+    }
+    const fakePlayer = { centerX: 7 * 16 + 8, centerY: 15 * 16 + 8 };
+    const propHit = tm.findNearbyProp(fakePlayer);
+    assert.ok(propHit && propHit.kind === 'temple_prop', 'Debe detectar estatua interactiva cercana');
+    assert.ok(Array.isArray(propHit.target.lines) && propHit.target.lines.length >= 1);
+
+    // 3. Templo de la Espada: foso abismo central, monolitos flotantes y caballeros caídos en esquinas
+    const sword = tm.scenes.sword_temple;
+    let abyssCount = 0;
+    let floatingCount = 0;
+    let fallenKnights = 0;
+    for (let r = 0; r < sword.rows; r++) {
+      for (let c = 0; c < sword.cols; c++) {
+        if (sword.layers.ground[r][c] === TEMPLE_TILES.ABYSS_VOID) {
+          abyssCount++;
+          assert.equal(sword.layers.collision[r][c], CHASM_COLLISION, 'El foso central debe marcar colisión de abismo');
+        }
+        if (sword.layers.decor_over[r][c] === TEMPLE_TILES.FLOATING_MONOLITH) floatingCount++;
+        if (sword.layers.decor_over[r][c] === TEMPLE_TILES.STATUE_KNIGHT) fallenKnights++;
+      }
+    }
+    assert.ok(abyssCount >= 12, 'El Templo de la Espada debe tener foso de abismo central');
+    assert.ok(floatingCount >= 2, 'Debe tener monolitos flotantes sobre el abismo');
+    assert.equal(fallenKnights, 4, 'Debe tener estatuas de caballeros caídos en las 4 esquinas');
+
+    // Pasillos laterales navegables rodeando el abismo y altar/puerta despejados
+    tm.loadScene('sword_temple');
+    assert.equal(tm.layers.collision[4][11], 0, 'Altar de la Espada debe ser accesible');
+    assert.equal(tm.layers.collision[7][7], 0, 'Pasillo oeste junto al abismo debe ser transitable');
+    assert.equal(tm.layers.collision[7][16], 0, 'Pasillo este junto al abismo debe ser transitable');
+    assert.equal(tm.layers.collision[10][11], 1, 'MONOLITH_2 debe ocupar su pedestal sólido en (11,10)');
+    for (let r = 10; r <= 16; r++) {
+      assert.equal(tm.layers.collision[r][12], 0, `Pasillo sur sword_temple libre en (12,${r})`);
+      if (r >= 11) {
+        assert.equal(tm.layers.collision[r][11], 0, `Pasillo sur sword_temple libre en (11,${r})`);
+      }
+    }
+
+    // 4. Exterior en first_stage: sin árboles tapando las puertas de los templos
+    const firstStage = tm.scenes.first_stage;
+    for (let c = 14; c <= 21; c++) {
+      for (let r = 0; r <= 3; r++) {
+        const dec = firstStage.layers.decoration[r][c];
+        assert.notEqual(dec, TILES.TREE_TOP, `No debe haber copa de árbol tapando el Templo de la Espada en (${c},${r})`);
+        assert.notEqual(dec, TILES.TREE_TRUNK, `No debe haber tronco tapando el Templo de la Espada en (${c},${r})`);
+      }
+    }
+    assert.equal(firstStage.layers.ground[10][6], TILES.PATH, 'Acceso con baldosas frente al Templo de la Armadura');
+    assert.equal(firstStage.layers.ground[4][17], TILES.PATH, 'Acceso con baldosas frente al Templo de la Espada');
+
+    // 5. Render completo de ambos templos sin errores con mock Canvas 2D
+    const noopCtx = {
+      fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: '', textBaseline: '',
+      globalAlpha: 1, globalCompositeOperation: 'source-over', imageSmoothingEnabled: false,
+      save() {}, restore() {}, fillRect() {}, strokeRect() {}, beginPath() {}, moveTo() {},
+      lineTo() {}, arc() {}, ellipse() {}, fill() {}, stroke() {}, fillText() {}, drawImage() {},
+      createRadialGradient() { return { addColorStop() {} }; }
+    };
+    const cam = new Camera2D(320, 180, tm.width, tm.height);
+    tm.loadScene('armor_temple');
+    tm.render(noopCtx, cam);
+    tm.loadScene('sword_temple');
+    tm.render(noopCtx, cam);
+  });
+
+  test('Eventos de escena: paneo suave de cámara (2s) al entrar por 1ª vez a mazmorra y antorchas activadas por baldosa en templos', () => {
+    const tm = new Tilemap();
+    tm.loadScene('armor_temple');
+    const cam = new Camera2D(320, 180, tm.width, tm.height);
+    const player = new Player({ x: 10.5 * 16, y: 14 * 16 });
+    cam.snapTo(player);
+    const startCamX = cam.x;
+    const startCamY = cam.y;
+
+    const fakeGame = {
+      tilemap: tm,
+      camera: cam,
+      player,
+      visitedDungeons: new Set(),
+      dungeonPan: null,
+      triggeredTempleTorches: new Set(),
+      isExpansionActive: false,
+      isExpansionMode: false,
+      music: { playMenuSelect() {} },
+      menuSystem: { showNotice() {} },
+      _isDungeonPanScene: RPGGame.prototype._isDungeonPanScene,
+      maybeStartDungeonIntroPan: RPGGame.prototype.maybeStartDungeonIntroPan,
+      _updateDungeonIntroPan: RPGGame.prototype._updateDungeonIntroPan,
+      _checkTempleTorchTriggers: RPGGame.prototype._checkTempleTorchTriggers
+    };
+
+    // 1. Primera entrada a armor_temple inicia paneo de 2 segundos y marca visitedDungeons
+    const started = fakeGame.maybeStartDungeonIntroPan('armor_temple');
+    assert.equal(started, true, 'Debe iniciar paneo en la primera visita a la mazmorra');
+    assert.ok(fakeGame.visitedDungeons.has('armor_temple'));
+    assert.equal(fakeGame.dungeonPan.duration, 2.0);
+
+    fakeGame._updateDungeonIntroPan(0.6);
+    assert.ok(fakeGame.dungeonPan !== null && cam.y <= startCamY, 'A mitad del paneo la cámara se desplaza suavemente hacia la sala');
+
+    fakeGame._updateDungeonIntroPan(1.5);
+    assert.equal(fakeGame.dungeonPan, null, 'Al completar 2.0s debe finalizar el paneo y devolver el control');
+    assert.ok(Math.abs(cam.x - startCamX) < 0.01 && Math.abs(cam.y - startCamY) < 0.01, 'La cámara debe volver al jugador');
+
+    // Segunda entrada a la misma mazmorra NO repite el paneo
+    assert.equal(fakeGame.maybeStartDungeonIntroPan('armor_temple'), false, 'No debe repetir el paneo en visitas posteriores');
+
+    // 2. Antorchas activadas al pisar baldosas en armor_temple y sword_temple
+    assert.equal(tm.layers.decor_over[13][7], TEMPLE_TILES.TORCH_UNLIT, 'Antorcha de entrada empieza apagada');
+    const baseArmorLights = tm.lightSources.length;
+    player.x = 10 * 16;
+    player.y = 13 * 16;
+    fakeGame._checkTempleTorchTriggers();
+    assert.equal(tm.layers.decor_over[13][7], TEMPLE_TILES.TORCH_CYAN, 'Pisar la entrada enciende la antorcha oeste');
+    assert.equal(tm.layers.decor_over[13][14], TEMPLE_TILES.TORCH_CYAN, 'Pisar la entrada enciende la antorcha este');
+    assert.equal(tm.lightSources.length, baseArmorLights + 2, 'Debe registrar 2 fuentes de luz nuevas');
+
+    // Sword temple
+    tm.loadScene('sword_temple');
+    assert.equal(tm.layers.decor_over[12][5], TEMPLE_TILES.TORCH_UNLIT);
+    const baseSwordLights = tm.lightSources.length;
+    player.x = 11 * 16;
+    player.y = 13 * 16;
+    fakeGame._checkTempleTorchTriggers();
+    assert.equal(tm.layers.decor_over[12][5], TEMPLE_TILES.TORCH_AMBER);
+    assert.equal(tm.layers.decor_over[12][18], TEMPLE_TILES.TORCH_AMBER);
+    assert.equal(tm.lightSources.length, baseSwordLights + 2);
+
+    // Reset restaura las antorchas apagadas y elimina las luces dinámicas
+    tm.resetTempleTorches();
+    assert.equal(tm.layers.decor_over[12][5], TEMPLE_TILES.TORCH_UNLIT);
+    assert.equal(tm.lightSources.length, baseSwordLights);
   });
 }

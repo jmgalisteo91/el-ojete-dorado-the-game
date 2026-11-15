@@ -51,6 +51,7 @@ function buildFirstStageScene(tilemap) {
 
   // 2. Templo Occidental: Templo de la Armadura Binaria (c = 6.5, r = 8.5)
   fillRect(ground, 4, 7, 6, 4, TILES.STONE_FLOOR);
+  fillRect(ground, 6, 9, 2, 2, TILES.PATH);
   setDeco(4, 8, TILES.WALL_INTERIOR, true);
   setDeco(5, 8, TILES.WALL_INTERIOR, true);
   setDeco(6, 8, TILES.DOOR, false);
@@ -67,6 +68,7 @@ function buildFirstStageScene(tilemap) {
 
   // 3. Templo Septentrional: Templo de la Espada de la Recursividad (c = 17.5, r = 2.5)
   fillRect(ground, 14, 1, 8, 4, TILES.STONE_FLOOR);
+  fillRect(ground, 17, 3, 2, 2, TILES.PATH);
   setDeco(14, 2, TILES.WALL_INTERIOR, true);
   setDeco(15, 2, TILES.WALL_INTERIOR, true);
   setDeco(16, 2, TILES.WALL_INTERIOR, true);
@@ -137,7 +139,8 @@ function buildFirstStageScene(tilemap) {
   };
 
   for (let c = 0; c < cols; c += 2) {
-    if (c < 26 || c > 30) {
+    // Evitar árboles tapando el Templo de la Espada (cols 14..21) ni la senda noreste (26..30)
+    if ((c < 14 || c > 21) && (c < 26 || c > 30)) {
       placeTree(c, 1);
     }
     placeTree(c + 1, 23);

@@ -378,6 +378,13 @@ export class SceneTransitionController {
         g._triggerInakitoOfficeIntro(inakitoBoss);
       }
     }
-  
+
+    if (
+      !(g.animeCutscenes && g.animeCutscenes.isActive) &&
+      !(g.cinematicDirector && g.cinematicDirector.isActive) &&
+      typeof g.maybeStartDungeonIntroPan === 'function'
+    ) {
+      g.maybeStartDungeonIntroPan(activeDoor.targetScene);
+    }
   }
 }

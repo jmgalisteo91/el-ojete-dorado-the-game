@@ -458,4 +458,86 @@ export async function run(test, assert) {
     RPGGame.prototype._renderDemonBannerOverlay.call(mockGame, mockCtx);
     assert.ok(texts.includes('¡HAS PROVOCADO AL SEÑOR DE LAS OVEJAS!'));
   });
+
+  test('NPC y Animal: animación idle de respiración (Math.sin), balanceo sentado y martillo periódico de Brom', () => {
+    const npc = new NPC({ name: 'Aldeano', x: 80, y: 80, behavior: 'static', sceneId: 'overworld' });
+    npc.isMoving = false;
+    npc.idleClock = 0.5;
+    assert.equal(npc.getIdleOffset().y, 1, 'Respiración idle debe subir/bajar 1 px');
+    assert.equal(npc.getIdleOffset().x, 0);
+    npc.idleClock = 1.5;
+    assert.equal(npc.getIdleOffset().y, -1);
+
+    npc.isMoving = true;
+    assert.deepEqual(npc.getIdleOffset(), { x: 0, y: 0 }, 'En movimiento no debe aplicar offset idle');
+
+    const seatedNpc = new NPC({ name: 'Cliente Taberna', x: 64, y: 64, behavior: 'seated', isSeated: true, sceneId: 'rosa_bar' });
+    seatedNpc.idleClock = 0.75;
+    const seatedOff = seatedNpc.getIdleOffset();
+    assert.ok(seatedOff.x !== 0, 'NPC sentado debe balancearse horizontalmente');
+
+    const mockCtx = makeMockCtx();
+    const brom = new NPC({ name: 'Herrero Brom', x: 100, y: 100, tool: 'hammer', sceneId: 'overworld' });
+    brom.isMoving = false;
+    brom.jobAnimTimer = 0.1; // Fase activa de golpe con chispas
+    brom.render(mockCtx, { renderX: 0, renderY: 0 });
+    brom.jobAnimTimer = 3.0; // Fase de reposo entre golpes
+    brom.render(mockCtx, { renderX: 0, renderY: 0 });
+    assert.equal(brom.x, 100, 'La animación idle/martillo no debe alterar las coordenadas físicas');
+    assert.equal(brom.y, 100);
+
+    const sheep = new Animal({ name: 'Copito', species: 'sheep', x: 96, y: 96 });
+    sheep.isMoving = false;
+    sheep.idleClock = 0.5;
+    assert.equal(sheep.getIdleOffset().y, 1, 'Animal quieto debe respirar 1 px');
+    const prevClock = sheep.idleClock;
+    sheep.update(0.25, null, [], false, null, null);
+    assert.ok(sheep.idleClock > prevClock, 'Animal.update debe avanzar idleClock');
+    sheep.isMoving = true;
+    assert.deepEqual(sheep.getIdleOffset(), { x: 0, y: 0 });
+  });
+
+  test('Barks ambientales cada 15-20s (< 100px), cross-talk entre NPCs cercanos y aislamiento base/expansión', () => {
+    const player = new Player({ x: 100, y: 100 });
+    const farNpc = new NPC({ name: 'Lejano', x: 240, y: 100, ambientPhrases: ['Lejos'], sceneId: 'overworld' });
+    const npcA = new NPC({ name: 'Aurelio', x: 128, y: 100, sceneId: 'overworld' });
+    const npcB = new NPC({ name: 'Lyra', x: 158, y: 100, sceneId: 'overworld' });
+
+    const fakeGame = {
+      player,
+      tilemap: { currentSceneId: 'overworld' },
+      dialogueBox: { active: false },
+      dungeonPan: null,
+      menuSystem: { isBlockingGameplay: () => false },
+      ambientBarkTimer: 0.2,
+      pendingCrossBark: null,
+      isExpansionActive: false,
+      isExpansionMode: false,
+      expansionAmbientConfig: null
+    };
+
+    // Solo NPC lejano (> 100px): no debe emitir bark aunque venza el temporizador
+    RPGGame.prototype._updateAmbientBarks.call(fakeGame, 0.3, [farNpc]);
+    assert.equal(farNpc.ambientBubbleTimer, 0, 'NPC a >100px no debe soltar bark ambiental');
+    assert.ok(fakeGame.ambientBarkTimer >= 15 && fakeGame.ambientBarkTimer <= 20, 'El temporizador debe reiniciarse entre 15 y 20 s');
+
+    // Un NPC cercano en juego base: emite bark y nunca contiene frases de la expansión
+    fakeGame.ambientBarkTimer = 0.1;
+    RPGGame.prototype._updateAmbientBarks.call(fakeGame, 0.2, [npcA]);
+    assert.ok(npcA.ambientBubbleTimer > 0 && npcA.ambientBubbleText.length > 0, 'NPC a <100px debe emitir bark');
+    assert.ok(!npcA.ambientBubbleText.includes('98%') && !npcA.ambientBubbleText.includes('binario'));
+
+    // Cross-talk entre dos NPCs cercanos (<100px del jugador y <=72px entre sí)
+    npcA.ambientBubbleTimer = 0;
+    npcA.ambientBubbleText = '';
+    fakeGame.ambientBarkTimer = 0.05;
+    RPGGame.prototype._updateAmbientBarks.call(fakeGame, 0.1, [npcA, npcB], { forceGroup: true });
+    assert.ok(npcA.ambientBubbleTimer > 0, 'El primer NPC del grupo debe hablar primero');
+    assert.ok(fakeGame.pendingCrossBark, 'Debe quedar programada la respuesta del compañero');
+
+    // Tras 2.4s el compañero responde mirando al iniciador
+    RPGGame.prototype._updateAmbientBarks.call(fakeGame, 2.4, [npcA, npcB]);
+    assert.ok(npcB.ambientBubbleTimer > 0 && npcB.ambientBubbleText.length > 0, 'El segundo NPC debe responder en la conversación');
+    assert.equal(fakeGame.pendingCrossBark, null);
+  });
 }

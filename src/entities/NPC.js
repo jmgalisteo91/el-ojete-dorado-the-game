@@ -30,7 +30,9 @@ export class NPC extends Entity {
     initialDirection = 'down',
     speed = 28,
     sceneId = 'overworld',
-    talkSfx = null
+    talkSfx = null,
+    isSeated = false,
+    tool = null
   }) {
     super({
       x,
@@ -67,6 +69,9 @@ export class NPC extends Entity {
     this.ignoreSmallProps = true;
     this.currentActivityIcon = '';
     this.isSleeping = false;
+    this.isSeated = Boolean(isSeated || behavior === 'seated');
+    this.tool = tool || (name.includes('Brom') ? 'hammer' : null);
+    this.idleClock = Math.random() * Math.PI * 2;
     this.jobAnimTimer = Math.random() * 5.0;
 
     // Bocadillos ambientales discretos con anclaje al punto de emisión en el mundo
@@ -229,6 +234,7 @@ export class NPC extends Entity {
     this.promptBobTimer += dt * 4.5;
     this.isTalking = Boolean(isTalking);
     this.inCombat = Boolean(threat);
+    this.idleClock += dt;
     this.jobAnimTimer += dt;
 
     this.tickReactionTimers(dt);
@@ -269,7 +275,7 @@ export class NPC extends Entity {
     }
 
     // Gestión de frases ambientales ocasionales cuando el jugador está por la zona
-    if (this.ambientPhrases.length > 0 && player && this.sceneId === 'overworld') {
+    if (!this._managedAmbientBarks && this.ambientPhrases.length > 0 && player && this.sceneId === 'overworld') {
       if (this.ambientCooldown > 0) {
         this.ambientCooldown -= dt;
       } else {
@@ -281,8 +287,8 @@ export class NPC extends Entity {
       }
     }
 
-    // Modo estático con vida (ej. dentro de su casa o en el calabozo): mira al jugador si se acerca o gira la vista ocasionalmente
-    if (this.behavior === 'static') {
+    // Modo sentado (ej. taberna) o estático con vida: mira al jugador si se acerca o gira la vista ocasionalmente
+    if (this.behavior === 'static' || this.behavior === 'seated' || this.isSeated) {
       this.isMoving = false;
       if (player && this.distanceTo(player) <= 36) {
         this.faceEntity(player);
@@ -521,11 +527,36 @@ export class NPC extends Entity {
     this.stuckTimer = 0;
   }
 
+  /**
+   * Calcula el desplazamiento visual de respiración (1 px) o balanceo sentado sin alterar el hitbox.
+   */
+  getIdleOffset() {
+    if (this.isMoving || this.isSleeping) {
+      return { x: 0, y: 0 };
+    }
+    const breathY = Math.round(Math.sin(this.idleClock * Math.PI));
+    if (this.isSeated) {
+      return {
+        x: Math.round(Math.sin(this.idleClock * 2.1)),
+        y: breathY
+      };
+    }
+    return { x: 0, y: breathY };
+  }
+
   render(ctx, camera) {
-    const sx = Math.round(this.centerX - camera.renderX);
+    const idleOffset = this.getIdleOffset();
     // (BLOQUE 1.6) Bob de 1 px mientras el NPC habla.
     const talkBob = this.isTalking ? Math.round(Math.sin(this.jobAnimTimer * 6)) : 0;
-    const sy = Math.round(this.y - camera.renderY) + talkBob;
+    const renderCam =
+      idleOffset.x !== 0 || idleOffset.y !== 0 || talkBob !== 0
+        ? {
+            renderX: camera.renderX - idleOffset.x,
+            renderY: camera.renderY - (idleOffset.y + talkBob)
+          }
+        : camera;
+    const sx = Math.round(this.centerX - renderCam.renderX);
+    const sy = Math.round(this.y - renderCam.renderY);
 
     if (this.isSleeping) {
       // Estado durmiendo en cama: silueta en reposo y zZz animados
@@ -547,33 +578,42 @@ export class NPC extends Entity {
       return;
     }
 
-    super.render(ctx, camera);
+    super.render(ctx, renderCam);
 
     // Animaciones de oficio exclusivas
     const isDayScene = this.sceneId === 'overworld';
-    if (isDayScene && !this.isMoving) {
-      const isBrom = this.name.includes('Brom');
+    if ((isDayScene || this.tool) && !this.isMoving) {
+      const isBrom = this.tool === 'hammer' || this.name.includes('Brom');
       const isLyra = this.name.includes('Lyra');
       const isGuard = this.name.includes('Bruno') || this.name.includes('Kael');
 
       if (isBrom) {
-        // Herrero Brom: Martilleo rítmico sobre el yunque con chispas de forja
+        // Herrero Brom: Martilleo periódico sobre el yunque con chispas de forja (de vez en cuando)
         ctx.save();
-        const cycle = (this.jobAnimTimer * 1.5) % 1.5;
-        if (cycle < 0.3) {
-          // Golpe de martillo
-          ctx.fillStyle = '#94a3b8';
-          ctx.fillRect(sx + 5, sy + 4, 4, 2);
-          ctx.fillStyle = '#475569';
-          ctx.fillRect(sx + 7, sy + 6, 2, 4);
-          // Chispas de forja
-          ctx.fillStyle = cycle < 0.15 ? '#fef08a' : '#f97316';
-          ctx.fillRect(sx + 8 + Math.cos(cycle * 30) * 4, sy + 3 - cycle * 12, 1.5, 1.5);
-          ctx.fillRect(sx + 6 - Math.sin(cycle * 30) * 3, sy + 4 - cycle * 10, 1.5, 1.5);
+        const cycle = this.jobAnimTimer % 4.5;
+        if (cycle < 1.2) {
+          const strike = cycle % 0.6;
+          if (strike < 0.25) {
+            // Golpe de martillo sobre el yunque
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(sx + 5, sy + 4, 4, 2);
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(sx + 7, sy + 6, 2, 4);
+            // Chispas de forja
+            ctx.fillStyle = strike < 0.12 ? '#fef08a' : '#f97316';
+            ctx.fillRect(sx + 8 + Math.cos(strike * 30) * 4, sy + 3 - strike * 12, 1.5, 1.5);
+            ctx.fillRect(sx + 6 - Math.sin(strike * 30) * 3, sy + 4 - strike * 10, 1.5, 1.5);
+          } else {
+            // Brazo levantado preparando el siguiente golpe
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(sx + 5, sy - 1, 3, 3);
+          }
         } else {
-          // Brazo levantado en preparación
+          // Martillo en reposo junto al herrero entre tandas
+          ctx.fillStyle = '#64748b';
+          ctx.fillRect(sx + 5, sy + 5, 2, 4);
           ctx.fillStyle = '#94a3b8';
-          ctx.fillRect(sx + 5, sy - 1, 3, 3);
+          ctx.fillRect(sx + 4, sy + 4, 4, 2);
         }
         ctx.restore();
       } else if (isLyra) {
