@@ -1,4 +1,5 @@
 import { Boss } from './Boss.js?v=8';
+import { CollisionSystem } from '../../physics/CollisionSystem.js?v=8';
 
 /**
  * Jefe Regional: "El Microondas Prototipo (V0.1 Alpha)" — El Electrodoméstico Asesino.
@@ -159,7 +160,9 @@ export class PrototypeMicrowaveBoss extends Boss {
     const spin = typeof player.getSpinHitbox === 'function' ? player.getSpinHitbox() : null;
     for (const f of this.fuses) {
       if (!f.active || f.hit) continue;
-      const hitBySword = sword && Math.hypot(f.x - sword.x, f.y - sword.y) <= 16;
+      const swordCenterX = sword ? sword.x + (sword.width || 0) / 2 : 0;
+      const swordCenterY = sword ? sword.y + (sword.height || 0) / 2 : 0;
+      const hitBySword = sword && Math.hypot(f.x - swordCenterX, f.y - swordCenterY) <= 16;
       const hitBySpin = spin && Math.hypot(f.x - spin.centerX, f.y - spin.centerY) <= spin.radius + 10;
       if (hitBySword || hitBySpin) {
         f.hit = true;
@@ -169,8 +172,8 @@ export class PrototypeMicrowaveBoss extends Boss {
       }
     }
     if (this.fuses.length > 0 && this.fuses.every((f) => f.hit)) {
-      // (BLOQUE 2.4) La puerta queda abierta y el jefe recibe crítico x2 durante 5 s.
-      this.stunnedTimer = 5.0;
+      // (BLOQUE 2.4) La puerta queda abierta y el jefe recibe crítico x2 durante 2.5 s.
+      this.stunnedTimer = 2.5;
       this.doorOpen = true;
       this.fusePhaseActive = false;
       for (const f of this.fuses) f.active = false;
@@ -214,6 +217,36 @@ export class PrototypeMicrowaveBoss extends Boss {
         this.statusText = '🔌 FUSIBLES REINICIADOS';
       }
       return { hitPlayer: false };
+    }
+
+    // Movimiento lento sobre sus 4 patas mecánicas: persigue/patrulla a media distancia.
+    if (this.activeCombat && player && tilemap && typeof tilemap.isSolidAtTile === 'function') {
+      const dx = player.centerX - this.centerX;
+      const dy = player.centerY - this.centerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1) {
+        let moveX = 0;
+        let moveY = 0;
+        if (dist > 54) {
+          moveX = dx / dist;
+          moveY = dy / dist;
+        } else if (dist < 32) {
+          moveX = -dx / dist;
+          moveY = -dy / dist;
+        } else {
+          const strafeDir = Math.sin((this.walkCycle || 0) * 0.4) >= 0 ? 1 : -1;
+          moveX = (-dy / dist) * strafeDir;
+          moveY = (dx / dist) * strafeDir;
+        }
+        this.walkCycle = (this.walkCycle || 0) + dt;
+        CollisionSystem.moveWithCollisions(
+          this,
+          moveX * this.speed * dt,
+          moveY * this.speed * dt,
+          tilemap,
+          []
+        );
+      }
     }
 
     // Fase 2: fusibles y cuenta atrás de sobrecalentamiento.

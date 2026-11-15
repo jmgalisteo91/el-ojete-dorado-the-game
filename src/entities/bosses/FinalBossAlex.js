@@ -160,15 +160,14 @@ export class FinalBossAlex extends Boss {
       this.glitchActive = true;
       this.statusText = `💠 ${getRandomBattleBark('PHASE_2_TRIGGER')}`;
     } else if (nextPhase === 3) {
-      // Torre del Update Final: conserva el centro, amplía hitbox visual y de daño.
-      const centerX = this.centerX;
-      const centerY = this.centerY;
+      // Torre del Update Final: reposiciona al centro de la arena al crecer a 48x56 y evita atascos.
       this.speed = 0;
       this.width = 48;
       this.height = 56;
       this.boundingBox = { offsetX: 4, offsetY: 6, width: 40, height: 44 };
-      this.x = centerX - this.width / 2;
-      this.y = centerY - this.height / 2;
+      this.x = this.spawnX - (this.width - 32) / 2;
+      this.y = this.spawnY - (this.height - 32) / 2;
+      this._ensureUnstuck(this.arenaTilemap);
       this.glitchActive = true;
       this._hudHiddenUntil = 0;
       this.statusText = '🗼 EL UPDATE FINAL · ¡SOBRESCRITURA INMINENTE!';
@@ -176,6 +175,25 @@ export class FinalBossAlex extends Boss {
 
     if (soundEngine && typeof soundEngine.playHitHurt === 'function') {
       soundEngine.playHitHurt();
+    }
+  }
+
+  _ensureUnstuck(tilemap) {
+    if (!tilemap || typeof tilemap.isSolidAtTile !== 'function') return;
+    const box = this.worldBoundingBox;
+    if (CollisionSystem.collidesWithMap(box, tilemap)) {
+      const step = 4;
+      const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+      for (let r = 1; r <= 8; r++) {
+        for (const [dx, dy] of dirs) {
+          const testBox = { x: box.x + dx * r * step, y: box.y + dy * r * step, width: box.width, height: box.height };
+          if (!CollisionSystem.collidesWithMap(testBox, tilemap)) {
+            this.x += dx * r * step;
+            this.y += dy * r * step;
+            return;
+          }
+        }
+      }
     }
   }
 
@@ -362,9 +380,24 @@ export class FinalBossAlex extends Boss {
   _updateMovement(dt, player, tilemap) {
     if (!tilemap || this.phase === 3) return;
     if (this.phase === 1) {
-      const t = performance.now() * 0.001;
-      this.x = this.spawnX + Math.sin(t * 0.8) * 6;
-      this.y = this.spawnY + Math.sin(t * 1.1) * 4;
+      if (typeof tilemap.isSolidAtTile !== 'function') return;
+      this.floatTime = (this.floatTime || 0) + dt;
+      const arena = this._arenaSize();
+      const targetX = Math.max(
+        32,
+        Math.min(arena.w - this.width - 32, this.spawnX + Math.sin(this.floatTime * 0.9) * 72)
+      );
+      const targetY = Math.max(
+        28,
+        Math.min(arena.h * 0.65, this.spawnY + Math.cos(this.floatTime * 0.65) * 32)
+      );
+      const dx = targetX - this.x;
+      const dy = targetY - this.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1) {
+        const step = Math.min(dist, this.speed * dt);
+        CollisionSystem.moveWithCollisions(this, (dx / dist) * step, (dy / dist) * step, tilemap, []);
+      }
       return;
     }
     const dx = player.centerX - this.centerX;

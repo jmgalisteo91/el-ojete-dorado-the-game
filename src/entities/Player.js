@@ -3,7 +3,7 @@ import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
 import { SKILL_DEFS } from '../core/SkillCatalog.js?v=8';
 import { GameLoop } from '../core/GameLoop.js?v=8';
 
-const STAMINA_COSTS = { attack: 8, dash: 25, charged: 30, log: 15 };
+const STAMINA_COSTS = { attack: 4, dash: 18, charged: 30, log: 15 };
 
 /**
  * Umbrales acumulados de Experiencia (XP) para subir de Nivel (1 al 10).
@@ -177,7 +177,7 @@ export class Player extends Entity {
   spendStamina(amount) {
     if (this.stamina < amount) return false;
     this.stamina -= amount;
-    this.staminaRegenDelay = 0.6;
+    this.staminaRegenDelay = 0.3;
     return true;
   }
 
@@ -608,14 +608,11 @@ export class Player extends Entity {
       soundEngine.playPlayerHurt();
     }
 
-    if (!this.hasArmor) {
-      this.hp = 0;
-      this.invulnTimer = 1.0;
-    } else if (this.armorPoints > 0) {
+    if (this.armorPoints > 0) {
       this.armorPoints = Math.max(0, this.armorPoints - 1);
       this.invulnTimer = 0.85;
     } else {
-      this.hp = Math.max(0, this.hp - amount * 0.5); // amount 1 = 0.5 corazones
+      this.hp = Math.max(0, this.hp - 0.5 * amount); // amount 1 = 0.5 corazones
       this.invulnTimer = 1.0;
     }
     return true;
@@ -695,7 +692,14 @@ export class Player extends Entity {
       }
     }
 
-    if (movementHardLocked) {
+    // Permitir cancelar el knockback/hitstun con Dash (si no hay menú/diálogo bloqueando el movimiento).
+    if (!movementLocked && input && typeof input.consumeDash === 'function' && input.consumeDash()) {
+      if (this.tryDash(input, soundEngine)) {
+        this.knockbackTimer = 0;
+      }
+    }
+
+    if (movementLocked || (this.knockbackTimer > 0 && this.dashTimer <= 0)) {
       this.isMoving = false;
       this.chargeTimer = 0;
       this.dashTimer = 0;
@@ -708,11 +712,6 @@ export class Player extends Entity {
     // Durante el Dash se omite: el impulso puede estar sobrevolando un abismo legítimamente.
     if (this.dashTimer <= 0) {
       this._ensureUnstuck(tilemap, obstacles);
-    }
-
-    // Ejecución de Dash Asíncrono
-    if (input && typeof input.consumeDash === 'function' && input.consumeDash()) {
-      this.tryDash(input, soundEngine);
     }
 
     // Ejecución de Barrera de Tipado Estricto (tecla Q)

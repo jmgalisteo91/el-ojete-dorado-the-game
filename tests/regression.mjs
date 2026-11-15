@@ -263,7 +263,7 @@ test('Dash consume stamina y habilita tajo de embestida (daño 2)', () => {
   const p = makePlayer(32, 32);
   p.hasDash = true;
   assert.ok(p.tryDash(stubInput));
-  assert.equal(Math.round(p.stamina), 75);
+  assert.equal(Math.round(p.stamina), 82);
   p.dashCooldown = 0;
   assert.ok(p.tryAttack());
   assert.equal(p.getSwordDamage(), 2);
@@ -722,7 +722,7 @@ test('Rebalanceo de Bosses: HP calibrada y daño ajustado al héroe', () => {
   b3._updateFuses(fusePlayer, null);
   fuseIndex = 1;
   b3._updateFuses(fusePlayer, null);
-  assert.equal(b3.stunnedTimer, 5.0, 'La puerta debe quedar abierta 5 s');
+  assert.equal(b3.stunnedTimer, 2.5, 'La puerta debe quedar abierta 2.5 s');
   assert.equal(b3.doorOpen, true);
 
   b3.hitFlashTimer = 0;

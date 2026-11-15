@@ -1,4 +1,5 @@
 import { pushBackPlayer } from './DoorGatekeeper.js?v=8';
+import { SCENE_AI_ALEX_PREBATTLE } from '../ui/AnimeCutsceneManager.js?v=8';
 
 const STAGE_TRANSITION_SCENE_IDS = new Set([
   'first_stage',
@@ -31,9 +32,41 @@ export class SceneTransitionController {
       'east';
     const entryX = Number.isFinite(door.spawnX) ? door.spawnX : width / 2;
     const entryY = Number.isFinite(door.spawnY) ? door.spawnY : height / 2;
+    const hasExplicitCoords =
+      Number.isFinite(door.spawnX) && Number.isFinite(door.spawnY);
+    const isExplicitDoorType =
+      door.type === 'door' ||
+      door.type === 'enter' ||
+      door.type === 'exit' ||
+      door.type === 'abyssal_portal' ||
+      door.type === 'abyssal_portal_exit' ||
+      door.kind === 'abyssal_portal' ||
+      door.kind === 'abyssal_portal_exit';
+    const curScene = g.tilemap?.currentSceneId;
+    const isEdgeStageTransition =
+      door.type === 'stage_transition' &&
+      (
+        !door.targetScene ||
+        (curScene === 'overworld' && STAGE_TRANSITION_SCENE_IDS.has(door.targetScene)) ||
+        (STAGE_TRANSITION_SCENE_IDS.has(curScene) && door.targetScene === 'overworld')
+      );
 
-    // (FIX TEMPLOS) Puertas interiores: spawn exacto en su vano, no en un borde genérico.
-    if (door.spawnMode === 'fixed' || door.fixedSpawn === true) {
+    // Spawns fijos y puertas/portales con coordenadas explícitas: no usar cálculo de borde.
+    if (
+      door.spawnMode === 'fixed' ||
+      door.fixedSpawn === true ||
+      (hasExplicitCoords && (isExplicitDoorType || (door.type === 'stage_transition' && !isEdgeStageTransition)))
+    ) {
+      return {
+        x: entryX,
+        y: entryY,
+        facing: door.entryFacing || door.forceDirection || g.player.direction,
+        exitDirection: door.exitDirection || null
+      };
+    }
+
+    // Cálculo por exitDirection y margin (32 px) reservado únicamente para transiciones de borde.
+    if (door.type && door.type !== 'stage_transition') {
       return {
         x: entryX,
         y: entryY,
@@ -91,7 +124,8 @@ export class SceneTransitionController {
     if (g.music && typeof g.music.playDoorLockedSound === 'function') {
       g.music.playDoorLockedSound();
     }
-    const obstacles = [...(g.npcs || []), ...(g.animals || [])];
+    const { npcs = [] } = g._getActiveSceneEntities ? g._getActiveSceneEntities() : {};
+    const obstacles = [...npcs, ...(g.animals || [])];
     // (REFACTOR 2) Vector puerta→jugador + colisión, 2 tiles.
     pushBackPlayer(g.player, door, 2, g.tilemap, obstacles);
     const gateDoor = {

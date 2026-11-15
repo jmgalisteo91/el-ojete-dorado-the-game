@@ -34,7 +34,7 @@ const ALERT_TIME = 0.4;
 // hacía que abandonaran la persecución en cuanto el jugador doblaba una esquina.
 const LOSE_SIGHT_TIME = 2.0;
 const SEARCH_WAIT = 1.4;
-const ALARM_RADIUS = 120;
+const ALARM_RADIUS = 75;
 const MAX_SIMULTANEOUS_ATTACKERS = 2;
 
 // (FIX 3.5) Separación tipo boids entre esbirros: evita el apelotonamiento

@@ -3302,7 +3302,7 @@ export class RPGGame {
         aggroRange: aggro,
         xpReward: xp,
         archetype,
-        respawnOnEnter: true,
+        respawnOnEnter: false,
         animator: new SpriteAnimator(sheet, sprite, 16, 16, 0.12),
         patrolPoints: patrol.map(([c, r]) => ({ x: c * 16, y: r * 16 }))
       });
@@ -3447,7 +3447,7 @@ export class RPGGame {
         sceneId: 'first_stage',
         speed: 56,
         maxHp: 2,
-        aggroRange: 140,
+        aggroRange: 90,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 10 * 16, y: 14 * 16 },
@@ -3465,7 +3465,7 @@ export class RPGGame {
         sceneId: 'first_stage',
         speed: 55,
         maxHp: 2,
-        aggroRange: 135,
+        aggroRange: 85,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 4 * 16, y: 13 * 16 },
@@ -3483,7 +3483,7 @@ export class RPGGame {
         sceneId: 'first_stage',
         speed: 58,
         maxHp: 2,
-        aggroRange: 145,
+        aggroRange: 95,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 20 * 16, y: 14 * 16 },
@@ -3501,7 +3501,7 @@ export class RPGGame {
         sceneId: 'first_stage',
         speed: 57,
         maxHp: 3,
-        aggroRange: 145,
+        aggroRange: 95,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.13),
         patrolPoints: [
           { x: 12 * 16, y: 8 * 16 },
@@ -3519,7 +3519,7 @@ export class RPGGame {
         sceneId: 'first_stage',
         speed: 57,
         maxHp: 3,
-        aggroRange: 145,
+        aggroRange: 95,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.13),
         patrolPoints: [
           { x: 18 * 16, y: 8 * 16 },
@@ -3537,7 +3537,7 @@ export class RPGGame {
         sceneId: 'first_stage',
         speed: 60,
         maxHp: 4,
-        aggroRange: 150,
+        aggroRange: 100,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
         patrolPoints: [
           { x: 27 * 16, y: 11 * 16 },
@@ -3593,17 +3593,17 @@ export class RPGGame {
         archetype: 'knight',
         name: 'Paladín Oscuro de Mister AI Alex',
         x: 11 * 16,
-        y: 7 * 16,
+        y: 12 * 16,
         sceneId: 'sword_temple',
         speed: 62,
         maxHp: 5,
-        aggroRange: 160,
+        aggroRange: 100,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.11),
         patrolPoints: [
-          { x: 9 * 16, y: 7 * 16 },
-          { x: 14 * 16, y: 7 * 16 },
-          { x: 14 * 16, y: 6 * 16 },
-          { x: 9 * 16, y: 6 * 16 }
+          { x: 9 * 16, y: 12 * 16 },
+          { x: 14 * 16, y: 12 * 16 },
+          { x: 14 * 16, y: 13 * 16 },
+          { x: 9 * 16, y: 13 * 16 }
         ]
       }),
 
@@ -3618,7 +3618,7 @@ export class RPGGame {
         nightOnly: true,
         speed: 58,
         maxHp: 2,
-        aggroRange: 150,
+        aggroRange: 95,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 21 * 16, y: 11 * 16 },
@@ -3637,7 +3637,7 @@ export class RPGGame {
         nightOnly: true,
         speed: 62,
         maxHp: 3,
-        aggroRange: 150,
+        aggroRange: 100,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
         patrolPoints: [
           { x: 17 * 16, y: 8 * 16 },
@@ -3656,7 +3656,7 @@ export class RPGGame {
         nightOnly: true,
         speed: 58,
         maxHp: 2,
-        aggroRange: 145,
+        aggroRange: 95,
         animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
         patrolPoints: [
           { x: 16 * 16, y: 13 * 16 },
@@ -5417,12 +5417,14 @@ export class RPGGame {
     if (this.player.hasSword && this.player.energySlashes && this.player.energySlashes.length > 0) {
       for (const slash of this.player.energySlashes) {
         if (!slash.active) continue;
+        const slashW = slash.width || 16;
+        const slashH = slash.height || 16;
         attackBoxes.push({
           box: {
-            x: slash.x - slash.width / 2,
-            y: slash.y - slash.height / 2,
-            width: slash.width,
-            height: slash.height
+            x: slash.x - slashW / 2,
+            y: slash.y - slashH / 2,
+            width: slashW,
+            height: slashH
           },
           slashRef: slash,
           fromSlash: true
@@ -6340,37 +6342,6 @@ export class RPGGame {
       this.transitionCooldown -= dt;
     }
 
-    // Detección automática al caminar hacia los límites de escena y caminos cardinales (estilo Zelda)
-    if (
-      (!this.animeCutscenes || !this.animeCutscenes.isActive) &&
-      !this.dialogueBox.active &&
-      !this.inventory.isOpen &&
-      !this.characterStats.isOpen &&
-      this.transitionCooldown <= 0
-    ) {
-      if (this.tilemap.currentSceneId === 'overworld') {
-        const atWest = this.player.x <= 1.5 * this.tilemap.tileSize && this.player.y >= 10.5 * this.tilemap.tileSize && this.player.y <= 14.5 * this.tilemap.tileSize;
-        const atEast = this.player.x >= 32.5 * this.tilemap.tileSize && this.player.y >= 11 * this.tilemap.tileSize && this.player.y <= 14 * this.tilemap.tileSize;
-        const atNorth = this.player.y <= 1.2 * this.tilemap.tileSize && this.player.x >= 15.5 * this.tilemap.tileSize && this.player.x <= 19.5 * this.tilemap.tileSize;
-        const atSouth = this.player.y >= 22.5 * this.tilemap.tileSize && this.player.x >= 15.5 * this.tilemap.tileSize && this.player.x <= 19.5 * this.tilemap.tileSize;
-
-        if (atWest || atEast || atNorth || atSouth) {
-          const door = this.tilemap.findNearbyDoor(this.player);
-          if (door && door.type === 'stage_transition') {
-            this._executeInteraction({ kind: 'door', target: door });
-          }
-        }
-      } else if (['first_stage', 'north_peaks', 'south_swamp', 'west_wastes'].includes(this.tilemap.currentSceneId)) {
-        const door = this.tilemap.findNearbyDoor(this.player);
-        if (door && door.type === 'stage_transition' && door.targetScene === 'overworld') {
-          const dist = Math.hypot(this.player.centerX - door.worldX, this.player.centerY - door.worldY);
-          if (dist <= 20) {
-            this._executeInteraction({ kind: 'door', target: door });
-          }
-        }
-      }
-    }
-
     // Animación continua del Portal Abisal (se activa pulsando [E], sin bucle de auto-absorción)
     this.condemnedPortalTimer = (this.condemnedPortalTimer || 0) + dt;
     if (this.activeAbyssalPortal) {
@@ -6679,21 +6650,6 @@ export class RPGGame {
   _getDifficultyScale() {
     const deaths = (this.deathsByScene && this.deathsByScene[this.tilemap.currentSceneId]) || 0;
     return Math.max(0.72, 1 - 0.08 * deaths);
-  }
-
-  /**
-   * (FIX 1.2) Sacudida de cámara del mundo durante el gameplay.
-   * AnimeCutsceneManager.cameraShake() solo se dibuja mientras hay una cinemática activa
-   * (su render hace early-return si no), así que en combate no producía ningún efecto.
-   * Aquí la sacudida real va a Camera2D; si además hay cinemática, se replica en ella.
-   */
-  _shakeCamera(intensity = 2, duration = 0.25) {
-    if (this.camera && typeof this.camera.shake === 'function') {
-      this.camera.shake(intensity, duration);
-    }
-    if (this.animeCutscenes && this.animeCutscenes.isActive) {
-      this._shakeCamera(intensity, duration);
-    }
   }
 
   _registerPlayerDeath() {

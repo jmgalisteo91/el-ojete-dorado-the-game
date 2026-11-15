@@ -387,6 +387,7 @@ export class CinematicDirector {
         this.dialogueActive = true;
         this.cmdType = 'dialogue';
         this.waiting = true;
+        this.commandTimer = Math.max(3.5, (cmd.text || '').length / 18 + 2.2);
         break;
       case 'beam': {
         this.beam = {
@@ -643,15 +644,21 @@ export class CinematicDirector {
   }
 
   _applyHorizontalInput(input) {
-    if (!input || typeof input.consumeKey !== 'function') return;
-    if (input.consumeKey('Escape')) {
+    if (!input) return;
+    if (typeof input.consumeKey === 'function' && input.consumeKey('Escape')) {
       input.clear?.();
       this._finish();
       return;
     }
-    const advance = input.consumeKey('Space') || input.consumeKey('Enter') ||
-      input.consumeKey('KeyE') || input.consumeKey('KeyF');
-    if (!advance) return;
+    const clicked = Boolean(input.pointerJustClicked);
+    if (clicked) {
+      input.pointerJustClicked = false;
+    }
+    const keyAdvance =
+      typeof input.consumeKey === 'function' &&
+      (input.consumeKey('Space') || input.consumeKey('Enter') ||
+        input.consumeKey('KeyE') || input.consumeKey('KeyF'));
+    if (!keyAdvance && !clicked) return;
     if (this.dialogueActive && this.dialogue) {
       if (this.dialogue.finished) {
         this.dialogueActive = false;
@@ -787,7 +794,14 @@ export class CinematicDirector {
 
     if (this.waiting) {
       this.commandTimer -= dt;
-      if (this.commandTimer <= 0 && this.cmdType !== 'dialogue') {
+      if (this.cmdType === 'dialogue') {
+        if (this.commandTimer <= 0 && (!this.dialogue || this.dialogue.shown >= this.dialogue.text.length)) {
+          this.dialogueActive = false;
+          this.dialogue = null;
+          this.waiting = false;
+          this._nextCommand();
+        }
+      } else if (this.commandTimer <= 0) {
         this._nextCommand();
       }
       return;

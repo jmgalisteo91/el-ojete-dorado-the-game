@@ -268,15 +268,6 @@ export class DialogueBox {
     const currentText = this.lines[this.currentLineIndex] || '';
     const isStillTyping = this.visibleChars < currentText.length;
 
-    // ¡DETECTOR DE PULSAR RÁPIDO EN MODO CHARLA COÑAZO!
-    if (
-      this.isRantMode &&
-      (isStillTyping || (this.timeSinceLineCompleted < 0.35 && this.currentLineIndex < this.lines.length - 1))
-    ) {
-      this._triggerCaughtSkippingRant();
-      return;
-    }
-
     if (isStillTyping) {
       this.visibleChars = currentText.length;
       return;
@@ -305,41 +296,22 @@ export class DialogueBox {
   }
 
   /**
-   * El NPC pilla al jugador dándole rápido al botón 'E' para saltarse su charla.
+   * Avanza o cierra el diálogo sin penalizar al jugador si pulsa rápido en modo charla.
    */
   _triggerCaughtSkippingRant() {
-    this.caughtSkippingCount += 1;
-    this.caughtBannerTimer = 2.6;
-    if (this.soundEngine) {
-      this.soundEngine.playCaughtSkipSound();
+    const currentText = this.lines[this.currentLineIndex] || '';
+    if (this.visibleChars < currentText.length) {
+      this.visibleChars = currentText.length;
+      return;
     }
-
-    const callouts = [
-      '¡¿Eh?! ¡Te he visto aporrear la tecla [E]! ¿Te aburro? ¡Pues aún no he acabado, ahora sigo hablando de mi vida!',
-      '¡Oye, no le des tan rápido al botón! ¿Tienes prisa? ¡Pues te aguantas dos anécdotas más de mi juventud!',
-      '¡Ajá! ¿Intentando saltarte el diálogo otra vez? ¡Qué poca educación RPG! Escucha, escucha que aún queda lo mejor...'
-    ];
-
-    const callout = callouts[(this.caughtSkippingCount - 1) % callouts.length];
-
-    // Extraer una nueva anécdota coñazo del pool (o generar una extra)
-    const extraAnecdote =
-      this.rantPenaltyPool.length > 0
-        ? this.rantPenaltyPool.shift()
-        : 'Y otra cosa te digo: en el verano del 97 estuve tres horas hablando solo frente al pozo y nadie se quejó tanto como tú.';
-
-    // Insertar el reproche en la página actual y añadir la anécdota extra justo detrás
-    this.lines.splice(
-      this.currentLineIndex,
-      0,
-      callout,
-      extraAnecdote
-    );
-
-    this.visibleChars = 0;
-    this.lastBlipCharIndex = -1;
-    this.lastMenuBounds = null;
-    this.timeSinceLineCompleted = 0;
+    if (this.currentLineIndex + 1 < this.lines.length) {
+      this.currentLineIndex += 1;
+      this.visibleChars = 0;
+      this.lastBlipCharIndex = -1;
+      this.timeSinceLineCompleted = 0;
+      return;
+    }
+    this.close();
   }
 
   close() {

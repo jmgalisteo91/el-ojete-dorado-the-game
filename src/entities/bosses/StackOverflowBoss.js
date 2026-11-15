@@ -387,11 +387,12 @@ export class StackOverflowBoss extends Boss {
 
     if (dist <= 14 && this.attackCooldown <= 0) {
       this.attackCooldown = 0.85;
-      player.takeHit(null, this);
+      player.takeHit(this.soundEngine || null, this);
     }
   }
 
   update(dt, tilemap, player, paused = false, soundEngine = null) {
+    if (soundEngine) this.soundEngine = soundEngine;
     if (this.dead) return super.update(dt, tilemap, player, paused, soundEngine);
 
     this._ensureUnstuck(tilemap);

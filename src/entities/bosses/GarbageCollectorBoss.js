@@ -110,12 +110,32 @@ export class GarbageCollectorBoss extends Boss {
     };
     this.x = cx - this.width / 2;
     this.y = cy - this.height / 2;
+    this._ensureUnstuck(this.arenaTilemap);
     this.speed = this.baseSpeed * 0.5;
     this.statusText = '🗑️ ¡SE COME SU PROPIA BASURA!';
     this.chargeCooldown = 4.0;
     this._spawnRats(2);
     if (soundEngine && typeof soundEngine.playHitHurt === 'function') {
       soundEngine.playHitHurt();
+    }
+  }
+
+  _ensureUnstuck(tilemap) {
+    if (!tilemap || typeof tilemap.isSolidAtTile !== 'function') return;
+    const box = this.worldBoundingBox;
+    if (CollisionSystem.collidesWithMap(box, tilemap)) {
+      const step = 4;
+      const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+      for (let r = 1; r <= 8; r++) {
+        for (const [dx, dy] of dirs) {
+          const testBox = { x: box.x + dx * r * step, y: box.y + dy * r * step, width: box.width, height: box.height };
+          if (!CollisionSystem.collidesWithMap(testBox, tilemap)) {
+            this.x += dx * r * step;
+            this.y += dy * r * step;
+            return;
+          }
+        }
+      }
     }
   }
 
@@ -294,6 +314,7 @@ export class GarbageCollectorBoss extends Boss {
       if (this.stateTimer <= 0) {
         this.state = 'charge';
         this.stateTimer = 2.0;
+        this.chargeElapsed = 0;
         this.acidTrailTimer = 0;
         this.statusText = '⚡ ¡EMBESTIDA HORIZONTAL!';
         this.chargeVx = this.telegraphDir * 210;
@@ -304,6 +325,8 @@ export class GarbageCollectorBoss extends Boss {
       }
     } else if (this.state === 'charge') {
       this.stateTimer -= dt;
+      this.chargeElapsed = (this.chargeElapsed || 0) + dt;
+      if (tilemap) this.arenaTilemap = tilemap;
       const { blockedX, blockedY } = CollisionSystem.moveWithCollisions(
         this,
         this.chargeVx * dt,
@@ -328,9 +351,9 @@ export class GarbageCollectorBoss extends Boss {
           });
         }
       }
-      if (blockedX || blockedY || this.stateTimer <= 0) {
+      if (((blockedX || blockedY) && this.chargeElapsed >= 0.12) || this.stateTimer <= 0) {
         this.state = 'stunned';
-        this.stateTimer = 2.5;
+        this.stateTimer = 1.4;
         this.chargeCooldown = 8.0;
         this.statusText = '💫 ¡ATURDIDO! (¡VULNERABLE!)';
         if (soundEngine && typeof soundEngine.playMetalClink === 'function') {
