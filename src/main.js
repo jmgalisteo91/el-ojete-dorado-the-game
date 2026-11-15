@@ -320,10 +320,12 @@ export class RPGGame {
     this.renderPipeline.setQuality(this.performanceProfile);
     setParticleScale(this.performanceProfile === 'low' ? 0.45 : 1);
     this.premiumEffects = new PremiumEffectsManager(canvas, {
-      width: VIEWPORT_WIDTH,
-      height: VIEWPORT_HEIGHT,
+      width: VIEWPORT_WIDTH * BASE_RENDER_SCALE,
+      height: VIEWPORT_HEIGHT * BASE_RENDER_SCALE,
+      resolution: 1,
       quality: this.performanceProfile
     });
+    this.premiumEffects.spawnParticles(this.tilemap?.currentSceneId || 'overworld');
 
     // (FIX M2.3) Pausa automática al perder el foco (móvil y desktop)
     this._installAutoPause();
@@ -962,6 +964,8 @@ export class RPGGame {
     if (options.immediate) {
       if (typeof onMidpoint === 'function') onMidpoint();
       else if (targetScene) this.tilemap?.loadScene?.(targetScene);
+      const activeScene = this.tilemap?.currentSceneId || targetScene;
+      this.premiumEffects?.spawnParticles?.(activeScene);
       this.fadeAlpha = 0;
       this.sceneFade = null;
       return;
@@ -991,6 +995,8 @@ export class RPGGame {
           } else if (fade.targetScene) {
             this.tilemap?.loadScene?.(fade.targetScene);
           }
+          const activeScene = this.tilemap?.currentSceneId || fade.targetScene;
+          this.premiumEffects?.spawnParticles?.(activeScene);
         }
         fade.phase = 'in';
       }

@@ -2652,4 +2652,160 @@ export async function run(test, assert) {
       else globalThis.localStorage = previousStorage;
     }
   });
+
+  test('PremiumEffectsManager.spawnParticles y _loadScene: 50 hojas verdes (#4ade80), 50 chispas naranjas (#f97316) y limpieza al cambiar de escena', async () => {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+
+    let destroyedGraphics = 0;
+    const drawnShapes = [];
+    const overlayCanvas = {
+      width: 1280,
+      height: 720,
+      style: {},
+      attributes: {},
+      parentNode: null,
+      setAttribute(k, v) {
+        this.attributes[k] = v;
+      }
+    };
+    const gameCanvas = {
+      width: 1280,
+      height: 720,
+      clientWidth: 1280,
+      clientHeight: 720,
+      offsetLeft: 0,
+      offsetTop: 0,
+      clientLeft: 0,
+      clientTop: 0,
+      style: {},
+      parentNode: {
+        children: [],
+        insertBefore(node) {
+          if (!this.children.includes(node)) this.children.push(node);
+          node.parentNode = this;
+        },
+        removeChild(node) {
+          this.children = this.children.filter((c) => c !== node);
+          node.parentNode = null;
+        }
+      }
+    };
+    gameCanvas.parentNode.children.push(gameCanvas);
+
+    class MockContainer {
+      constructor() {
+        this.children = [];
+        this.visible = true;
+      }
+      addChild(c) {
+        this.children.push(c);
+        return c;
+      }
+      removeChildren() {
+        this.children.length = 0;
+      }
+    }
+
+    class MockGraphics {
+      constructor() {
+        this.x = 0;
+        this.y = 0;
+        this.rotation = 0;
+        this.alpha = 1;
+        this.scale = { set: (v) => { this.scaleVal = v; } };
+        this.rects = [];
+        this.fillColor = null;
+      }
+      rect(x, y, w, h) {
+        this.rects.push({ x, y, w, h });
+        return this;
+      }
+      fill(color) {
+        this.fillColor = color;
+        drawnShapes.push({ rects: this.rects, fillColor: color });
+        return this;
+      }
+      destroy() {
+        destroyedGraphics += 1;
+      }
+    }
+
+    const mockPixi = {
+      Application: class {
+        constructor() {
+          this.stage = new MockContainer();
+          this.ticker = { stop() {} };
+          this.view = overlayCanvas;
+        }
+        async init(opts) {
+          this.initOpts = opts;
+        }
+        render() {}
+        destroy() {}
+      },
+      Container: MockContainer,
+      Graphics: MockGraphics
+    };
+
+    try {
+      globalThis.document = {
+        body: gameCanvas.parentNode,
+        createElement: () => ({ width: 0, height: 0, getContext: () => null })
+      };
+      globalThis.window = { addEventListener() {}, removeEventListener() {} };
+
+      const pfx = new PremiumEffectsManager(gameCanvas, {
+        pixi: mockPixi,
+        width: 1280,
+        height: 720,
+        useRaf: false
+      });
+      await pfx.init();
+      assert.equal(pfx.pixiApp.initOpts.width, 1280);
+      assert.equal(pfx.pixiApp.initOpts.height, 720);
+      assert.equal(pfx.pixiApp.initOpts.backgroundAlpha, 0);
+      assert.equal(overlayCanvas.style.pointerEvents, 'none');
+      assert.equal(overlayCanvas.style.zIndex, '10');
+
+      // 1. Valleverde (overworld / first_stage): 50 hojas verdes #4ade80 (4x4 px) cayendo hacia abajo
+      const leafCount = pfx.spawnParticles('overworld');
+      assert.equal(leafCount, 50, 'Valleverde debe generar exactamente 50 partículas de hojas verdes');
+      assert.equal(pfx.particles.length, 50);
+      assert.ok(pfx.particles.every((p) => p.type === 'leaf' && p.vy > 0 && p.obj.fillColor === 0x4ade80));
+      assert.ok(pfx.particles.every((p) => p.obj.rects[0].w === 4 && p.obj.rects[0].h === 4));
+
+      // Al avanzar un frame, las hojas bajan y oscilan
+      const sampleY0 = pfx.particles[0].y;
+      pfx.particles[0].y = 100;
+      pfx.update(0.05, { sceneId: 'overworld' });
+      assert.ok(pfx.particles[0].y > 100, 'Las hojas verdes deben caer hacia abajo');
+
+      // 2. Cambiar a Forja via _loadScene -> destruye las 50 hojas anteriores y crea 50 chispas naranjas #f97316
+      const tm = new Tilemap(null, 16);
+      const fakeGame = {
+        tilemap: tm,
+        premiumEffects: pfx,
+        player: { stopMovement() {} },
+        fadeAlpha: 0,
+        sceneFade: null
+      };
+      RPGGame.prototype._loadScene.call(fakeGame, 'forge_entry', null, { immediate: true });
+      assert.equal(tm.currentSceneId, 'forge_entry');
+      assert.equal(destroyedGraphics, 50, 'Cambiar de escena debe destruir las 50 partículas anteriores de PixiJS');
+      assert.equal(pfx.particles.length, 50, 'La Forja debe generar 50 chispas naranjas');
+      assert.ok(pfx.particles.every((p) => p.type === 'spark' && p.vy < 0 && p.obj.fillColor === 0xf97316));
+
+      // Al avanzar un frame, las chispas suben desde abajo
+      pfx.particles[0].y = 600;
+      pfx.update(0.05, { sceneId: 'forge_entry' });
+      assert.ok(pfx.particles[0].y < 600, 'Las chispas naranjas de la Forja deben subir');
+
+      pfx.destroy();
+      assert.equal(sampleY0 >= -8, true);
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  });
 }

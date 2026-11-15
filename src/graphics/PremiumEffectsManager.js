@@ -72,8 +72,8 @@ void main(void) {
 export const BIOME_PRESETS = Object.freeze({
   valleverde: {
     id: 'valleverde',
-    maxParticles: 42,
-    types: ['leaf', 'pollen'],
+    maxParticles: 50,
+    types: ['leaf'],
     shader: 'water'
   },
   cloacas: {
@@ -84,8 +84,8 @@ export const BIOME_PRESETS = Object.freeze({
   },
   forja: {
     id: 'forja',
-    maxParticles: 52,
-    types: ['spark', 'smoke'],
+    maxParticles: 50,
+    types: ['spark'],
     shader: 'heat'
   },
   templos: {
@@ -96,7 +96,7 @@ export const BIOME_PRESETS = Object.freeze({
   },
   ciudadela: {
     id: 'ciudadela',
-    maxParticles: 54,
+    maxParticles: 50,
     types: ['bit0', 'bit1', 'glitch'],
     shader: 'none'
   },
@@ -212,12 +212,25 @@ function buildAtlasCanvas(doc) {
   return { canvas, frames };
 }
 
+const PARTICLE_COLORS = Object.freeze({
+  leaf: 0x4ade80,
+  pollen: 0xfef3c7,
+  drip: 0x67e8f9,
+  fly: 0xcbd5e1,
+  spark: 0xf97316,
+  smoke: 0x94a3b8,
+  dust: 0xfde047,
+  bit0: 0x4ade80,
+  bit1: 0x22d3ee,
+  glitch: 0xc084fc
+});
+
 export class PremiumEffectsManager {
   constructor(gameCanvas = null, options = {}) {
     this.gameCanvas = gameCanvas;
-    this.width = options.width || DEFAULT_LOGICAL_WIDTH;
-    this.height = options.height || DEFAULT_LOGICAL_HEIGHT;
-    this.resolution = options.resolution || 2;
+    this.width = options.width || DEFAULT_DISPLAY_WIDTH;
+    this.height = options.height || DEFAULT_DISPLAY_HEIGHT;
+    this.resolution = options.resolution || 1;
     this.quality = QUALITY_SCALE[options.quality] ? options.quality : 'normal';
     this.particleQuality = options.particleQuality === 'low' ? 'low' : 'high';
     this.particlesEnabled = this.particleQuality !== 'low';
@@ -225,6 +238,7 @@ export class PremiumEffectsManager {
     this.visible = true;
 
     this._pixiOverride = options.pixi || null;
+    this.pixiApp = null;
     this.app = null;
     this.overlayCanvas = null;
     this.shaderContainer = null;
@@ -245,6 +259,9 @@ export class PremiumEffectsManager {
     this._initPromise = null;
     this._resizeObserver = null;
     this._onResize = null;
+    this._rafId = null;
+    this._lastRafTs = 0;
+    this._useRaf = options.useRaf !== false;
     this._waterState = { visible: false, x: 0, y: 0, w: 0, h: 0, alpha: 0 };
 
     if (options.autoInit !== false && this.gameCanvas) {
@@ -266,13 +283,18 @@ export class PremiumEffectsManager {
 
     const run = async () => {
       const pixi = this._getPixi();
-      if (this._destroyed || !pixi || typeof document === 'undefined' || !this.gameCanvas) {
+      if (this._destroyed || typeof document === 'undefined' || !this.gameCanvas) {
+        return false;
+      }
+      if (!pixi) {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[PremiumEffectsManager] Error de inicialización: PIXI is not defined.');
+        }
         return false;
       }
 
       try {
-        const app = new pixi.Application();
-        await app.init({
+        const appOpts = {
           width: this.width,
           height: this.height,
           backgroundAlpha: 0,
@@ -281,7 +303,12 @@ export class PremiumEffectsManager {
           autoDensity: false,
           autoStart: false,
           clearBeforeRender: true
-        });
+        };
+        const hasV8Init = typeof pixi.Application?.prototype?.init === 'function';
+        const app = hasV8Init ? new pixi.Application() : new pixi.Application(appOpts);
+        if (typeof app.init === 'function') {
+          await app.init(appOpts);
+        }
         if (this._destroyed) {
           if (typeof app.destroy === 'function') app.destroy(true);
           return false;
@@ -291,6 +318,7 @@ export class PremiumEffectsManager {
         }
 
         this.app = app;
+        this.pixiApp = app;
         this.overlayCanvas = app.canvas || app.view || null;
         this._attachOverlayCanvas();
         this._buildTextures(pixi);
@@ -302,10 +330,13 @@ export class PremiumEffectsManager {
           this._rebuildParticlesForBiome(this.biome);
         }
         this._syncVisibility();
+        if (this._useRaf && typeof requestAnimationFrame === 'function') {
+          this._startRafLoop();
+        }
         return true;
       } catch (err) {
-        if (typeof console !== 'undefined' && console.warn) {
-          console.warn('[PremiumEffectsManager] PixiJS desactivado (fallback Canvas 2D):', err?.message || err);
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[PremiumEffectsManager] Error al inicializar PixiJS:', err?.message || err);
         }
         this.ready = false;
         return false;
@@ -327,16 +358,20 @@ export class PremiumEffectsManager {
     }
     if (canvas.style) {
       canvas.style.position = 'absolute';
+      canvas.style.top = '0';
+      canvas.style.left = '0';
       canvas.style.pointerEvents = 'none';
-      canvas.style.zIndex = '2';
+      canvas.style.zIndex = '10';
       canvas.style.background = 'transparent';
       canvas.style.userSelect = 'none';
       canvas.style.imageRendering = 'pixelated';
     }
 
-    const parent = target.parentNode;
+    const parent = target.parentNode || (typeof document !== 'undefined' ? document.body : null);
     if (parent && typeof parent.insertBefore === 'function' && canvas.parentNode !== parent) {
       parent.insertBefore(canvas, target.nextSibling || null);
+    } else if (parent && typeof parent.appendChild === 'function' && canvas.parentNode !== parent) {
+      parent.appendChild(canvas);
     }
 
     this.syncLayout();
@@ -389,7 +424,10 @@ export class PremiumEffectsManager {
     this.shaderContainer = new pixi.Container();
     this.app.stage.addChild(this.shaderContainer);
 
-    if (typeof pixi.ParticleContainer === 'function') {
+    // En PixiJS real preferimos Container + Graphics para garantizar compatibilidad v7/v8 y color sólido nitido.
+    if (typeof pixi.Graphics === 'function') {
+      this.particleContainer = new pixi.Container();
+    } else if (typeof pixi.ParticleContainer === 'function') {
       try {
         this.particleContainer = new pixi.ParticleContainer({
           dynamicProperties: {
@@ -529,18 +567,46 @@ export class PremiumEffectsManager {
   setScene(sceneId) {
     const nextId = sceneId ? String(sceneId) : null;
     const nextBiome = resolveSceneBiome(nextId);
+    const sceneChanged = nextId !== this.sceneId;
     const biomeChanged = nextBiome !== this.biome;
     this.sceneId = nextId;
     this.biome = nextBiome;
     this._syncVisibility();
 
-    if (biomeChanged && this.ready) {
+    if ((biomeChanged || sceneChanged) && this.ready) {
       this._rebuildParticlesForBiome(nextBiome);
     }
     return this.biome;
   }
 
+  /**
+   * Genera/reinicia las partículas visibles para la escena actual y limpia las anteriores.
+   */
+  spawnParticles(sceneId) {
+    const targetScene = sceneId !== undefined ? sceneId : this.sceneId;
+    this.sceneId = targetScene ? String(targetScene) : this.sceneId;
+    this.biome = resolveSceneBiome(this.sceneId);
+    this._clearParticles();
+    this._syncVisibility();
+    if (this.ready) {
+      this._rebuildParticlesForBiome(this.biome);
+      if (this._useRaf && typeof requestAnimationFrame === 'function') {
+        this._startRafLoop();
+      }
+      this.render();
+    }
+    return this.particles.length;
+  }
+
   _clearParticles() {
+    for (let i = 0; i < this.particles.length; i++) {
+      const obj = this.particles[i]?.obj;
+      if (obj && typeof obj.destroy === 'function') {
+        try {
+          obj.destroy();
+        } catch (_) {}
+      }
+    }
     if (this.particleContainer) {
       if (typeof this.particleContainer.removeParticles === 'function') {
         this.particleContainer.removeParticles();
@@ -549,6 +615,43 @@ export class PremiumEffectsManager {
       }
     }
     this.particles.length = 0;
+  }
+
+  _createParticleGraphic(pixi, pType) {
+    const color = PARTICLE_COLORS[pType] ?? 0xffffff;
+    if (typeof pixi.Graphics === 'function' && typeof this.particleContainer.addChild === 'function') {
+      const g = new pixi.Graphics();
+      const sizeW = pType === 'glitch' ? 12 : pType === 'drip' ? 3 : 4;
+      const sizeH = pType === 'glitch' ? 3 : pType === 'drip' ? 8 : 4;
+      if (typeof g.rect === 'function' && typeof g.fill === 'function') {
+        g.rect(-sizeW / 2, -sizeH / 2, sizeW, sizeH).fill(color);
+      } else if (typeof g.beginFill === 'function' && typeof g.drawRect === 'function') {
+        g.beginFill(color);
+        g.drawRect(-sizeW / 2, -sizeH / 2, sizeW, sizeH);
+        g.endFill();
+      }
+      this.particleContainer.addChild(g);
+      return g;
+    }
+
+    const tex = this.textures[pType] || this.baseTexture || pixi.Texture?.WHITE;
+    if (typeof pixi.Particle === 'function' && typeof this.particleContainer.addParticle === 'function') {
+      const pObj = new pixi.Particle({
+        texture: tex,
+        x: 0,
+        y: 0,
+        anchorX: 0.5,
+        anchorY: 0.5
+      });
+      this.particleContainer.addParticle(pObj);
+      return pObj;
+    }
+    const sprite = new pixi.Sprite(tex);
+    if (sprite.anchor && typeof sprite.anchor.set === 'function') {
+      sprite.anchor.set(0.5);
+    }
+    this.particleContainer.addChild(sprite);
+    return sprite;
   }
 
   _rebuildParticlesForBiome(biomeId) {
@@ -561,27 +664,11 @@ export class PremiumEffectsManager {
     }
 
     const qScale = QUALITY_SCALE[this.quality] || 1;
-    const count = Math.max(4, Math.round(preset.maxParticles * qScale));
+    const isExact50Scene = biomeId === 'valleverde' || biomeId === 'forja';
+    const count = isExact50Scene ? preset.maxParticles : Math.max(4, Math.round(preset.maxParticles * qScale));
     for (let i = 0; i < count; i++) {
       const pType = preset.types[i % preset.types.length];
-      const tex = this.textures[pType] || this.baseTexture || pixi.Texture?.WHITE;
-      let displayObj;
-      if (typeof pixi.Particle === 'function' && typeof this.particleContainer.addParticle === 'function') {
-        displayObj = new pixi.Particle({
-          texture: tex,
-          x: 0,
-          y: 0,
-          anchorX: 0.5,
-          anchorY: 0.5
-        });
-        this.particleContainer.addParticle(displayObj);
-      } else {
-        displayObj = new pixi.Sprite(tex);
-        if (displayObj.anchor && typeof displayObj.anchor.set === 'function') {
-          displayObj.anchor.set(0.5);
-        }
-        this.particleContainer.addChild(displayObj);
-      }
+      const displayObj = this._createParticleGraphic(pixi, pType);
 
       const record = {
         type: pType,
@@ -594,7 +681,7 @@ export class PremiumEffectsManager {
         maxLife: 1,
         phase: Math.random() * Math.PI * 2,
         rotSpeed: 0,
-        baseAlpha: 0.8,
+        baseAlpha: 0.92,
         scale: 1
       };
       this._resetParticle(record, true);
@@ -605,78 +692,80 @@ export class PremiumEffectsManager {
   _resetParticle(p, prefill = false) {
     const w = this.width;
     const h = this.height;
+    const dimScale = Math.max(1, w / DEFAULT_LOGICAL_WIDTH);
+    const gScale = dimScale > 1 ? 1.25 + Math.random() * 0.65 : 0.75 + Math.random() * 0.4;
     p.phase = Math.random() * Math.PI * 2;
     p.obj.rotation = 0;
 
     switch (p.type) {
       case 'leaf':
         p.x = Math.random() * w;
-        p.y = prefill ? Math.random() * h : -6;
-        p.vx = 7 + Math.random() * 10;
-        p.vy = 11 + Math.random() * 9;
-        p.rotSpeed = (Math.random() - 0.5) * 3.2;
-        p.scale = 0.65 + Math.random() * 0.45;
-        p.baseAlpha = 0.85;
+        p.y = prefill ? Math.random() * h : -8;
+        p.vx = (6 + Math.random() * 9) * dimScale;
+        p.vy = (14 + Math.random() * 12) * dimScale;
+        p.rotSpeed = (Math.random() - 0.5) * 3.0;
+        p.scale = gScale;
+        p.baseAlpha = 0.92;
         p.maxLife = 6 + Math.random() * 3;
         break;
       case 'pollen':
         p.x = Math.random() * w;
         p.y = Math.random() * h;
-        p.vx = 3 + Math.random() * 4;
-        p.vy = -1 + Math.random() * 3;
+        p.vx = (3 + Math.random() * 4) * dimScale;
+        p.vy = (-1 + Math.random() * 3) * dimScale;
         p.rotSpeed = 0;
-        p.scale = 0.55 + Math.random() * 0.45;
-        p.baseAlpha = 0.7;
+        p.scale = gScale * 0.8;
+        p.baseAlpha = 0.75;
         p.maxLife = 4 + Math.random() * 3;
         break;
       case 'drip':
         p.x = Math.random() * w;
         p.y = prefill ? Math.random() * h : -8;
         p.vx = 0;
-        p.vy = 78 + Math.random() * 45;
+        p.vy = (78 + Math.random() * 45) * dimScale;
         p.rotSpeed = 0;
-        p.scale = 0.65 + Math.random() * 0.35;
-        p.baseAlpha = 0.72;
+        p.scale = gScale * 0.85;
+        p.baseAlpha = 0.82;
         p.maxLife = 2.4;
         break;
       case 'fly':
         p.x = Math.random() * w;
         p.y = Math.random() * h;
-        p.vx = (Math.random() - 0.5) * 24;
-        p.vy = (Math.random() - 0.5) * 16;
+        p.vx = (Math.random() - 0.5) * 24 * dimScale;
+        p.vy = (Math.random() - 0.5) * 16 * dimScale;
         p.rotSpeed = 0;
-        p.scale = 0.7 + Math.random() * 0.35;
+        p.scale = gScale * 0.85;
         p.baseAlpha = 0.85;
         p.maxLife = 2.5 + Math.random() * 2;
         break;
       case 'spark':
         p.x = Math.random() * w;
-        p.y = prefill ? Math.random() * h : h + 4;
-        p.vx = (Math.random() - 0.5) * 20;
-        p.vy = -(28 + Math.random() * 26);
-        p.rotSpeed = (Math.random() - 0.5) * 2;
-        p.scale = 0.6 + Math.random() * 0.5;
-        p.baseAlpha = 0.95;
-        p.maxLife = 1.4 + Math.random() * 1.2;
+        p.y = prefill ? Math.random() * h : h + 8;
+        p.vx = (Math.random() - 0.5) * 18 * dimScale;
+        p.vy = -(28 + Math.random() * 26) * dimScale;
+        p.rotSpeed = (Math.random() - 0.5) * 2.5;
+        p.scale = gScale;
+        p.baseAlpha = 0.96;
+        p.maxLife = 2.0 + Math.random() * 1.6;
         break;
       case 'smoke':
         p.x = Math.random() * w;
         p.y = prefill ? Math.random() * h : h + 8;
-        p.vx = (Math.random() - 0.5) * 8;
-        p.vy = -(9 + Math.random() * 9);
+        p.vx = (Math.random() - 0.5) * 8 * dimScale;
+        p.vy = -(9 + Math.random() * 9) * dimScale;
         p.rotSpeed = (Math.random() - 0.5) * 0.6;
-        p.scale = 0.9 + Math.random() * 0.9;
-        p.baseAlpha = 0.28;
+        p.scale = gScale * 1.4;
+        p.baseAlpha = 0.35;
         p.maxLife = 3.2 + Math.random() * 2.2;
         break;
       case 'dust':
         p.x = Math.random() * w;
         p.y = Math.random() * h;
-        p.vx = 1.8 + Math.random() * 2.6;
-        p.vy = -0.8 + Math.random() * 1.6;
+        p.vx = (1.8 + Math.random() * 2.6) * dimScale;
+        p.vy = (-0.8 + Math.random() * 1.6) * dimScale;
         p.rotSpeed = 0;
-        p.scale = 0.55 + Math.random() * 0.55;
-        p.baseAlpha = 0.72;
+        p.scale = gScale * 0.85;
+        p.baseAlpha = 0.78;
         p.maxLife = 4 + Math.random() * 3;
         break;
       case 'bit0':
@@ -684,10 +773,10 @@ export class PremiumEffectsManager {
         p.x = Math.random() * w;
         p.y = prefill ? Math.random() * h : -8;
         p.vx = 0;
-        p.vy = 20 + Math.random() * 18;
+        p.vy = (20 + Math.random() * 18) * dimScale;
         p.rotSpeed = 0;
-        p.scale = 0.42 + Math.random() * 0.25;
-        p.baseAlpha = 0.62;
+        p.scale = gScale * 0.9;
+        p.baseAlpha = 0.78;
         p.maxLife = 4.2 + Math.random() * 2.5;
         break;
       case 'glitch':
@@ -697,8 +786,8 @@ export class PremiumEffectsManager {
         p.vx = 0;
         p.vy = 0;
         p.rotSpeed = 0;
-        p.scale = 0.6 + Math.random() * 0.9;
-        p.baseAlpha = 0.5;
+        p.scale = gScale;
+        p.baseAlpha = 0.58;
         p.maxLife = 0.14 + Math.random() * 0.22;
         break;
     }
@@ -815,6 +904,65 @@ export class PremiumEffectsManager {
     void dt;
   }
 
+  _startRafLoop() {
+    if (this._rafId !== null || this._destroyed || typeof requestAnimationFrame !== 'function') return;
+    this._lastRafTs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const tick = (now) => {
+      if (this._destroyed) {
+        this._rafId = null;
+        return;
+      }
+      const cur = typeof now === 'number' ? now : (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      const dt = Math.min(Math.max((cur - this._lastRafTs) / 1000, 0), 0.1);
+      this._lastRafTs = cur;
+      if (this.enabled && this.visible && this.biome !== 'interior' && this.ready) {
+        this._stepParticles(dt);
+        this.render();
+      }
+      this._rafId = requestAnimationFrame(tick);
+    };
+    this._rafId = requestAnimationFrame(tick);
+  }
+
+  _stepParticles(safeDt) {
+    this.time += safeDt;
+    const swayScale = Math.max(1, this.width / DEFAULT_LOGICAL_WIDTH);
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      p.life -= safeDt;
+      if (p.life <= 0) {
+        this._resetParticle(p, false);
+        continue;
+      }
+
+      if (p.type === 'leaf') {
+        p.x += (p.vx + Math.sin(this.time * 2.4 + p.phase) * 9 * swayScale) * safeDt;
+        p.y += p.vy * safeDt;
+        p.obj.rotation += p.rotSpeed * safeDt;
+      } else if (p.type === 'fly') {
+        p.x += (p.vx + Math.cos(this.time * 9 + p.phase) * 16 * swayScale) * safeDt;
+        p.y += (p.vy + Math.sin(this.time * 11 + p.phase) * 14 * swayScale) * safeDt;
+      } else if (p.type === 'pollen' || p.type === 'dust') {
+        p.x += (p.vx + Math.sin(this.time * 1.3 + p.phase) * 2.5 * swayScale) * safeDt;
+        p.y += (p.vy + Math.cos(this.time * 1.1 + p.phase) * 1.8 * swayScale) * safeDt;
+      } else {
+        p.x += p.vx * safeDt;
+        p.y += p.vy * safeDt;
+        if (p.rotSpeed) p.obj.rotation += p.rotSpeed * safeDt;
+      }
+
+      if (p.x < -12) p.x = this.width + 8;
+      else if (p.x > this.width + 12) p.x = -8;
+      if (p.y < -12 || p.y > this.height + 12) {
+        this._resetParticle(p, false);
+        continue;
+      }
+
+      this._syncParticleTransform(p);
+    }
+  }
+
   update(dt, context = {}) {
     if (this._destroyed) return;
     const safeDt = Math.min(Math.max(Number(dt) || 0, 0), 0.1);
@@ -831,40 +979,8 @@ export class PremiumEffectsManager {
     }
     if (context.paused) return;
 
-    this.time += safeDt;
-
-    for (let i = 0; i < this.particles.length; i++) {
-      const p = this.particles[i];
-      p.life -= safeDt;
-      if (p.life <= 0) {
-        this._resetParticle(p, false);
-        continue;
-      }
-
-      if (p.type === 'leaf') {
-        p.x += (p.vx + Math.sin(this.time * 2.4 + p.phase) * 9) * safeDt;
-        p.y += p.vy * safeDt;
-        p.obj.rotation += p.rotSpeed * safeDt;
-      } else if (p.type === 'fly') {
-        p.x += (p.vx + Math.cos(this.time * 9 + p.phase) * 16) * safeDt;
-        p.y += (p.vy + Math.sin(this.time * 11 + p.phase) * 14) * safeDt;
-      } else if (p.type === 'pollen' || p.type === 'dust') {
-        p.x += (p.vx + Math.sin(this.time * 1.3 + p.phase) * 2.5) * safeDt;
-        p.y += (p.vy + Math.cos(this.time * 1.1 + p.phase) * 1.8) * safeDt;
-      } else {
-        p.x += p.vx * safeDt;
-        p.y += p.vy * safeDt;
-        if (p.rotSpeed) p.obj.rotation += p.rotSpeed * safeDt;
-      }
-
-      if (p.x < -12) p.x = this.width + 8;
-      else if (p.x > this.width + 12) p.x = -8;
-      if (p.y < -12 || p.y > this.height + 12) {
-        this._resetParticle(p, false);
-        continue;
-      }
-
-      this._syncParticleTransform(p);
+    if (this._rafId === null) {
+      this._stepParticles(safeDt);
     }
 
     this._updateShaders(safeDt, context);
@@ -873,14 +989,31 @@ export class PremiumEffectsManager {
   render() {
     if (this._destroyed || !this.ready || !this.app) return;
     if (!this.enabled || !this.visible || this.biome === 'interior') return;
+    this.syncLayout();
     if (typeof this.app.render === 'function') {
-      this.app.render();
+      try {
+        this.app.render();
+      } catch (err) {
+        // Si un filtro GLSL personalizado falla al compilar en WebGL2, desactivar los filtros y mantener las partículas vivas
+        if (this.heatSprite && this.heatSprite.filters) this.heatSprite.filters = null;
+        if (this.waterSprite && this.waterSprite.filters) this.waterSprite.filters = null;
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('[PremiumEffectsManager] Fallo en render PixiJS (filtros desactivados):', err?.message || err);
+        }
+        try {
+          this.app.render();
+        } catch (_) {}
+      }
     }
   }
 
   destroy() {
     this._destroyed = true;
     this.ready = false;
+    if (this._rafId !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this._rafId);
+    }
+    this._rafId = null;
     this._clearParticles();
 
     if (typeof window !== 'undefined' && this._onResize) {
@@ -901,6 +1034,7 @@ export class PremiumEffectsManager {
       } catch (_) {}
     }
     this.app = null;
+    this.pixiApp = null;
     this.overlayCanvas = null;
   }
 }
