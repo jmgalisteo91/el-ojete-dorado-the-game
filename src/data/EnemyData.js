@@ -550,6 +550,13 @@ export const BOSS_SPAWNS = [
   { bossType: 'FinalBossAlex', x: 11.5 * 16, y: 6.5 * 16, sceneId: 'ai_citadel' }
 ];
 
+export const BOSS_RUSH_QUEUE = [
+  'GarbageCollector',
+  'StackOverflow',
+  'PrototypeMicrowave',
+  'FinalBossAlex'
+];
+
 export const ENEMY_SPAWNS = {
   firstStage: FIRST_STAGE_ENEMY_SPAWNS,
   dungeonRooms: DUNGEON_ROOM_ENEMY_SPAWNS,

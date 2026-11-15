@@ -245,6 +245,25 @@ export class CombatManager {
 
   _handleBossDefeat(enemy) {
     const g = this.game;
+    if (
+      enemy.id === 'boss_inakito' ||
+      enemy.id === 'boss_kernel' ||
+      enemy.id === 'boss_alex_update' ||
+      enemy.id === 'boss_technical_debt'
+    ) {
+      g.expansionBossDefeated = true;
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('el_ojete_expansion_boss_killed', 'true');
+        }
+      } catch (_) {}
+    }
+    if (g.bossRushActive) {
+      if (typeof g._onBossRushBossDefeated === 'function') {
+        g._onBossRushBossDefeated(enemy);
+      }
+      return;
+    }
     if (enemy.id === 'boss_garbage_collector') {
       if (g.questLog) {
         g.questLog.completeQuest('quest_boss_garbage', '¡Garbage Collector purgado! Dash Asíncrono desbloqueado.');

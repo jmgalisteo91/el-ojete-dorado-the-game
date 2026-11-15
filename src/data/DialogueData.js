@@ -435,6 +435,12 @@ export const GUARD_GATEKEEPER_DIALOGUES = {
   }
 };
 
+export const TESTER_QA_DIALOGUES = [
+  '¿Sabes cuántas horas he pasado probando las colisiones de esta fuente? ¡Muchas! Y todavía puedo atravesarla si pulso A y D a la vez.',
+  'Oye, el jefe final de la Forja... ¿se supone que debía moverse? Porque a mí me pareció una estatua con patas.',
+  'Si ves al Carcelero, dile que sus tortazos quitan demasiado HP. Le he mandado un ticket a Jira.'
+];
+
 export const VILLAGE_NPC_PROFILES = {
   elder: {
     name: 'Sabio Aurelio · Cronista',
@@ -735,6 +741,26 @@ export const VILLAGE_NPC_PROFILES = {
       'Las anomalías de Alex se concentran al oeste...',
       'No cederemos la frontera de Valleverde.',
       'Solo los más veteranos pueden encarar el Páramo.'
+    ]
+  },
+  tester_qa: {
+    name: 'Tester QA',
+    jobTitle: 'Crítico Meta-Narrativo · I ❤️ Bugs',
+    homeSceneId: 'overworld',
+    sceneId: 'overworld',
+    x: 18 * 16,
+    y: 12 * 16,
+    speed: 0,
+    sprite: CHARACTER_TYPES.VILLAGER_RED,
+    behavior: 'static',
+    initialDirection: 'down',
+    shirtColor: '#facc15',
+    shirtText: 'I ❤️ Bugs',
+    dialogues: TESTER_QA_DIALOGUES,
+    ambientPhrases: [
+      'Ticket #404: la fuente sigue teniendo píxeles sospechosos...',
+      'Camiseta oficial: I ❤️ Bugs.',
+      '¿Alguien ha probado pulsar A y D a la vez?'
     ]
   }
 };

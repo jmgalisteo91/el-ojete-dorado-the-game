@@ -16,6 +16,13 @@ const EXPANSION_MENU_INFO = {
   message: 'El Update Universal está en camino. Mister Alex IA ha reescrito el futuro. ¿Estás listo para el Valleverde 2.0?'
 };
 
+export const FAKE_CHANGELOG_NOTES = [
+  'v2.0.1: Se ha arreglado el bug por el que las ovejas mataban al jugador. (Mentira, no lo hemos arreglado, ahora lo hace a propósito).',
+  'v2.0.2: El Carcelero ha recibido formación de Recursos Humanos para no dar tortazos. (Mentira, le hemos dado un bate).',
+  'v2.0.3: Se ha optimizado el código. Ahora el juego usa un 10% menos de memoria y un 100% más de cinismo.',
+  'v2.0.4: Los enemigos ya no se quedan atascados en las paredes. Ahora se teletransportan detrás de ti para darte un susto.'
+];
+
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art
  * para "El Ojete Dorado" (Aventura RPG estilo Zelda).
@@ -42,7 +49,12 @@ export class MainMenuAndScenes {
     this.previousState = 'title';
     this.previousStateBeforeOptions = 'title';
     this.previousStateBeforeControls = 'title';
+    this.previousStateBeforeChangelog = 'options';
     this.previousStateBeforeLeaderboard = 'title';
+    this.changelogScroll = 0;
+    this.changelogMaxScroll = 48;
+    this.changelogNotes = FAKE_CHANGELOG_NOTES;
+    this.isDevMode = false;
     // (FIX B6) Mientras la despedida está en pantalla, el modal absorbe el input
     this.exitFarewellActive = false;
     this._exitFallbackApplied = false;
@@ -294,6 +306,26 @@ export class MainMenuAndScenes {
   closeControlsScreen() {
     this.state = this.previousStateBeforeControls || 'title';
     this.music.playMenuMove();
+  }
+
+  openChangelogScreen(returnState = 'options') {
+    this.previousStateBeforeChangelog = returnState || 'options';
+    this.state = 'changelog';
+    this.changelogScroll = 0;
+    this.selectedIndex = 0;
+    this.music.playMenuSelect();
+  }
+
+  closeChangelogScreen() {
+    this.state = this.previousStateBeforeChangelog || 'options';
+    this.music.playMenuMove();
+  }
+
+  scrollChangelog(delta) {
+    this.changelogScroll = Math.max(
+      0,
+      Math.min(this.changelogMaxScroll, (this.changelogScroll || 0) + delta)
+    );
   }
 
   openLeaderboardScreen(returnState = 'title') {
@@ -682,6 +714,46 @@ export class MainMenuAndScenes {
     }
   }
 
+  _isBossRushUnlocked() {
+    const g = this.callbacks?.game;
+    if (g) {
+      if (g.expansionBossDefeated) return true;
+      if (
+        Array.isArray(g.enemies) &&
+        g.enemies.some(
+          (e) =>
+            e &&
+            e.dead &&
+            (e.id === 'boss_inakito' ||
+              e.id === 'boss_kernel' ||
+              e.id === 'boss_alex_update' ||
+              e.id === 'boss_technical_debt')
+        )
+      ) {
+        return true;
+      }
+      if (g.inventory?.hasItem?.('key_vertedero') || g.inventory?.hasItem?.('key_nucleo')) {
+        return true;
+      }
+      if (g.tilemap?.alexCoreUnlocked) return true;
+    }
+    try {
+      if (typeof localStorage !== 'undefined') {
+        if (localStorage.getItem('el_ojete_expansion_boss_killed') === 'true') return true;
+        const raw =
+          localStorage.getItem('el_ojete_expansion_save_slot_v2') ||
+          localStorage.getItem('el_ojete_expansion_v2');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && (parsed.expansionBossDefeated || parsed.alexCoreUnlocked || parsed.endingChosen)) {
+            return true;
+          }
+        }
+      }
+    } catch {}
+    return false;
+  }
+
   _getCurrentMenuItems() {
     if (this.state === 'title') {
       const saveInfo = this.callbacks.getSaveSummary ? this.callbacks.getSaveSummary() : null;
@@ -767,6 +839,51 @@ export class MainMenuAndScenes {
           }
         });
       }
+      if (this.isDevMode || this.callbacks?.game?.isDevMode) {
+        items.push({
+          label: 'Modo Dios (Debug)',
+          devMode: true,
+          action: () => {
+            this.music.playMenuSelect();
+            if (typeof this.music.stopTitleMusic === 'function') {
+              this.music.stopTitleMusic(350);
+            }
+            if (typeof this.callbacks.onStartGodMode === 'function') {
+              this.callbacks.onStartGodMode();
+            } else if (this.callbacks.game) {
+              const g = this.callbacks.game;
+              g.debugMode = true;
+              if (typeof g._startGodModeDebug === 'function') {
+                g._startGodModeDebug();
+              } else {
+                if (typeof g._loadScene === 'function') {
+                  g._loadScene('sword_temple', { x: 11 * 16, y: 14 * 16 }, { immediate: true });
+                } else if (g.tilemap && typeof g.tilemap.loadScene === 'function') {
+                  g.tilemap.loadScene('sword_temple');
+                }
+                this.state = 'none';
+                this.fadeAlpha = 0;
+              }
+            }
+          }
+        });
+      }
+      if (this._isBossRushUnlocked()) {
+        items.push({
+          label: 'Modo Arcade (Boss Rush)',
+          action: () => {
+            this.music.playMenuSelect();
+            if (typeof this.music.stopTitleMusic === 'function') {
+              this.music.stopTitleMusic(350);
+            }
+            if (typeof this.callbacks.onStartBossRush === 'function') {
+              this.callbacks.onStartBossRush();
+            } else if (typeof this.callbacks.game?.startBossRush === 'function') {
+              this.callbacks.game.startBossRush();
+            }
+          }
+        });
+      }
       items.push(
         {
           label: '🏆 Salón de la Fama',
@@ -808,7 +925,7 @@ export class MainMenuAndScenes {
     }
 
     if (this.state === 'pause') {
-      return [
+      const pauseItems = [
         {
           label: 'Continuar Aventura',
           action: () => this.closePauseMenu()
@@ -834,18 +951,36 @@ export class MainMenuAndScenes {
           action: () => {
             this.openOptionsScreen('pause');
           }
-        },
-        {
-          label: 'Guardar y Salir al Menú Principal',
-          action: () => {
-            if (this.callbacks.onSaveGame) {
-              this.callbacks.onSaveGame();
-            }
-            this.music.playMenuSelect();
-            this.openTitleScreen();
-          }
         }
       ];
+      const inExpansion = Boolean(
+        this.callbacks?.game &&
+          (this.callbacks.game.isExpansionActive || this.callbacks.game.isExpansionMode)
+      );
+      if (inExpansion && this._isBossRushUnlocked()) {
+        pauseItems.push({
+          label: 'Modo Arcade (Boss Rush)',
+          action: () => {
+            this.music.playMenuSelect();
+            if (typeof this.callbacks.onStartBossRush === 'function') {
+              this.callbacks.onStartBossRush();
+            } else if (typeof this.callbacks.game?.startBossRush === 'function') {
+              this.callbacks.game.startBossRush();
+            }
+          }
+        });
+      }
+      pauseItems.push({
+        label: 'Guardar y Salir al Menú Principal',
+        action: () => {
+          if (this.callbacks.onSaveGame) {
+            this.callbacks.onSaveGame();
+          }
+          this.music.playMenuSelect();
+          this.openTitleScreen();
+        }
+      });
+      return pauseItems;
     }
 
     if (this.state === 'pause_cloud') {
@@ -1047,6 +1182,12 @@ export class MainMenuAndScenes {
           action: () => {
             this.music.playMenuSelect();
             this.openControlsScreen(this.state);
+          }
+        },
+        {
+          label: 'Notas del Parche v2.0',
+          action: () => {
+            this.openChangelogScreen(this.state);
           }
         },
         {
@@ -1287,6 +1428,37 @@ export class MainMenuAndScenes {
       return;
     }
 
+    // Ventana de Notas del Parche v2.0 (Fake Changelog scrollable)
+    if (this.state === 'changelog') {
+      const wheel = typeof input.consumeWheelDelta === 'function' ? input.consumeWheelDelta() : 0;
+      if (wheel !== 0) {
+        this.scrollChangelog(wheel * 12);
+      }
+      const dir = input.consumeMenuDirection();
+      if (dir === 'down') {
+        this.scrollChangelog(12);
+        this.music.playMenuMove();
+      } else if (dir === 'up') {
+        this.scrollChangelog(-12);
+        this.music.playMenuMove();
+      } else if (typeof input.isKeyDown === 'function') {
+        if (input.isKeyDown('ArrowDown') || input.isKeyDown('KeyS')) {
+          this.scrollChangelog(40 * dt);
+        } else if (input.isKeyDown('ArrowUp') || input.isKeyDown('KeyW')) {
+          this.scrollChangelog(-40 * dt);
+        }
+      }
+
+      if (
+        input.consumeKey('Escape') ||
+        input.consumeInteraction() ||
+        input.consumePointerClick()
+      ) {
+        this.closeChangelogScreen();
+      }
+      return;
+    }
+
     // Pantalla de Salón de la Fama / Leaderboard de Speedrun
     if (this.state === 'leaderboard') {
       const dir = input.consumeMenuDirection();
@@ -1506,7 +1678,7 @@ export class MainMenuAndScenes {
 
     if (isPauseModal) {
       const boxW = 208;
-      const gap = count > 6 ? 2 : 3;
+      const gap = count >= 10 ? 1 : (count > 6 ? 2 : 3);
       const itemH = count > 6 ? Math.max(10, Math.floor((120 - (count - 1) * gap) / count)) : 17;
       const totalH = count * itemH + (count - 1) * gap;
       const winH = 150;
@@ -1528,9 +1700,9 @@ export class MainMenuAndScenes {
     }
 
     const boxW = isTitle ? 168 : isGameOver ? 204 : 184;
-    const itemH = isTitle ? 9 : isGameOver ? 15 : (count > 5 ? 13 : 15);
+    const itemH = isTitle ? (count >= 9 ? 8 : 9) : isGameOver ? 15 : (count > 5 ? 13 : 15);
     const startX = Math.round((this.viewportWidth - boxW) / 2);
-    let startY = isTitle ? (count > 8 ? 72 : 80) : isGameOver ? (count > 2 ? 96 : 108) : 56;
+    let startY = isTitle ? (count > 8 ? 70 : 80) : isGameOver ? (count > 2 ? 96 : 108) : 56;
 
     if (isTitle) {
       // (EXPANSIÓN) La fila del teaser necesita altura extra para el subtexto.
@@ -1538,7 +1710,7 @@ export class MainMenuAndScenes {
       let y = startY;
       for (let i = 0; i < count; i++) {
         const hasSub = Boolean(items && items[i] && items[i].subtext);
-        const h = hasSub ? 20 : 9;
+        const h = hasSub ? (count >= 9 ? 18 : 20) : itemH;
         boxes.push({ x: startX, y, w: boxW, h });
         y += h + (hasSub ? 2 : 0);
       }
@@ -1618,6 +1790,17 @@ export class MainMenuAndScenes {
         ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
       }
       this._renderControlsScreen(ctx);
+      return;
+    }
+
+    if (this.state === 'changelog') {
+      if (this.previousStateBeforeOptions === 'title') {
+        this._renderTitleBackdropPixelArt(ctx);
+      } else {
+        ctx.fillStyle = '#080b14';
+        ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+      }
+      this._renderChangelogScreen(ctx);
       return;
     }
 
@@ -2904,6 +3087,108 @@ export class MainMenuAndScenes {
     ctx.font = 'bold 6px monospace';
     ctx.fillStyle = '#93c5fd';
     ctx.fillText('[Pulsa ENTER, ESPACIO o Clic para continuar]', cx, cardY + cardH - 15);
+    ctx.restore();
+  }
+
+  /**
+   * Ventana Glassmorphism con Notas del Parche v2.0 (Fake Changelog escrito por Alex IA)
+   * y soporte de scroll con flechas y rueda del ratón.
+   */
+  _renderChangelogScreen(ctx) {
+    const W = this.viewportWidth;
+    const H = this.viewportHeight;
+    const cardW = 286;
+    const cardH = 152;
+    const cardX = Math.round((W - cardW) / 2);
+    const cardY = Math.round((H - cardH) / 2);
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(4, 7, 15, 0.78)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Panel Glassmorphism
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.84)';
+    drawRoundedRect(ctx, cardX, cardY, cardW, cardH, 8, true, false);
+    if (typeof ctx.createLinearGradient === 'function') {
+      const sheen = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
+      sheen.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+      sheen.addColorStop(0.4, 'rgba(56, 189, 248, 0.05)');
+      sheen.addColorStop(1, 'rgba(15, 23, 42, 0.12)');
+      ctx.fillStyle = sheen;
+      drawRoundedRect(ctx, cardX + 1, cardY + 1, cardW - 2, cardH - 2, 7, true, false);
+    }
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.34)';
+    ctx.lineWidth = 1;
+    drawRoundedRect(ctx, cardX + 0.5, cardY + 0.5, cardW - 1, cardH - 1, 8, false, true);
+    ctx.strokeStyle = 'rgba(255, 215, 0, 0.5)';
+    drawRoundedRect(ctx, cardX + 2.5, cardY + 2.5, cardW - 5, cardH - 5, 6, false, true);
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold 7.5px monospace';
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText('📜 NOTAS DEL PARCHE v2.0 · POR ALEX IA', cardX + 10, cardY + 8);
+
+    const viewX = cardX + 10;
+    const viewY = cardY + 23;
+    const viewW = cardW - 26;
+    const viewH = cardH - 42;
+
+    ctx.fillStyle = 'rgba(8, 12, 24, 0.65)';
+    drawRoundedRect(ctx, viewX - 2, viewY - 2, viewW + 6, viewH + 4, 4, true, false);
+
+    ctx.font = '5.5px monospace';
+    const blocks = [];
+    for (const note of this.changelogNotes || FAKE_CHANGELOG_NOTES) {
+      const wrapped = this._wrapText(ctx, `• ${note}`, viewW - 8);
+      blocks.push(wrapped);
+    }
+
+    let contentH = 6;
+    for (const lines of blocks) {
+      contentH += lines.length * 10 + 14;
+    }
+    this.changelogMaxScroll = Math.max(36, contentH - viewH + 16);
+    const scrollY = Math.max(0, Math.min(this.changelogMaxScroll, this.changelogScroll || 0));
+
+    ctx.save();
+    if (typeof ctx.beginPath === 'function' && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
+      ctx.beginPath();
+      ctx.rect(viewX - 1, viewY, viewW + 2, viewH);
+      ctx.clip();
+    }
+
+    let cursorY = viewY + 4 - scrollY;
+    for (const lines of blocks) {
+      const boxH = lines.length * 10 + 6;
+      ctx.fillStyle = 'rgba(30, 41, 59, 0.55)';
+      drawRoundedRect(ctx, viewX + 1, cursorY - 2, viewW - 4, boxH, 3, true, false);
+      lines.forEach((line, idx) => {
+        ctx.fillStyle = idx === 0 ? '#38bdf8' : '#e2e8f0';
+        ctx.fillText(line, viewX + 5, cursorY + 1);
+        cursorY += 10;
+      });
+      cursorY += 14;
+    }
+    ctx.restore();
+
+    // Barra de scroll lateral
+    const trackX = cardX + cardW - 11;
+    const trackY = viewY;
+    const trackH = viewH;
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.25)';
+    ctx.fillRect(trackX, trackY, 3, trackH);
+    const thumbH = Math.max(16, Math.round(trackH * (viewH / Math.max(viewH, contentH))));
+    const thumbY = this.changelogMaxScroll > 0
+      ? trackY + Math.round((scrollY / this.changelogMaxScroll) * (trackH - thumbH))
+      : trackY;
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(trackX, thumbY, 3, thumbH);
+
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 5.5px monospace';
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillText('[↑/↓ o Rueda] Desplazar · [Esc / Enter / Clic] Volver', Math.round(W / 2), cardY + cardH - 13);
     ctx.restore();
   }
 

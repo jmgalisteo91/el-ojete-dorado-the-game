@@ -5,12 +5,28 @@
  * - Inventario: 'I' o 'Tab'
  * - Pausa / Atrás: 'Escape'
  */
+export const KONAMI_SEQUENCE = [
+  'ArrowUp',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowLeft',
+  'ArrowRight',
+  'KeyB',
+  'KeyA'
+];
+
 export class InputHandler {
-  constructor(onFirstInteraction = null, canvas = null) {
+  constructor(onFirstInteraction = null, canvas = null, game = null) {
     this.keysDown = new Set();
     this.keysJustPressed = new Set();
     this.onFirstInteraction = onFirstInteraction;
     this.canvas = canvas;
+    this.game = game;
+    this.konamiBuffer = [];
+    this.wheelDeltaY = 0;
     this._interactedOnce = false;
 
     this.pointerX = -1;
@@ -48,6 +64,7 @@ export class InputHandler {
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerDown = this._onPointerDown.bind(this);
     this._onPointerUp = this._onPointerUp.bind(this);
+    this._onWheel = this._onWheel.bind(this);
     this._onVisibilityChange = this._onVisibilityChange.bind(this);
 
     if (typeof window !== 'undefined') {
@@ -58,6 +75,9 @@ export class InputHandler {
       window.addEventListener('pointerdown', this._onPointerDown);
       window.addEventListener('pointerup', this._onPointerUp);
       window.addEventListener('pointercancel', this._onPointerUp);
+      if (typeof window.addEventListener === 'function') {
+        window.addEventListener('wheel', this._onWheel, { passive: true });
+      }
       window.addEventListener('pointerleave', () => {
         this.pointerX = -1;
         this.pointerY = -1;
@@ -307,9 +327,11 @@ export class InputHandler {
     const code = event?.code || '';
     const key = event?.key || '';
 
+    this._handleKonamiInput(code, key);
+
     // Lista de códigos de teclas de juego
     const gameCodes = [
-      'KeyW', 'KeyA', 'KeyS', 'KeyD',
+      'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyB',
       'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
       'KeyE', 'Space', 'Enter', 'KeyF', 'KeyJ', 'KeyK', 'KeyI', 'KeyC', 'KeyX', 'Tab', 'Escape', 'KeyM',
       'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyL',
@@ -329,7 +351,7 @@ export class InputHandler {
       code === 'PageUp' ||
       code === 'PageDown';
 
-    if (gameCodes.includes(code) || isScrollKey) {
+    if ((gameCodes.includes(code) || isScrollKey) && typeof event?.preventDefault === 'function') {
       event.preventDefault();
     }
 
@@ -337,6 +359,68 @@ export class InputHandler {
       this.keysJustPressed.add(code);
     }
     this.keysDown.add(code);
+  }
+
+  _onWheel(event) {
+    if (!event || this._isDOMModalBlocking()) return;
+    const dy = Number(event.deltaY) || 0;
+    if (dy !== 0) {
+      this.wheelDeltaY += dy > 0 ? 1 : -1;
+    }
+  }
+
+  consumeWheelDelta() {
+    const d = this.wheelDeltaY;
+    this.wheelDeltaY = 0;
+    return d;
+  }
+
+  _handleKonamiInput(code, key) {
+    const inTitle =
+      !this.game ||
+      !this.game.menuSystem ||
+      this.game.menuSystem.state === 'title';
+    if (!inTitle) {
+      this.konamiBuffer.length = 0;
+      return;
+    }
+
+    let normalized = code || '';
+    if (!normalized && key) {
+      if (key === 'b' || key === 'B') normalized = 'KeyB';
+      else if (key === 'a' || key === 'A') normalized = 'KeyA';
+      else normalized = key;
+    }
+    if (!normalized) return;
+
+    this.konamiBuffer.push(normalized);
+    const idx = this.konamiBuffer.length - 1;
+
+    if (this.konamiBuffer[idx] !== KONAMI_SEQUENCE[idx]) {
+      this.konamiBuffer.length = 0;
+      return;
+    }
+
+    if (this.konamiBuffer.length === KONAMI_SEQUENCE.length) {
+      this.konamiBuffer.length = 0;
+      if (this.game) {
+        this.game.isDevMode = true;
+        if (this.game.menuSystem) {
+          this.game.menuSystem.isDevMode = true;
+          this.game.menuSystem.showNotice(
+            'MODO DESARROLLADOR ACTIVADO. Alex IA no está contento.',
+            4.5
+          );
+        }
+        if (this.game.music) {
+          if (typeof this.game.music.playSFX === 'function') {
+            this.game.music.playSFX('error_buzz');
+          } else if (typeof this.game.music.playError === 'function') {
+            this.game.music.playError();
+          }
+        }
+      }
+    }
   }
 
   _onKeyUp(event) {

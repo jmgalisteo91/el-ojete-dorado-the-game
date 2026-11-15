@@ -27,7 +27,10 @@ import { AlexUpdateBoss } from '../../src/expansion/entities/AlexUpdateBoss.js';
 import { TechnicalDebtBoss } from '../../src/expansion/entities/TechnicalDebtBoss.js';
 import { LeaderboardView } from '../../src/ui/LeaderboardView.js';
 import { AudioManager, BGM_TRACKS } from '../../src/audio/AudioManager.js?v=8';
-import { MainMenuAndScenes } from '../../src/ui/MainMenuAndScenes.js';
+import { MainMenuAndScenes, FAKE_CHANGELOG_NOTES } from '../../src/ui/MainMenuAndScenes.js';
+import { InputHandler, KONAMI_SEQUENCE } from '../../src/core/InputHandler.js';
+import { TESTER_QA_DIALOGUES, VILLAGE_NPC_PROFILES } from '../../src/data/DialogueData.js';
+import { BOSS_RUSH_QUEUE } from '../../src/data/EnemyData.js';
 import { SCENE_AI_ALEX_WARNING, SCENE_ENDING_VICTORY } from '../../src/assets/VillainDialogues.js';
 import { Inventory } from '../../src/ui/Inventory.js';
 import { QuestLog } from '../../src/core/QuestLog.js';
@@ -563,7 +566,7 @@ export async function run(test, assert) {
     pauseItems[3].action();
     assert.equal(menu.state, 'options');
     const soundItems = menu._getCurrentMenuItems();
-    assert.equal(soundItems.length, 9, 'El submenú de Ajustes y Sonido debe tener 9 opciones (audio + accesibilidad)');
+    assert.equal(soundItems.length, 10, 'El submenú de Ajustes y Sonido debe tener 10 opciones (audio + accesibilidad + Notas del Parche v2.0)');
     assert.ok(soundItems.some((item) => item.label.includes('Efectos Visuales')), 'Debe existir el toggle de Efectos Visuales');
     assert.ok(soundItems.some((item) => item.label.includes('Screen Shake')), 'Debe existir el toggle de Screen Shake');
     assert.ok(soundItems.some((item) => item.label.includes('Efectos de Partículas')), 'Debe existir el toggle de Partículas');
@@ -3090,6 +3093,213 @@ export async function run(test, assert) {
     } finally {
       globalThis.document = prevDoc;
       globalThis.window = prevWin;
+    }
+  });
+
+  test('Easter Eggs: Fake Changelog (Notas del Parche v2.0) scrollable y Código Konami (Modo Desarrollador + Modo Dios)', () => {
+    const playedSfx = [];
+    const fakeMusic = {
+      setMode() {},
+      playMenuSelect() {},
+      playMenuMove() {},
+      playCaughtSkipSound() {},
+      stopTitleMusic() {},
+      playSFX(name) { playedSfx.push(name); return true; }
+    };
+
+    const tm = new Tilemap(null, 16);
+    const fakeGame = {
+      isDevMode: false,
+      debugMode: false,
+      music: fakeMusic,
+      tilemap: tm,
+      player: { x: 0, y: 0, stopMovement() {} },
+      camera: { resetCinematic() {}, snapTo() {} },
+      fadeAlpha: 0,
+      sceneFade: null,
+      _resetWorldToInitialState() { tm.loadScene('overworld'); },
+      _loadScene(sceneId, pos) {
+        tm.loadScene(sceneId);
+        if (pos) {
+          this.player.x = pos.x;
+          this.player.y = pos.y;
+        }
+      },
+      _startGodModeDebug: RPGGame.prototype._startGodModeDebug
+    };
+
+    const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {
+      game: fakeGame,
+      onStartGodMode: () => fakeGame._startGodModeDebug()
+    });
+    fakeGame.menuSystem = menu;
+
+    // 1. Fake Changelog en Opciones
+    menu.openOptionsScreen('title');
+    const optItems = menu._getCurrentMenuItems();
+    const patchBtn = optItems.find((it) => it.label === 'Notas del Parche v2.0');
+    assert.ok(patchBtn, 'El menú de Opciones debe incluir el botón "Notas del Parche v2.0"');
+    patchBtn.action();
+    assert.equal(menu.state, 'changelog');
+    assert.equal(FAKE_CHANGELOG_NOTES.length, 4);
+    assert.ok(FAKE_CHANGELOG_NOTES[0].startsWith('v2.0.1: Se ha arreglado el bug por el que las ovejas mataban al jugador.'));
+    assert.ok(FAKE_CHANGELOG_NOTES[1].startsWith('v2.0.2: El Carcelero ha recibido formación de Recursos Humanos'));
+    assert.ok(FAKE_CHANGELOG_NOTES[2].startsWith('v2.0.3: Se ha optimizado el código.'));
+    assert.ok(FAKE_CHANGELOG_NOTES[3].startsWith('v2.0.4: Los enemigos ya no se quedan atascados en las paredes.'));
+
+    // Renderizar y hacer scroll con flechas y rueda del ratón
+    const drawnTexts = [];
+    const mockCtx = {
+      save() {},
+      restore() {},
+      fillRect() {},
+      strokeRect() {},
+      beginPath() {},
+      closePath() {},
+      moveTo() {},
+      lineTo() {},
+      arc() {},
+      arcTo() {},
+      rect() {},
+      clip() {},
+      fill() {},
+      stroke() {},
+      createLinearGradient() { return { addColorStop() {} }; },
+      createRadialGradient() { return { addColorStop() {} }; },
+      measureText(txt) { return { width: String(txt).length * 3.4 }; },
+      fillText(txt) { drawnTexts.push(String(txt)); }
+    };
+    menu.render(mockCtx);
+    assert.ok(drawnTexts.some((t) => t.includes('NOTAS DEL PARCHE v2.0')), 'Debe renderizar la cabecera de Notas del Parche');
+    assert.ok(drawnTexts.some((t) => t.includes('v2.0.1:')), 'Debe renderizar el contenido de las notas de Alex IA');
+
+    const input = new InputHandler(null, null, fakeGame);
+    input._onKeyDown({ code: 'ArrowDown', key: 'ArrowDown', preventDefault() {} });
+    menu.update(0.016, input);
+    assert.ok(menu.changelogScroll > 0, 'Pulsar flecha abajo debe desplazar las Notas del Parche');
+
+    const prevScroll = menu.changelogScroll;
+    input._onWheel({ deltaY: 100 });
+    menu.update(0.016, input);
+    assert.ok(menu.changelogScroll >= prevScroll, 'La rueda del ratón debe desplazar las Notas del Parche');
+
+    input._onKeyDown({ code: 'Escape', key: 'Escape', preventDefault() {} });
+    menu.update(0.016, input);
+    assert.equal(menu.state, 'options', 'Escape debe cerrar las Notas del Parche y volver a Opciones');
+
+    // 2. Código Konami en Menú de Título
+    menu.openTitleScreen();
+    assert.equal(
+      menu._getCurrentMenuItems().some((it) => it.label === 'Modo Dios (Debug)'),
+      false,
+      'Modo Dios (Debug) debe estar oculto antes del Código Konami'
+    );
+
+    // Fallar la secuencia reinicia el buffer
+    input._onKeyDown({ code: 'ArrowUp', preventDefault() {} });
+    assert.equal(input.konamiBuffer.length, 1);
+    input._onKeyDown({ code: 'KeyX', preventDefault() {} });
+    assert.equal(input.konamiBuffer.length, 0, 'Equivocarse en el Código Konami debe reiniciar konamiBuffer');
+
+    // Introducir la secuencia exacta: Up, Up, Down, Down, Left, Right, Left, Right, B, A
+    for (const code of KONAMI_SEQUENCE) {
+      input._onKeyDown({ code, preventDefault() {} });
+    }
+
+    assert.equal(fakeGame.isDevMode, true, 'El Código Konami debe activar this.game.isDevMode = true');
+    assert.equal(
+      menu.noticeText,
+      'MODO DESARROLLADOR ACTIVADO. Alex IA no está contento.',
+      'Debe mostrar el aviso de Modo Desarrollador en pantalla'
+    );
+    assert.ok(playedSfx.includes('error_buzz'), 'Debe reproducir el SFX error_buzz');
+
+    // 3. Opción secreta "Modo Dios (Debug)" en el menú de Título
+    const titleItemsAfter = menu._getCurrentMenuItems();
+    const godModeItem = titleItemsAfter.find((it) => it.label === 'Modo Dios (Debug)');
+    assert.ok(godModeItem, 'Con isDevMode activo debe aparecer "Modo Dios (Debug)" en el menú de Título');
+
+    godModeItem.action();
+    assert.equal(fakeGame.debugMode, true, 'Pulsar "Modo Dios (Debug)" debe activar this.game.debugMode = true');
+    assert.equal(tm.currentSceneId, 'sword_temple', 'Pulsar "Modo Dios (Debug)" debe iniciar la partida en el Templo de la Espada');
+    assert.equal(menu.state, 'none', 'Debe cerrar el menú de título e iniciar la partida');
+  });
+
+  test('NPC Tester QA (cuarta pared) y Modo Arcade (Boss Rush)', () => {
+    // 1. Verificar perfil y diálogos del NPC Tester QA en Valleverde junto a la fuente
+    const qaProfile = VILLAGE_NPC_PROFILES.tester_qa;
+    assert.ok(qaProfile, 'Debe existir el perfil tester_qa en VILLAGE_NPC_PROFILES');
+    assert.equal(qaProfile.name, 'Tester QA', 'El NPC debe llamarse "Tester QA"');
+    assert.equal(qaProfile.sceneId, 'overworld', 'Tester QA debe estar en Valleverde (overworld)');
+    assert.equal(qaProfile.x, 18 * 16, 'Tester QA debe estar al lado de la fuente (x = 18 * 16)');
+    assert.equal(qaProfile.y, 12 * 16, 'Tester QA debe estar al lado de la fuente (y = 12 * 16)');
+    assert.equal(qaProfile.shirtColor, '#facc15', 'Tester QA debe llevar camiseta amarilla llamativa');
+    assert.equal(qaProfile.shirtText, 'I ❤️ Bugs', 'La camiseta debe decir "I ❤️ Bugs"');
+    assert.equal(TESTER_QA_DIALOGUES.length, 3, 'Tester QA debe tener exactamente 3 diálogos que rompen la cuarta pared');
+    assert.ok(TESTER_QA_DIALOGUES[0].includes('colisiones de esta fuente') && TESTER_QA_DIALOGUES[0].includes('A y D a la vez'));
+    assert.ok(TESTER_QA_DIALOGUES[1].includes('jefe final de la Forja') && TESTER_QA_DIALOGUES[1].includes('estatua con patas'));
+    assert.ok(TESTER_QA_DIALOGUES[2].includes('Carcelero') && TESTER_QA_DIALOGUES[2].includes('ticket a Jira'));
+
+    const qaNpc = new NPC({
+      ...qaProfile,
+      dialogues: TESTER_QA_DIALOGUES,
+    });
+    assert.deepEqual(qaNpc.resolveDialogues(), TESTER_QA_DIALOGUES);
+
+    // 2. Verificar desbloqueo y cola del Modo Arcade (Boss Rush)
+    assert.deepEqual(
+      BOSS_RUSH_QUEUE,
+      ['GarbageCollector', 'StackOverflow', 'PrototypeMicrowave', 'FinalBossAlex'],
+      'La cola de Boss Rush debe contener los 4 jefes en orden'
+    );
+
+    const savedFlag = typeof localStorage !== 'undefined' ? localStorage.getItem('el_ojete_expansion_boss_killed') : null;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('el_ojete_expansion_boss_killed');
+    }
+
+    let bossRushStarted = false;
+    const fakeMusic = {
+      setMode() {},
+      playMenuSelect() {},
+      playMenuMove() {},
+      playCaughtSkipSound() {},
+      stopTitleMusic() {},
+      playSFX() { return true; }
+    };
+    const fakeGame = {
+      expansionActive: false,
+      expansionBossDefeated: false,
+      enemies: [],
+      inventory: new Set(),
+      music: fakeMusic,
+    };
+
+    const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {
+      game: fakeGame,
+      onStartBossRush: () => {
+        bossRushStarted = true;
+      },
+    });
+    menu.openTitleScreen();
+
+    const itemsLocked = menu._getCurrentMenuItems();
+    assert.ok(
+      !itemsLocked.some((it) => it.label === 'Modo Arcade (Boss Rush)'),
+      'Modo Arcade (Boss Rush) NO debe aparecer si no se ha derrotado al menos un jefe de la expansión'
+    );
+
+    // Desbloquear derrotando a un jefe de la expansión
+    fakeGame.expansionBossDefeated = true;
+    const itemsUnlocked = menu._getCurrentMenuItems();
+    const bossRushItem = itemsUnlocked.find((it) => it.label === 'Modo Arcade (Boss Rush)');
+    assert.ok(bossRushItem, 'Modo Arcade (Boss Rush) DEBE aparecer tras derrotar al menos un jefe de la expansión');
+    bossRushItem.action();
+    assert.equal(bossRushStarted, true, 'Seleccionar "Modo Arcade (Boss Rush)" debe iniciar el modo Boss Rush');
+
+    if (typeof localStorage !== 'undefined') {
+      if (savedFlag !== null) localStorage.setItem('el_ojete_expansion_boss_killed', savedFlag);
+      else localStorage.removeItem('el_ojete_expansion_boss_killed');
     }
   });
 }

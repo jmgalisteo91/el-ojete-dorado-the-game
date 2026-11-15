@@ -201,13 +201,15 @@ export class RPGGame {
 
     // (FIX M2.6) Perfil de rendimiento: 'low' | 'normal' | 'high'
     this.performanceProfile = this._detectPerformanceProfile();
+    this.isDevMode = false;
+    this.debugMode = false;
     this.music = new AmbientMusic();
     this.input = new InputHandler(() => {
       this.music.unlockAndStart();
       if (this.achievementManager && this.music.ctx) {
         this.achievementManager.setAudioContext(this.music.ctx);
       }
-    }, canvas);
+    }, canvas, this);
 
     // (FIX M1.2-M1.8) Controles táctiles. Se construyen aquí y se enganchan al input;
     // los callbacks son perezosos (menuSystem/inventory se crean más abajo).
@@ -356,8 +358,21 @@ export class RPGGame {
     this.gameState = 'base';
     this.isExpansionMode = false;
     this.isExpansionActive = false;
+    this.expansionBossDefeated = false;
     this.expansionEquipment = null;
     this.expansionManager = new ExpansionManager(this);
+    this.bossRushQueue = [
+      'GarbageCollector',
+      'StackOverflow',
+      'PrototypeMicrowave',
+      'FinalBossAlex'
+    ];
+    this.bossRushActive = false;
+    this.bossRushIndex = 0;
+    this.bossRushTimer = 0;
+    this.bossRushIntermissionTimer = 0;
+    this.bossRushCompleted = false;
+    this.bossRushCurrentBoss = null;
     this._initExpansionState();
 
     this.player = new Player({
@@ -475,6 +490,8 @@ export class RPGGame {
         game: this,
         onNewGame: () => this._startNewGame(),
         onNewGamePlus: () => this._startNewGamePlus(),
+        onStartGodMode: () => this._startGodModeDebug(),
+        onStartBossRush: () => this.startBossRush(),
         onLoadGame: () => this._loadGameFromStorage(),
         onStartExpansion: () => this.expansionManager.init(this),
         onSaveGame: (opts) => this._saveGameToStorage(opts || { manual: true }),
@@ -829,6 +846,164 @@ export class RPGGame {
         this.camera.snapTo(this.player);
         this.menuSystem.showNotice('🌿 Valleverde · Plaza Central · Explora la aldea libremente', 4.0);
       });
+    }
+  }
+
+  _startGodModeDebug() {
+    this._resetWorldToInitialState();
+    this.isDevMode = true;
+    this.debugMode = true;
+    if (this.player) {
+      this.player.hasSword = true;
+      this.player.hasArmor = true;
+      this.player.maxHp = Math.max(this.player.maxHp || 10, 10);
+      this.player.hp = this.player.maxHp;
+      this.player.stopMovement();
+    }
+    this._loadScene('sword_temple', { x: 11 * 16, y: 14 * 16 }, { immediate: true });
+    if (this.menuSystem) {
+      this.menuSystem.state = 'none';
+      this.menuSystem.fadeAlpha = 0;
+      this.menuSystem.showNotice('⚡ Modo Dios (Debug) · Templo de la Espada', 4.0);
+    }
+    if (this.camera && this.player) {
+      this.camera.resetCinematic();
+      this.camera.snapTo(this.player);
+    }
+  }
+
+  _formatBossRushTime(seconds) {
+    const safe = Math.max(0, Number(seconds) || 0);
+    const mins = Math.floor(safe / 60);
+    const secs = Math.floor(safe % 60);
+    const tenths = Math.floor((safe * 10) % 10);
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${tenths}`;
+  }
+
+  startBossRush() {
+    this.bossRushQueue = [
+      'GarbageCollector',
+      'StackOverflow',
+      'PrototypeMicrowave',
+      'FinalBossAlex'
+    ];
+    this.bossRushActive = true;
+    this.bossRushIndex = 0;
+    this.bossRushTimer = 0;
+    this.bossRushIntermissionTimer = 0;
+    this.bossRushCompleted = false;
+    this.bossRushCurrentBoss = null;
+
+    if (this.player) {
+      this.player.hasSword = true;
+      this.player.hasArmor = true;
+      this.player.maxHp = Math.max(this.player.maxHp || 3, 3);
+      this.player.hp = this.player.maxHp;
+      this.player.stopMovement();
+    }
+
+    this._loadScene('ai_citadel', { x: 11.5 * 16, y: 12 * 16 }, { immediate: true });
+    if (this.menuSystem) {
+      this.menuSystem.state = 'none';
+      this.menuSystem.fadeAlpha = 0;
+    }
+    if (this.camera && this.player) {
+      this.camera.resetCinematic();
+      this.camera.snapTo(this.player);
+    }
+    this._spawnBossRushOpponent(this.bossRushQueue[0]);
+  }
+
+  _spawnBossRushOpponent(bossKey) {
+    const bossConstructors = {
+      GarbageCollector: GarbageCollectorBoss,
+      GarbageCollectorBoss,
+      StackOverflow: StackOverflowBoss,
+      StackOverflowBoss,
+      PrototypeMicrowave: PrototypeMicrowaveBoss,
+      PrototypeMicrowaveBoss,
+      FinalBossAlex
+    };
+    const Ctor = bossConstructors[bossKey];
+    if (!Ctor) return null;
+
+    if (Array.isArray(this.enemies)) {
+      this.enemies = this.enemies.filter((e) => !e || e.sceneId !== 'ai_citadel');
+    } else {
+      this.enemies = [];
+    }
+
+    const boss = new Ctor({
+      x: 11.5 * 16,
+      y: 6.5 * 16,
+      sceneId: 'ai_citadel'
+    });
+    this.enemies.push(boss);
+    this.bossRushCurrentBoss = boss;
+    if (this.menuSystem) {
+      this.menuSystem.showNotice(
+        `⚔️ Boss Rush (${this.bossRushIndex + 1}/${this.bossRushQueue.length}): ${boss.name || bossKey}`,
+        2.5
+      );
+    }
+    return boss;
+  }
+
+  _onBossRushBossDefeated() {
+    if (!this.bossRushActive || this.bossRushCompleted || this.bossRushIntermissionTimer > 0) {
+      return;
+    }
+
+    if (this.bossRushIndex + 1 < this.bossRushQueue.length) {
+      if (this.player) {
+        const maxHp = this.player.maxHp || 3;
+        const healAmount = Math.round(maxHp * 0.2 * 100) / 100;
+        this.player.hp = Math.min(maxHp, this.player.hp + healAmount);
+      }
+      this.bossRushIntermissionTimer = 2.0;
+      if (this.menuSystem) {
+        this.menuSystem.showNotice('Siguiente oponente...', 2.0);
+      }
+    } else {
+      this.bossRushCompleted = true;
+      this.bossRushActive = false;
+      this.bossRushCurrentBoss = null;
+      const totalFormatted = this._formatBossRushTime(this.bossRushTimer);
+      const victoryMsg = `¡HAS COMPLETADO EL BOSS RUSH! Tiempo total: ${totalFormatted}`;
+      if (this.menuSystem) {
+        this.menuSystem.showNotice(victoryMsg, 6.0);
+      }
+      if (this.dialogueBox) {
+        this.dialogueBox.showMessage('🏆 MODO ARCADE · BOSS RUSH', [
+          '¡HAS COMPLETADO EL BOSS RUSH!',
+          `Tiempo total: ${totalFormatted}`
+        ]);
+      }
+    }
+  }
+
+  _updateBossRush(dt) {
+    if (!this.bossRushActive) return;
+    this.bossRushTimer += dt;
+
+    if (
+      this.bossRushCurrentBoss &&
+      this.bossRushCurrentBoss.dead &&
+      this.bossRushIntermissionTimer <= 0 &&
+      !this.bossRushCompleted
+    ) {
+      this._onBossRushBossDefeated(this.bossRushCurrentBoss);
+    }
+
+    if (this.bossRushIntermissionTimer > 0) {
+      this.bossRushIntermissionTimer = Math.max(0, this.bossRushIntermissionTimer - dt);
+      if (this.bossRushIntermissionTimer <= 0 && this.bossRushActive && !this.bossRushCompleted) {
+        this.bossRushIndex += 1;
+        const nextKey = this.bossRushQueue[this.bossRushIndex];
+        if (nextKey) {
+          this._spawnBossRushOpponent(nextKey);
+        }
+      }
     }
   }
 
@@ -2950,6 +3125,7 @@ export class RPGGame {
       makeNPC('boreas', makeGatekeeperDialogues('boreas', 4)),
       makeNPC('vulcano', makeGatekeeperDialogues('vulcano', 3)),
       makeNPC('vael', makeGatekeeperDialogues('vael', 8)),
+      makeNPC('tester_qa'),
     // Los NPCs de la expansión se crean bajo demanda en ExpansionManager.init(game)
     ];
   }
@@ -6305,6 +6481,7 @@ export class RPGGame {
     }
 
     this.combatManager.update(dt, { enemies, npcs, animals });
+    this._updateBossRush(dt);
 
     for (const item of items) {
       item.update(dt);
@@ -6361,6 +6538,19 @@ export class RPGGame {
     }
 
     if (this.player.hp <= 0) {
+      if (this.bossRushActive) {
+        this.bossRushActive = false;
+        this.bossRushIndex = 0;
+        this.bossRushTimer = 0;
+        this.bossRushIntermissionTimer = 0;
+        this.bossRushCurrentBoss = null;
+        this.bossRushQueue = [
+          'GarbageCollector',
+          'StackOverflow',
+          'PrototypeMicrowave',
+          'FinalBossAlex'
+        ];
+      }
       if (this.tilemap && typeof this.tilemap.currentSceneId === 'string' && this.tilemap.currentSceneId.startsWith('vertedero_')) {
         this._triggerVertederoSoftReset();
         this.input.endFrame();

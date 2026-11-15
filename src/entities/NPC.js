@@ -32,7 +32,9 @@ export class NPC extends Entity {
     sceneId = 'overworld',
     talkSfx = null,
     isSeated = false,
-    tool = null
+    tool = null,
+    shirtColor = null,
+    shirtText = null
   }) {
     super({
       x,
@@ -71,6 +73,8 @@ export class NPC extends Entity {
     this.isSleeping = false;
     this.isSeated = Boolean(isSeated || behavior === 'seated');
     this.tool = tool || (name.includes('Brom') ? 'hammer' : null);
+    this.shirtColor = shirtColor || (name === 'Tester QA' ? '#facc15' : null);
+    this.shirtText = shirtText || (name === 'Tester QA' ? 'I ❤️ Bugs' : null);
     this.idleClock = Math.random() * Math.PI * 2;
     this.jobAnimTimer = Math.random() * 5.0;
 
@@ -579,6 +583,16 @@ export class NPC extends Entity {
     }
 
     super.render(ctx, renderCam);
+
+    // Camiseta llamativa del Tester QA ("I ❤️ Bugs")
+    if (this.shirtColor) {
+      ctx.save();
+      ctx.fillStyle = this.shirtColor;
+      ctx.fillRect(sx - 4, sy + 5, 8, 5);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(sx - 1, sy + 6, 2, 2);
+      ctx.restore();
+    }
 
     // Animaciones de oficio exclusivas
     const isDayScene = this.sceneId === 'overworld';
