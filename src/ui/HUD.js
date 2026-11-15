@@ -410,6 +410,32 @@ export class HUD {
       this.renderHotbar(ctx, hudFont, hudShadow);
     }
 
+    this.renderFloatingTexts(ctx);
+    ctx.restore();
+  }
+
+  renderFloatingTexts(ctx) {
+    const g = this.game;
+    const list = g?.floatingTexts;
+    if (!Array.isArray(list) || list.length === 0) return;
+
+    const camX = g.camera ? g.camera.renderX : 0;
+    const camY = g.camera ? g.camera.renderY : 0;
+    ctx.save();
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const ft of list) {
+      if (!ft || ft.life <= 0) continue;
+      const sx = Math.round(ft.x - camX);
+      const sy = Math.round(ft.y - camY);
+      const maxLife = ft.maxLife || 0.8;
+      ctx.globalAlpha = Math.max(0, Math.min(1, ft.life / maxLife));
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillText(ft.text, sx + 1, sy + 1);
+      ctx.fillStyle = ft.color || '#ffffff';
+      ctx.fillText(ft.text, sx, sy);
+    }
     ctx.restore();
   }
 

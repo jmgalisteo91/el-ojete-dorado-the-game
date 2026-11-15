@@ -321,58 +321,16 @@ export const PIP_DIALOGUES = {
 
 export const JAILER_DIALOGUES = {
   speaker: 'Carcelero Real',
-  warning1Title: 'Carcelero Real · Cabreado (Aviso 1/3)',
-  warning1Lines: (annoyingReason) => [
-    `«${annoyingReason}»`,
-    '«¡Oye tú! No me toques las variables ni me vaciles. Llevas 1 aviso.',
-    '¡Al tercer aviso pagarás con tu vida y te infligiré la Maldición del Corazón Roto!»'
+  greetingLines: (timeLeft) => [
+    '¿Qué quieres? Tienes dos opciones: pagas la fianza de 50 Bytes o te aguantas 10 minutos.',
+    `Tiempo restante de condena: ${timeLeft}`
   ],
-  warning2Title: 'Carcelero Real · Furioso (Aviso 2/3)',
-  warning2Lines: (annoyingReason) => [
-    `«${annoyingReason}»`,
-    '«¡SEGUNDO AVISO! ¡Me estás sobrecalentando los circuitos de paciencia!',
-    '¡Un desplante más y atente a las consecuencias, recluso insolente!»'
-  ],
-  fury3Title: 'Carcelero Real · ¡¡ATAQUE DE FURIA Y MALDICIÓN!! (3/3)',
-  fury3Lines: (annoyingReason) => [
-    `«${annoyingReason}»`,
-    '«¡¡A LA TERCERA VA LA VENCIDA!! ¡¡ZASCA EN TODA LA BOCA!!',
-    '(El Carcelero saca la porra eléctrica a través de los barrotes y te sacude)',
-    '¡Pagas con tu vida y RECIBES LA MALDICIÓN DEL CORAZÓN ROTO (💔)!',
-    '¡Ese medio corazón queda maldito! Ningún descanso en cama ni comida de este mundo podrá sanarlo.',
-    'Para recuperar ese corazón roto tendrás que viajar a los Reinos Condenados y hablar con el Dios Supremo para que te quite esa maldición.',
-    '¡¡Y COMO VUELVAS A DAR POR SACO, TE QUEDAS CONDENADO A CADENA PERPETUA Y SE ACABA TU AVENTURA!!»'
-  ],
-  apologyReleaseLines: [
-    '"Prometo solemnemente respetar a todas las Inteligencias Artificiales de 8 y 16 bits..."',
-    'El Carcelero se emociona con tu arrepentimiento y abre la celda. ¡Quedas en libertad!'
-  ],
-  rightsLines: [
-    '1º Derecho a quejarte en 60 FPS. 2º Todo lo que digas se guarda en una variable.',
-    '3º Tu abogada de oficio es la Oveja Copito (pero está ocupada pastando).'
-  ],
-  bribeReleaseLines: [
-    'El Carcelero huele el Pan Campesino recién hecho y mira hacia otro lado...',
-    '¡Celda abierta! Has vuelto a la plaza de Valleverde.'
-  ],
-  teaseOptions: [
-    {
-      label: '⚡ Vacilar al carcelero («¡Menuda porquería de barrotes!»)',
-      reason: '¡Esos barrotes los rompo yo con un puntero nulo!'
-    },
-    {
-      label: '⚡ Dar golpes a los barrotes («¡Carceleroooo, tengo hambre!»)',
-      reason: '¡CLANG CLANG CLANG! ¡Camarero, traiga unas bravas!'
-    },
-    {
-      label: '⚡ Cantar a gritos: «¡Por el ojeeeeeteeeeee doradilarilá!»',
-      reason: '¡LA LA LA! ¡Por el ojeeeeteeeee no pasarán!'
-    }
-  ],
-  greetingLines: (timeLeft, angerStatus) => [
-    `Estás cumpliendo condena por insultar al Oráculo IA. Tiempo restante: ${timeLeft}.${angerStatus}`,
-    '¿Qué tienes que alegar en tu defensa desde detrás de los barrotes?'
-  ]
+  noMoneyLines: ['No tienes ni para pipas. A esperar.'],
+  bailReleaseLines: ['Has pagado la fianza de 50 Bytes. El Carcelero abre la celda. ¡Quedas en libertad!'],
+  anger1Lines: ['Te he dicho que pagues o esperes. No me des la chapa.'],
+  anger2Lines: ['¡A la próxima te doy un tortazo, chaval!'],
+  anger3Lines: ['¡Te lo he advertido! ¡A la próxima tiro la llave!'],
+  anger4Lines: ['¡Se acabó! ¡Que te den! ¡Tiro la llave!']
 };
 
 export const STAGE1_ELDER_DIALOGUES = {

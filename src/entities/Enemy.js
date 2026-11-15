@@ -225,6 +225,18 @@ export class Enemy extends Entity {
     // (FIX 1.3) 4-6 chispas blancas/rojas en cada impacto
     this._emitParticles(5, HIT_PARTICLE_COLORS, 42, 84, 0.22);
 
+    const gameRef = player?.game || (typeof window !== 'undefined' ? window.game : globalThis?.game);
+    if (gameRef && typeof gameRef.spawnFloatingText === 'function' && amount > 0) {
+      const dmgVal = Math.round(amount * 10) / 10;
+      gameRef.spawnFloatingText({
+        text: `-${dmgVal}`,
+        x: this.centerX || this.x,
+        y: this.y - 2,
+        life: 0.8,
+        color: amount > 2 ? '#ffd700' : '#ffffff'
+      });
+    }
+
     const dx = this.centerX - player.centerX;
     const dy = this.centerY - player.centerY;
     const dist = Math.max(1, Math.hypot(dx, dy));

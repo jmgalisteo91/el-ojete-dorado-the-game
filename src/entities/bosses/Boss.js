@@ -133,6 +133,18 @@ export class Boss extends Enemy {
     // (FIX BOSS UX) Invulnerabilidad de 0.5 s tras recibir daño: evita multi-hit por frame.
     this.hitFlashTimer = 0.5;
 
+    const gameRef = player?.game || (typeof window !== 'undefined' ? window.game : globalThis?.game);
+    if (gameRef && typeof gameRef.spawnFloatingText === 'function' && damage > 0) {
+      const dmgVal = Math.round(damage * 10) / 10;
+      gameRef.spawnFloatingText({
+        text: `-${dmgVal}`,
+        x: this.centerX || this.x,
+        y: this.y - 2,
+        life: 0.8,
+        color: damage > 2 ? '#ffd700' : '#ffffff'
+      });
+    }
+
     if (soundEngine && typeof soundEngine.playEnemyHit === 'function') {
       soundEngine.playEnemyHit();
     }

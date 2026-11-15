@@ -14,6 +14,7 @@ export class Camera2D {
     this.lerpSpeed = 8.0;
 
     // (FIX 1.2) Sacudida de pantalla en gameplay: offset temporal sumado a renderX/renderY
+    this.shakeEnabled = true;
     this.shakeTimer = 0;
     this.shakeDuration = 0;
     this.shakeIntensity = 0;
@@ -32,7 +33,19 @@ export class Camera2D {
    * (1 px lógico = RENDER_SCALE px en pantalla), así que 1-2 se lee como un golpe seco.
    * La sacudida más intensa gana; la duración más larga se conserva.
    */
+  setShakeEnabled(enabled) {
+    this.shakeEnabled = Boolean(enabled);
+    if (!this.shakeEnabled) {
+      this.shakeTimer = 0;
+      this.shakeDuration = 0;
+      this.shakeIntensity = 0;
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+    }
+  }
+
   shake(intensity = 2, duration = 0.25) {
+    if (!this.shakeEnabled) return;
     const i = Math.max(0, Number(intensity) || 0);
     const d = Math.max(0, Number(duration) || 0);
     if (i <= 0 || d <= 0) return;

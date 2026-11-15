@@ -540,4 +540,137 @@ export async function run(test, assert) {
     assert.ok(npcB.ambientBubbleTimer > 0 && npcB.ambientBubbleText.length > 0, 'El segundo NPC debe responder en la conversación');
     assert.equal(fakeGame.pendingCrossBark, null);
   });
+
+  test('Cárcel v2.0: Fianza (50 Bytes), Espera, Enfado del Carcelero (tortazo 0.5 + shake) y Game Over jail_rebellion', () => {
+    const player = new Player({ x: 80, y: 80 });
+    player.hp = 3;
+    player.coins = 20;
+
+    const sfxLog = [];
+    const shownMessages = [];
+    let closedCount = 0;
+    let shakeCalls = 0;
+    let loadedScene = 'jail_cell';
+    let musicMode = 'jail';
+
+    const fakeMusic = {
+      playSFX: (s) => sfxLog.push(s),
+      setMode: (m) => { musicMode = m; },
+      playMenuSelect() {},
+      playMenuMove() {},
+      playCaughtSkipSound() {},
+      playGameOver() {}
+    };
+    const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {});
+
+    const game = {
+      player,
+      npcs: [],
+      jailRemainingSeconds: 600,
+      jailerAnger: 0,
+      jailerAngerCount: 0,
+      isJailedForever: false,
+      isExpansionMode: false,
+      music: fakeMusic,
+      menuSystem: menu,
+      dialogueBox: {
+        showMessage: (title, lines) => shownMessages.push({ title, lines }),
+        close: () => { closedCount += 1; }
+      },
+      tilemap: {
+        currentSceneId: 'jail_cell',
+        width: 320,
+        height: 180,
+        loadScene: (s) => {
+          loadedScene = s;
+          game.tilemap.currentSceneId = s;
+        }
+      },
+      assets: { charactersSheet: {} },
+      camera: { setWorldBounds() {}, snapTo() {} },
+      inventory: { hasItem: () => false },
+      _saveGameToStorage() {},
+      _shakeCamera() { shakeCalls += 1; },
+      _resetAllNPCHitCounts() {},
+      _restoreAllNPCsToOverworld() {},
+      _releaseFromJail(msg) {
+        return RPGGame.prototype._releaseFromJail.call(this, msg);
+      }
+    };
+
+    const npcs = RPGGame.prototype._createVillageNPCs.call(game);
+    const jailer = npcs.find((n) => n.sceneId === 'jail_cell');
+    assert.ok(jailer, 'Debe existir el NPC carcelero');
+
+    // 1. Diálogo inicial sin opciones ofensivas y con las 3 opciones nuevas
+    const res1 = jailer.getDialogues();
+    assert.equal(res1.lines[0], '¿Qué quieres? Tienes dos opciones: pagas la fianza de 50 Bytes o te aguantas 10 minutos.');
+    assert.deepEqual(res1.choices.map((c) => c.label), [
+      'Pagar la fianza (50 Bytes)',
+      'Vale, esperaré.',
+      '¿Y si no quiero esperar?'
+    ]);
+
+    // 2. Pagar sin dinero -> risa del carcelero
+    res1.choices[0].onSelect();
+    assert.equal(shownMessages[shownMessages.length - 1].lines[0], 'No tienes ni para pipas. A esperar.');
+    assert.equal(loadedScene, 'jail_cell');
+    assert.equal(game.jailRemainingSeconds, 600);
+
+    // 3. Esperar -> cierra diálogo y mantiene condena
+    res1.choices[1].onSelect();
+    assert.equal(closedCount, 1);
+    assert.equal(game.jailRemainingSeconds, 600);
+
+    // 4. Dar la chapa 3 veces: avisos 1 y 2, y en el 3º tortazo (-0.5 HP, hit_flesh, shake)
+    res1.choices[2].onSelect();
+    assert.equal(game.jailerAnger, 1);
+    assert.equal(shownMessages[shownMessages.length - 1].lines[0], 'Te he dicho que pagues o esperes. No me des la chapa.');
+
+    res1.choices[2].onSelect();
+    assert.equal(game.jailerAnger, 2);
+    assert.equal(shownMessages[shownMessages.length - 1].lines[0], '¡A la próxima te doy un tortazo, chaval!');
+
+    res1.choices[2].onSelect();
+    assert.equal(game.jailerAnger, 3);
+    assert.ok(sfxLog.includes('hit_flesh'), 'El tortazo debe reproducir hit_flesh');
+    assert.equal(player.hp, 2.5, 'El tortazo debe quitar medio corazón (0.5)');
+    assert.equal(shakeCalls, 1, 'El tortazo debe hacer screen shake');
+    assert.equal(shownMessages[shownMessages.length - 1].lines[0], '¡Te lo he advertido! ¡A la próxima tiro la llave!');
+
+    // 5. Pagar con >= 50 Bytes antes de la 4ª vez -> sale de la cárcel y resetea jailerAnger = 0
+    player.coins = 75;
+    res1.choices[0].onSelect();
+    assert.equal(player.coins, 25);
+    assert.equal(game.jailRemainingSeconds, 0);
+    assert.equal(game.jailerAnger, 0, 'Al salir de la cárcel jailerAnger debe resetearse a 0');
+    assert.equal(loadedScene, 'overworld');
+    assert.equal(musicMode, 'village');
+
+    // 6. Si regresa a la cárcel y da la chapa 4 veces -> tira la llave y Game Over jail_rebellion
+    game.tilemap.loadScene('jail_cell');
+    game.jailRemainingSeconds = 600;
+    const res2 = jailer.getDialogues();
+    res2.choices[2].onSelect();
+    res2.choices[2].onSelect();
+    res2.choices[2].onSelect();
+    res2.choices[2].onSelect();
+    assert.ok(sfxLog.includes('pickup_item'), 'Tirar la llave debe reproducir sonido');
+    assert.equal(menu.state, 'game_over');
+    assert.equal(menu.gameOverReason, 'jail_rebellion');
+
+    const renderedTexts = [];
+    const mockCtx = {
+      save() {}, restore() {}, translate() {}, scale() {}, fillRect() {}, strokeRect() {}, beginPath() {}, roundRect() {}, fill() {}, stroke() {},
+      createLinearGradient() { return { addColorStop() {} }; },
+      createRadialGradient() { return { addColorStop() {} }; },
+      fillText(t) { renderedTexts.push(String(t)); },
+      measureText(t) { return { width: String(t).length * 4 }; }
+    };
+    menu.render(mockCtx);
+    assert.ok(
+      renderedTexts.includes('El Carcelero tiró la llave. Ahora pudrirás en la cárcel para siempre.'),
+      'La pantalla de Game Over debe mostrar el mensaje de la llave tirada'
+    );
+  });
 }

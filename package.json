@@ -1,7 +1,7 @@
 {
   "name": "el-ojete-dorado-the-game",
-  "version": "3.8.2",
-  "description": "El Ojete Dorado: The Game - Aventura RPG Pixel Art 2D",
+  "version": "2.0.0",
+  "description": "El Ojete Dorado: The Game - Edición Definitiva (Juego Base + Expansión)",
   "type": "module",
   "scripts": {
     "start": "python3 server.py",

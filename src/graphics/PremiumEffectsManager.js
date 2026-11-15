@@ -219,6 +219,8 @@ export class PremiumEffectsManager {
     this.height = options.height || DEFAULT_LOGICAL_HEIGHT;
     this.resolution = options.resolution || 2;
     this.quality = QUALITY_SCALE[options.quality] ? options.quality : 'normal';
+    this.particleQuality = options.particleQuality === 'low' ? 'low' : 'high';
+    this.particlesEnabled = this.particleQuality !== 'low';
     this.enabled = options.enabled !== false;
     this.visible = true;
 
@@ -495,6 +497,22 @@ export class PremiumEffectsManager {
     }
   }
 
+  setParticleQuality(quality) {
+    const next = quality === 'low' ? 'low' : 'high';
+    this.particleQuality = next;
+    this.particlesEnabled = next !== 'low';
+    if (!this.particlesEnabled) {
+      this._clearParticles();
+      if (this.particleContainer) this.particleContainer.visible = false;
+    } else {
+      if (this.particleContainer) this.particleContainer.visible = true;
+      if (this.ready && this.particles.length === 0) {
+        this._rebuildParticlesForBiome(this.biome);
+      }
+    }
+    this._syncVisibility();
+  }
+
   _syncVisibility() {
     const active = this.enabled && this.visible && this.biome !== 'interior';
     if (this.overlayCanvas && this.overlayCanvas.style) {
@@ -502,6 +520,9 @@ export class PremiumEffectsManager {
     }
     if (this.app && this.app.stage) {
       this.app.stage.visible = active;
+    }
+    if (this.particleContainer) {
+      this.particleContainer.visible = active && this.particlesEnabled;
     }
   }
 
@@ -532,6 +553,7 @@ export class PremiumEffectsManager {
 
   _rebuildParticlesForBiome(biomeId) {
     this._clearParticles();
+    if (!this.particlesEnabled) return;
     const pixi = this._getPixi();
     const preset = BIOME_PRESETS[biomeId] || BIOME_PRESETS.interior;
     if (!preset.maxParticles || !preset.types.length || !pixi || !this.particleContainer) {

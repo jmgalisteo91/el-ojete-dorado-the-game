@@ -22,14 +22,35 @@ export class SceneTransitionController {
     return { right: 'east', left: 'west', down: 'south', up: 'north' }[direction] || null;
   }
 
+  _inferExitDirectionFromDoor(door = {}, width = 0, height = 0) {
+    if (!Number.isFinite(door.worldX) || !Number.isFinite(door.worldY) || !width || !height) {
+      return null;
+    }
+    const distWest = door.worldX;
+    const distEast = Math.max(0, width - door.worldX);
+    const distNorth = door.worldY;
+    const distSouth = Math.max(0, height - door.worldY);
+    const min = Math.min(distWest, distEast, distNorth, distSouth);
+    if (min === distEast) return 'east';
+    if (min === distWest) return 'west';
+    if (min === distSouth) return 'south';
+    return 'north';
+  }
+
+  _facingFromExitDirection(exitDirection) {
+    return { east: 'right', west: 'left', south: 'down', north: 'up' }[exitDirection] || 'down';
+  }
+
   resolveSpawn(door = {}) {
     const g = this.game;
-    const margin = 2 * g.tilemap.tileSize;
+    const tileSize = g.tilemap?.tileSize || 16;
+    const margin = 2 * tileSize; // 32 px hacia el interior para evitar bucles de ping-pong
     const width = g.tilemap.width;
     const height = g.tilemap.height;
+    // Ignorar por completo player.direction: usar estrictamente exitDirection (o inferir del borde de la puerta).
     const exitDirection =
       door.exitDirection ||
-      g._compassFromDirection(g.player.direction) ||
+      this._inferExitDirectionFromDoor(door, width, height) ||
       'east';
     const entryX = Number.isFinite(door.spawnX) ? door.spawnX : width / 2;
     const entryY = Number.isFinite(door.spawnY) ? door.spawnY : height / 2;
@@ -61,7 +82,7 @@ export class SceneTransitionController {
       return {
         x: entryX,
         y: entryY,
-        facing: door.entryFacing || door.forceDirection || g.player.direction,
+        facing: door.entryFacing || door.forceDirection || this._facingFromExitDirection(exitDirection),
         exitDirection: door.exitDirection || null
       };
     }
@@ -71,14 +92,14 @@ export class SceneTransitionController {
       return {
         x: entryX,
         y: entryY,
-        facing: door.entryFacing || door.forceDirection || g.player.direction,
+        facing: door.entryFacing || door.forceDirection || this._facingFromExitDirection(exitDirection),
         exitDirection: door.exitDirection || null
       };
     }
 
     let x = entryX;
     let y = entryY;
-    let facing = g.player.direction;
+    let facing = this._facingFromExitDirection(exitDirection);
 
     if (exitDirection === 'east') {
       x = margin;
@@ -99,7 +120,6 @@ export class SceneTransitionController {
     }
 
     return { x, y, facing, exitDirection };
-  
   }
 
   updateDoorGate() {
@@ -211,7 +231,16 @@ export class SceneTransitionController {
     }
   }
 
-  executeStageTransition(door) {
+  executeStageTransition(door, options = {}) {
+    const g = this.game;
+    if (typeof g._loadScene === 'function' && !options.immediate) {
+      g._loadScene(door?.targetScene, () => this._performStageTransitionSwap(door), options);
+      return;
+    }
+    this._performStageTransitionSwap(door);
+  }
+
+  _performStageTransitionSwap(door) {
     const g = this.game;
     g.transitionCooldown = 0.5;
     if (g.music) {

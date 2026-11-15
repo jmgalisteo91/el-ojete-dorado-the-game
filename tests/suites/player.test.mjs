@@ -994,4 +994,104 @@ export async function run(test, assert) {
     assert.ok(renderedTexts.some((t) => t.includes('GRIS')), 'Sin puntos suficientes el botón debe indicar estado gris');
     p.render(statsCtx, { renderX: 0, renderY: 0 });
   });
+
+  test('Floating Combat Text (-1 blanco, -3 dorado, rojo jugador), subida/fade y Viñeta Roja de daño (0.2s)', () => {
+    const fakeGame = {
+      floatingTexts: [],
+      damageVignetteTimer: 0,
+      damageVignetteDuration: 0.2,
+      spawnFloatingText(opts) {
+        return RPGGame.prototype.spawnFloatingText.call(this, opts);
+      },
+      _updateFloatingTexts(dt) {
+        return RPGGame.prototype._updateFloatingTexts.call(this, dt);
+      },
+      triggerDamageVignette(dur) {
+        return RPGGame.prototype.triggerDamageVignette.call(this, dur);
+      },
+      _renderDamageVignette(ctx) {
+        return RPGGame.prototype._renderDamageVignette.call(this, ctx);
+      }
+    };
+
+    const player = new Player({ x: 80, y: 80 });
+    player.game = fakeGame;
+
+    // 1. Enemigo normal: -1 blanco y -3 dorado (#ffd700)
+    const slime = new Enemy({ id: 'slime_ft', x: 96, y: 80, hp: 10 });
+    slime._applyDamage(1, player, null);
+    slime._applyDamage(3, player, null);
+    assert.equal(fakeGame.floatingTexts.length, 2);
+    assert.equal(fakeGame.floatingTexts[0].text, '-1');
+    assert.equal(fakeGame.floatingTexts[0].color, '#ffffff');
+    assert.equal(fakeGame.floatingTexts[0].life, 0.8);
+    assert.equal(fakeGame.floatingTexts[1].text, '-3');
+    assert.equal(fakeGame.floatingTexts[1].color, '#ffd700');
+
+    // 2. Jefe (Boss): también emite número dorado cuando daño > 2
+    const boss = new Boss({ id: 'boss_ft', x: 112, y: 80, hp: 20, maxHp: 20 });
+    player.x = 112;
+    player.y = 80;
+    boss.takeSwordHit(player, null, 3);
+    assert.equal(fakeGame.floatingTexts[2].text, '-3');
+    assert.equal(fakeGame.floatingTexts[2].color, '#ffd700');
+
+    // 3. Daño al jugador (takeHit & takeDamage) emite texto rojo (#ff0000) + dispara viñeta roja de 0.2s
+    player.invulnTimer = 0;
+    player.takeHit(null, { centerX: 120, centerY: 88, sceneId: 'first_stage', ngPlusDamageScale: 1.5 }, 1);
+    const redHit = fakeGame.floatingTexts.find((ft) => ft.color === '#ff0000');
+    assert.ok(redHit, 'El daño al jugador debe generar floating text rojo');
+    assert.equal(redHit.text, '-1.5', 'El multiplicador ngPlusDamageScale 1.5x debe reflejarse en el daño recibido');
+    assert.equal(fakeGame.damageVignetteTimer, 0.2, 'Recibir daño debe activar la viñeta roja de 0.2s');
+
+    player.invulnTimer = 0;
+    player.takeDamage(4);
+    const directRed = fakeGame.floatingTexts[fakeGame.floatingTexts.length - 1];
+    assert.equal(directRed.color, '#ff0000');
+    assert.equal(directRed.text, '-2');
+
+    // 4. Actualización: sube hacia arriba (Y decrece) y se renderiza en HUD con opacidad decreciente
+    const startY = fakeGame.floatingTexts[0].y;
+    fakeGame._updateFloatingTexts(0.4);
+    assert.ok(fakeGame.floatingTexts[0].y < startY, 'El texto flotante debe desplazarse hacia arriba');
+    assert.ok(Math.abs(fakeGame.floatingTexts[0].life - 0.4) < 0.01);
+
+    const hudTexts = [];
+    const alphas = [];
+    const hud = new HUD({
+      ...fakeGame,
+      player,
+      camera: { renderX: 0, renderY: 0 },
+      tilemap: { currentSceneId: 'first_stage' }
+    });
+    const hudCtx = {
+      save() {},
+      restore() {},
+      fillText(t) { hudTexts.push(String(t)); },
+      set globalAlpha(v) { alphas.push(v); },
+      get globalAlpha() { return alphas[alphas.length - 1] ?? 1; },
+      set font(_) {},
+      set textAlign(_) {},
+      set fillStyle(_) {}
+    };
+    hud.renderFloatingTexts(hudCtx);
+    assert.ok(hudTexts.includes('-1') && hudTexts.includes('-3') && hudTexts.includes('-2'), 'HUD debe dibujar los textos flotantes activos');
+    assert.ok(alphas.some((a) => a > 0 && a < 1), 'La opacidad del texto debe desvanecerse con life/maxLife');
+
+    // Render de viñeta radial roja
+    const stops = [];
+    const vigCtx = {
+      save() {}, restore() {}, fillRect() {},
+      createRadialGradient() {
+        return { addColorStop(o, c) { stops.push([o, c]); } };
+      },
+      set fillStyle(_) {}
+    };
+    fakeGame._renderDamageVignette(vigCtx);
+    assert.ok(stops.some(([, c]) => c.includes('180, 0, 0')), 'La viñeta debe usar gradiente radial rojo en los bordes');
+
+    // Al pasar el resto de 0.8s, los textos desaparecen
+    fakeGame._updateFloatingTexts(0.5);
+    assert.equal(fakeGame.floatingTexts.length, 0, 'Al agotarse los 0.8s deben eliminarse los textos flotantes');
+  });
 }

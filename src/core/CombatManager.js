@@ -110,6 +110,7 @@ export class CombatManager {
       if (!this.didPlayerAttackHitBox(animalBox)) continue;
 
       animal.onPlayerAttack(g);
+      g.sheepAttacks = (g.sheepAttacks || 0) + 1;
       return;
     }
   }
@@ -483,6 +484,7 @@ export class CombatManager {
   update(dt, context = null) {
     const g = this.game;
     if (!g || !g.player) return;
+    if (!g.player.game) g.player.game = g;
 
     const sceneEntities = context || g._getActiveSceneEntities();
     const { enemies = [], npcs = [], animals = [] } = sceneEntities;

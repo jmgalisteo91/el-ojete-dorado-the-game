@@ -2,10 +2,11 @@
 
 > *"Un RPG de acción 2D donde el universo es código legacy, los CEOs son villanos y las ovejas tienen un Dios vengador."*
 
-![Estado](https://img.shields.io/badge/Estado-Expansi%C3%B3n%20en%20desarrollo-brightgreen)
+![Estado](https://img.shields.io/badge/Estado-Versi%C3%B3n%202.0%20%7C%20Completo-brightgreen)
 ![Tech](https://img.shields.io/badge/Stack-JavaScript%20Vanilla-yellow)
 ![Motor](https://img.shields.io/badge/Motor-Canvas%202D%20%2B%20Web%20Audio-blue)
 ![AI Orchestration](https://img.shields.io/badge/Desarrollo-AI%20Assisted-purple)
+[![Repositorio](https://img.shields.io/badge/GitHub-Repositorio%20Oficial-181717?logo=github)](https://github.com/jmgalisteo91/el-ojete-dorado-the-game)
 
 ## 📖 Descripción General
 
@@ -29,7 +30,7 @@ El proyecto nació como un reto personal de **Game Direction** y **AI Orchestrat
 *   **Ciclo Día/Noche:** Afecta a los enemigos que aparecen, a la iluminación y a los horarios de los NPCs.
 *   **3 Finales Alternativos:** Decisiones que afectan el destino de Valleverde.
 
-### 🏢 Expansión: "El Resurgir de Mister Alex IA" (v2.0)
+### 🏢 Expansión: "El Resurgir de Mister Alex IA" (Incluida en la v2.0)
 *   **Valleverde 2.0:** Un futuro distópico corporativo lleno de neones y falsa felicidad.
 *   **Rogue-lite "El Vertedero Digital":** Mazmorra de 5 pisos con muerte persistente y moneda de progresión (Currículum).
 *   **Nuevos Personajes:** Tony Randazzo (NPC con doble personalidad: sevillano/argentino), Iñakito (el becario), El Kernel, y el regreso grotesco de Alex.

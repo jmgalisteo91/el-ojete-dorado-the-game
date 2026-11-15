@@ -65,8 +65,14 @@ export class MainMenuAndScenes {
       muted: false,
       volumeSteps: 3, // 1=25%, 2=50%, 3=75%, 4=100%
       textSpeed: 'normal', // 'normal' | 'fast' | 'instant'
-      visualEffects: true // bloom, scanlines, partículas y parallax
+      visualEffects: true, // bloom, scanlines, partículas y parallax
+      screenShake: true,
+      particleQuality: 'high', // 'high' | 'low'
+      fastText: false
     };
+    this.finalStats = null;
+    this.finalStatsOnClose = null;
+    this._finalStatsCooldown = 0;
     this._loadOptions();
 
     // Estrellas y partículas para el arte Pixel Art
@@ -115,10 +121,17 @@ export class MainMenuAndScenes {
 
   _loadOptions() {
     try {
-      const raw = localStorage.getItem('el_ojete_dorado_options_v1');
+      const raw =
+        localStorage.getItem('el_ojete_options') ||
+        localStorage.getItem('el_ojete_dorado_options_v1');
       if (raw) {
         const parsed = JSON.parse(raw);
         this.options = { ...this.options, ...parsed };
+        if (parsed.fastText !== undefined) {
+          this.options.fastText = Boolean(parsed.fastText);
+        } else {
+          this.options.fastText = this.options.textSpeed === 'fast';
+        }
       }
     } catch {
       // Ignorar errores de almacenamiento
@@ -127,7 +140,9 @@ export class MainMenuAndScenes {
 
   saveOptions() {
     try {
-      localStorage.setItem('el_ojete_dorado_options_v1', JSON.stringify(this.options));
+      const payload = JSON.stringify(this.options);
+      localStorage.setItem('el_ojete_options', payload);
+      localStorage.setItem('el_ojete_dorado_options_v1', payload);
     } catch {
       // Ignorar
     }
@@ -226,6 +241,24 @@ export class MainMenuAndScenes {
         }
       }
     );
+  }
+
+  /**
+   * Abre la pantalla de Estadísticas Finales con diseño Glassmorphism tras los créditos.
+   */
+  openFinalStatsScreen(stats = {}, onClose = null) {
+    this.state = 'final_stats';
+    this.finalStats = {
+      defeatedEnemies: Number(stats.defeatedEnemies) || 0,
+      jailCount: Number(stats.jailCount ?? stats.jailVisits) || 0,
+      sheepAttacks: Number(stats.sheepAttacks) || 0,
+      demonDeaths: Number(stats.demonDeaths) || 0,
+      playTimeFormatted: stats.playTimeFormatted || '00:00',
+      rank: stats.rank || 'C'
+    };
+    this.finalStatsOnClose = typeof onClose === 'function' ? onClose : null;
+    this._finalStatsCooldown = 0.35;
+    this.fadeAlpha = 0;
   }
 
   showNotice(text, duration = 2.6) {
@@ -652,7 +685,7 @@ export class MainMenuAndScenes {
   _getCurrentMenuItems() {
     if (this.state === 'title') {
       const saveInfo = this.callbacks.getSaveSummary ? this.callbacks.getSaveSummary() : null;
-      return [
+      const items = [
         {
           label: 'Nueva Partida',
           action: () => {
@@ -714,7 +747,27 @@ export class MainMenuAndScenes {
               this.expansionTeaserOpen = true;
             }
           }
-        },
+        }
+      ];
+      if (this._hasVictoryTrophy()) {
+        items.push({
+          label: 'Nueva Partida +',
+          action: () => {
+            this.music.playMenuSelect();
+            if (typeof this.music.stopTitleMusic === 'function') {
+              this.music.stopTitleMusic(350);
+            }
+            this.startAnimeIntroCutscene(() => {
+              if (this.callbacks.onNewGamePlus) {
+                this.callbacks.onNewGamePlus();
+              } else if (this.callbacks.onNewGame) {
+                this.callbacks.onNewGame({ newGamePlus: true });
+              }
+            });
+          }
+        });
+      }
+      items.push(
         {
           label: '🏆 Salón de la Fama',
           action: () => {
@@ -750,7 +803,8 @@ export class MainMenuAndScenes {
             this.triggerExitGame();
           }
         }
-      ];
+      );
+      return items;
     }
 
     if (this.state === 'pause') {
@@ -936,6 +990,47 @@ export class MainMenuAndScenes {
           }
         },
         {
+          label: `Screen Shake: [◄ ${this.options.screenShake !== false ? 'ON' : 'OFF'} ►]`,
+          onAdjust: () => {
+            this.options.screenShake = this.options.screenShake === false;
+            this.saveOptions();
+            this.music.playMenuMove();
+          },
+          action: () => {
+            this.options.screenShake = this.options.screenShake === false;
+            this.saveOptions();
+            this.music.playMenuSelect();
+          }
+        },
+        {
+          label: `Efectos de Partículas: [◄ ${this.options.particleQuality === 'low' ? 'Low' : 'High'} ►]`,
+          onAdjust: () => {
+            this.options.particleQuality = this.options.particleQuality === 'low' ? 'high' : 'low';
+            this.saveOptions();
+            this.music.playMenuMove();
+          },
+          action: () => {
+            this.options.particleQuality = this.options.particleQuality === 'low' ? 'high' : 'low';
+            this.saveOptions();
+            this.music.playMenuSelect();
+          }
+        },
+        {
+          label: `Texto Rápido: [◄ ${this.options.fastText ? 'ON' : 'OFF'} ►]`,
+          onAdjust: () => {
+            this.options.fastText = !this.options.fastText;
+            this.options.textSpeed = this.options.fastText ? 'fast' : 'normal';
+            this.saveOptions();
+            this.music.playMenuMove();
+          },
+          action: () => {
+            this.options.fastText = !this.options.fastText;
+            this.options.textSpeed = this.options.fastText ? 'fast' : 'normal';
+            this.saveOptions();
+            this.music.playMenuSelect();
+          }
+        },
+        {
           label: 'Controles / Guía de Teclas',
           action: () => {
             this.music.playMenuSelect();
@@ -1081,6 +1176,31 @@ export class MainMenuAndScenes {
     if (this.state === 'credits') {
       if (this.endingCredits) {
         this.endingCredits.update(dt, input);
+      }
+      return;
+    }
+
+    // Pantalla de Estadísticas Finales (Glassmorphism) tras los créditos
+    if (this.state === 'final_stats') {
+      if (this._finalStatsCooldown > 0) {
+        this._finalStatsCooldown = Math.max(0, this._finalStatsCooldown - dt);
+        return;
+      }
+      if (
+        input.consumeInteraction() ||
+        input.consumeKey('Enter') ||
+        input.consumeKey('Space') ||
+        input.consumeKey('Escape') ||
+        input.consumePointerClick()
+      ) {
+        this.music.playMenuSelect();
+        const done = this.finalStatsOnClose;
+        this.finalStatsOnClose = null;
+        if (done) {
+          done();
+        } else {
+          this.openTitleScreen();
+        }
       }
       return;
     }
@@ -1374,14 +1494,14 @@ export class MainMenuAndScenes {
 
     if (isPauseModal) {
       const boxW = 208;
-      const itemH = 17;
-      const gap = 3;
+      const gap = count > 6 ? 2 : 3;
+      const itemH = count > 6 ? Math.max(10, Math.floor((120 - (count - 1) * gap) / count)) : 17;
       const totalH = count * itemH + (count - 1) * gap;
       const winH = 150;
       const winY = Math.round((this.viewportHeight - winH) / 2);
       const startX = Math.round((this.viewportWidth - boxW) / 2);
       // Centrado verticalmente dentro de la ventana modal de 150px
-      const startY = winY + 24 + Math.round((winH - 32 - totalH) / 2);
+      const startY = winY + 23 + Math.max(0, Math.round((winH - 29 - totalH) / 2));
 
       const boxes = [];
       for (let i = 0; i < count; i++) {
@@ -1398,7 +1518,7 @@ export class MainMenuAndScenes {
     const boxW = isTitle ? 168 : isGameOver ? 204 : 184;
     const itemH = isTitle ? 9 : isGameOver ? 15 : (count > 5 ? 13 : 15);
     const startX = Math.round((this.viewportWidth - boxW) / 2);
-    let startY = isTitle ? 80 : isGameOver ? (count > 2 ? 96 : 108) : 56;
+    let startY = isTitle ? (count > 8 ? 72 : 80) : isGameOver ? (count > 2 ? 96 : 108) : 56;
 
     if (isTitle) {
       // (EXPANSIÓN) La fila del teaser necesita altura extra para el subtexto.
@@ -1449,6 +1569,11 @@ export class MainMenuAndScenes {
       if (this.endingCredits) {
         this.endingCredits.render(ctx);
       }
+      return;
+    }
+
+    if (this.state === 'final_stats') {
+      this._renderFinalStatsScreen(ctx);
       return;
     }
 
@@ -1925,8 +2050,8 @@ export class MainMenuAndScenes {
     ctx.fillRect(cx + 4, heartY + 13, 4, 4);
     ctx.fillRect(cx + 4, heartY + 17, 2, 2);
 
-    // Si el Game Over es por desacato y cadena perpetua en la cárcel, dibujar barrotes de celda
-    if (this.gameOverReason === 'jail_disrespect') {
+    // Si el Game Over es por desacato o rebelión en la cárcel, dibujar barrotes de celda
+    if (this.gameOverReason === 'jail_disrespect' || this.gameOverReason === 'jail_rebellion') {
       ctx.fillStyle = '#94a3b8';
       for (let bx = cx - 14; bx <= cx + 14; bx += 6) {
         ctx.fillRect(bx, heartY, 2, 22);
@@ -1953,7 +2078,7 @@ export class MainMenuAndScenes {
     ctx.font = 'bold 12px monospace';
     ctx.fillStyle = '#18040a';
     const mainTitle =
-      this.gameOverReason === 'jail_disrespect'
+      this.gameOverReason === 'jail_disrespect' || this.gameOverReason === 'jail_rebellion'
         ? '⚔ CONDENA PERPETUA · GAME OVER ⚔'
         : this.gameOverReason === 'animal_demon'
           ? '👹 IRA DEL REBAÑO · GAME OVER 👹'
@@ -1966,7 +2091,11 @@ export class MainMenuAndScenes {
     // Subtítulo contextual
     ctx.font = 'bold 6.5px monospace';
     ctx.fillStyle = '#ffb3c1';
-    if (this.gameOverReason === 'jail_disrespect') {
+    if (this.gameOverReason === 'jail_rebellion') {
+      ctx.fillText('El Carcelero tiró la llave. Ahora pudrirás en la cárcel para siempre.', cx, 66);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillText('La paciencia de la guardia tiene un límite. Tu condena es eterna.', cx, 78);
+    } else if (this.gameOverReason === 'jail_disrespect') {
       ctx.fillText('Has aceptado tu condena por faltar al respeto al Carcelero.', cx, 66);
       ctx.fillStyle = '#e2e8f0';
       ctx.fillText('Tus provocaciones agotaron la paciencia de la guardia. La celda sella tu destino.', cx, 78);
@@ -2226,13 +2355,14 @@ export class MainMenuAndScenes {
     ctx.globalAlpha = 1;
 
     // 4. Versión oficial.
-    ctx.font = `600 6.5px ${GAME_FONT_UI}`;
+    const titleVersionLabel = 'v2.0 - El Resurgir de Mister Alex IA';
+    ctx.font = `600 5.5px ${GAME_FONT_UI}`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillText(GAME_VERSION, W - 5, this.viewportHeight - 3);
-    ctx.fillStyle = '#ffd885';
-    ctx.fillText(GAME_VERSION, W - 6, this.viewportHeight - 4);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+    ctx.fillText(titleVersionLabel, W - 5, this.viewportHeight - 3);
+    ctx.fillStyle = 'rgba(255, 216, 133, 0.78)';
+    ctx.fillText(titleVersionLabel, W - 6, this.viewportHeight - 4);
     ctx.restore();
   }
 
@@ -2277,13 +2407,13 @@ export class MainMenuAndScenes {
       }
 
       const iconColor = isSelected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8');
-      UILayout.drawIcon(ctx, this._menuIcon(item.label), b.x + 12, cy, 10, iconColor);
+      UILayout.drawIcon(ctx, this._menuIcon(item.label), b.x + 12, cy, b.h <= 13 ? 8 : 10, iconColor);
 
-      const scale = isSelected ? 1.1 : (isHover ? 1.05 : 1);
+      const scale = isSelected ? (b.h <= 13 ? 1.04 : 1.1) : (isHover ? 1.03 : 1);
       ctx.save();
       ctx.translate(b.x + 19, cy);
       ctx.scale(scale, scale);
-      ctx.font = 'bold 7px monospace';
+      ctx.font = b.h <= 13 ? 'bold 6px monospace' : 'bold 7px monospace';
       const color = item.disabled ? '#636e85' : (isSelected || isHover ? '#ffd700' : '#e2e8f0');
       ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
       ctx.fillText(item.label, 1, 1);
@@ -2651,6 +2781,117 @@ export class MainMenuAndScenes {
       ctx.fillStyle = '#e2e8f0';
       ctx.fillText('[Pulsa Esc, Enter o haz clic para volver al Menú Principal]', cx, boxY + 98);
     }
+    ctx.restore();
+  }
+
+  _renderFinalStatsScreen(ctx) {
+    const W = this.viewportWidth;
+    const H = this.viewportHeight;
+    const s = this.finalStats || {
+      defeatedEnemies: 0,
+      jailCount: 0,
+      sheepAttacks: 0,
+      demonDeaths: 0,
+      playTimeFormatted: '00:00',
+      rank: 'C'
+    };
+
+    ctx.save();
+    // Fondo espacial oscuro + aura glassmorphism
+    ctx.fillStyle = '#050814';
+    ctx.fillRect(0, 0, W, H);
+    if (typeof ctx.createRadialGradient === 'function') {
+      const aura = ctx.createRadialGradient(W * 0.5, H * 0.42, 8, W * 0.5, H * 0.42, W * 0.65);
+      aura.addColorStop(0, 'rgba(56, 189, 248, 0.22)');
+      aura.addColorStop(0.55, 'rgba(168, 85, 247, 0.12)');
+      aura.addColorStop(1, 'rgba(5, 8, 20, 0)');
+      ctx.fillStyle = aura;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    for (const st of this.stars) {
+      const a = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin((this.animTime || 0) * 2 + st.phase));
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(st.x, st.y, st.size, st.size);
+    }
+    ctx.globalAlpha = 1;
+
+    // Panel Glassmorphism translúcido
+    const cardW = 282;
+    const cardH = 148;
+    const cardX = Math.round((W - cardW) / 2);
+    const cardY = Math.round((H - cardH) / 2);
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+    drawRoundedRect(ctx, cardX, cardY, cardW, cardH, 8, true, false);
+    if (typeof ctx.createLinearGradient === 'function') {
+      const sheen = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
+      sheen.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+      sheen.addColorStop(0.35, 'rgba(255, 255, 255, 0.04)');
+      sheen.addColorStop(1, 'rgba(56, 189, 248, 0.06)');
+      ctx.fillStyle = sheen;
+      drawRoundedRect(ctx, cardX + 1, cardY + 1, cardW - 2, cardH - 2, 7, true, false);
+    }
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.34)';
+    ctx.lineWidth = 1;
+    drawRoundedRect(ctx, cardX + 0.5, cardY + 0.5, cardW - 1, cardH - 1, 8, false, true);
+    ctx.strokeStyle = 'rgba(255, 215, 0, 0.45)';
+    drawRoundedRect(ctx, cardX + 2.5, cardY + 2.5, cardW - 5, cardH - 5, 6, false, true);
+
+    const cx = Math.round(W / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold 8.5px monospace';
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText('★ ESTADÍSTICAS FINALES ★', cx, cardY + 10);
+
+    // Resumen narrativo requerido
+    const summaryText =
+      `Has derrotado a ${s.defeatedEnemies} enemigos. ` +
+      `Has ido a la cárcel ${s.jailCount} ${s.jailCount === 1 ? 'vez' : 'veces'}. ` +
+      `Y sí, el Señor de las Ovejas te mató ${s.demonDeaths} ${s.demonDeaths === 1 ? 'vez' : 'veces'}.`;
+    ctx.font = '6px monospace';
+    ctx.fillStyle = '#e2e8f0';
+    const wrapped = this._wrapText(ctx, summaryText, cardW - 24);
+    wrapped.slice(0, 3).forEach((line, idx) => {
+      ctx.fillText(line, cx, cardY + 26 + idx * 9);
+    });
+
+    // Cuadrícula 2x2 de tarjetas glassmorphism
+    const pills = [
+      { label: '⚔️ Enemigos derrotados', value: String(s.defeatedEnemies), color: '#fbbf24' },
+      { label: '⛓️ Veces en la cárcel', value: String(s.jailCount), color: '#f87171' },
+      { label: '🐑 Ovejas atacadas', value: String(s.sheepAttacks), color: '#c084fc' },
+      { label: '⏱️ Tiempo total', value: s.playTimeFormatted, color: '#38bdf8' }
+    ];
+    const pillW = 124;
+    const pillH = 26;
+    const startX = cardX + 12;
+    const startY = cardY + 58;
+    pills.forEach((pill, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const px = startX + col * (pillW + 10);
+      const py = startY + row * (pillH + 6);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      drawRoundedRect(ctx, px, py, pillW, pillH, 4, true, false);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      drawRoundedRect(ctx, px + 0.5, py + 0.5, pillW - 1, pillH - 1, 4, false, true);
+
+      ctx.textAlign = 'left';
+      ctx.font = '5.5px monospace';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(pill.label, px + 6, py + 4);
+      ctx.font = 'bold 8px monospace';
+      ctx.fillStyle = pill.color;
+      ctx.fillText(pill.value, px + 6, py + 13);
+    });
+
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 6px monospace';
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillText('[Pulsa ENTER, ESPACIO o Clic para continuar]', cx, cardY + cardH - 15);
     ctx.restore();
   }
 

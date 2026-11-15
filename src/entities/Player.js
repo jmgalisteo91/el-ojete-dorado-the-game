@@ -742,26 +742,30 @@ export class Player extends Entity {
   }
 
   _computeIncomingBaseDamage(attacker = null, customDamage = null) {
-    if (customDamage !== null && customDamage !== undefined) {
-      return customDamage;
-    }
-    const sid = attacker?.sceneId || this.currentSceneId || '';
     let dmg;
-    if (sid === 'overworld' || sid === 'first_stage') dmg = 1.0;
-    else if (sid === 'north_peaks' || sid === 'south_swamp' || sid === 'west_wastes') dmg = 1.5;
-    else if (sid === 'ai_citadel') dmg = (this.armorLevel >= 2) ? 2.0 : 2.5;
-    else if (
-      sid.startsWith('sewers') ||
-      sid.startsWith('mines') ||
-      sid.startsWith('forge') ||
-      sid === 'sword_temple' ||
-      sid === 'ai_fortress_gate'
-    ) {
-      dmg = (this.armorLevel >= 2) ? 1.5 : 2.0;
+    if (customDamage !== null && customDamage !== undefined) {
+      dmg = customDamage;
     } else {
-      dmg = 1.0;
+      const sid = attacker?.sceneId || this.currentSceneId || '';
+      if (sid === 'overworld' || sid === 'first_stage') dmg = 1.0;
+      else if (sid === 'north_peaks' || sid === 'south_swamp' || sid === 'west_wastes') dmg = 1.5;
+      else if (sid === 'ai_citadel') dmg = (this.armorLevel >= 2) ? 2.0 : 2.5;
+      else if (
+        sid.startsWith('sewers') ||
+        sid.startsWith('mines') ||
+        sid.startsWith('forge') ||
+        sid === 'sword_temple' ||
+        sid === 'ai_fortress_gate'
+      ) {
+        dmg = (this.armorLevel >= 2) ? 1.5 : 2.0;
+      } else {
+        dmg = 1.0;
+      }
+      if (attacker?.isBoss) dmg = Math.max(dmg, 1.0);
     }
-    if (attacker?.isBoss) dmg = Math.max(dmg, 1.0);
+    if (attacker && Number(attacker.ngPlusDamageScale) > 1) {
+      dmg = Number((dmg * Number(attacker.ngPlusDamageScale)).toFixed(2));
+    }
     return dmg;
   }
 
@@ -842,6 +846,22 @@ export class Player extends Entity {
     this.hp = Math.max(0, this.hp - dmg);
     // (FIX 1.1) Freeze frames al recibir daño; (FIX 1.2) main.js lee este contador para el shake
     this.damageTakenCount += 1;
+    const gameRefHit = this.game || (typeof window !== 'undefined' ? window.game : globalThis?.game);
+    if (gameRefHit) {
+      const shown = dmg > 0 ? Math.round(dmg * 10) / 10 : 1;
+      if (typeof gameRefHit.spawnFloatingText === 'function') {
+        gameRefHit.spawnFloatingText({
+          text: `-${shown}`,
+          x: this.centerX || this.x,
+          y: this.y - 2,
+          life: 0.8,
+          color: '#ff0000'
+        });
+      }
+      if (typeof gameRefHit.triggerDamageVignette === 'function') {
+        gameRefHit.triggerDamageVignette(0.2);
+      }
+    }
     GameLoop.triggerHitstop(4);
     return true;
   }
@@ -857,12 +877,30 @@ export class Player extends Entity {
       soundEngine.playPlayerHurt();
     }
 
+    let shownDmg = 1;
     if (this.armorPoints > 0) {
       this.armorPoints = Math.max(0, this.armorPoints - 1);
       this.invulnTimer = 0.85;
     } else {
-      this.hp = Math.max(0, this.hp - 0.5 * amount); // amount 1 = 0.5 corazones
+      const delta = 0.5 * amount;
+      shownDmg = Math.round(delta * 10) / 10 || amount;
+      this.hp = Math.max(0, this.hp - delta); // amount 1 = 0.5 corazones
       this.invulnTimer = 1.0;
+    }
+    const gameRefEnv = this.game || (typeof window !== 'undefined' ? window.game : globalThis?.game);
+    if (gameRefEnv) {
+      if (typeof gameRefEnv.spawnFloatingText === 'function') {
+        gameRefEnv.spawnFloatingText({
+          text: `-${shownDmg}`,
+          x: this.centerX || this.x,
+          y: this.y - 2,
+          life: 0.8,
+          color: '#ff0000'
+        });
+      }
+      if (typeof gameRefEnv.triggerDamageVignette === 'function') {
+        gameRefEnv.triggerDamageVignette(0.2);
+      }
     }
     return true;
   }

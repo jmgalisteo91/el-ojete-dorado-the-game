@@ -556,13 +556,16 @@ export async function run(test, assert) {
     const cloudItems = menu._getCurrentMenuItems();
     assert.equal(cloudItems.length, 4, 'El submenú de Guardar / Nube debe tener 4 opciones limpias');
 
-    // Submenú de Ajustes y Sonido
+    // Submenú de Ajustes y Sonido (incluye accesibilidad: Screen Shake, Partículas, Texto Rápido)
     menu.openPauseMenu();
     pauseItems[3].action();
     assert.equal(menu.state, 'options');
     const soundItems = menu._getCurrentMenuItems();
-    assert.equal(soundItems.length, 6, 'El submenú de Ajustes y Sonido debe tener 6 opciones (incluye Efectos Visuales)');
+    assert.equal(soundItems.length, 9, 'El submenú de Ajustes y Sonido debe tener 9 opciones (audio + accesibilidad)');
     assert.ok(soundItems.some((item) => item.label.includes('Efectos Visuales')), 'Debe existir el toggle de Efectos Visuales');
+    assert.ok(soundItems.some((item) => item.label.includes('Screen Shake')), 'Debe existir el toggle de Screen Shake');
+    assert.ok(soundItems.some((item) => item.label.includes('Efectos de Partículas')), 'Debe existir el toggle de Partículas');
+    assert.ok(soundItems.some((item) => item.label.includes('Texto Rápido')), 'Debe existir el toggle de Texto Rápido');
 
     // (FIX CINEMÁTICAS) La intro ya NO usa diapositivas vectoriales.
     let introDelegated = false;
@@ -885,46 +888,35 @@ export async function run(test, assert) {
     assert.equal(ev.finished, false);
   });
 
-  test('Transiciones espaciales: salir por un borde aparece en el opuesto con margen de 2 tiles', () => {
+  test('Transiciones espaciales: salir por un borde aparece en el opuesto con margen de 2 tiles ignorando player.direction', () => {
     const fake = {
       tilemap: { tileSize: 16, width: 576, height: 384 },
-      player: { direction: 'right' },
+      player: { direction: 'down' },
       _compassFromDirection: RPGGame.prototype._compassFromDirection
     };
-    const resolve = (direction, door = { spawnY: 200 }) => {
-      fake.player.direction = direction;
-      return RPGGame.prototype._resolveStageSpawn.call(fake, door);
+    const resolve = (exitDirection, wrongPlayerDir, door = { spawnY: 200 }) => {
+      fake.player.direction = wrongPlayerDir;
+      return RPGGame.prototype._resolveStageSpawn.call(fake, { ...door, exitDirection });
     };
 
-    const east = resolve('right');
+    const east = resolve('east', 'left');
     assert.equal(east.x, 32, 'Salir por el Este debe aparecer al Oeste (32 px)');
     assert.equal(east.y, 200);
     assert.equal(east.facing, 'right');
 
-    const west = resolve('left');
+    const west = resolve('west', 'right');
     assert.equal(west.x, 576 - 32, 'Salir por el Oeste debe aparecer al Este');
     assert.equal(west.facing, 'left');
 
-    fake.player.direction = 'down';
-    const south = RPGGame.prototype._resolveStageSpawn.call(fake, { spawnX: 288 });
-    assert.equal(south.y, 32, 'Salir por el Sur debe aparecer arriba');
+    const south = resolve('south', 'up', { spawnX: 288 });
+    assert.equal(south.y, 32, 'Salir por el Sur debe aparecer arriba (margen 32 px)');
     assert.equal(south.x, 288);
     assert.equal(south.facing, 'down');
 
-    fake.player.direction = 'up';
-    const north = RPGGame.prototype._resolveStageSpawn.call(fake, { spawnX: 288 });
-    assert.equal(north.y, 384 - 32, 'Salir por el Norte debe aparecer abajo');
+    const north = resolve('north', 'down', { spawnX: 288 });
+    assert.equal(north.y, 384 - 32, 'Salir por el Norte debe aparecer abajo (margen 32 px)');
     assert.equal(north.x, 288);
     assert.equal(north.facing, 'up');
-
-    // La puerta Este del overworld fuerza el borde opuesto aunque la dirección sea otra.
-    fake.player.direction = 'down';
-    const forced = RPGGame.prototype._resolveStageSpawn.call(fake, {
-      exitDirection: 'east',
-      spawnY: 240
-    });
-    assert.equal(forced.x, 32);
-    assert.equal(forced.y, 240);
   });
 
   test('Puerta con nivel: empuje inverso de 2 tiles y bloqueo del Guardia Vulcano', () => {
@@ -1560,15 +1552,28 @@ export async function run(test, assert) {
 
       RPGGame.prototype._finishBaseVictoryCredits.call(fakeGame, null);
       assert.equal(storeMap.get('el_ojete_dorado_victory_trophy'), 'true', 'Debe guardar el trofeo en true');
-      assert.ok(sfxCalls.includes('ui_glitch'), 'Debe reproducir el SFX ui_glitch');
+      assert.equal(menu.state, 'final_stats', 'Debe mostrar primero el resumen final de estadísticas tras los créditos');
+
+      // Confirmar / cerrar la pantalla de estadísticas -> dispara el Falso Final Glitch
+      const dummyInput = {
+        consumeInteraction: () => false,
+        consumeKey: () => false,
+        consumePointerClick: () => false,
+        pointerJustClicked: false
+      };
+      menu.update(0.4, dummyInput);
+      const statsInput = {
+        consumeInteraction: () => true,
+        consumeKey: (k) => k === 'Enter',
+        consumePointerClick: () => false,
+        pointerJustClicked: false
+      };
+      menu.update(0.1, statsInput);
+      assert.ok(sfxCalls.includes('ui_glitch'), 'Debe reproducir el SFX ui_glitch tras cerrar las estadísticas');
       assert.equal(menu.state, 'false_ending_glitch');
       assert.equal(menu.falseEndingText, 'SISTEMA CORRUPTO. BUSCANDO BACKUP...');
 
       // Avanzar 3.6s -> fundido a negro progresivo y mensaje activo
-      const dummyInput = {
-        consumeKey: () => false,
-        pointerJustClicked: false
-      };
       menu.update(3.6, dummyInput);
       assert.equal(menu.state, 'false_ending_glitch');
       assert.ok(menu.fadeAlpha > 0 && menu.fadeAlpha <= 1, 'Debe hacer fundido a negro hacia el final de los 4s');
@@ -2127,11 +2132,17 @@ export async function run(test, assert) {
     assert.ok(cyanRunes >= 8, 'El Templo de la Armadura debe incluir runas cian en el suelo');
     assert.ok(armor.lights.some((l) => l.glow === 'cyan'), 'Debe incluir luces tenues cian');
 
-    // Probar interacción con prop de estatua y camino de entrada/salida despejado
+    // Probar interacción con prop de estatua y camino de entrada/salida de 3 tiles despejado
     tm.loadScene('armor_temple');
     for (let r = 13; r <= 16; r++) {
-      assert.equal(tm.layers.collision[r][10], 0, `Camino entrada armor_temple libre en (10,${r})`);
-      assert.equal(tm.layers.collision[r][11], 0, `Camino entrada armor_temple libre en (11,${r})`);
+      for (const c of [9, 10, 11]) {
+        assert.equal(tm.layers.collision[r][c], 0, `Camino entrada/salida 3 tiles armor_temple libre en (${c},${r})`);
+      }
+    }
+    for (let r = 2; r <= 4; r++) {
+      for (const c of [9, 10, 11]) {
+        assert.equal(tm.layers.collision[r][c], 0, `Acceso norte al altar armor_temple libre en (${c},${r})`);
+      }
     }
     const fakePlayer = { centerX: 7 * 16 + 8, centerY: 15 * 16 + 8 };
     const propHit = tm.findNearbyProp(fakePlayer);
@@ -2166,7 +2177,18 @@ export async function run(test, assert) {
     for (let r = 10; r <= 16; r++) {
       assert.equal(tm.layers.collision[r][12], 0, `Pasillo sur sword_temple libre en (12,${r})`);
       if (r >= 11) {
-        assert.equal(tm.layers.collision[r][11], 0, `Pasillo sur sword_temple libre en (11,${r})`);
+        assert.equal(tm.layers.collision[r][10], 0, `Pasillo sur 3 tiles sword_temple libre en (10,${r})`);
+        assert.equal(tm.layers.collision[r][11], 0, `Pasillo sur 3 tiles sword_temple libre en (11,${r})`);
+      }
+    }
+    // Puente central transitable sobre el foso y acceso norte de 3 tiles despejado
+    for (let r = 6; r <= 8; r++) {
+      assert.equal(tm.layers.collision[r][11], 0, `Puente central sword_temple libre en (11,${r})`);
+      assert.equal(tm.layers.collision[r][12], 0, `Puente central sword_temple libre en (12,${r})`);
+    }
+    for (let r = 2; r <= 5; r++) {
+      for (const c of [10, 11, 12]) {
+        assert.equal(tm.layers.collision[r][c], 0, `Acceso norte al portal sword_temple libre en (${c},${r})`);
       }
     }
 
@@ -2264,5 +2286,190 @@ export async function run(test, assert) {
     tm.resetTempleTorches();
     assert.equal(tm.layers.decor_over[12][5], TEMPLE_TILES.TORCH_UNLIT);
     assert.equal(tm.lightSources.length, baseSwordLights);
+  });
+
+  test('Transición Fade to Black (0.3s): fadeAlpha 0->1 (0.15s), cambio en el pico y 1->0 (0.15s)', () => {
+    let swapped = false;
+    let movedStopped = false;
+    const game = {
+      fadeAlpha: 0,
+      sceneFade: null,
+      player: { stopMovement: () => { movedStopped = true; } },
+      tilemap: { currentSceneId: 'overworld', loadScene: (s) => { game.tilemap.currentSceneId = s; } },
+      _loadScene(s, cb, opts) { return RPGGame.prototype._loadScene.call(this, s, cb, opts); },
+      _updateSceneFade(dt) { return RPGGame.prototype._updateSceneFade.call(this, dt); },
+      _renderSceneFadeOverlay(ctx) { return RPGGame.prototype._renderSceneFadeOverlay.call(this, ctx); }
+    };
+
+    game._loadScene('first_stage', () => {
+      swapped = true;
+      game.tilemap.loadScene('first_stage');
+    });
+    assert.equal(movedStopped, true, 'Al iniciar transición debe frenar al jugador');
+    assert.equal(game.sceneFade.phase, 'out');
+    assert.equal(swapped, false, 'La escena no debe cambiar antes de completar el fundido a negro');
+
+    // Mitad de la primera fase (0.075s -> ~50% negro)
+    game._updateSceneFade(0.075);
+    assert.ok(Math.abs(game.fadeAlpha - 0.5) < 0.05);
+    assert.equal(swapped, false);
+
+    // Al alcanzar 0.15s (fadeAlpha == 1) cambia la escena y entra en fade-in
+    game._updateSceneFade(0.08);
+    assert.equal(swapped, true, 'La escena debe cargarse exactamente cuando fadeAlpha llega a 1');
+    assert.equal(game.tilemap.currentSceneId, 'first_stage');
+    assert.equal(game.sceneFade.phase, 'in');
+
+    // Renderiza overlay negro en el pico
+    const fadeRects = [];
+    let lastFill = '';
+    const fadeCtx = {
+      save() {}, restore() {},
+      set fillStyle(v) { lastFill = String(v); },
+      get fillStyle() { return lastFill; },
+      fillRect(x, y, w, h) { fadeRects.push({ x, y, w, h, fill: lastFill }); }
+    };
+    game._renderSceneFadeOverlay(fadeCtx);
+    assert.ok(fadeRects.length === 1 && fadeRects[0].fill.includes('rgba(0, 0, 0, 1.000)'));
+
+    // Al completar los otros 0.15s queda transparente
+    game._updateSceneFade(0.16);
+    assert.equal(game.fadeAlpha, 0);
+    assert.equal(game.sceneFade, null);
+  });
+
+  test('Accesibilidad (Screen Shake, Partículas, Texto Rápido) persistida en el_ojete_options y Nueva Partida +', () => {
+    const storeMap = new Map();
+    const previousStorage = globalThis.localStorage;
+    globalThis.localStorage = {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => { storeMap.set(k, String(v)); },
+      removeItem: (k) => { storeMap.delete(k); }
+    };
+
+    try {
+      const fakeMusic = {
+        isMuted: false,
+        volume: 0.75,
+        playMenuSelect() {}, playMenuMove() {}, playCaughtSkipSound() {},
+        setVolume(v) { this.volume = v; }, setMode() {}, stopTitleMusic() {}
+      };
+      const cam = new Camera2D(320, 180);
+      const dialogueBox = new DialogueBox(320, 180);
+      const pfx = new PremiumEffectsManager(320, 180);
+      pfx.particleContainer = { visible: true, removeChildren() {}, addChild() {} };
+
+      const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {
+        onApplyOptions: (opts) => RPGGame.prototype._applyGameOptions.call({
+          music: fakeMusic,
+          dialogueBox,
+          camera: cam,
+          premiumEffects: pfx,
+          renderPipeline: { setEffects() {} },
+          animeCutscenes: null
+        }, opts)
+      });
+
+      // Abrir opciones y activar los 3 toggles
+      menu.openOptionsScreen('title');
+      const items = menu._getCurrentMenuItems();
+      const shakeOpt = items.find((it) => it.label.startsWith('Screen Shake:'));
+      const partOpt = items.find((it) => it.label.startsWith('Efectos de Partículas:'));
+      const textOpt = items.find((it) => it.label.startsWith('Texto Rápido:'));
+      assert.ok(shakeOpt && partOpt && textOpt);
+
+      shakeOpt.action(); // ON -> OFF
+      partOpt.action();  // High -> Low
+      textOpt.action();  // OFF -> ON
+
+      const saved = JSON.parse(storeMap.get('el_ojete_options'));
+      assert.equal(saved.screenShake, false);
+      assert.equal(saved.particleQuality, 'low');
+      assert.equal(saved.fastText, true);
+
+      // Cámara no tiembla si Screen Shake está OFF
+      cam.shake(5, 0.3);
+      assert.equal(cam.shakeDuration, 0, 'Con Screen Shake OFF no debe activarse shake()');
+
+      // Partículas desactivadas en Low
+      assert.equal(pfx.particleQuality, 'low');
+      assert.equal(pfx.particlesEnabled, false);
+      assert.equal(pfx.particleContainer.visible, false);
+
+      // Texto rápido duplica la velocidad base (40 -> 80)
+      assert.equal(dialogueBox.baseCharSpeed, 80);
+
+      // Pantalla de Estadísticas Finales (Glassmorphism) muestra métricas y resumen
+      menu.openFinalStatsScreen({
+        defeatedEnemies: 18,
+        jailVisits: 2,
+        sheepAttacks: 4,
+        demonDeaths: 1,
+        playTimeFormatted: '07:45'
+      });
+      const renderedTexts = [];
+      const mockCtx = {
+        save() {}, restore() {}, beginPath() {}, roundRect() {}, fill() {}, stroke() {}, fillRect() {},
+        createLinearGradient() { return { addColorStop() {} }; },
+        fillText(t) { renderedTexts.push(String(t)); },
+        measureText(t) { return { width: String(t).length * 4 }; }
+      };
+      menu.render(mockCtx);
+      const joinedSummary = renderedTexts.join(' ');
+      assert.ok(joinedSummary.includes('18'), 'Debe renderizar enemigos derrotados');
+      assert.ok(joinedSummary.includes('Has ido a la cárcel 2 veces'), 'Debe incluir resumen de cárcel');
+      assert.ok(joinedSummary.includes('te mató 1 vez'), 'Debe incluir resumen del Señor de las Ovejas');
+      assert.ok(joinedSummary.includes('07:45'), 'Debe mostrar el tiempo de juego');
+
+      // Nueva Partida +: requiere trofeo de victoria, conserva habilidades base y escala enemigos x1.5
+      assert.equal(menu._hasVictoryTrophy(), false);
+      storeMap.set('el_ojete_dorado_victory_trophy', 'true');
+      assert.equal(menu._hasVictoryTrophy(), true);
+      menu.state = 'title';
+      const titleItems = menu._getCurrentMenuItems();
+      assert.ok(titleItems.some((it) => it.label === 'Nueva Partida +'), 'Con trofeo debe aparecer Nueva Partida +');
+
+      const p = new Player({ x: 64, y: 64 });
+      p.hasDash = true;
+      p.hasChargedAttack = true;
+      p.skills.vigor = true;
+      p.skills.ejecutivo = true; // habilidad de expansión NO debe filtrarse a base NG+
+      const enemyA = new Enemy({ id: 'ng_slime', x: 96, y: 64, hp: 4, maxHp: 4 });
+      const bossB = new StackOverflowBoss({ x: 128, y: 64 });
+      const ngGame = {
+        player: p,
+        enemies: [enemyA, bossB],
+        isNewGamePlus: false,
+        totalJailVisits: 0,
+        music: fakeMusic,
+        camera: cam,
+        menuSystem: menu,
+        _resetWorldToInitialState: () => {
+          p.unequipAllForNewGame();
+          enemyA.reset();
+        },
+        _saveGameToStorage: () => {},
+        _applyNewGamePlusMultipliers(list) {
+          return RPGGame.prototype._applyNewGamePlusMultipliers.call(this, list);
+        }
+      };
+
+      RPGGame.prototype._startNewGamePlus.call(ngGame);
+      assert.equal(ngGame.isNewGamePlus, true);
+      assert.equal(p.hasDash, true, 'NG+ conserva Dash');
+      assert.equal(p.hasChargedAttack, true, 'NG+ conserva Ataque Cargado');
+      assert.equal(p.skills.vigor, true, 'NG+ conserva skills base desbloqueadas');
+      assert.equal(p.skills.ejecutivo, false, 'NG+ en base NO debe filtrar skills de expansión');
+      assert.equal(enemyA.maxHp, 6, 'NG+ escala maxHp x1.5 (4 -> 6)');
+      assert.equal(enemyA.hp, 6);
+      assert.equal(enemyA.ngPlusDamageScale, 1.5, 'NG+ aplica multiplicador de daño x1.5');
+
+      // También preserva escala x1.5 en reset() de enemigos
+      enemyA.reset();
+      assert.equal(enemyA.hp, 6, 'enemy.reset() en NG+ mantiene la vida x1.5');
+    } finally {
+      if (typeof previousStorage === 'undefined') delete globalThis.localStorage;
+      else globalThis.localStorage = previousStorage;
+    }
   });
 }

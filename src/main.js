@@ -314,6 +314,7 @@ export class RPGGame {
     this._installAutoPause();
 
     this.jailRemainingSeconds = 0;
+    this.jailerAnger = 0;
     this.jailerAngerCount = 0;
     this.isJailedForever = false;
     this.jailReason = null;
@@ -401,6 +402,15 @@ export class RPGGame {
     this.totalPlayTimeSeconds = 0;
     this.totalDeaths = 0;
     this.totalJailVisits = 0;
+    this.sheepAttacks = 0;
+    this.demonDeaths = 0;
+    this.isNewGamePlus = false;
+    this.screenShakeEnabled = true;
+    this.floatingTexts = [];
+    this.fadeAlpha = 0;
+    this.sceneFade = null;
+    this.damageVignetteTimer = 0;
+    this.damageVignetteDuration = 0.2;
     this.gameCompleted = false;
     this.bossCutscenesSeen = {
       boss_garbage_collector: false,
@@ -444,6 +454,7 @@ export class RPGGame {
       {
         game: this,
         onNewGame: () => this._startNewGame(),
+        onNewGamePlus: () => this._startNewGamePlus(),
         onLoadGame: () => this._loadGameFromStorage(),
         onStartExpansion: () => this.expansionManager.init(this),
         onSaveGame: (opts) => this._saveGameToStorage(opts || { manual: true }),
@@ -595,18 +606,26 @@ export class RPGGame {
 
     const speedMap = {
       normal: 40,
-      fast: 78,
+      fast: 80,
       instant: 900
     };
-    this.dialogueBox.setBaseCharSpeed(speedMap[opts.textSpeed] || 40);
+    const textSpeedKey = opts.fastText ? 'fast' : (opts.textSpeed || 'normal');
+    this.dialogueBox.setBaseCharSpeed(speedMap[textSpeedKey] || 40);
 
+    const shakeOn = opts.screenShake !== false;
+    this.screenShakeEnabled = shakeOn;
+    if (this.camera && typeof this.camera.setShakeEnabled === 'function') {
+      this.camera.setShakeEnabled(shakeOn);
+    }
+
+    const particleQuality = opts.particleQuality === 'low' ? 'low' : 'high';
     // (BLOQUES 1/2/3) Efectos visuales configurables desde Opciones.
     const effectsOn = opts.visualEffects !== false;
     if (this.renderPipeline && typeof this.renderPipeline.setEffects === 'function') {
       this.renderPipeline.setEffects({
         bloom: effectsOn,
         scanlines: effectsOn,
-        particles: effectsOn,
+        particles: effectsOn && particleQuality !== 'low',
         parallax: effectsOn
       });
     }
@@ -615,6 +634,9 @@ export class RPGGame {
     }
     if (this.premiumEffects) {
       this.premiumEffects.setEnabled(effectsOn);
+      if (typeof this.premiumEffects.setParticleQuality === 'function') {
+        this.premiumEffects.setParticleQuality(particleQuality);
+      }
     }
   }
 
@@ -625,6 +647,7 @@ export class RPGGame {
     if (this.questLogView) this.questLogView.close();
     if (this.questLog) this.questLog.reset();
     this.jailRemainingSeconds = 0;
+    this.jailerAnger = 0;
     this.jailerAngerCount = 0;
     this.isJailedForever = false;
     this.jailReason = null;
@@ -727,6 +750,13 @@ export class RPGGame {
     this.totalPlayTimeSeconds = 0;
     this.totalDeaths = 0;
     this.totalJailVisits = 0;
+    this.sheepAttacks = 0;
+    this.demonDeaths = 0;
+    this.isNewGamePlus = false;
+    this.floatingTexts = [];
+    this.fadeAlpha = 0;
+    this.sceneFade = null;
+    this.damageVignetteTimer = 0;
     this.deathsByScene = {};
     this.sceneSurvivalTimer = 0;
     this._deathRegistered = false;
@@ -782,7 +812,192 @@ export class RPGGame {
     }
   }
 
+  get jailCount() {
+    return this.totalJailVisits || 0;
+  }
+
+  set jailCount(value) {
+    this.totalJailVisits = Math.max(0, Number(value) || 0);
+  }
+
+  _applyNewGamePlusMultipliers(enemyList = this.enemies) {
+    if (!this.isNewGamePlus || !Array.isArray(enemyList)) return;
+    for (const enemy of enemyList) {
+      if (!enemy) continue;
+      if (!enemy._ngPlusScaled) {
+        const baseMax = Number.isFinite(enemy.baseMaxHp) ? enemy.baseMaxHp : enemy.maxHp;
+        enemy.baseMaxHp = baseMax;
+        const scaledMax = Math.max(1, Math.round(baseMax * 1.5 * 10) / 10);
+        enemy.maxHp = scaledMax;
+        if (!enemy.dead) {
+          enemy.hp = scaledMax;
+        }
+        enemy._ngPlusScaled = true;
+      }
+      enemy.ngPlusDamageScale = 1.5;
+    }
+  }
+
+  _startNewGamePlus() {
+    const p = this.player;
+    const savedBaseSkills = {
+      hasDash: Boolean(p?.hasDash),
+      hasChargedAttack: Boolean(p?.hasChargedAttack),
+      hasBarrier: Boolean(p?.hasBarrier),
+      skills: {
+        vigor: Boolean(p?.skills?.vigor),
+        filo: Boolean(p?.skills?.filo),
+        reflejo: Boolean(p?.skills?.reflejo),
+        log: Boolean(p?.skills?.log)
+      }
+    };
+
+    this._resetWorldToInitialState();
+    this.isNewGamePlus = true;
+
+    if (this.player) {
+      this.player.hasDash = savedBaseSkills.hasDash;
+      this.player.hasChargedAttack = savedBaseSkills.hasChargedAttack;
+      this.player.hasBarrier = savedBaseSkills.hasBarrier;
+      this.player.skills = {
+        ...this.player.skills,
+        vigor: savedBaseSkills.skills.vigor,
+        filo: savedBaseSkills.skills.filo,
+        reflejo: savedBaseSkills.skills.reflejo,
+        log: savedBaseSkills.skills.log,
+        ejecutivo: false,
+        resiliencia: false,
+        reciclaje: false,
+        vigor_2: false,
+        filo_2: false,
+        reflejo_2: false,
+        log_2: false
+      };
+      this.player.hp = this.player.effectiveMaxHp;
+      this.player.stamina = this.player.effectiveMaxStamina;
+    }
+
+    this._applyNewGamePlusMultipliers(this.enemies);
+    this.music?.setMode?.('village');
+    this._saveGameToStorage();
+    if (this.menuSystem) {
+      this.menuSystem.state = 'none';
+      this.menuSystem.fadeAlpha = 0;
+      this.menuSystem.showNotice?.('⚔️ ¡NUEVA PARTIDA +! Enemigos x1.5 más letales.', 3.0);
+    }
+    this.player?.stopMovement?.();
+    this.camera?.resetCinematic?.();
+    this.camera?.snapTo?.(this.player);
+  }
+
+  spawnFloatingText({ text, x, y, color = '#ffffff', life = 0.8, vy = -18 } = {}) {
+    if (!Array.isArray(this.floatingTexts)) this.floatingTexts = [];
+    const maxLife = Math.max(0.1, Number(life) || 0.8);
+    this.floatingTexts.push({
+      text: String(text ?? ''),
+      x: Number(x) || 0,
+      y: Number(y) || 0,
+      color: color || '#ffffff',
+      life: maxLife,
+      maxLife,
+      vy: Number.isFinite(vy) ? vy : -18
+    });
+  }
+
+  _updateFloatingTexts(dt) {
+    if (!Array.isArray(this.floatingTexts) || this.floatingTexts.length === 0) return;
+    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+      const ft = this.floatingTexts[i];
+      ft.life -= dt;
+      ft.y += (ft.vy ?? -18) * dt;
+      if (ft.life <= 0) {
+        this.floatingTexts.splice(i, 1);
+      }
+    }
+  }
+
+  triggerDamageVignette(duration = 0.2) {
+    const dur = Math.max(0.05, Number(duration) || 0.2);
+    this.damageVignetteDuration = dur;
+    this.damageVignetteTimer = dur;
+  }
+
+  _renderDamageVignette(ctx) {
+    if (!this.damageVignetteTimer || this.damageVignetteTimer <= 0) return;
+    const progress = Math.max(0, Math.min(1, this.damageVignetteTimer / Math.max(0.01, this.damageVignetteDuration || 0.2)));
+    const edgeAlpha = 0.55 * progress;
+    ctx.save();
+    if (typeof ctx.createRadialGradient === 'function') {
+      const cx = VIEWPORT_WIDTH * 0.5;
+      const cy = VIEWPORT_HEIGHT * 0.5;
+      const innerR = Math.min(VIEWPORT_WIDTH, VIEWPORT_HEIGHT) * 0.25;
+      const outerR = Math.hypot(cx, cy);
+      const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
+      grad.addColorStop(0, 'rgba(180, 0, 0, 0)');
+      grad.addColorStop(1, `rgba(180, 0, 0, ${edgeAlpha.toFixed(3)})`);
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = `rgba(180, 0, 0, ${(edgeAlpha * 0.5).toFixed(3)})`;
+    }
+    ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+    ctx.restore();
+  }
+
+  _loadScene(targetScene, onMidpoint = null, options = {}) {
+    if (options.immediate) {
+      if (typeof onMidpoint === 'function') onMidpoint();
+      else if (targetScene) this.tilemap?.loadScene?.(targetScene);
+      this.fadeAlpha = 0;
+      this.sceneFade = null;
+      return;
+    }
+    if (this.sceneFade && this.sceneFade.phase === 'out') return;
+    this.player?.stopMovement?.();
+    this.sceneFade = {
+      phase: 'out',
+      halfDuration: 0.15,
+      targetScene,
+      onMidpoint,
+      swapped: false
+    };
+  }
+
+  _updateSceneFade(dt) {
+    if (!this.sceneFade) return;
+    const fade = this.sceneFade;
+    const step = dt / Math.max(0.01, fade.halfDuration || 0.15);
+    if (fade.phase === 'out') {
+      this.fadeAlpha = Math.min(1, (this.fadeAlpha || 0) + step);
+      if (this.fadeAlpha >= 1) {
+        if (!fade.swapped) {
+          fade.swapped = true;
+          if (typeof fade.onMidpoint === 'function') {
+            fade.onMidpoint();
+          } else if (fade.targetScene) {
+            this.tilemap?.loadScene?.(fade.targetScene);
+          }
+        }
+        fade.phase = 'in';
+      }
+    } else if (fade.phase === 'in') {
+      this.fadeAlpha = Math.max(0, (this.fadeAlpha || 0) - step);
+      if (this.fadeAlpha <= 0) {
+        this.fadeAlpha = 0;
+        this.sceneFade = null;
+      }
+    }
+  }
+
+  _renderSceneFadeOverlay(ctx) {
+    if (!this.fadeAlpha || this.fadeAlpha <= 0) return;
+    ctx.save();
+    ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, this.fadeAlpha).toFixed(3)})`;
+    ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+    ctx.restore();
+  }
+
   _shakeCamera(intensity = 4, duration = 0.3) {
+    if (this.screenShakeEnabled === false) return;
     if (this.camera && typeof this.camera.shake === 'function') {
       this.camera.shake(intensity, duration);
     }
@@ -865,7 +1080,8 @@ export class RPGGame {
       timeOfDayHours: this.dayNight.timeOfDayHours,
       bridgeForceUnlocked: this.tilemap.bridgeForceUnlocked,
       jailRemainingSeconds: this.jailRemainingSeconds,
-      jailerAngerCount: this.jailerAngerCount || 0,
+      jailerAnger: this.jailerAnger || 0,
+      jailerAngerCount: this.jailerAnger || 0,
       isJailedForever: !!this.isJailedForever,
       hasBrokenHeartCurse: !!this.player.hasBrokenHeartCurse,
       armorPuzzle: this.tilemap?.armorPuzzle ? {
@@ -898,6 +1114,9 @@ export class RPGGame {
       totalPlayTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
       totalDeaths: this.totalDeaths || 0,
       totalJailVisits: this.totalJailVisits || 0,
+      sheepAttacks: this.sheepAttacks || 0,
+      demonDeaths: this.demonDeaths || 0,
+      isNewGamePlus: Boolean(this.isNewGamePlus),
       housePermissions: { ...this.housePermissions },
       // (FIX NPC.8) Evita farmear pan (y dinero) recargando la partida
       bromBreadGift: Boolean(this.bromBreadGift),
@@ -1314,10 +1533,15 @@ export class RPGGame {
       }
 
       this.jailRemainingSeconds = data.jailRemainingSeconds || 0;
-      this.jailerAngerCount = Math.min(3, data.jailerAngerCount || 0);
+      const loadedAnger = typeof data.jailerAnger === 'number' ? data.jailerAnger : (data.jailerAngerCount || 0);
+      this.jailerAnger = Math.min(4, Math.max(0, loadedAnger));
+      this.jailerAngerCount = this.jailerAnger;
       this.totalPlayTimeSeconds = typeof data.totalPlayTimeSeconds === 'number' ? data.totalPlayTimeSeconds : 0;
       this.totalDeaths = typeof data.totalDeaths === 'number' ? data.totalDeaths : Object.values(data.deathsByScene || {}).reduce((a, b) => a + b, 0);
       this.totalJailVisits = typeof data.totalJailVisits === 'number' ? data.totalJailVisits : 0;
+      this.sheepAttacks = typeof data.sheepAttacks === 'number' ? data.sheepAttacks : 0;
+      this.demonDeaths = typeof data.demonDeaths === 'number' ? data.demonDeaths : 0;
+      this.isNewGamePlus = Boolean(data.isNewGamePlus);
       this.isJailedForever = false;
       this.player.hasBrokenHeartCurse = Boolean(data.hasBrokenHeartCurse);
       this.bromBreadGift = Boolean(data.bromBreadGift);
@@ -1552,6 +1776,9 @@ export class RPGGame {
 
       this.prebattleAlexCutscenePlayed = Boolean(data.prebattleAlexCutscenePlayed);
       this.gameCompleted = Boolean(data.gameCompleted);
+      if (this.isNewGamePlus) {
+        this._applyNewGamePlusMultipliers(this.enemies);
+      }
 
       if (targetScene === 'jail_cell' && !this.isJailedForever && this.jailRemainingSeconds <= 0) {
         this.jailRemainingSeconds = 120;
@@ -1758,6 +1985,8 @@ export class RPGGame {
   _releaseFromJail(messageLines) {
     this.jailRemainingSeconds = 0;
     this.jailReason = null;
+    this.jailerAnger = 0;
+    this.jailerAngerCount = 0;
     this._resetAllNPCHitCounts();
     if (this.isExpansionMode) {
       this.tilemap.loadScene('valleverde_corp');
@@ -2447,9 +2676,7 @@ export class RPGGame {
         const dlg = VILLAGE_DIALOGUES.jailer;
         if (this.isJailedForever) {
           this.dialogueBox.close();
-          this.animeCutscenes.playCutscene(SCENE_JAIL_ARREST, () => {
-            this.menuSystem.openGameOverScreen(false, 'jail_disrespect');
-          });
+          this.menuSystem.openGameOverScreen(true, 'jail_rebellion');
           return null;
         }
 
@@ -2457,67 +2684,68 @@ export class RPGGame {
         const secs = Math.floor(this.jailRemainingSeconds % 60);
         const timeLeft = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
-        const irritateJailer = (annoyingReason) => {
-          this.jailerAngerCount = (this.jailerAngerCount || 0) + 1;
+        const botherJailer = () => {
+          this.jailerAnger = (this.jailerAnger || 0) + 1;
+          this.jailerAngerCount = this.jailerAnger;
           this._saveGameToStorage();
 
-          if (this.jailerAngerCount === 1) {
-            this.dialogueBox.showMessage(dlg.warning1Title, dlg.warning1Lines(annoyingReason));
-          } else if (this.jailerAngerCount === 2) {
-            this.dialogueBox.showMessage(dlg.warning2Title, dlg.warning2Lines(annoyingReason));
-          } else if (this.jailerAngerCount === 3) {
-            if (this.music && typeof this.music.playPlayerHurt === 'function') {
-              this.music.playPlayerHurt();
+          if (this.jailerAnger === 1) {
+            this.dialogueBox.showMessage(dlg.speaker, dlg.anger1Lines);
+          } else if (this.jailerAnger === 2) {
+            this.dialogueBox.showMessage(dlg.speaker, dlg.anger2Lines);
+          } else if (this.jailerAnger === 3) {
+            if (this.music && typeof this.music.playSFX === 'function') {
+              this.music.playSFX('hit_flesh');
+            } else if (this.soundEngine && typeof this.soundEngine.playSFX === 'function') {
+              this.soundEngine.playSFX('hit_flesh');
             }
-            this.player.inflictBrokenHeartCurse();
-            this.player.hp = Math.max(0.5, this.player.hp - 0.5);
-            this.player.invulnTimer = 1.0;
+            if (this.player) {
+              this.player.invulnTimer = 0;
+              this.player.takeHit(null, null, 0.5);
+            }
+            this._shakeCamera(4.5, 0.25);
             this._saveGameToStorage();
-            this.dialogueBox.showMessage(dlg.fury3Title, dlg.fury3Lines(annoyingReason));
+            this.dialogueBox.showMessage(dlg.speaker, dlg.anger3Lines);
           } else {
-            if (this.music && typeof this.music.playPlayerHurt === 'function') {
-              this.music.playPlayerHurt();
+            if (this.music && typeof this.music.playSFX === 'function') {
+              this.music.playSFX('pickup_item');
+            } else if (this.soundEngine && typeof this.soundEngine.playSFX === 'function') {
+              this.soundEngine.playSFX('pickup_item');
             }
             this.isJailedForever = true;
             this.dialogueBox.close();
-            this.animeCutscenes.playCutscene(SCENE_JAIL_ARREST, () => {
-              this.menuSystem.openGameOverScreen(false, 'jail_disrespect');
-            });
+            this.menuSystem?.showNotice?.(dlg.anger4Lines[0], 3.0);
+            this.menuSystem.openGameOverScreen(true, 'jail_rebellion');
           }
         };
 
         const jailChoices = [
           {
-            label: 'Recitar disculpa solemne a la IA',
-            onSelect: () => this._releaseFromJail(dlg.apologyReleaseLines)
+            label: 'Pagar la fianza (50 Bytes)',
+            onSelect: () => {
+              if ((this.player?.coins || 0) >= 50) {
+                this.player.coins -= 50;
+                this.dialogueBox.close();
+                this._releaseFromJail(null);
+                this.menuSystem?.showNotice?.('Fianza pagada (-50 Bytes). ¡Quedas en libertad!', 2.6);
+                this._saveGameToStorage();
+              } else {
+                this.dialogueBox.showMessage(dlg.speaker, dlg.noMoneyLines);
+              }
+            }
           },
           {
-            label: 'Releer mis derechos de detenido',
-            onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.rightsLines)
-          },
-          ...dlg.teaseOptions.map((opt) => ({
-            label: opt.label,
-            onSelect: () => irritateJailer(opt.reason)
-          })),
-          {
-            label: 'Seguir cumpliendo condena',
+            label: 'Vale, esperaré.',
             onSelect: () => this.dialogueBox.close()
+          },
+          {
+            label: '¿Y si no quiero esperar?',
+            onSelect: () => botherJailer()
           }
         ];
 
-        if (this.inventory.hasItem('bread')) {
-          jailChoices.unshift({
-            label: 'Sobornar con Pan Campesino',
-            onSelect: () => {
-              this.inventory.consumeItem('bread', 1);
-              this._releaseFromJail(dlg.bribeReleaseLines);
-            }
-          });
-        }
-
-        const angerStatus = this.jailerAngerCount > 0 ? ` [Enfado: ${this.jailerAngerCount}/3]` : '';
         return {
-          lines: dlg.greetingLines(timeLeft, angerStatus),
+          lines: dlg.greetingLines(timeLeft),
           choices: jailChoices
         };
       }),
@@ -5106,16 +5334,37 @@ export class RPGGame {
     if (record) {
       submitGlobalScore(record).catch?.(() => {});
     }
-    this.soundEngine?.playSFX?.('ui_glitch');
-    if (this.menuSystem && typeof this.menuSystem.startFalseEndingGlitch === 'function') {
-      this.menuSystem.startFalseEndingGlitch(() => {
+    const triggerPostStats = () => {
+      this.soundEngine?.playSFX?.('ui_glitch');
+      if (this.menuSystem && typeof this.menuSystem.startFalseEndingGlitch === 'function') {
+        this.menuSystem.startFalseEndingGlitch(() => {
+          this._resetWorldToInitialState();
+          this.menuSystem.openTitleScreen();
+        }, 4.0);
+      } else if (this.menuSystem) {
         this._resetWorldToInitialState();
         this.menuSystem.openTitleScreen();
-      }, 4.0);
-    } else if (this.menuSystem) {
-      this._resetWorldToInitialState();
-      this.menuSystem.openTitleScreen();
+      }
+    };
+
+    if (this.menuSystem && typeof this.menuSystem.openFinalStatsScreen === 'function') {
+      const defeatedCount = Math.max(
+        this.player?.killCount || 0,
+        Array.isArray(this.enemies) ? this.enemies.filter((e) => e.dead).length : 0
+      );
+      const stats = {
+        defeatedEnemies: defeatedCount,
+        jailVisits: this.totalJailVisits || 0,
+        sheepAttacks: this.sheepAttacks || 0,
+        demonDeaths: this.demonDeaths || 0,
+        playTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
+        playTimeFormatted: record?.playTimeFormatted || calculateGameScore(this.totalPlayTimeSeconds, this.totalDeaths).timeFormatted
+      };
+      this.menuSystem.openFinalStatsScreen(stats, triggerPostStats);
+      return;
     }
+
+    triggerPostStats();
   }
 
   _triggerVictorySequence() {
@@ -5292,6 +5541,11 @@ export class RPGGame {
     if (this.curriculumFlashTimer > 0) {
       this.curriculumFlashTimer = Math.max(0, this.curriculumFlashTimer - dt);
     }
+    if (this.damageVignetteTimer > 0) {
+      this.damageVignetteTimer = Math.max(0, this.damageVignetteTimer - dt);
+    }
+    this._updateSceneFade(dt);
+    this._updateFloatingTexts(dt);
 
     if (this.vertederoRebootTimer > 0) {
       this.vertederoRebootTimer = Math.max(0, this.vertederoRebootTimer - dt);
@@ -5413,7 +5667,7 @@ export class RPGGame {
 
     if (this.isJailedForever && this.tilemap.currentSceneId === 'jail_cell' && this.menuSystem.state !== 'game_over') {
       this.dialogueBox.close();
-      this.menuSystem.openGameOverScreen(false, 'jail_disrespect');
+      this.menuSystem.openGameOverScreen(true, 'jail_rebellion');
       this.input.endFrame();
       return;
     }
@@ -5808,7 +6062,7 @@ export class RPGGame {
       this.input,
       this.tilemap,
       obstacles,
-      this.dialogueBox.active,
+      this.dialogueBox.active || Boolean(this.sceneFade && this.sceneFade.phase === 'out'),
       this.music
     );
 
@@ -6228,6 +6482,9 @@ export class RPGGame {
     const sceneId = this.tilemap.currentSceneId;
     this.deathsByScene[sceneId] = (this.deathsByScene[sceneId] || 0) + 1;
     this.totalDeaths = (this.totalDeaths || 0) + 1;
+    if (this.player?.killedByDemon) {
+      this.demonDeaths = (this.demonDeaths || 0) + 1;
+    }
     this.sceneSurvivalTimer = 0;
   }
 
@@ -6293,6 +6550,7 @@ export class RPGGame {
     ) {
       if (this.premiumEffects) this.premiumEffects.setVisible(false);
       this.menuSystem.render(ctx);
+      this._renderSceneFadeOverlay(ctx);
       this._renderCustomCursor(ctx);
       return;
     }
@@ -6456,6 +6714,8 @@ export class RPGGame {
       ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
       ctx.restore();
     }
+    this._renderDamageVignette(ctx);
+    this._renderSceneFadeOverlay(ctx);
     if (this.premiumEffects) {
       this.premiumEffects.render();
     }

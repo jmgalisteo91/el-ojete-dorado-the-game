@@ -203,67 +203,67 @@ function buildArmorTempleScene(tilemap) {
     n: TEMPLE_TILES.BANNER_CYAN
   };
 
-  // 22 cols (0..21) x 18 rows (0..17)
+  // 22 cols (0..21) x 18 rows (0..17) — Planta en Cruz / Salón del Trono (puerta Sur 3 tiles libre: cols 9..11)
   const groundRows = [
     'SSSSSSSSSSSSSSSSSSSSSS', // 00
     'SSSSSSSSSSSSSSSSSSSSSS', // 01
-    'SScSSccBRRRRRRBccSScSS', // 02 Altar wing & red carpet
-    'SScSSccSRRRRRRSccSScSS', // 03
-    'SScBSSSBRRRRRRBSSSBcSS', // 04 Altar pedestal (10,4)
-    'SScBSSSScRRRRcSSSSBcSS', // 05 Barrier row 5
-    'SScccBccSRRRRSccBcccSS', // 06 Alfa (4,6), Gamma (17,6)
-    'SSccccccSRRRRSccccccSS', // 07 Beta (10,7)
-    'SSccBcccSSSSSScccBccSS', // 08
+    'SSSSSScBRRRRRRBcSSSSSS', // 02 Ábside Norte (Altar elevado)
+    'SSSSSScSRRRRRRScSSSSSS', // 03
+    'SScBSSSBRRRRRRBSSSBcSS', // 04 Plataforma del Altar (10,4)
+    'SScBSSSScRRRRcSSSSBcSS', // 05 Barrera de fuego (9..11,5)
+    'SScccBccSRRRRSccBcccSS', // 06 Monolitos Alfa (4,6) y Gamma (17,6)
+    'SSccccccSRRRRSccccccSS', // 07 Monolito Beta (10,7)
+    'SSccBcccSSSSSScccBccSS', // 08 Alas laterales de interruptores
     'SSccBcccSSSSSScccBccSS', // 09
-    'SSccccccSSSSSSccccccSS', // 10 Switches A(4,10) B(6,10) C(15,10) D(17,10)
+    'SSccccccSSSSSSccccccSS', // 10 Interruptores A(4,10) B(6,10) C(15,10) D(17,10)
     'SSccBcccSSSSSScccBccSS', // 11
-    'SScccBccccRRccccBcccSS', // 12
-    'SSSSSSSSScRRcSSSSSSSSS', // 13 Entrance carpet path
-    'SSSSSSSSScRRcSSSSSSSSS', // 14 Player spawn (10,14)
-    'SSSSSSSSScRRcSSSSSSSSS', // 15
-    'SSSSSSSSScEEcSSSSSSSSS', // 16 Exit mats (10..11, 16)
+    'SScccBcccRRRRcccBcccSS', // 12
+    'SSSSSSSScRRRRcSSSSSSSS', // 13 Pasillo central de entrada (3+ tiles)
+    'SSSSSSSScRRRRcSSSSSSSS', // 14 Spawn jugador (10,14)
+    'SSSSSSSScRRRRcSSSSSSSS', // 15
+    'SSSSSSSScEEEEcSSSSSSSS', // 16 Puerta Sur 3 tiles (cols 9..11) + borde
     'SSSSSSSSSSSSSSSSSSSSSS'  // 17
   ];
 
   const wallsRows = [
     'WWWWWWWWWWWWWWWWWWWWWW', // 00
     'WWWWWWWWWWWWWWWWWWWWWW', // 01
-    'WW..................WW', // 02
-    'WW.......L..L.......WW', // 03
-    'WW.....W..A..W......WW', // 04 Altar at (10,4) non-solid; pillars at (7,4),(14,4)
-    `WW......W${fCh}${fCh}${fCh}W......WW`, // 05 Fire barrier (9..11,5)
-    'WW..................WW', // 06 Monoliths Alfa (4,6), Gamma (17,6)
-    'WW...L..........L...WW', // 07 Lamps (5,7)? Wait keep (3,7) & (18,7) walkable near statues -> lamps at (5,7),(16,7)
-    'WW....W.WWWWWW.W....WW', // 08 Central sanctum divider (8..13,8..11) + pillars (6? Wait: 5,8 and 16,8) -> shifted nicely clear of switches!
+    'WWWWWW..........WWWWWW', // 02 Silueta en Cruz: ábside superior enmarcado
+    'WWWWWW..L....L..WWWWWW', // 03 Lámparas (8,3),(13,3) fuera del camino central 9..11
+    'WW.....W..A..W......WW', // 04 Altar (10,4) no sólido; pilares (7,4),(14,4)
+    `WW......W${fCh}${fCh}${fCh}W......WW`, // 05 Barrera de fuego (9..11,5)
+    'WW..................WW', // 06 Monolitos Alfa (4,6), Gamma (17,6)
+    'WW...L..........L...WW', // 07 Lámparas (5,7),(16,7)
+    'WW....W.WWWWWW.W....WW', // 08 Divisor central + pilares despejando interruptores
     'WW......WWWWWW......WW', // 09
-    'WW......WWWWWW......WW', // 10 Switches (4,10),(6,10),(15,10),(17,10) completely clear
+    'WW......WWWWWW......WW', // 10 Interruptores (4,10),(6,10),(15,10),(17,10) libres
     'WW....W.WWWWWW.W....WW', // 11
     'WW..................WW', // 12
-    'WWWWWWWW......WWWWWWWW', // 13 Divider walls flanking grand hall (2..7,13) & (14..19,13)
-    'WW.......L..L.......WW', // 14 Lamps (9,14),(12,14)
-    'WW..................WW', // 15
-    'WW........EE........WW', // 16 Clear exit mat path
+    'WWWWWWWW......WWWWWWWW', // 13 Umbral del Salón del Trono (cols 8..13 libres)
+    'WWWWWW..L....L..WWWWWW', // 14 Lámparas (8,14),(13,14) -> camino central 9..11 100% libre
+    'WWWWWW..........WWWWWW', // 15
+    'WWWWWW...EEE....WWWWWW', // 16 Salida de 3 tiles libre (cols 9..11)
     'WWWWWWWWWWWWWWWWWWWWWW'  // 17
   ];
 
   const decorOverRows = [
     '......................', // 00
-    '..w.....n....n.....w..', // 01 Corner cobwebs & cyan banners over altar arch
-    '..w................w..', // 02
-    '..t......k..k......t..', // 03 Wall torches & altar candles
-    '.......u.....u........', // 04 Unlit sanctum pillar torches
+    '......w.n....n.w......', // 01 Estandartes cian sobre el altar
+    '......w........w......', // 02
+    '..t......k..k......t..', // 03 Antorchas de muro y velas del altar
+    '.......u.....u........', // 04 Antorchas del sagrario norte
     '......................', // 05
     '......................', // 06
-    '..ts..............st..', // 07 Wing Sentinel Statues at (3,7) & (18,7) + torches (2,7),(19,7)
+    '..ts..............st..', // 07 Estatuas de Centinela en alas (3,7) y (18,7) + antorchas
     '......................', // 08
     '......................', // 09
-    '..t................t..', // 10 Side corridor cyan torches
+    '..t................t..', // 10 Antorchas laterales de los pedestales
     '......................', // 11
-    '..w................w..', // 12 Corner cobwebs above wing wall
-    '.......u......u.......', // 13 Unlit entry archway torches (ignited when stepping into hall)
-    '.......s......s.......', // 14 Entrance Sentinel Statues (7,14) & (14,14)
-    '..t................t..', // 15
-    '..w................w..', // 16
+    '..w................w..', // 12
+    '.......u......u.......', // 13 Antorchas del umbral (se encienden al entrar)
+    '.......s......s.......', // 14 Estatuas de entrada (7,14) y (14,14) flanqueando el pasillo
+    '......t........t......', // 15
+    '......w........w......', // 16
     '......................'  // 17
   ];
 
@@ -402,67 +402,67 @@ function buildSwordTempleScene(tilemap) {
     b: TEMPLE_TILES.BANNER_CRIMSON
   };
 
-  // 24 cols (0..23) x 18 rows (0..17)
+  // 24 cols (0..23) x 18 rows (0..17) — Planta en Cruz con puente central sobre el foso del Abismo
   const groundRows = [
     'SSSSSSSSSSSSSSSSSSSSSSSS', // 00
-    'SSSSSSSSSSSSSSSSSSSSSSSS', // 01 Portal (11..12,1)
-    'SScSSSSSSRRRRRRSSSSSScSS', // 02 Red carpet corridor from altar to portal
-    'SScSSSSSSRRRRRRSSSSSScSS', // 03
-    'SScSSccSSRRRRRRSSccSScSS', // 04 Altar pedestal (11,4)
-    'SScccccSSRRRRRRSScccccSS', // 05 North bridge clear walkway
-    'SScccccSSVVVVVVSScccccSS', // 06 Central Abyss Chasm (cols 9..14, rows 6..8)
-    'SScccccSSVVVVVVSScccccSS', // 07 Side walkways at cols 7..8 & 15..16
-    'SScccccSSVVVVVVSScccccSS', // 08 Monoliths at (6,8) & (17,8)
-    'SScccccSSccccccSScccccSS', // 09 South terrace bridge
-    'SSccccccSRRRRRRSccccccSS', // 10 Monolith 2 at (11,10)
-    'SSccccccSRRRRRRSccccccSS', // 11
-    'SSccccccSRRRRRRSccccccSS', // 12 Knight boss patrol (9..14,12..13)
-    'SScSSSSSScRRRRcSSSSSScSS', // 13
-    'SScSSSSSScRRRRcSSSSSScSS', // 14 Player spawn (11.5,14.5)
-    'SScSSSSSScRRRRcSSSSSScSS', // 15
-    'SSSSSSSSScREERcSSSSSSSSS', // 16 Exit mats (11..12, 16)
+    'SSSSSSSSSSSSSSSSSSSSSSSS', // 01 Portal Norte (11..12,1)
+    'SSSSSScSSRRRRRRSScSSSSSS', // 02 Ábside del Altar dorado
+    'SSSSSScSSRRRRRRSScSSSSSS', // 03
+    'SScSSccSSRRRRRRSSccSScSS', // 04 Pedestal del Altar (11,4)
+    'SScccccSSRRRRRRSScccccSS', // 05 Cabecera del puente
+    'SScccccSSVVRRVVSScccccSS', // 06 Puente central (11..12) flanqueado por el foso (9..10 y 13..14)
+    'SScccccSSVVRRVVSScccccSS', // 07 Pasillos laterales (7..8 y 15..16)
+    'SScccccSSVVRRVVSScccccSS', // 08 Monolitos 1 (6,8) y 3 (17,8)
+    'SScccccSSccRRccSScccccSS', // 09 Terraza sur del puente
+    'SSccccccSRRRRRRSccccccSS', // 10 Monolito 2 (11,10)
+    'SSccccccSRRRRRRSccccccSS', // 11 Pasillo central libre (cols 10..12 desde fila 11)
+    'SSccccccSRRRRRRSccccccSS', // 12
+    'SSSSSScSScRRRRcSScSSSSSS', // 13 Pasillo sur de entrada (3 tiles libre: cols 10..12)
+    'SSSSSScSScRRRRcSScSSSSSS', // 14 Spawn jugador (11.5,14.5)
+    'SSSSSScSScRRRRcSScSSSSSS', // 15
+    'SSSSSSSSScREEERSSSSSSSSS', // 16 Puerta Sur 3 tiles libre (cols 10..12)
     'SSSSSSSSSSSSSSSSSSSSSSSS'  // 17
   ];
 
   const wallsRows = [
     'WWWWWWWWWWWWWWWWWWWWWWWW', // 00
-    `WWWWWWWWWWW${pCh}${pCh}WWWWWWWWWWW`, // 01 Portal at (11..12,1)
-    'WW....................WW', // 02
-    'WW........L..L........WW', // 03 Lamps (10,3),(13,3)
-    'WW.........A..........WW', // 04 Altar pedestal at (11,4) (non-solid)
-    'WW...W............W...WW', // 05 Pillars (5,5),(18,5)
+    `WWWWWWWWWWW${pCh}${pCh}WWWWWWWWWWW`, // 01 Portal Norte (11..12,1)
+    'WWWWWW............WWWWWW', // 02 Silueta en Cruz: ábside superior
+    'WWWWWW...L....L...WWWWWW', // 03 Lámparas (9,3),(14,3) -> acceso norte de 3+ tiles libre
+    'WW.........A..........WW', // 04 Altar (11,4) no sólido
+    'WW...W............W...WW', // 05 Pilares (5,5),(18,5)
     'WW....................WW', // 06
-    'WW.L................L.WW', // 07 Lamps (3,7),(20,7)
-    'WW....................WW', // 08 Monolith 1 (6,8), Monolith 3 (17,8)
+    'WW.L................L.WW', // 07 Lámparas (3,7),(20,7)
+    'WW....................WW', // 08 Monolitos en alas/esquinas
     'WW....................WW', // 09
-    'WW....................WW', // 10 Monolith 2 (11,10)
+    'WW....................WW', // 10 Monolito 2 (11,10)
     'WW....................WW', // 11
-    'WW...W............W...WW', // 12 Pillars (5,12),(18,12)
-    'WW....................WW', // 13 Clear walkways to bottom corner statues
-    'WW....L..........L....WW', // 14 Lamps (6,14),(17,14)
-    'WW....................WW', // 15
-    'WW.........EE.........WW', // 16 Clear exit mat path
+    'WW...W............W...WW', // 12 Pilares (5,12),(18,12)
+    'WWWWWW............WWWWWW', // 13 Silueta en Cruz: nave sur
+    'WWWWWWL..........LWWWWWW', // 14 Lámparas (6,14),(17,14) -> camino central 10..12 100% despejado
+    'WWWWWW............WWWWWW', // 15
+    'WWWWWW....EEE.....WWWWWW', // 16 Salida Sur de 3 tiles libre (cols 10..12)
     'WWWWWWWWWWWWWWWWWWWWWWWW'  // 17
   ];
 
   const decorOverRows = [
     '........................', // 00
-    '..w......b....b......w..', // 01 Crimson banners framing portal + corner cobwebs
-    '..w..................w..', // 02
-    '...K................K...', // 03 Corner Fallen Knight statues (3,3) & (20,3)
+    '......w..b....b..w......', // 01 Estandartes carmesí y telarañas en el ábside
+    '......w..........w......', // 02
+    '...K................K...', // 03 Caballeros caídos (3,3) y (20,3)
     '........................', // 04
-    '..t..u............u..t..', // 05 Wall & pillar torches (unlit north sconces)
+    '..t..u............u..t..', // 05 Antorchas norte
     '........................', // 06
-    '..........m..m..........', // 07 Floating monoliths hovering above the central Abyss (10,7) & (13,7)
+    '.........m....m.........', // 07 Monolitos flotantes (9,7) y (14,7) sobre el foso
     '........................', // 08
     '........................', // 09
-    '..t..................t..', // 10 Side torches
+    '..t..................t..', // 10 Antorchas laterales
     '........................', // 11
-    '.....u............u.....', // 12 Unlit south pillar torches (ignited when stepping forward)
-    '..w..................w..', // 13
+    '.....u............u.....', // 12 Antorchas de pilares sur
+    '......w..........w......', // 13
     '........................', // 14
-    '...K................K...', // 15 Corner Fallen Knight statues (3,15) & (20,15)
-    '..w..................w..', // 16 Corner cobwebs
+    '...K................K...', // 15 Caballeros caídos (3,15) y (20,15)
+    '......w..........w......', // 16
     '........................'  // 17
   ];
 
