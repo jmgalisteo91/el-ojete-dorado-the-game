@@ -13,7 +13,7 @@
  * de index.html y de los imports de los módulos).
  */
 
-const CACHE_VERSION = 'v44';
+const CACHE_VERSION = 'v45';
 const ASSET_VERSION = '8';
 const CACHE_NAME = `ojete-dorado-${CACHE_VERSION}`;
 
@@ -121,6 +121,26 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/** Comprueba si una respuesta HTTP se puede guardar en Cache API (excluye 206 Partial Content). */
+function isCacheableResponse(response) {
+  return Boolean(
+    response &&
+      response.status !== 206 &&
+      (response.status === 200 || response.type === 'opaque')
+  );
+}
+
+/** Guarda en caché de forma segura sin propagar errores de Cache.put. */
+async function putInCache(request, response) {
+  if (!isCacheableResponse(response)) return;
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(request, response.clone());
+  } catch (err) {
+    // Ignorar fallos transitorios de almacenamiento o respuestas parciales
+  }
+}
+
 /** Cache-first con relleno de runtime (URLs exactas). */
 async function cacheFirst(request, fallbackUrl = null) {
   const cached = await caches.match(request);
@@ -128,10 +148,7 @@ async function cacheFirst(request, fallbackUrl = null) {
 
   try {
     const response = await fetch(request);
-    if (response && (response.ok || response.type === 'opaque')) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
-    }
+    await putInCache(request, response);
     return response;
   } catch (err) {
     if (fallbackUrl) {
@@ -139,6 +156,18 @@ async function cacheFirst(request, fallbackUrl = null) {
       if (fallback) return fallback;
     }
     return Response.error();
+  }
+}
+
+/** Red primero con respaldo de caché offline (JS/CSS para recibir deploys al instante). */
+async function networkFirstStatic(request) {
+  try {
+    const response = await fetch(request, { cache: 'no-cache' });
+    await putInCache(request, response);
+    return response;
+  } catch (err) {
+    const cached = await caches.match(request);
+    return cached || Response.error();
   }
 }
 
@@ -159,9 +188,8 @@ async function networkFirst(request) {
 async function networkFirstNavigation(request) {
   try {
     const response = await fetch(request, { cache: 'no-cache' });
-    if (response && response.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
+    if (response && response.status === 200) {
+      await putInCache(request, response);
     }
     return response;
   } catch (err) {
@@ -178,10 +206,8 @@ async function staleWhileRevalidate(request) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
   const network = fetch(request)
-    .then((response) => {
-      if (response && (response.ok || response.type === 'opaque')) {
-        cache.put(request, response.clone());
-      }
+    .then(async (response) => {
+      await putInCache(request, response);
       return response;
     })
     .catch(() => null);
@@ -191,6 +217,9 @@ async function staleWhileRevalidate(request) {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (!request || request.method !== 'GET') return;
+
+  // Peticiones parciales (audio/vídeo streaming con Range -> 206): que las maneje el navegador
+  if (request.headers && request.headers.has('range')) return;
 
   let url;
   try {
@@ -222,6 +251,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Estáticos: cache-first con relleno de runtime
+  // Código JS/CSS del juego: red primero para evitar quedar atrapado en versiones viejas
+  if (/\.(js|mjs|css)$/i.test(url.pathname)) {
+    event.respondWith(networkFirstStatic(request));
+    return;
+  }
+
+  // Resto de estáticos: cache-first con relleno de runtime
   event.respondWith(cacheFirst(request));
 });

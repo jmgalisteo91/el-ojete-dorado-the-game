@@ -7345,7 +7345,18 @@ function registerServiceWorker() {
   if (protocol !== 'http:' && protocol !== 'https:') return;
 
   const register = () => {
-    navigator.serviceWorker.register('./sw.js').catch((err) => {
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then((reg) => {
+      if (reg && typeof reg.update === 'function') {
+        reg.update().catch(() => {});
+      }
+    }).catch((err) => {
       // No es crítico: el juego funciona sin SW, solo se pierde el modo offline.
       console.warn('[PWA] Service Worker no registrado:', err && err.message ? err.message : err);
     });
