@@ -165,7 +165,7 @@ export class DialogueBox {
       rawLines = Array.isArray(customLines) ? [...customLines] : [customLines];
       this.choices = customChoices || [];
     } else if (npc) {
-      const dialogData = npc.resolveDialogues ? npc.resolveDialogues() : npc.dialogues;
+      const dialogData = npc.resolveDialogues ? npc.resolveDialogues(this) : npc.dialogues;
       if (dialogData && typeof dialogData === 'object' && !Array.isArray(dialogData)) {
         rawLines = [...(dialogData.lines || ['...'])];
         this.choices = dialogData.choices || [];

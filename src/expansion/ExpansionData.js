@@ -34,17 +34,28 @@ export const EXPANSION_INFO = {
 };
 
 export const EXPANSION_NPCS = {
-  tony_culeiro: {
-    id: 'tony_culeiro',
-    name: 'Tony Culeiro',
+  tony_randazzo: {
+    id: 'tony_randazzo',
+    name: 'Tony Randazzo',
+    angryName: 'Tony Randazzo (Furioso)',
     spriteColor: '#94a3b8',
     role: 'Fixer',
     talkSfx: 'keyboard_type',
-    lore: 'Programador original de Alex. Cínico, leal a su manera. Alex le debe 200 pesetas desde 1998.',
+    lore: 'Programador original de Alex. Sevillano relajado por defecto, pero con doble personalidad argentina furiosa si le sacan de quicio.',
     dialogues: [
-      'Alex me debe 200 pesetas desde 1998. Y ahora tiene el código fuente de mi vida.',
-      'Escúchame bien: en el Valleverde 2.0 nada es lo que parece. Ni las calles, ni los contratos, ni los colegas.',
-      'Si el Mister vuelve con amigos, tú necesitas un fixer. Yo conozco a todo el mundo que merece la pena... y a unos cuantos que no.'
+      'Illo, ¿qué pasa, quillo? Tranquilo, aquí todo va bien.',
+      'Miarma, siéntate un rato, que aquí no corre prisa.',
+      'Pisha, Alex me debe 200 pesetas desde 1998, pero tú tranquilo, que todo se arregla.'
+    ],
+    normalDialogues: [
+      'Illo, ¿qué pasa, quillo? Tranquilo, aquí todo va bien.',
+      'Miarma, siéntate un rato, que aquí no corre prisa.',
+      'Pisha, Alex me debe 200 pesetas desde 1998, pero tú tranquilo, que todo se arregla.'
+    ],
+    angryDialogues: [
+      '¡Che, boludo! ¿Qué te creés? ¡Me tenés harto!',
+      '¡Pero andá a cagar, pibe! ¡No me rompas las pelotas!',
+      '¡Estoy re caliente, pibe! ¡Tomátelas antes de que te faje!'
     ]
   },
   franco_pancho: {
@@ -62,7 +73,7 @@ export const EXPANSION_NPCS = {
   cepedita_tieso: {
     id: 'cepedita_tieso',
     name: 'Cepedita el Tieso',
-    spriteColor: '#d6c7a1',
+    spriteColor: '#9ca3af',
     role: 'Burócrata',
     talkSfx: 'hologram_on',
     hologram: true,
@@ -88,7 +99,7 @@ export const EXPANSION_NPCS = {
   tio_manoplo: {
     id: 'tio_manoplo',
     name: 'Tío Manoplo',
-    spriteColor: '#b45309',
+    spriteColor: '#2563eb',
     role: 'Técnico',
     talkSfx: 'electric_shock',
     lore: 'Arregla cosas con cinta aislante. Alex le debe dinero y una caja de herramientas.',

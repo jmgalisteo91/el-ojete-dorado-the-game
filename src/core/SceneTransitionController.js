@@ -1,5 +1,6 @@
 import { pushBackPlayer } from './DoorGatekeeper.js?v=8';
 import { SCENE_AI_ALEX_PREBATTLE } from '../ui/AnimeCutsceneManager.js?v=8';
+import { registerExpansionMusic } from '../audio/AudioManager.js?v=8';
 
 const STAGE_TRANSITION_SCENE_IDS = new Set([
   'first_stage',
@@ -275,9 +276,25 @@ export class SceneTransitionController {
       g.music.stopBossMusic(false);
     }
 
-    g.music.setMode(
-      STAGE_TRANSITION_SCENE_IDS.has(door.targetScene) ? 'stage1' : 'village'
-    );
+    if (door.targetScene === 'valleverde_corp') {
+      registerExpansionMusic();
+      g.music.setMode('valleverde_corp');
+    } else if (door.targetScene === 'inakito_office') {
+      registerExpansionMusic();
+      const inakitoBoss = g.enemies.find((e) => e.id === 'boss_inakito');
+      if (g.tilemap && typeof g.tilemap.setInakitoOfficeGate === 'function') {
+        g.tilemap.setInakitoOfficeGate(Boolean(inakitoBoss && inakitoBoss.dead));
+      }
+      if (inakitoBoss && !inakitoBoss.dead) {
+        g.music.playBossMusic('boss_iñakito');
+      } else {
+        g.music.setMode('valleverde_corp');
+      }
+    } else {
+      g.music.setMode(
+        STAGE_TRANSITION_SCENE_IDS.has(door.targetScene) ? 'stage1' : 'village'
+      );
+    }
 
     if (door.type === 'enter') {
       g._handleHouseOwnerConfrontation(door.targetScene);
@@ -314,6 +331,11 @@ export class SceneTransitionController {
       const protoBoss = g.enemies.find((e) => e.id === 'boss_prototype_microwave');
       if (protoBoss && !protoBoss.dead) {
         g._triggerBossIntroCutscene(protoBoss);
+      }
+    } else if (door.targetScene === 'inakito_office' && !g.bossCutscenesSeen.boss_inakito) {
+      const inakitoBoss = g.enemies.find((e) => e.id === 'boss_inakito');
+      if (inakitoBoss && !inakitoBoss.dead && typeof g._triggerInakitoOfficeIntro === 'function') {
+        g._triggerInakitoOfficeIntro(inakitoBoss);
       }
     }
   

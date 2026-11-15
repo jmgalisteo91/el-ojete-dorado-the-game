@@ -58,6 +58,10 @@ export class InputHandler {
       window.addEventListener('pointerdown', this._onPointerDown);
       window.addEventListener('pointerup', this._onPointerUp);
       window.addEventListener('pointercancel', this._onPointerUp);
+      window.addEventListener('pointerleave', () => {
+        this.pointerX = -1;
+        this.pointerY = -1;
+      });
     }
     // (FIX M2.2) Al ocultar la pestaña/app se limpia todo: evita teclas y controles pegados
     if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
@@ -228,6 +232,9 @@ export class InputHandler {
   }
 
   _onPointerMove(event) {
+    if (event && event.pointerType) {
+      this.lastPointerType = event.pointerType;
+    }
     this._updateCanvasCoords(event);
     // (FIX M3.3) Actualizar la posición del puntero activo
     if (event && event.pointerId !== undefined && this.activePointers.has(event.pointerId)) {

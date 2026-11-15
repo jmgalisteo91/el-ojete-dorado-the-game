@@ -275,9 +275,9 @@ export class QuestLogView {
       const fullIndex = this.scrollOffset + idx;
       const isSelected = fullIndex === this.selectedIndex;
       const isCompleted = q.status === 'COMPLETED';
+      const ry = listStartY + idx * (rowH + 2);
       const hp = this._hoverPointer;
       const isHover = !isSelected && hp && hp.x >= listStartX && hp.x <= listStartX + rowW && hp.y >= ry && hp.y <= ry + rowH;
-      const ry = listStartY + idx * (rowH + 2);
       this._rowRects.push({ x: listStartX, y: ry, w: rowW, h: rowH, index: fullIndex });
 
       // Tarjeta con gradiente sutil.

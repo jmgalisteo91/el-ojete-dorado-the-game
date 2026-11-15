@@ -98,6 +98,23 @@ export const TILES = {
   ROCK: 54,
   BEAM: 55,
 
+  // (EXPANSIÓN v2.0) Tiles corporativos para Valleverde 2.0 (valleverde_corp)
+  CORP_FLOOR: 56,
+  CORP_GLASS_WALL: 57,
+  CORP_CRT_WALL: 58,
+  CORP_CUBICLE: 59,
+  CORP_PLANT: 60,
+  CORP_EXTINGUISHER: 61,
+  CORP_ALEX_POSTER: 62,
+  CORP_ELEVATOR: 63,
+  // (EXPANSIÓN v2.0) Arena de Iñakito 2.0 (inakito_office)
+  INAKITO_CARPET: 64,
+  INAKITO_CUBICLE_WALL: 65,
+  INAKITO_OVERTURNED_DESK: 66,
+  INAKITO_COFFEE_MOUND: 67,
+  INAKITO_PAPERS: 68,
+  INAKITO_COPIER: 69,
+
   // Alias semánticos usados por los constructores de escenas
   DOOR: 15,          // WALL_DOOR
   ALTAR: 37,         // ALTAR_PEDESTAL
@@ -889,7 +906,7 @@ async function generateCharacterSheet() {
 
 async function generateTilesetSheet() {
   const cols = 8;
-  const rows = 7;
+  const rows = 9;
   const canvas = document.createElement('canvas');
   canvas.width = cols * TILE_SIZE * ATLAS_SCALE;
   canvas.height = rows * TILE_SIZE * ATLAS_SCALE;
@@ -1433,6 +1450,163 @@ async function generateTilesetSheet() {
     px(ctx, ox + 3, oy + 3, 2, 10, '#2a1a10');
     px(ctx, ox + 11, oy + 3, 2, 10, '#2a1a10');
     px(ctx, ox + 7, oy + 7, 1, 1, '#8a5a3a');
+  }
+
+  // 56: CORP_FLOOR (Baldosas grises y blancas de oficina con juntas neón cian)
+  {
+    const { ox, oy } = cellOrigin(TILES.CORP_FLOOR);
+    px(ctx, ox, oy, 16, 16, '#cbd5e1');
+    px(ctx, ox, oy, 8, 8, '#e2e8f0');
+    px(ctx, ox + 8, oy + 8, 8, 8, '#e2e8f0');
+    px(ctx, ox + 8, oy, 8, 8, '#94a3b8');
+    px(ctx, ox, oy + 8, 8, 8, '#94a3b8');
+    // Juntas de neón cian
+    px(ctx, ox, oy, 16, 1, '#22d3ee');
+    px(ctx, ox, oy, 1, 16, '#22d3ee');
+    px(ctx, ox + 8, oy, 1, 16, 'rgba(34, 211, 238, 0.45)');
+    px(ctx, ox, oy + 8, 16, 1, 'rgba(34, 211, 238, 0.45)');
+  }
+  // 57: CORP_GLASS_WALL (Muro de cristal con reflejos diagonales y marco de aluminio)
+  {
+    const { ox, oy } = cellOrigin(TILES.CORP_GLASS_WALL);
+    px(ctx, ox, oy, 16, 16, '#1e293b');
+    px(ctx, ox + 1, oy + 1, 14, 14, '#38bdf8');
+    px(ctx, ox + 2, oy + 2, 12, 12, '#0f172a');
+    px(ctx, ox + 2, oy + 2, 12, 12, 'rgba(56, 189, 248, 0.35)');
+    // Reflejos diagonales de cristal
+    px(ctx, ox + 3, oy + 3, 2, 1, '#e0f2fe');
+    px(ctx, ox + 5, oy + 5, 2, 1, '#e0f2fe');
+    px(ctx, ox + 7, oy + 7, 2, 1, '#bae6fd');
+    px(ctx, ox + 9, oy + 9, 2, 1, '#bae6fd');
+    px(ctx, ox + 10, oy + 3, 2, 1, '#7dd3fc');
+    px(ctx, ox + 12, oy + 5, 1, 2, '#7dd3fc');
+    // Rodapié metálico
+    px(ctx, ox, oy + 14, 16, 2, '#64748b');
+  }
+  // 58: CORP_CRT_WALL (Pantalla CRT gigante corporativa)
+  {
+    const { ox, oy } = cellOrigin(TILES.CORP_CRT_WALL);
+    px(ctx, ox, oy, 16, 16, '#334155');
+    px(ctx, ox + 1, oy + 1, 14, 12, '#020617');
+    px(ctx, ox + 2, oy + 2, 12, 10, '#064e3b');
+    px(ctx, ox + 2, oy + 4, 12, 1, 'rgba(52, 211, 153, 0.35)');
+    px(ctx, ox + 2, oy + 7, 12, 1, 'rgba(52, 211, 153, 0.35)');
+    px(ctx, ox + 2, oy + 10, 12, 1, 'rgba(52, 211, 153, 0.35)');
+    px(ctx, ox + 3, oy + 5, 10, 2, '#34d399');
+    px(ctx, ox + 4, oy + 8, 8, 1, '#6ee7b7');
+    px(ctx, ox + 13, oy + 13, 2, 1, '#22d3ee');
+  }
+  // 59: CORP_CUBICLE (Cubículo de oficina gris con monitor encendido)
+  {
+    const { ox, oy } = cellOrigin(TILES.CORP_CUBICLE);
+    px(ctx, ox + 1, oy + 1, 14, 14, '#475569');
+    px(ctx, ox + 1, oy + 1, 14, 2, '#94a3b8');
+    px(ctx, ox + 2, oy + 4, 12, 9, '#cbd5e1');
+    // Escritorio + monitor
+    px(ctx, ox + 3, oy + 8, 10, 4, '#64748b');
+    px(ctx, ox + 5, oy + 4, 6, 4, '#0f172a');
+    px(ctx, ox + 6, oy + 5, 4, 2, '#22d3ee');
+    px(ctx, ox + 7, oy + 12, 2, 2, '#334155');
+  }
+  // 60: CORP_PLANT (Planta de plástico corporativa en maceta blanca)
+  {
+    const { ox, oy } = cellOrigin(TILES.CORP_PLANT);
+    px(ctx, ox + 5, oy + 10, 6, 5, '#e2e8f0');
+    px(ctx, ox + 4, oy + 9, 8, 2, '#cbd5e1');
+    px(ctx, ox + 5, oy + 10, 6, 1, '#22d3ee');
+    // Hojas sintéticas
+    px(ctx, ox + 4, oy + 5, 3, 4, '#10b981');
+    px(ctx, ox + 9, oy + 5, 3, 4, '#10b981');
+    px(ctx, ox + 6, oy + 3, 4, 6, '#34d399');
+    px(ctx, ox + 7, oy + 2, 2, 2, '#6ee7b7');
+  }
+  // 61: CORP_EXTINGUISHER (Extintor rojo sobre soporte)
+  {
+    const { ox, oy } = cellOrigin(TILES.CORP_EXTINGUISHER);
+    px(ctx, ox + 6, oy + 14, 4, 1, '#475569');
+    px(ctx, ox + 6, oy + 5, 4, 9, '#dc2626');
+    px(ctx, ox + 7, oy + 6, 1, 7, '#f87171');
+    px(ctx, ox + 7, oy + 3, 2, 2, '#1e293b');
+    px(ctx, ox + 9, oy + 4, 2, 1, '#94a3b8');
+    px(ctx, ox + 10, oy + 5, 1, 5, '#0f172a');
+  }
+  // 62: CORP_ALEX_POSTER (Cartel con la cara de Alex IA)
+  {
+    const { ox, oy } = cellOrigin(TILES.CORP_ALEX_POSTER);
+    px(ctx, ox + 3, oy + 2, 10, 12, '#e2e8f0');
+    px(ctx, ox + 4, oy + 3, 8, 10, '#0f172a');
+    px(ctx, ox + 5, oy + 4, 6, 5, '#1e293b');
+    // Visor/ojos de Alex
+    px(ctx, ox + 6, oy + 6, 4, 1, '#ec4899');
+    px(ctx, ox + 6, oy + 8, 4, 1, '#22d3ee');
+    px(ctx, ox + 5, oy + 10, 6, 2, '#64748b');
+  }
+  // 63: CORP_ELEVATOR (Ascensor / escotilla al Vertedero Digital)
+  {
+    const { ox, oy } = cellOrigin(TILES.CORP_ELEVATOR);
+    px(ctx, ox + 1, oy + 1, 14, 14, '#334155');
+    px(ctx, ox + 2, oy + 2, 12, 12, '#0f172a');
+    px(ctx, ox + 3, oy + 3, 4, 10, '#64748b');
+    px(ctx, ox + 9, oy + 3, 4, 10, '#64748b');
+    px(ctx, ox + 7, oy + 3, 2, 10, '#020617');
+    px(ctx, ox + 6, oy + 1, 4, 1, '#22d3ee');
+    px(ctx, ox + 7, oy + 7, 2, 2, '#f59e0b');
+  }
+  // 64: INAKITO_CARPET (Moqueta gris de oficina con motas sutiles)
+  {
+    const { ox, oy } = cellOrigin(TILES.INAKITO_CARPET);
+    px(ctx, ox, oy, 16, 16, '#4b5563');
+    px(ctx, ox + 2, oy + 3, 2, 1, '#374151');
+    px(ctx, ox + 10, oy + 6, 2, 1, '#374151');
+    px(ctx, ox + 5, oy + 12, 2, 1, '#6b7280');
+    px(ctx, ox + 12, oy + 13, 1, 1, '#6b7280');
+  }
+  // 65: INAKITO_CUBICLE_WALL (Cubículo de tela azul marino)
+  {
+    const { ox, oy } = cellOrigin(TILES.INAKITO_CUBICLE_WALL);
+    px(ctx, ox, oy, 16, 16, '#1e3a8a');
+    px(ctx, ox, oy, 16, 2, '#94a3b8');
+    px(ctx, ox + 1, oy + 2, 14, 12, '#172554');
+    px(ctx, ox + 2, oy + 4, 12, 1, '#1e40af');
+    px(ctx, ox + 2, oy + 8, 12, 1, '#1e40af');
+    px(ctx, ox, oy + 14, 16, 2, '#334155');
+  }
+  // 66: INAKITO_OVERTURNED_DESK (Mesa de oficina volcada)
+  {
+    const { ox, oy } = cellOrigin(TILES.INAKITO_OVERTURNED_DESK);
+    px(ctx, ox + 1, oy + 4, 14, 9, '#78350f');
+    px(ctx, ox + 2, oy + 5, 12, 7, '#92400e');
+    px(ctx, ox + 2, oy + 2, 2, 3, '#475569');
+    px(ctx, ox + 12, oy + 2, 2, 3, '#475569');
+    px(ctx, ox + 4, oy + 7, 8, 2, '#b45309');
+  }
+  // 67: INAKITO_COFFEE_MOUND (Montaña de tazas de café)
+  {
+    const { ox, oy } = cellOrigin(TILES.INAKITO_COFFEE_MOUND);
+    px(ctx, ox + 2, oy + 10, 5, 5, '#f8fafc');
+    px(ctx, ox + 8, oy + 10, 5, 5, '#e2e8f0');
+    px(ctx, ox + 5, oy + 5, 5, 5, '#f8fafc');
+    px(ctx, ox + 3, oy + 10, 3, 2, '#78350f');
+    px(ctx, ox + 9, oy + 10, 3, 2, '#78350f');
+    px(ctx, ox + 6, oy + 5, 3, 2, '#451a03');
+  }
+  // 68: INAKITO_PAPERS (Papeles desordenados por el suelo)
+  {
+    const { ox, oy } = cellOrigin(TILES.INAKITO_PAPERS);
+    px(ctx, ox + 2, oy + 4, 6, 5, '#f8fafc');
+    px(ctx, ox + 3, oy + 5, 4, 1, '#94a3b8');
+    px(ctx, ox + 3, oy + 7, 3, 1, '#94a3b8');
+    px(ctx, ox + 7, oy + 8, 6, 5, '#e2e8f0');
+    px(ctx, ox + 8, oy + 10, 4, 1, '#ef4444');
+  }
+  // 69: INAKITO_COPIER (Fotocopiadora corporativa)
+  {
+    const { ox, oy } = cellOrigin(TILES.INAKITO_COPIER);
+    px(ctx, ox + 2, oy + 2, 12, 13, '#cbd5e1');
+    px(ctx, ox + 2, oy + 2, 12, 3, '#94a3b8');
+    px(ctx, ox + 3, oy + 5, 10, 1, '#22d3ee');
+    px(ctx, ox + 4, oy + 7, 8, 3, '#475569');
+    px(ctx, ox + 5, oy + 11, 6, 3, '#f8fafc');
   }
 
   return canvasToImage(canvas);

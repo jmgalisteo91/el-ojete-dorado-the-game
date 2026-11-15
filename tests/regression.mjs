@@ -57,7 +57,7 @@ import { WorldMap } from '../src/ui/WorldMap.js';
 import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY, EXPANSION_BGM, getExpansionDialogueSfx } from '../src/expansion/ExpansionData.js';
 import { CinematicTimeline } from '../src/ui/CinematicTimeline.js';
 import { CINEMATIC_TIMELINES, CINEMATIC_TIMELINE_DURATIONS, PROLOGUE_ALEX, SCENE_ALEX_FINAL, SCENE_INTRO_INAKITO } from '../src/assets/CinematicTimelines.js';
-import { TonyCuleiro } from '../src/expansion/entities/TonyCuleiro.js';
+import { TonyRandazzo } from '../src/expansion/entities/TonyRandazzo.js';
 import { FrancoPancho } from '../src/expansion/entities/FrancoPancho.js';
 import { IñakitoBoss } from '../src/expansion/entities/IñakitoBoss.js';
 
@@ -2450,14 +2450,38 @@ test('Expansión v2.0: teaser bloqueado/desbloqueado, 5 NPCs y fases de Iñakito
   }
   assert.equal(EXPANSION_INFO.title, 'El Resurgir de Mister Alex IA');
 
-  // 2. Clases placeholder de Tony y Franco.
-  const tony = new TonyCuleiro({ x: 32, y: 32 });
-  assert.ok(tony instanceof TonyCuleiro);
-  assert.equal(tony.name, 'Tony Culeiro');
-  assert.equal(tony.spriteColor, EXPANSION_NPCS.tony_culeiro.spriteColor);
+  // 2. Clases de Tony Randazzo (doble personalidad) y Franco.
+  const tony = new TonyRandazzo({ x: 32, y: 32 });
+  assert.ok(tony instanceof TonyRandazzo);
+  assert.equal(tony.name, 'Tony Randazzo');
+  assert.equal(tony.isAngry, false);
+  assert.equal(tony.spriteColor, EXPANSION_NPCS.tony_randazzo.spriteColor);
   assert.equal(tony.boundingBox.width, 10);
   tony.update(0.016, null, [], false, null, null);
   assert.equal(tony.isMoving, false);
+
+  // Doble personalidad: 1ª y 2ª interacción son normales (sevillano); 3ª consecutiva enfurece (argentino)
+  const d1 = tony.resolveDialogues();
+  assert.equal(tony.isAngry, false);
+  assert.match(d1.lines[0], /Illo|quillo/i);
+  const d2 = tony.resolveDialogues();
+  assert.equal(tony.isAngry, false);
+  const d3 = tony.resolveDialogues();
+  assert.equal(tony.isAngry, true);
+  assert.equal(tony.name, 'Tony Randazzo (Furioso)');
+  assert.match(d3.lines[0], /Che|boludo/i);
+
+  // Al alejarse el jugador (> 64px), el enfado se enfría y vuelve a la normalidad
+  tony.update(0.016, null, [], false, { centerX: 200, centerY: 200 }, null);
+  assert.equal(tony.isAngry, false);
+  assert.equal(tony.name, 'Tony Randazzo');
+
+  // También se enfada eligiendo "Me caes mal"
+  const dChoice = tony.resolveDialogues();
+  const hateChoice = dChoice.choices.find((c) => c.label === 'Me caes mal');
+  assert.ok(hateChoice);
+  hateChoice.onSelect();
+  assert.equal(tony.isAngry, true);
   const franco = new FrancoPancho({ x: 48, y: 48 });
   assert.ok(franco instanceof FrancoPancho);
   assert.equal(franco.name, 'Franco el Pancho');
@@ -2500,35 +2524,59 @@ test('Expansión v2.0: teaser bloqueado/desbloqueado, 5 NPCs y fases de Iñakito
     else globalThis.localStorage = previousStorage;
   }
 
-  // 4. Jefe Iñakito: 3 fases, 3 bugs, bucle while(true) y parry.
-  const boss = new IñakitoBoss({ x: 100, y: 100 });
-  assert.equal(boss.maxHp, 80);
-  assert.equal(boss.hp, 80);
+  // 4. Jefe Iñakito 2.0: 100 HP, 3 fases, abanico de 3 console.log, 3 bugs que explotan, bucle while(true) y parry 3s.
+  const boss = new IñakitoBoss({ x: 6 * 16, y: 4 * 16 });
+  assert.equal(boss.maxHp, 100);
+  assert.equal(boss.hp, 100);
   assert.equal(boss.phase, 1);
-  assert.equal(boss.sceneId, 'valleverde_corrupto');
+  assert.equal(boss.sceneId, 'inakito_office');
 
-  boss.hp = 50;
-  boss.update(0.1, null, null, true);
+  // Fase 1: al recibir daño suelta frase de ascenso y dispara abanico de 3 console.log
+  boss.activeCombat = true;
+  assert.equal(boss.takeSwordHit({ parryTimer: 0 }), true);
+  assert.equal(boss.hurtQuote, '¡El jefe dijo que esto era un ascenso!');
+  boss.shotTimer = 0;
+  boss.update(0.05, null, makePlayer(96, 120), false);
+  assert.equal(boss.projectiles.length, 3, 'Fase 1 debe disparar console.log en abanico de 3');
+
+  // Fase 2: invoca 3 Bugs que explotan al morir
+  boss.hp = 55;
+  boss.update(0.05, null, null, false);
   assert.equal(boss.phase, 2);
   assert.equal(boss.bugs.length, 3);
+  boss._explodeBug(boss.bugs[0], null, null);
+  assert.equal(boss.bugs[0].dead, true);
+  assert.equal(boss.bugExplosions.length, 1);
 
-  boss.hp = 20;
-  boss.update(0.1, null, null, true);
+  // Fase 3: while(true) invulnerable, solo Parry rompe el bucle y aturde 3s
+  boss.hp = 25;
+  boss.update(0.05, null, null, false);
   assert.equal(boss.phase, 3);
   assert.equal(boss.inWhileLoop, true);
   assert.equal(boss.invulnerable, true);
 
   assert.equal(boss.takeSwordHit({ parryTimer: 0 }), false);
-  const hpBefore = boss.hp;
-  assert.equal(boss.takeSwordHit({ parryTimer: 0.2 }), true);
+  boss.stun(1.4); // Simulando Parry de Player.takeHit contra embestida
   assert.equal(boss.inWhileLoop, false);
-  assert.equal(boss.hp, hpBefore - 1);
+  assert.equal(boss.invulnerable, false);
+  assert.ok(boss.stunTimer >= 2.9, 'El Parry debe aturdir a Iñakito 3 segundos');
 
   boss.hp = 1;
   boss.hitFlashTimer = 0; // limpiar el i-frame del golpe anterior
   boss.takeSwordHit({ parryTimer: 0.2 }, null, 5);
   assert.equal(boss.dead, true);
-  assert.equal(boss.deathQuote, '¡Pero si el jefe me dijo que esto era un ascenso!');
+  assert.equal(boss.deathQuote, '¿Esto significa que no me van a renovar?');
+
+  // Arena inakito_office (12x10): barrera norte bloqueada hasta vencer a Iñakito
+  const tmArena = new Tilemap(null, 16);
+  tmArena.loadScene('inakito_office');
+  assert.equal(tmArena.scenes.inakito_office.cols, 12);
+  assert.equal(tmArena.scenes.inakito_office.rows, 10);
+  const lockedNorth = tmArena.findNearbyDoor({ centerX: 5.5 * 16, centerY: 1.2 * 16 });
+  assert.ok(lockedNorth && lockedNorth.blocked === true, 'Salida norte debe iniciar bloqueada');
+  tmArena.setInakitoOfficeGate(true);
+  const openNorth = tmArena.findNearbyDoor({ centerX: 5.5 * 16, centerY: 1.2 * 16 });
+  assert.ok(openNorth && openNorth.blocked === false, 'Salida norte debe abrirse tras derrotar a Iñakito');
 
   const noop = () => {};
   const mockCtx = {
@@ -2840,6 +2888,55 @@ test('Elementos estéticos (toldos, faroles, pozo, mesas, cajas, mobiliario y co
 
   // Los muros de edificios siguen siendo sólidos
   assert.equal(tm.isSolidAtTile(2, 10), true, 'Muro de fachada debe seguir bloqueando');
+});
+
+test('Expansión v2.0: escena valleverde_corp (24x18), props pequeños sin colisión, puertas y colores NPC', () => {
+  const tm = new Tilemap(null, 16);
+  tm.loadScene('valleverde_corp');
+  const scene = tm.scenes.valleverde_corp;
+  assert.ok(scene, 'La escena valleverde_corp debe existir');
+  assert.equal(scene.cols, 24);
+  assert.equal(scene.rows, 18);
+
+  // Suelo corporativo y pantallas CRT gigantes
+  assert.equal(scene.layers.ground[10][10], TILES.CORP_FLOOR);
+  assert.equal(scene.layers.decoration[1][7], TILES.CORP_CRT_WALL);
+
+  // Props pequeños sin colisión (plantas, extintores, carteles de Alex)
+  assert.equal(tm.isSolidAtTile(2, 5), false, 'Planta de plástico no debe bloquear');
+  assert.equal(tm.isSolidAtTile(1, 7), false, 'Extintor no debe bloquear');
+  assert.equal(tm.isSolidAtTile(3, 1), false, 'Cartel de Alex no debe bloquear');
+
+  // Muros de cristal siguen bloqueando
+  assert.equal(tm.isSolidAtTile(0, 5), true, 'Muro de cristal debe bloquear');
+
+  // Puertas: Núcleo de Alex (bloqueado), Vertedero Digital, Oficina de Tony Randazzo
+  const coreDoor = tm.findNearbyDoor({ centerX: 11.5 * 16, centerY: 2.2 * 16 });
+  assert.ok(coreDoor && coreDoor.blocked === true, 'Puerta al Núcleo de Alex debe estar bloqueada al inicio');
+
+  const elevDoor = tm.findNearbyDoor({ centerX: 20.5 * 16, centerY: 15.5 * 16 });
+  assert.ok(elevDoor && elevDoor.targetScene === 'vertedero_digital', 'Debe existir acceso al Vertedero Digital');
+
+  const tonyDoor = tm.findNearbyDoor({ centerX: 4.5 * 16, centerY: 4.6 * 16 });
+  assert.ok(tonyDoor && tonyDoor.targetScene === 'oficina_tony', 'Debe existir entrada a la oficina de Tony');
+
+  // Colores corporativos según diseño
+  assert.equal(EXPANSION_NPCS.tony_randazzo.spriteColor, '#94a3b8');
+  assert.equal(EXPANSION_NPCS.cepedita_tieso.spriteColor, '#9ca3af');
+  assert.equal(EXPANSION_NPCS.tio_manoplo.spriteColor, '#2563eb');
+});
+
+test('QuestLogView: render con puntero/hover sobre filas no provoca TDZ en ry', () => {
+  const ctx = makeMockCtx();
+  const ql = new QuestLog();
+
+  const qlv = new QuestLogView(ql, 320, 180);
+  qlv.open();
+  qlv.selectedIndex = 0;
+  // Posición dentro del ancho de las tarjetas de la columna izquierda para evaluar `hp.y >= ry`
+  qlv._hoverPointer = { x: 60, y: 80 };
+  assert.doesNotThrow(() => qlv.render(ctx));
+  assert.ok(qlv._rowRects.length >= 2, 'Debe registrar las tarjetas visibles tras renderizar');
 });
 
 await Promise.all(asyncQueue);

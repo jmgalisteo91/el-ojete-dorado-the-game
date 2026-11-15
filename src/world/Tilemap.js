@@ -12,7 +12,9 @@ const PASSABLE_AESTHETIC_TILES = new Set([
   TILES.LAMPPOST, TILES.WELL,
   TILES.BOOKSHELF, TILES.BED, TILES.FIREPLACE,
   TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE,
-  TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM
+  TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM,
+  TILES.CORP_PLANT, TILES.CORP_EXTINGUISHER, TILES.CORP_ALEX_POSTER,
+  TILES.INAKITO_PAPERS
 ]);
 
 /**
@@ -21,7 +23,9 @@ const PASSABLE_AESTHETIC_TILES = new Set([
  */
 const OVERHEAD_TILE_IDS = new Set([
   TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE,
-  TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM
+  TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM,
+  TILES.CORP_PLANT, TILES.CORP_EXTINGUISHER, TILES.CORP_ALEX_POSTER,
+  TILES.INAKITO_PAPERS
 ]);
 
 /** Valor de la capa de colisión para abismos: sólidos salvo durante el Dash Asíncrono. */
@@ -211,6 +215,8 @@ export class Tilemap {
     this.quantumGate = { coresPlaced: { gc: false, stack: false, microwave: false } };
     // Solo el Dash Asíncrono lo activa mientras dura el impulso (abismos = colisión CHASM_COLLISION)
     this.allowChasmCrossing = false;
+    this.alexCoreUnlocked = false;
+    this.inakitoOfficeGateOpen = false;
 
     this._buildFirstStageScene();
     this._buildNorthPeaksScene();
@@ -230,6 +236,8 @@ export class Tilemap {
     this._buildFortressGateScene();
     this._buildQuantumGateScene();
     this._buildCitadelScene();
+    this._buildValleverdeCorpScene();
+    this._buildInakitoOfficeScene();
     this._buildOverworldScene();
     this._buildHouseInteriors();
 
@@ -461,6 +469,20 @@ export class Tilemap {
     for (const c of [5, 6]) {
       scene.layers.collision[0][c] = open ? 0 : 1;
       scene.layers.decoration[0][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.PORTAL_GATE_CLOSED;
+    }
+    return true;
+  }
+
+  /** (EXPANSIÓN v2.0) Abre/sella la salida norte (barrera de cristal) de inakito_office. */
+  setInakitoOfficeGate(open) {
+    this.inakitoOfficeGateOpen = Boolean(open);
+    const scene = this.scenes.inakito_office;
+    if (!scene || !scene.layers) return false;
+    for (const c of [5, 6]) {
+      scene.layers.collision[0][c] = open ? 0 : 1;
+      scene.layers.decoration[0][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.CRYSTAL_BARRIER;
+      scene.layers.collision[1][c] = 0;
+      scene.layers.decoration[1][c] = -1;
     }
     return true;
   }
@@ -1137,6 +1159,141 @@ export class Tilemap {
             spawnY: door.interiorSpawnY
           };
         }
+      }
+    } else if (this.currentSceneId === 'valleverde_corp') {
+      // 1. Puerta al Núcleo de Alex (Norte centro — bloqueada al principio)
+      const coreX = 11.5 * this.tileSize;
+      const coreY = 2.0 * this.tileSize;
+      if (Math.hypot(player.centerX - coreX, player.centerY - coreY) <= 24) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'oficina_central',
+          label: this.alexCoreUnlocked
+            ? 'Acceder al Núcleo de Mister Alex IA'
+            : 'Núcleo de Alex IA (Bloqueado)',
+          worldX: coreX,
+          worldY: coreY,
+          blocked: !this.alexCoreUnlocked || !this.scenes.oficina_central,
+          blockTitle: 'Núcleo de Alex IA · Sellado',
+          blockLines: [
+            'Acceso denegado. Nivel de autorización insuficiente.',
+            'El Núcleo de Mister Alex IA permanece sellado hasta completar los protocolos de Valleverde 2.0.'
+          ]
+        };
+      }
+
+      // 2. Acceso al Vertedero Digital (Ascensor en la esquina sureste)
+      const elevX = 20.5 * this.tileSize;
+      const elevY = 15.5 * this.tileSize;
+      if (Math.hypot(player.centerX - elevX, player.centerY - elevY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'vertedero_digital',
+          label: 'Bajar al Vertedero Digital (Ascensor)',
+          worldX: elevX,
+          worldY: elevY,
+          blocked: !this.scenes.vertedero_digital,
+          blockTitle: 'Ascensor al Vertedero Digital',
+          blockLines: [
+            'Descenso al Vertedero Digital en mantenimiento corporativo.',
+            'Habla con Tony Randazzo y Tío Manoplo para preparar la bajada.'
+          ]
+        };
+      }
+
+      // 3. Entrada a la oficina de Tony Randazzo (Noroeste)
+      const tonyDoorX = 4.5 * this.tileSize;
+      const tonyDoorY = 4.5 * this.tileSize;
+      if (Math.hypot(player.centerX - tonyDoorX, player.centerY - tonyDoorY) <= 22) {
+        return {
+          type: 'enter',
+          targetScene: 'oficina_tony',
+          label: 'Oficina de Tony Randazzo',
+          worldX: tonyDoorX,
+          worldY: tonyDoorY,
+          blocked: !this.scenes.oficina_tony,
+          blockTitle: 'Despacho de Tony Randazzo',
+          blockLines: [
+            'Despacho privado de Tony Randazzo (Fixer).',
+            'Tony atiende fuera de la puerta para evitar los micrófonos corporativos de Alex.'
+          ]
+        };
+      }
+
+      // 3b. Entrada a la arena de Iñakito 2.0 (Oficina del Becario)
+      const inakitoDoorX = 9.5 * this.tileSize;
+      const inakitoDoorY = 2.0 * this.tileSize;
+      if (Math.hypot(player.centerX - inakitoDoorX, player.centerY - inakitoDoorY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'inakito_office',
+          label: 'Cubículo de Iñakito 2.0 (Jefe)',
+          worldX: inakitoDoorX,
+          worldY: inakitoDoorY,
+          spawnX: 5.5 * this.tileSize,
+          spawnY: 8 * this.tileSize,
+          spawnMode: 'fixed',
+          entryFacing: 'up'
+        };
+      }
+
+      // 4. Salida Sur de regreso a Valleverde Clásico
+      const exitX = 11.5 * this.tileSize;
+      const exitY = 16.5 * this.tileSize;
+      if (Math.hypot(player.centerX - exitX, player.centerY - exitY) <= 22) {
+        return {
+          type: 'exit',
+          targetScene: 'overworld',
+          label: 'Volver a Valleverde',
+          worldX: exitX,
+          worldY: exitY,
+          spawnX: 17.5 * this.tileSize,
+          spawnY: 12.5 * this.tileSize,
+          spawnMode: 'fixed',
+          entryFacing: 'down'
+        };
+      }
+    } else if (this.currentSceneId === 'inakito_office') {
+      // Puerta SUR: regreso a Valleverde 2.0
+      const southX = 5.5 * this.tileSize;
+      const southY = 9.0 * this.tileSize;
+      if (Math.hypot(player.centerX - southX, player.centerY - southY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'valleverde_corp',
+          label: 'Salir a Valleverde 2.0',
+          worldX: southX,
+          worldY: southY,
+          spawnX: 9.5 * this.tileSize,
+          spawnY: 2.5 * this.tileSize,
+          spawnMode: 'fixed',
+          entryFacing: 'down'
+        };
+      }
+
+      // Puerta NORTE: barrera de cristal / cinta de peligro (desbloqueada al derrotar a Iñakito 2.0)
+      const northX = 5.5 * this.tileSize;
+      const northY = 1.0 * this.tileSize;
+      if (Math.hypot(player.centerX - northX, player.centerY - northY) <= 22) {
+        return {
+          type: 'stage_transition',
+          targetScene: 'valleverde_corp',
+          label: this.inakitoOfficeGateOpen
+            ? 'Salida Norte (Seguridad Desactivada)'
+            : 'Salida Norte (Precintada)',
+          worldX: northX,
+          worldY: northY,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 3.0 * this.tileSize,
+          spawnMode: 'fixed',
+          entryFacing: 'down',
+          blocked: !this.inakitoOfficeGateOpen,
+          blockTitle: 'Barrera de Cristal · Cinta de Peligro',
+          blockLines: [
+            'La salida norte está sellada por una barrera de cristal y cinta de peligro.',
+            'Derrota a Iñakito 2.0 (El Becario Eterno) para desbloquear la salida.'
+          ]
+        };
       }
     } else {
       const scene = this.scenes[this.currentSceneId];
@@ -3747,6 +3904,245 @@ export class Tilemap {
     };
   }
 
+  /**
+   * (EXPANSIÓN v2.0) Valleverde 2.0 ('valleverde_corp', 24x18 tiles).
+   * Futuro distópico corporativo: baldosas grises/blancas con juntas de neón cian,
+   * muros de cristal, pantallas CRT gigantes ("TODO ESTÁ BIEN"), cubículos,
+   * plantas de plástico, extintores, carteles de Alex y 3 accesos principales.
+   */
+  _buildValleverdeCorpScene() {
+    const cols = 24;
+    const rows = 18;
+    const ground = this._createGrid(cols, rows, TILES.CORP_FLOOR);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const setDeco = (c, r, tileId, blocks = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        collision[r][c] = blocks ? 1 : 0;
+      }
+    };
+
+    // Muros de cristal perimetrales
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.CORP_GLASS_WALL, true);
+      setDeco(c, 1, TILES.CORP_GLASS_WALL, true);
+      setDeco(c, rows - 1, TILES.CORP_GLASS_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.CORP_GLASS_WALL, true);
+      setDeco(cols - 1, r, TILES.CORP_GLASS_WALL, true);
+    }
+
+    // Pantallas CRT gigantes en la pared norte ("TODO ESTÁ BIEN")
+    for (let c = 6; c <= 8; c++) setDeco(c, 1, TILES.CORP_CRT_WALL, true);
+    for (let c = 15; c <= 17; c++) setDeco(c, 1, TILES.CORP_CRT_WALL, true);
+
+    // Puerta al Núcleo de Alex (centro norte, bloqueada al principio)
+    setDeco(11, 1, TILES.PORTAL_GATE_CLOSED, true);
+    setDeco(12, 1, TILES.PORTAL_GATE_CLOSED, true);
+    // Puerta al Cubículo de Iñakito 2.0 (jefe)
+    setDeco(9, 1, TILES.WALL_DOOR, true);
+
+    // Salida sur de retorno
+    setDeco(11, rows - 1, -1, false);
+    setDeco(12, rows - 1, -1, false);
+
+    // Oficina de Tony Randazzo (esquina noroeste) con muros de cristal y puerta en (4, 4)
+    for (let c = 1; c <= 6; c++) setDeco(c, 4, TILES.CORP_GLASS_WALL, true);
+    setDeco(6, 2, TILES.CORP_GLASS_WALL, true);
+    setDeco(6, 3, TILES.CORP_GLASS_WALL, true);
+    setDeco(4, 4, TILES.WALL_DOOR, true);
+
+    // Ventanilla de atención al público (Cepedita el Tieso en esquina noreste)
+    setDeco(16, 4, TILES.CORP_GLASS_WALL, true);
+    setDeco(17, 4, TILES.CORP_GLASS_WALL, true);
+    setDeco(18, 4, TILES.CORP_CUBICLE, true);
+    setDeco(19, 4, TILES.CORP_GLASS_WALL, true);
+    setDeco(20, 4, TILES.CORP_GLASS_WALL, true);
+    setDeco(18, 5, TILES.TABLE, false); // Mostrador de ventanilla (atravesable)
+
+    // Cubículos centrales de oficina (con pasillos despejados)
+    setDeco(7, 8, TILES.CORP_CUBICLE, true);
+    setDeco(8, 8, TILES.CORP_CUBICLE, true);
+    setDeco(14, 8, TILES.CORP_CUBICLE, true);
+    setDeco(15, 8, TILES.CORP_CUBICLE, true);
+    setDeco(7, 12, TILES.CORP_CUBICLE, true);
+    setDeco(8, 12, TILES.CORP_CUBICLE, true);
+
+    // Rincón de Rusaso de la Pluma (esquina suroeste, máquina de escribir sobre mesa)
+    setDeco(2, 14, TILES.TABLE, false);
+    setDeco(2, 13, TILES.CORP_PLANT, false);
+
+    // Callejón/taller de Tío Manoplo (zona este)
+    setDeco(20, 10, TILES.ANVIL, false);
+    setDeco(21, 10, TILES.CRATE, false);
+
+    // Acceso al Vertedero Digital (ascensor en esquina sureste)
+    setDeco(20, 15, TILES.CORP_ELEVATOR, false);
+
+    // Props pequeños SIN colisión: plantas de plástico, extintores y carteles con la cara de Alex
+    setDeco(2, 5, TILES.CORP_PLANT, false);
+    setDeco(10, 2, TILES.CORP_PLANT, false);
+    setDeco(13, 2, TILES.CORP_PLANT, false);
+    setDeco(22, 5, TILES.CORP_PLANT, false);
+    setDeco(10, 15, TILES.CORP_PLANT, false);
+    setDeco(13, 15, TILES.CORP_PLANT, false);
+
+    setDeco(1, 7, TILES.CORP_EXTINGUISHER, false);
+    setDeco(22, 7, TILES.CORP_EXTINGUISHER, false);
+    setDeco(19, 15, TILES.CORP_EXTINGUISHER, false);
+
+    setDeco(3, 1, TILES.CORP_ALEX_POSTER, false);
+    setDeco(21, 1, TILES.CORP_ALEX_POSTER, false);
+    setDeco(1, 11, TILES.CORP_ALEX_POSTER, false);
+    setDeco(22, 12, TILES.CORP_ALEX_POSTER, false);
+
+    // Iluminación fría y corporativa (neón cian / azul hielo)
+    lightSources.push(
+      { x: 7.5 * 16, y: 2.0 * 16, radius: 64, intensity: 0.9, color: '#22d3ee' },
+      { x: 16.5 * 16, y: 2.0 * 16, radius: 64, intensity: 0.9, color: '#22d3ee' },
+      { x: 11.5 * 16, y: 2.0 * 16, radius: 56, intensity: 0.85, color: '#ec4899' },
+      { x: 11.5 * 16, y: 10.0 * 16, radius: 96, intensity: 0.75, color: '#bae6fd' },
+      { x: 20.5 * 16, y: 15.5 * 16, radius: 48, intensity: 0.85, color: '#38bdf8' }
+    );
+
+    this.scenes.valleverde_corp = {
+      title: 'Valleverde 2.0 · Distrito Corporativo',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 11.5 * 16,
+        worldY: 16.5 * 16,
+        returnX: 17.5 * 16,
+        returnY: 12.5 * 16,
+        returnScene: 'overworld'
+      }
+    };
+  }
+
+  /**
+   * Dibuja las pantallas CRT gigantes ("TODO ESTÁ BIEN"), los reflejos de cristal
+   * y las juntas de neón cian de Valleverde 2.0.
+   */
+  _drawCorpOverlay(ctx, camera) {
+    if (this.currentSceneId !== 'valleverde_corp') return;
+    const camX = camera.renderX;
+    const camY = camera.renderY;
+
+    ctx.save();
+    // Pantallas CRT gigantes en (6..8, 1) y (15..17, 1)
+    const screens = [
+      { col: 6, row: 1, wCols: 3 },
+      { col: 15, row: 1, wCols: 3 }
+    ];
+    for (const scr of screens) {
+      const x = Math.round(scr.col * this.tileSize - camX);
+      const y = Math.round(scr.row * this.tileSize - camY);
+      const w = scr.wCols * this.tileSize;
+      const h = this.tileSize;
+
+      ctx.fillStyle = '#022c22';
+      ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+
+      ctx.font = 'bold 5px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#34d399';
+      ctx.fillText('TODO ESTÁ BIEN', x + w / 2, y + h / 2 + 0.5);
+    }
+
+    // Etiqueta discreta del ascensor al Vertedero Digital
+    const elevX = Math.round(20.5 * this.tileSize - camX);
+    const elevY = Math.round(14.8 * this.tileSize - camY);
+    ctx.font = 'bold 4px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillText('VERTEDERO', elevX, elevY);
+    ctx.restore();
+  }
+
+  /**
+   * (EXPANSIÓN v2.0) Arena de Iñakito 2.0 ('inakito_office', 12x10 tiles).
+   * Cubículo corporativo gigante: moqueta gris, muros azul marino, mesas volcadas,
+   * montañas de tazas de café, papeles y fotocopiadora.
+   */
+  _buildInakitoOfficeScene() {
+    const cols = 12;
+    const rows = 10;
+    const ground = this._createGrid(cols, rows, TILES.INAKITO_CARPET);
+    const decoration = this._createGrid(cols, rows, -1);
+    const collision = this._createGrid(cols, rows, 0);
+    const lightSources = [];
+
+    const setDeco = (c, r, tileId, blocks = true) => {
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        decoration[r][c] = tileId;
+        collision[r][c] = blocks ? 1 : 0;
+      }
+    };
+
+    // Paredes de cubículo de tela azul marino
+    for (let c = 0; c < cols; c++) {
+      setDeco(c, 0, TILES.INAKITO_CUBICLE_WALL, true);
+      setDeco(c, rows - 1, TILES.INAKITO_CUBICLE_WALL, true);
+    }
+    for (let r = 0; r < rows; r++) {
+      setDeco(0, r, TILES.INAKITO_CUBICLE_WALL, true);
+      setDeco(cols - 1, r, TILES.INAKITO_CUBICLE_WALL, true);
+    }
+
+    // Puerta SUR: entrada desde Valleverde 2.0
+    setDeco(5, rows - 1, -1, false);
+    setDeco(6, rows - 1, -1, false);
+
+    // Puerta NORTE: salida sellada inicialmente con barrera de cristal / cinta de peligro
+    setDeco(5, 0, TILES.CRYSTAL_BARRIER, true);
+    setDeco(6, 0, TILES.CRYSTAL_BARRIER, true);
+
+    // Props del cubículo: mesas volcadas, montañas de tazas de café, fotocopiadora y papeles
+    setDeco(2, 2, TILES.INAKITO_OVERTURNED_DESK, true);
+    setDeco(2, 6, TILES.INAKITO_OVERTURNED_DESK, true);
+    setDeco(9, 6, TILES.INAKITO_OVERTURNED_DESK, true);
+    setDeco(9, 2, TILES.INAKITO_COPIER, true);
+    setDeco(1, 3, TILES.INAKITO_COFFEE_MOUND, true);
+    setDeco(10, 4, TILES.INAKITO_COFFEE_MOUND, true);
+    setDeco(3, 7, TILES.INAKITO_COFFEE_MOUND, false);
+
+    // Papeles desordenados (pisables / sin colisión)
+    setDeco(4, 3, TILES.INAKITO_PAPERS, false);
+    setDeco(7, 4, TILES.INAKITO_PAPERS, false);
+    setDeco(5, 6, TILES.INAKITO_PAPERS, false);
+    setDeco(8, 7, TILES.INAKITO_PAPERS, false);
+
+    lightSources.push(
+      { x: 6 * 16, y: 4.5 * 16, radius: 96, intensity: 0.9, color: '#93c5fd' },
+      { x: 5.5 * 16, y: 0.8 * 16, radius: 42, intensity: 0.8, color: '#f59e0b' }
+    );
+
+    this.scenes.inakito_office = {
+      title: 'Cubículo de Iñakito 2.0 · El Becario Eterno',
+      cols,
+      rows,
+      layers: { ground, decoration, collision },
+      lightSources,
+      exitDoor: {
+        worldX: 5.5 * 16,
+        worldY: 9.0 * 16,
+        returnX: 9.5 * 16,
+        returnY: 2.5 * 16,
+        returnScene: 'valleverde_corp'
+      }
+    };
+  }
+
   /** Rango de tiles visibles (con 1 tile de margen para las copas/tejados que sobresalen). */
   _visibleTileRange(camera) {
     const camX = camera.renderX;
@@ -3811,6 +4207,7 @@ export class Tilemap {
     // (BLOQUES 2/3/4) Capa 0: decals estáticos y sombras de edificios, antes de entidades.
     this._drawFloorDecals(ctx, camera);
     this._drawHouseShadows(ctx, camera, sun);
+    this._drawCorpOverlay(ctx, camera);
 
     // Elementos de suelo de los minijuegos (interruptores, barrera de fuego, indicador de pila, portal)
     if (this.currentSceneId === 'armor_temple') {

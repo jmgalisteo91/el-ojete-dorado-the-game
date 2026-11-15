@@ -14,12 +14,16 @@ import { Tilemap } from './world/Tilemap.js?v=8';
 import { CollisionSystem } from './physics/CollisionSystem.js?v=8';
 import { Player } from './entities/Player.js?v=8';
 import { NPC, getBromForgeChoices } from './entities/NPC.js?v=8';
+import { EXPANSION_NPCS } from './expansion/ExpansionData.js?v=8';
+import { TonyRandazzo } from './expansion/entities/TonyRandazzo.js?v=8';
+import { registerExpansionMusic } from './audio/AudioManager.js?v=8';
 import { Animal } from './entities/Animal.js?v=8';
 import { Enemy, setParticleScale } from './entities/Enemy.js?v=8';
 import { GarbageCollectorBoss } from './entities/bosses/GarbageCollectorBoss.js?v=8';
 import { StackOverflowBoss } from './entities/bosses/StackOverflowBoss.js?v=8';
 import { PrototypeMicrowaveBoss } from './entities/bosses/PrototypeMicrowaveBoss.js?v=8';
 import { FinalBossAlex } from './entities/bosses/FinalBossAlex.js?v=8';
+import { IñakitoBoss } from './expansion/entities/IñakitoBoss.js?v=8';
 import { WorldItem } from './entities/WorldItem.js?v=8';
 import { DialogueBox } from './ui/DialogueBox.js?v=8';
 import { Inventory, normalizeItemId } from './ui/Inventory.js?v=8';
@@ -401,7 +405,8 @@ export class RPGGame {
     this.bossCutscenesSeen = {
       boss_garbage_collector: false,
       boss_stack_overflow: false,
-      boss_prototype_microwave: false
+      boss_prototype_microwave: false,
+      boss_inakito: false
     };
 
     // Estado del Puntero al Abismo y Portal dinámico a los Reinos Condenados
@@ -699,7 +704,8 @@ export class RPGGame {
     this.bossCutscenesSeen = {
       boss_garbage_collector: false,
       boss_stack_overflow: false,
-      boss_prototype_microwave: false
+      boss_prototype_microwave: false,
+      boss_inakito: false
     };
 
     if (this.music && this.music.currentBossTrack) {
@@ -1512,12 +1518,17 @@ export class RPGGame {
       }
 
       this.camera.snapTo(this.player);
+      if (targetScene === 'valleverde_corp') {
+        registerExpansionMusic();
+      }
       this.music.setMode(
-        targetScene === 'jail_cell'
-          ? 'jail'
-          : stageScenes.has(targetScene)
-            ? 'stage1'
-            : 'village'
+        targetScene === 'valleverde_corp'
+          ? 'valleverde_corp'
+          : targetScene === 'jail_cell'
+            ? 'jail'
+            : stageScenes.has(targetScene)
+              ? 'stage1'
+              : 'village'
       );
       // (FIX 3) Al cargar una partida dentro de la arena, respetar el Núcleo del Stack
       this._syncMinesBossArenaGate();
@@ -3237,6 +3248,92 @@ export class RPGGame {
             choices: vaelChoices
           };
         }
+      }),
+      // === EXPANSIÓN v2.0: VALLEVERDE 2.0 (DISTRITO CORPORATIVO) ===
+      new TonyRandazzo({
+        x: 4 * 16,
+        y: 5 * 16,
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
+        sceneId: 'valleverde_corp'
+      }),
+      (() => {
+        const data = EXPANSION_NPCS.cepedita_tieso;
+        const npc = new NPC({
+          name: data.name,
+          jobTitle: data.role,
+          homeSceneId: 'valleverde_corp',
+          sceneId: 'valleverde_corp',
+          x: 18 * 16,
+          y: 6 * 16,
+          animator: new SpriteAnimator(sheet, CHARACTER_TYPES.ELDER),
+          behavior: 'idle',
+          initialDirection: 'down',
+          talkSfx: data.talkSfx,
+          dialogues: data.dialogues,
+          ambientPhrases: ['Impreso A-38 bis requerido...', 'Turno 994827-B.']
+        });
+        npc.expansionId = data.id;
+        npc.spriteColor = data.spriteColor;
+        npc.hologram = Boolean(data.hologram);
+        return npc;
+      })(),
+      (() => {
+        const data = EXPANSION_NPCS.rusaso_pluma;
+        const npc = new NPC({
+          name: data.name,
+          jobTitle: data.role,
+          homeSceneId: 'valleverde_corp',
+          sceneId: 'valleverde_corp',
+          x: 3 * 16,
+          y: 14 * 16,
+          animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERBALIST),
+          behavior: 'idle',
+          initialDirection: 'right',
+          dialogues: data.dialogues,
+          ambientPhrases: ['*clack-clack-clack* ¡Qué drama!', 'Oda al Servidor Inmortal...']
+        });
+        npc.expansionId = data.id;
+        npc.spriteColor = data.spriteColor;
+        return npc;
+      })(),
+      (() => {
+        const data = EXPANSION_NPCS.tio_manoplo;
+        const npc = new NPC({
+          name: data.name,
+          jobTitle: data.role,
+          homeSceneId: 'valleverde_corp',
+          sceneId: 'valleverde_corp',
+          x: 19 * 16,
+          y: 11 * 16,
+          animator: new SpriteAnimator(sheet, CHARACTER_TYPES.BLACKSMITH),
+          behavior: 'idle',
+          initialDirection: 'left',
+          talkSfx: data.talkSfx,
+          dialogues: data.dialogues,
+          ambientPhrases: ['Cinta aislante y fe...', '¿Dónde dejé mi llave inglesa?']
+        });
+        npc.expansionId = data.id;
+        npc.spriteColor = data.spriteColor;
+        return npc;
+      })(),
+      new NPC({
+        name: 'Ciudadano Corporativo',
+        jobTitle: 'Empleado Modelo · Nivel 98%',
+        homeSceneId: 'valleverde_corp',
+        sceneId: 'valleverde_corp',
+        x: 10 * 16,
+        y: 11 * 16,
+        speed: 18,
+        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_BLUE),
+        behavior: 'patrol',
+        patrolPoints: [
+          { x: 10 * 16, y: 11 * 16, dir: 'down', waitMin: 2.0, waitMax: 4.0 },
+          { x: 13 * 16, y: 11 * 16, dir: 'left', waitMin: 2.0, waitMax: 4.0 }
+        ],
+        ambientPhrases: ['TODO ESTÁ BIEN.', 'Felicidad: 98%.'],
+        dialogues: [
+          '¡Sonríe, ciudadano! Tu nivel de felicidad es del 98%. El otro 2% es un bug que el CEO está revisando.'
+        ]
       })
     ];
   }
@@ -3700,6 +3797,14 @@ export class RPGGame {
         x: 11.5 * 16,
         y: 6.5 * 16,
         sceneId: 'ai_citadel'
+      }),
+
+      // Expansión v2.0: Iñakito 2.0 (El Becario Eterno · Cubículo 12x10 · 100 HP / 3 fases)
+      new IñakitoBoss({
+        x: 6 * 16,
+        y: 4 * 16,
+        sceneId: 'inakito_office',
+        hp: 100
       })
     ];
   }
@@ -3715,7 +3820,7 @@ export class RPGGame {
     // su cambio de rutina hasta que el diálogo termine.
     const talkingNPC = this.dialogueBox && this.dialogueBox.active ? this.dialogueBox.currentNPC : null;
     for (const npc of this.npcs) {
-      if (!npc.homeSceneId || npc.homeSceneId === 'overworld') continue;
+      if (!npc.homeSceneId || npc.homeSceneId === 'overworld' || npc.homeSceneId === 'valleverde_corp') continue;
       if (npc === talkingNPC) {
         this._npcsSchedulePending = true;
         continue;
@@ -5116,6 +5221,15 @@ export class RPGGame {
         }
       }
 
+      if (door.blocked) {
+        this._handleBlockedDoor(
+          door,
+          door.blockTitle || 'Acceso Restringido',
+          door.blockLines || ['Esta compuerta permanece sellada por la Corporación Alex IA.']
+        );
+        return;
+      }
+
       if (door.type === 'bridge_gate') {
         this._handleBlockedDoor(door, 'Puente del Este · Precintado', [
           'El paso hacia las Tierras Sagradas del este está bloqueado por una sólida barrera de madera.',
@@ -5551,6 +5665,57 @@ export class RPGGame {
         this.music.playBossMusic(boss.trackName);
       }
       this._saveGameToStorage();
+    }
+  }
+
+  /**
+   * (EXPANSIÓN v2.0) Cinemática rápida (3s) al entrar por primera vez a inakito_office.
+   */
+  _triggerInakitoOfficeIntro(boss) {
+    if (!boss || !boss.isBoss || boss.dead) return;
+    this.bossCutscenesSeen.boss_inakito = true;
+    boss.introCutscenePlayed = true;
+    boss.activeCombat = false;
+    registerExpansionMusic();
+
+    const startFight = () => {
+      boss.activeCombat = true;
+      if (this.music && typeof this.music.playBossMusic === 'function') {
+        this.music.playBossMusic('boss_iñakito');
+      }
+      this._saveGameToStorage();
+    };
+
+    if (this.animeCutscenes && this.animeCutscenes.director) {
+      this.animeCutscenes.director.play({
+        id: 'inakito_office_intro',
+        title: 'CUBÍCULO DE IÑAKITO 2.0',
+        duration: 3.0,
+        background: 'office',
+        particles: 'steam',
+        musicMode: 'boss_iñakito',
+        timeline: [
+          { time: 0, action: 'fade', to: 0, duration: 0.35 },
+          { time: 0, action: 'camera', x: 160, y: 100, zoom: 1.5, duration: 0.01 },
+          { time: 0, action: 'spawn', actor: 'player', x: 112, y: 120 },
+          { time: 0, action: 'spawn', actor: 'inakito', x: 190, y: 108 },
+          { time: 0.2, action: 'sfx', name: 'coffee_sip' },
+          {
+            time: 0.3,
+            action: 'dialogue',
+            speaker: 'Iñakito 2.0 · El Becario Eterno',
+            text: '¿Vienes a evaluarme? ¡Llevo 7 años esperando el contrato indefinido!',
+            duration: 2.4
+          },
+          { time: 3.0, action: 'end' }
+        ]
+      }, startFight);
+    } else if (this.dialogueBox) {
+      this.dialogueBox.showMessage('Iñakito 2.0 · El Becario Eterno', [
+        '¿Vienes a evaluarme? ¡Llevo 7 años esperando el contrato indefinido!'
+      ], startFight);
+    } else {
+      startFight();
     }
   }
 
@@ -6510,6 +6675,27 @@ export class RPGGame {
           if (this.menuSystem) {
             this.menuSystem.showNotice('🔥 ¡Has obtenido el [Núcleo del Microondas] y el [Magnetrón Cuántico]!', 3.5);
           }
+        } else if (enemy.id === 'boss_inakito') {
+          if (this.tilemap && typeof this.tilemap.setInakitoOfficeGate === 'function') {
+            this.tilemap.setInakitoOfficeGate(true);
+          }
+          this._grantBossLoot([
+            {
+              id: 'key_vertedero',
+              name: 'Llave de Acceso al Vertedero',
+              description: 'Tarjeta corporativa confiscada a Iñakito 2.0. Abre el ascensor al Vertedero Digital.',
+              iconIndex: ITEM_ICONS.BRIDGE_PASS,
+              qty: 1
+            }
+          ]);
+          if (this.dialogueBox) {
+            this.dialogueBox.showMessage('Iñakito 2.0 · El Becario Eterno', [
+              '¿Esto significa que no me van a renovar?'
+            ]);
+          }
+          if (this.menuSystem) {
+            this.menuSystem.showNotice('🔑 ¡Has obtenido la [Llave de Acceso al Vertedero]! Barrera norte abierta.', 4.0);
+          }
         } else if (enemy.id === 'boss_final_ai_alex') {
           if (this.questLog) {
             this.questLog.completeQuest('quest_boss_final', '¡Mister AI Alex ha caído! El Ojete Dorado ha sido consagrado.');
@@ -6704,6 +6890,7 @@ export class RPGGame {
     // (BLOQUE 2) La cinemática renderiza la escena in-engine y su UI.
     if (this.cinematicDirector && this.cinematicDirector.isActive) {
       this.cinematicDirector.render(ctx);
+      this._renderCustomCursor(ctx);
       return;
     }
 
@@ -6721,11 +6908,13 @@ export class RPGGame {
       (this.menuSystem.state === 'confirm_exit' && this.menuSystem.previousStateBeforeExit === 'title')
     ) {
       this.menuSystem.render(ctx);
+      this._renderCustomCursor(ctx);
       return;
     }
 
     if (this.animeCutscenes && this.animeCutscenes.isActive) {
       this.animeCutscenes.render(ctx);
+      this._renderCustomCursor(ctx);
       return;
     }
 
@@ -6836,6 +7025,87 @@ export class RPGGame {
     // (FIX M1.6) Controles táctiles al final para quedar por encima del HUD y de los
     // paneles de canvas (así el botón de cerrar del inventario sigue visible).
     if (this.touchControls) this.touchControls.render(ctx);
+    this._renderCustomCursor(ctx);
+  }
+
+  /**
+   * Dibuja un cursor pixel art en el canvas (Espada si hasSword === true, Puño si false)
+   * con contorno negro de 1 px para contraste sobre cualquier fondo.
+   */
+  _renderCustomCursor(ctx) {
+    if (!this.input) return;
+    if (typeof this.input.isDOMBlocked === 'function' && this.input.isDOMBlocked()) return;
+    if (this.input.lastPointerType === 'touch') return;
+
+    const x = Math.round(this.input.pointerX);
+    const y = Math.round(this.input.pointerY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < 0 || y < 0 || x >= VIEWPORT_WIDTH || y >= VIEWPORT_HEIGHT) return;
+
+    const hasSword = Boolean(this.player && this.player.hasSword);
+    const isInteractive = Boolean(
+      (this.menuSystem && this.menuSystem.state !== 'none') ||
+      (this.dialogueBox && this.dialogueBox.active) ||
+      (this.shopUI && this.shopUI.isOpen)
+    );
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    if (hasSword) {
+      // Espada pixel art apuntando arriba-izquierda (punta en x, y)
+      const outline = isInteractive ? '#facc15' : '#0b0c10';
+      ctx.fillStyle = outline;
+      // Contorno de hoja diagonal + guarda + empuñadura
+      for (let i = 0; i <= 5; i++) {
+        ctx.fillRect(x + i - 1, y + i, 3, 3);
+      }
+      ctx.fillRect(x + 4, y + 7, 5, 2);
+      ctx.fillRect(x + 7, y + 4, 2, 5);
+      ctx.fillRect(x + 6, y + 6, 4, 4);
+
+      // Hoja gris acero con filo luminoso
+      ctx.fillStyle = '#94a3b8';
+      for (let i = 0; i <= 5; i++) {
+        ctx.fillRect(x + i, y + i, 2, 2);
+      }
+      ctx.fillStyle = '#f8fafc';
+      for (let i = 0; i <= 4; i++) {
+        ctx.fillRect(x + i, y + i, 1, 1);
+      }
+      // Guarda dorada
+      ctx.fillStyle = '#eab308';
+      ctx.fillRect(x + 4, y + 6, 4, 1);
+      ctx.fillRect(x + 6, y + 4, 1, 4);
+      // Mango marrón
+      ctx.fillStyle = '#92400e';
+      ctx.fillRect(x + 7, y + 7, 2, 2);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x + 9, y + 9, 1, 1);
+    } else {
+      // Puño pixel art (cuadrado piel con nudillos oscuros y contorno de 1 px)
+      const outline = isInteractive ? '#facc15' : '#0b0c10';
+      ctx.fillStyle = outline;
+      ctx.fillRect(x, y, 9, 8);
+      ctx.fillRect(x + 1, y + 8, 7, 1);
+
+      // Cuerpo del puño (piel)
+      ctx.fillStyle = '#f1c27d';
+      ctx.fillRect(x + 1, y + 1, 7, 6);
+      ctx.fillRect(x + 2, y + 7, 5, 1);
+
+      // Nudillos oscuros y separación de dedos
+      ctx.fillStyle = '#8d5524';
+      ctx.fillRect(x + 2, y + 1, 1, 2);
+      ctx.fillRect(x + 4, y + 1, 1, 2);
+      ctx.fillRect(x + 6, y + 1, 1, 2);
+      // Sombra del pulgar/muñeca
+      ctx.fillStyle = '#c68642';
+      ctx.fillRect(x + 1, y + 4, 2, 2);
+      ctx.fillRect(x + 2, y + 6, 5, 1);
+    }
+
+    ctx.restore();
   }
 
   _renderAbyssalPortal(ctx, portalObj = null) {
@@ -7043,6 +7313,24 @@ export class RPGGame {
     ctx.fillStyle = syncColor;
     ctx.textAlign = 'right';
     ctx.fillText('☁', capsuleX + capsuleW - 4, capsuleY + 7.5);
+
+    // (EXPANSIÓN v2.0) Medidor falso de Felicidad (98%) en Valleverde 2.0
+    if (this.tilemap && this.tilemap.currentSceneId === 'valleverde_corp') {
+      const hapW = 72;
+      const hapH = 12;
+      const hapX = VIEWPORT_WIDTH - hapW - 6;
+      const hapY = capsuleY + capsuleH + 4;
+      hudShadow(hapX, hapY, hapW, hapH);
+      ctx.fillStyle = 'rgba(8, 20, 32, 0.88)';
+      ctx.fillRect(hapX, hapY, hapW, hapH);
+      ctx.strokeStyle = 'rgba(34, 211, 238, 0.75)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(hapX + 0.5, hapY + 0.5, hapW - 1, hapH - 1);
+      ctx.font = hudFont(5, true);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillText('😊 FELICIDAD 98%', hapX + 4, hapY + 6.5);
+    }
 
     // =========================================================================
     // 2. SUPERIOR IZQUIERDA: Corazones (rojos o blindados metálicos) + icono 🤖% SOLO si supera el 50%

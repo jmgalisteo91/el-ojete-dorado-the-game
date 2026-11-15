@@ -59,6 +59,7 @@ html, body {
   border: 2px solid #262b3d;
   /* (FIX M0.2) El canvas no debe arrastrar ni hacer scroll al jugar */
   touch-action: none;
+  cursor: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
