@@ -304,6 +304,7 @@ export class ExpansionManager {
     }
 
     target.expansionEquipment = mods.EXPANSION_EQUIPMENT;
+    target.isExpansionActive = true;
     target.isExpansionMode = true;
     target.gameState = 'expansion';
     this.initialized = true;
@@ -313,6 +314,7 @@ export class ExpansionManager {
     }
 
     this.attachCachedEntities(target);
+    target.isExpansionActive = true;
     target.isExpansionMode = true;
     target.gameState = 'expansion';
     return target;

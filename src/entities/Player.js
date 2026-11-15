@@ -2,7 +2,7 @@ import { Entity } from './Entity.js?v=8';
 import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
 import { SKILL_DEFS } from '../core/SkillCatalog.js?v=8';
 import { GameLoop } from '../core/GameLoop.js?v=8';
-import { EXPANSION_EQUIPMENT, EXPANSION_SKILLS, getExpansionEquipment } from '../expansion/ExpansionData.js?v=8';
+import { EXPANSION_EQUIPMENT, EXPANSION_SKILLS, EXPANSION_SKILLS_KEYS, getExpansionEquipment } from '../expansion/ExpansionData.js?v=8';
 
 const STAMINA_COSTS = { attack: 4, dash: 18, charged: 30, log: 15 };
 
@@ -34,7 +34,7 @@ export const XP_REWARDS = { enemy: 25, boss: 300 };
  * Al conseguir la Armadura del Alba resiste ataques, y con la Espada del Alba puede atacar con [F] / [Espacio].
  */
 export class Player extends Entity {
-  constructor({ x, y, animator, armoredAnimator = null }) {
+  constructor({ x, y, animator, armoredAnimator = null, game = null }) {
     super({
       x,
       y,
@@ -45,6 +45,7 @@ export class Player extends Entity {
       animator
     });
 
+    this.game = game;
     this.unarmoredAnimator = animator;
     this.armoredAnimator = armoredAnimator || animator;
 
@@ -230,8 +231,8 @@ export class Player extends Entity {
   }
 
   get effectiveMaxStamina() {
-    const base = this.skills.vigor_2 ? 180 : (this.skills.vigor ? 140 : 100);
-    return base + (this.rosaStaminaBonus || 0) + (this.levelStaminaBonus || 0);
+    const base = this._isExpansionActive() && this.skills.vigor_2 ? 180 : (this.skills.vigor ? 140 : 100);
+    return base + (this._isExpansionActive() ? (this.rosaStaminaBonus || 0) : 0) + (this.levelStaminaBonus || 0);
   }
 
   spendStamina(amount) {
@@ -241,9 +242,17 @@ export class Player extends Entity {
     return true;
   }
 
+  _isExpansionActive() {
+    if (this.isExpansionActive !== undefined) return Boolean(this.isExpansionActive);
+    if (this.game) return Boolean(this.game.isExpansionActive || this.game.isExpansionMode);
+    const wg = typeof window !== 'undefined' ? window.game : globalThis?.game;
+    return Boolean(wg && (wg.isExpansionActive || wg.isExpansionMode));
+  }
+
   getSwordDamage(target = null) {
+    const expansionActive = this._isExpansionActive();
     const corpWeapon =
-      this.equippedWeapon && this.equippedWeapon !== 'default'
+      expansionActive && this.equippedWeapon && this.equippedWeapon !== 'default'
         ? EXPANSION_EQUIPMENT[this.equippedWeapon]
         : null;
     let dmg = corpWeapon && corpWeapon.slot === 'weapon'
@@ -259,12 +268,12 @@ export class Player extends Entity {
       }
     }
 
-    if (this.rosaDamageBonus > 0) {
+    if (expansionActive && this.rosaDamageBonus > 0) {
       dmg *= 1 + this.rosaDamageBonus;
     }
 
     // Ejecutivo: +15% de daño contra jefes
-    if (this.skills?.ejecutivo && target && target.isBoss) {
+    if (expansionActive && this.skills?.ejecutivo && target && target.isBoss) {
       dmg *= 1.15;
     }
 
@@ -276,12 +285,12 @@ export class Player extends Entity {
   }
 
   getEquippedWeaponInfo() {
-    if (!this.equippedWeapon || this.equippedWeapon === 'default') return null;
+    if (!this._isExpansionActive() || !this.equippedWeapon || this.equippedWeapon === 'default') return null;
     return getExpansionEquipment(this.equippedWeapon);
   }
 
   getEquippedShieldInfo() {
-    if (!this.equippedShield) return null;
+    if (!this._isExpansionActive() || !this.equippedShield) return null;
     return getExpansionEquipment(this.equippedShield);
   }
 
@@ -289,6 +298,7 @@ export class Player extends Entity {
    * Equipa un arma o escudo corporativo de `EXPANSION_EQUIPMENT` (por id o itemId).
    */
   equipExpansionItem(idOrItemId) {
+    if (!this._isExpansionActive()) return null;
     const eq = getExpansionEquipment(idOrItemId);
     if (!eq) return null;
     if (eq.slot === 'weapon') {
@@ -315,8 +325,8 @@ export class Player extends Entity {
       gained = 1;
     }
     this.skillPoints += gained;
-    // Reciclaje: 10% de probabilidad de generar un Currículum extra al derrotar enemigos
-    this.lastKillCurriculumDrop = Boolean(this.skills?.reciclaje && rng() < 0.10);
+    // Reciclaje: 10% de probabilidad de generar un Currículum extra al derrotar enemigos (solo expansión)
+    this.lastKillCurriculumDrop = Boolean(this._isExpansionActive() && this.skills?.reciclaje && rng() < 0.10);
     const xpAmount = Number.isFinite(xpOverride) ? xpOverride : (isBoss ? XP_REWARDS.boss : XP_REWARDS.enemy);
     const xpRes = this.gainXp(xpAmount);
     this.lastLevelRewards = xpRes.rewards || [];
@@ -324,7 +334,10 @@ export class Player extends Entity {
   }
 
   purchaseSkill(key) {
-    const def = SKILL_DEFS.find((d) => d.key === key) || EXPANSION_SKILLS[key];
+    if (!this._isExpansionActive() && EXPANSION_SKILLS_KEYS.includes(key)) {
+      return false;
+    }
+    const def = SKILL_DEFS.find((d) => d.key === key) || (this._isExpansionActive() ? EXPANSION_SKILLS[key] : null);
     if (!def || this.skills[key] || this.skillPoints < def.cost) return false;
     if (def.requires && !this.skills[def.requires]) return false;
     this.skillPoints -= def.cost;
@@ -496,7 +509,7 @@ export class Player extends Entity {
     if (!this.spendStamina(STAMINA_COSTS.attack)) return false;
 
     const corpWeapon =
-      this.equippedWeapon && this.equippedWeapon !== 'default'
+      this._isExpansionActive() && this.equippedWeapon && this.equippedWeapon !== 'default'
         ? EXPANSION_EQUIPMENT[this.equippedWeapon]
         : null;
 
@@ -669,7 +682,7 @@ export class Player extends Entity {
     this.barrierCooldown = 8.0;
     // (FIX 3.7) Ventana de parry legible contra un windup de 0.30s (+0.2s con Escudo del Becario)
     const baseParryWindow = this.skills.reflejo ? 0.35 : 0.20;
-    const shieldBonus = this.equippedShield === 'escudo_becario' ? 0.20 : 0;
+    const shieldBonus = this._isExpansionActive() && this.equippedShield === 'escudo_becario' ? 0.20 : 0;
     this.parryTimer = baseParryWindow + shieldBonus;
     if (soundEngine && typeof soundEngine.playBarrier === 'function') {
       soundEngine.playBarrier();
@@ -774,7 +787,7 @@ export class Player extends Entity {
         this.barrierCooldown = Math.min(this.barrierCooldown, 2.5);
         this.stamina = Math.min(this.effectiveMaxStamina, this.stamina + 40);
         // Reflejo II: el parry devuelve un 50% del daño absorbido al enemigo (antes de aturdirlo)
-        if (this.skills?.reflejo_2 && attacker && typeof attacker.takeSwordHit === 'function') {
+        if (this._isExpansionActive() && this.skills?.reflejo_2 && attacker && typeof attacker.takeSwordHit === 'function') {
           const absorbed = this._computeIncomingBaseDamage(attacker, customDamage);
           const reflectedDamage = Math.round(absorbed * 0.5 * 100) / 100;
           if (reflectedDamage > 0) {
@@ -785,7 +798,7 @@ export class Player extends Entity {
           attacker.stun(1.4);
         }
         // Carpeta de Plástico: al hacer parry ralentiza al enemigo durante 2s
-        if (this.equippedShield === 'carpeta' && attacker && typeof attacker.applySlow === 'function') {
+        if (this._isExpansionActive() && this.equippedShield === 'carpeta' && attacker && typeof attacker.applySlow === 'function') {
           attacker.applySlow(2.0, 0.45);
         }
         if (soundEngine && typeof soundEngine.playChargedAttack === 'function') {
@@ -806,12 +819,12 @@ export class Player extends Entity {
 
     // Resiliencia: reduce el daño recibido en mazmorras y en el Núcleo en un 15%
     const sceneForHit = attacker?.sceneId || this.currentSceneId || '';
-    if (this.skills?.resiliencia && this._isDungeonOrNucleusScene(sceneForHit)) {
+    if (this._isExpansionActive() && this.skills?.resiliencia && this._isDungeonOrNucleusScene(sceneForHit)) {
       dmg = Math.round(dmg * 0.85 * 100) / 100;
     }
 
     // (FIX C.1) La coraza absorbe hasta 1.0 de daño por punto; Carpeta de Plástico mitiga 0.5 corazones pasivamente.
-    if (this.equippedShield === 'carpeta') {
+    if (this._isExpansionActive() && this.equippedShield === 'carpeta') {
       dmg = Math.max(0, dmg - 0.5);
     }
     // armorPoints sigue siendo entero: se decrementa 1 por golpe absorbido.
@@ -1327,7 +1340,7 @@ export class Player extends Entity {
       ctx.restore();
     }
     const activeCorpWeapon =
-      this.equippedWeapon && this.equippedWeapon !== 'default'
+      this._isExpansionActive() && this.equippedWeapon && this.equippedWeapon !== 'default'
         ? EXPANSION_EQUIPMENT[this.equippedWeapon]
         : null;
     if (activeCorpWeapon) {
@@ -1526,7 +1539,7 @@ export class Player extends Entity {
         ctx.save();
         // Arco de energía según arma corporativa equipada, nivel de espada o robotización
         const corpWeapon =
-          this.equippedWeapon && this.equippedWeapon !== 'default'
+          this._isExpansionActive() && this.equippedWeapon && this.equippedWeapon !== 'default'
             ? EXPANSION_EQUIPMENT[this.equippedWeapon]
             : null;
         const isMechanized = this.robotizationLevel > 50;

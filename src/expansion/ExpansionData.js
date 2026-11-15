@@ -274,3 +274,6 @@ export const EXPANSION_SKILLS = {
     desc: 'El tronco lanzado explota en área (radio 20px).'
   }
 };
+
+export const EXPANSION_SKILLS_KEYS = Object.keys(EXPANSION_SKILLS);
+export const EXPANSION_EQUIPMENT_KEYS = Object.keys(EXPANSION_EQUIPMENT);

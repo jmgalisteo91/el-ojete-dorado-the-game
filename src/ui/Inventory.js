@@ -61,10 +61,11 @@ const CONSUMABLE_ITEM_IDS = new Set([
 ]);
 
 export class Inventory {
-  constructor(itemsSheet, viewportWidth = 320, viewportHeight = 180) {
+  constructor(itemsSheet, viewportWidth = 320, viewportHeight = 180, game = null) {
     this.itemsSheet = itemsSheet;
     this.viewportWidth = viewportWidth;
     this.viewportHeight = viewportHeight;
+    this.game = game;
 
     this.isOpen = false;
     this.maxSlots = 16;
@@ -215,6 +216,26 @@ export class Inventory {
     this._resetTouch();
   }
 
+  _isExpansionActive(player = null) {
+    if (this.isExpansionActive !== undefined) return Boolean(this.isExpansionActive);
+    if (this.game) return Boolean(this.game.isExpansionActive || this.game.isExpansionMode);
+    if (player?.isExpansionActive !== undefined) return Boolean(player.isExpansionActive);
+    if (player?.game) return Boolean(player.game.isExpansionActive || player.game.isExpansionMode);
+    const wg = typeof window !== 'undefined' ? window.game : globalThis?.game;
+    return Boolean(wg && (wg.isExpansionActive || wg.isExpansionMode));
+  }
+
+  _isExpansionEquipmentItem(itemOrId) {
+    if (!itemOrId) return false;
+    const rawId = typeof itemOrId === 'string' ? itemOrId : itemOrId.id;
+    return Boolean(rawId && getExpansionEquipment(rawId));
+  }
+
+  getVisibleItems(player = null) {
+    if (this._isExpansionActive(player)) return this.items;
+    return this.items.filter((it) => !this._isExpansionEquipmentItem(it));
+  }
+
   /**
    * Añade un objeto al inventario (acumulando cantidad si ya existe).
    * Los objetos clave de historia/misión nunca son bloqueados por límite de ranuras.
@@ -222,6 +243,9 @@ export class Inventory {
   addItem(itemData, { ignoreSlotLimit = false } = {}) {
     if (!itemData || !itemData.id) return false;
     const id = normalizeItemId(itemData.id);
+    if (!this._isExpansionActive() && this._isExpansionEquipmentItem(id)) {
+      return false;
+    }
     const existing = this.items.find((it) => it.id === id);
     if (existing) {
       existing.qty += itemData.qty || 1;
@@ -325,7 +349,7 @@ export class Inventory {
    * Indica si el ítem corresponde al arma o escudo corporativo equipado actualmente.
    */
   isEquipped(item, player) {
-    if (!item || !player) return false;
+    if (!item || !player || !this._isExpansionActive(player)) return false;
     const eq = getExpansionEquipment(item.id);
     if (!eq) return false;
     return (
@@ -338,7 +362,8 @@ export class Inventory {
    * Equipa un objeto corporativo si pertenece a `EXPANSION_EQUIPMENT`. Devuelve el objeto equipado o null.
    */
   equipSelectedExpansionItem(player) {
-    const item = this.getSelectedItem();
+    if (!this._isExpansionActive(player)) return null;
+    const item = this.getSelectedItem(player);
     if (!item || !player) return null;
     const eq = typeof player.equipExpansionItem === 'function' ? player.equipExpansionItem(item.id) : null;
     if (!eq) return null;
@@ -400,8 +425,9 @@ export class Inventory {
     this.statusMessage = '';
   }
 
-  getSelectedItem() {
-    return this.items[this.selectedIndex] || null;
+  getSelectedItem(player = null) {
+    const visible = this.getVisibleItems(player);
+    return visible[this.selectedIndex] || null;
   }
 
   /**
@@ -411,6 +437,12 @@ export class Inventory {
    */
   render(ctx, player = null) {
     if (!this.isOpen) return;
+
+    const expansionActive = this._isExpansionActive(player);
+    const visibleItems = this.getVisibleItems(player);
+    if (this.selectedIndex >= visibleItems.length) {
+      this.selectedIndex = Math.max(0, visibleItems.length - 1);
+    }
 
     // (BLOQUE 2.3) Pop de apertura del inventario.
     const now = performance.now();
@@ -428,7 +460,7 @@ export class Inventory {
     const bobT = Math.min(1, (now - (this._detailBobStart || now)) / 260);
     const detailBob = Math.sin(bobT * Math.PI) * 2;
 
-    const totalItems = this.items.length;
+    const totalItems = visibleItems.length;
     const currentPage = Math.floor(this.selectedIndex / this.visibleSlots);
     const totalPages = Math.max(1, Math.ceil(Math.max(totalItems, this.selectedIndex + 1) / this.visibleSlots));
 
@@ -506,7 +538,7 @@ export class Inventory {
         const sx = gridStartX + c * (slotSize + gapX);
         const sy = gridStartY + r * (slotSize + gapY);
         const isSelected = slotIndex === this.selectedIndex;
-        const item = this.items[slotIndex];
+        const item = visibleItems[slotIndex];
         this._lastSlots.push({ x: sx, y: sy, w: slotSize, h: slotSize, index: slotIndex });
 
         // Fondo y bisel de ranura; la seleccionada recibe un gradiente dorado.
@@ -577,10 +609,10 @@ export class Inventory {
     ctx.fillStyle = UI_COLORS.gold;
     ctx.fillText(`◈ BYTES: ${coins}`, leftRect.x + 6, summaryY + 5);
 
-    const eqWep = player && player.equippedWeapon && player.equippedWeapon !== 'default'
+    const eqWep = expansionActive && player && player.equippedWeapon && player.equippedWeapon !== 'default'
       ? EXPANSION_EQUIPMENT[player.equippedWeapon]
       : null;
-    const eqShd = player && player.equippedShield ? EXPANSION_EQUIPMENT[player.equippedShield] : null;
+    const eqShd = expansionActive && player && player.equippedShield ? EXPANSION_EQUIPMENT[player.equippedShield] : null;
     ctx.font = `4px ${UI_FONT}`;
     ctx.fillStyle = eqWep ? '#38bdf8' : UI_COLORS.textSecondary;
     const assignedCount = hotbarList.filter(Boolean).length;
@@ -609,7 +641,7 @@ export class Inventory {
       headerText: 'INSPECCIÓN DEL OBJETO'
     });
 
-    const selected = this.getSelectedItem();
+    const selected = visibleItems[this.selectedIndex] || null;
     const padX = rightRect.x + 6;
     const innerW = rightRect.w - 12;
 

@@ -78,12 +78,15 @@ const BGM_MODE_ALIASES = {
 };
 
 // (BLOQUE 1) SFX pregrabados: se decodifican a buffers y se reproducen con polifonía.
-const SFX_NAMES = [
+// Separados estrictamente entre base y expansión.
+const BASE_SFX_NAMES = [
   'sword_slash', 'hit_flesh', 'hit_metal', 'player_hurt', 'parry', 'enemy_death',
   'boss_roar', 'charge_attack', 'dash', 'throw_log', 'footstep_grass',
   'footstep_stone', 'pickup_item', 'coin', 'level_up', 'pet_animal',
-  'fish_splash', 'door_open', 'ui_hover', 'ui_click', 'ui_error', 'text_type',
-  // (EXPANSIÓN v2.0)
+  'fish_splash', 'door_open', 'ui_hover', 'ui_click', 'ui_error', 'text_type'
+];
+
+const EXPANSION_SFX_NAMES = [
   'ui_glitch', 'console_log', 'hologram_on', 'error_buzz',
   'keyboard_type', 'electric_shock', 'coffee_sip', 'door_airlock'
 ];
@@ -525,41 +528,49 @@ export class AudioManager {
    * (BLOQUE 1) Descarga y decodifica assets/sfx/* en buffers de Web Audio.
    * Tolera archivos ausentes o corruptos: cada fallo cae al sintetizador.
    */
-  async preloadSFX() {
-    if (this._sfxPreloadPromise) return this._sfxPreloadPromise;
-    this._sfxPreloadPromise = (async () => {
-      this._ensureAudioGraph();
-      if (!this.ctx || typeof fetch !== 'function') return;
-      await Promise.all(SFX_NAMES.map(async (name) => {
-        if (this.sfxBuffers[name]) return;
-        const bases = SFX_FILE_ALIASES[name] || [name];
-        for (const base of bases) {
-          for (const ext of SFX_EXTENSIONS) {
-            try {
-              const res = await fetch(`assets/sfx/${base}.${ext}`, { cache: 'force-cache' });
-              if (!res.ok) continue;
-              const arrayBuffer = await res.arrayBuffer();
-              const decoded = await new Promise((resolve, reject) => {
-                try {
-                  const p = this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
-                  if (p && typeof p.then === 'function') p.then(resolve, reject);
-                } catch (err) {
-                  reject(err);
-                }
-              });
-              if (decoded) {
-                this.sfxBuffers[name] = decoded;
-                return;
+  async _preloadSfxList(names) {
+    this._ensureAudioGraph();
+    if (!this.ctx || typeof fetch !== 'function') return;
+    await Promise.all(names.map(async (name) => {
+      if (this.sfxBuffers[name]) return;
+      const bases = SFX_FILE_ALIASES[name] || [name];
+      for (const base of bases) {
+        for (const ext of SFX_EXTENSIONS) {
+          try {
+            const res = await fetch(`assets/sfx/${base}.${ext}`, { cache: 'force-cache' });
+            if (!res.ok) continue;
+            const arrayBuffer = await res.arrayBuffer();
+            const decoded = await new Promise((resolve, reject) => {
+              try {
+                const p = this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
+                if (p && typeof p.then === 'function') p.then(resolve, reject);
+              } catch (err) {
+                reject(err);
               }
-            } catch {
-              // Probar siguiente extensión/alias.
+            });
+            if (decoded) {
+              this.sfxBuffers[name] = decoded;
+              return;
             }
+          } catch {
+            // Probar siguiente extensión/alias.
           }
         }
-        console.warn(`[AudioManager] SFX no disponible: ${name}; se usará el sintetizador.`);
-      }));
-    })();
+      }
+      console.warn(`[AudioManager] SFX no disponible: ${name}; se usará el sintetizador.`);
+    }));
+  }
+
+  async preloadSFX() {
+    if (this._sfxPreloadPromise) return this._sfxPreloadPromise;
+    this._sfxPreloadPromise = this._preloadSfxList(BASE_SFX_NAMES);
     return this._sfxPreloadPromise;
+  }
+
+  async preloadExpansionSFX() {
+    if (this._expansionSfxPreloadPromise) return this._expansionSfxPreloadPromise;
+    this._expansionSfxPreloadPromise = this._preloadSfxList(EXPANSION_SFX_NAMES);
+    return this._expansionSfxPreloadPromise;
   }
 
   /**
@@ -641,6 +652,9 @@ export class AudioManager {
     registerExpansionMusic();
     this.expansionAudioLoaded = true;
     this._preloadTrackEntries(Object.entries(EXPANSION_BGM));
+    if (this.isUnlocked && this.ctx) {
+      this.preloadExpansionSFX().catch(() => {});
+    }
   }
 
   _resolveBgmKey(mode) {

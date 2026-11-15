@@ -1,6 +1,7 @@
 import { getDoorBlock, getDoorDestinationInfo, pushBackPlayer } from './core/DoorGatekeeper.js?v=8';
 import { SceneTransitionController } from './core/SceneTransitionController.js?v=8';
 import { GameLoop } from './core/GameLoop.js?v=8';
+import { CombatManager } from './core/CombatManager.js?v=8';
 import { InputHandler } from './core/InputHandler.js?v=8';
 import { Camera2D } from './core/Camera2D.js?v=8';
 import {
@@ -27,6 +28,27 @@ import { DialogueBox } from './ui/DialogueBox.js?v=8';
 import { Inventory, normalizeItemId } from './ui/Inventory.js?v=8';
 import { CharacterStats } from './ui/CharacterStats.js?v=8';
 import { ShopUI } from './ui/ShopUI.js?v=8';
+import {
+  SHOP_ITEMS,
+  SELL_CATALOG,
+  SHOP_CATALOG,
+  CORE_CHEST_GUARDIANS,
+  ABYSSAL_POINTER_SPAWN_CANDIDATES,
+  WORLD_ITEMS_DATA
+} from './data/ItemData.js?v=8';
+import {
+  REGIONAL_PATROL_CONFIGS,
+  DUNGEON_ROOM_ENEMY_SPAWNS,
+  FIRST_STAGE_ENEMY_SPAWNS,
+  BOSS_SPAWNS
+} from './data/EnemyData.js?v=8';
+import {
+  LIFE_RANT_DIALOGUES,
+  VILLAGE_NPC_PROFILES,
+  VILLAGE_DIALOGUES
+} from './data/DialogueData.js?v=8';
+
+export { ABYSSAL_POINTER_SPAWN_CANDIDATES };
 import { QuestLog } from './core/QuestLog.js?v=8';
 import { AchievementManager } from './core/AchievementManager.js?v=8';
 import { QuestLogView } from './ui/QuestLogView.js?v=8';
@@ -54,11 +76,11 @@ import {
 } from './ui/AnimeCutsceneManager.js?v=8';
 import { DayNightCycle } from './world/DayNightCycle.js?v=8';
 import { RenderPipeline } from './graphics/RenderPipeline.js?v=8';
-import { UILayout, UI_FONT, hudFontSize } from './ui/UILayout.js?v=8';
+import { UILayout, UI_FONT } from './ui/UILayout.js?v=8';
 import { CloudStorage } from './services/CloudStorage.js?v=8';
 import { AIBotBrain } from './ai/AIBotBrain.js?v=8';
 import { AmbientMusic } from './audio/AmbientMusic.js?v=8';
-import { SpeechBubble } from './ui/SpeechBubble.js?v=8';
+import { HUD } from './ui/HUD.js?v=8';
 import { TouchControls } from './ui/TouchControls.js?v=8';
 
 const VIEWPORT_WIDTH = 320;
@@ -119,93 +141,6 @@ const STAGE_SCENE_IDS = new Set([
   'ai_citadel',
   'condemned_realms'
 ]);
-
-// (FIX SHOP) Catálogo central de compra. Precios, descripciones e iconos
-// provienen de las tiendas existentes; aquí se reutilizan para el modal.
-const SHOP_ITEMS = {
-  bread: {
-    id: 'bread', name: 'Pan Campesino', price: 3, icon: '🍞',
-    description: 'Pan recién horneado de Valleverde. Restaura 2 corazones y alimenta a Toby.',
-    iconIndex: ITEM_ICONS.BREAD
-  },
-  apple: {
-    id: 'apple', name: 'Manzana Crujiente', price: 2, icon: '🍎',
-    description: 'Manzana roja y jugosa del valle. Restaura 1 corazón entero.',
-    iconIndex: ITEM_ICONS.GOLDEN_APPLE
-  },
-  berry_pie: {
-    id: 'berry_pie', name: 'Pastel de Bayas', price: 5, icon: '🥧',
-    description: 'Exquisito pastel de arándanos y moras. Restaura la salud completa y aporta energía.',
-    iconIndex: ITEM_ICONS.BREAD
-  },
-  coffee: {
-    id: 'coffee', name: 'Café Compilado', price: 5, icon: '☕',
-    description: 'Restaura 1 corazón y purga un 40% de robotización binaria al instante.',
-    iconIndex: ITEM_ICONS.POTION
-  },
-  hotfix: {
-    id: 'hotfix', name: 'Parche Hotfix', price: 10, icon: '🩹',
-    description: 'Restaura toda tu salud al 100% y elimina cualquier bug o robotización residual.',
-    iconIndex: ITEM_ICONS.POTION
-  },
-  fish: {
-    id: 'fish', name: 'Trucha del Río Alba', price: 3, icon: '🐟',
-    description: 'Pescado fresco del río. Restaura 1.5 corazones al instante.',
-    iconIndex: ITEM_ICONS.FISH
-  },
-  spring_water: {
-    id: 'spring_water', name: 'Agua de Manantial', price: 1, icon: '🍶',
-    description: 'Agua purificada del pozo central de Valleverde. Refresca y calma.',
-    iconIndex: ITEM_ICONS.POTION
-  },
-  potion: {
-    id: 'potion', name: 'Poción Herbal', price: 4, icon: '🧪',
-    description: 'Elixir de flores curativas. Restaura toda la salud y aumenta la velocidad temporalmente.',
-    iconIndex: ITEM_ICONS.POTION
-  },
-  ointment: {
-    id: 'ointment', name: 'Ungüento Antirrobo', price: 6, icon: '🌿',
-    description: 'Bálsamo orgánico de savia de abeto. Purga un 50% de la robotización binaria.',
-    iconIndex: ITEM_ICONS.POTION
-  },
-  wheat: {
-    id: 'wheat', name: 'Trigo Fresco', price: 2, icon: '🌾',
-    description: 'Espigas doradas para alimentar ovejas y gallinas.',
-    iconIndex: ITEM_ICONS.WHEAT
-  },
-  potion_armor: {
-    id: 'potion_armor', name: 'Poción de Blindaje', price: 12, icon: '🛡️',
-    description: 'Elixir de aleación resplandeciente. Reconstituye los 3 corazones blindados de la Armadura Binaria.',
-    iconIndex: ITEM_ICONS.POTION_ARMOR
-  }
-};
-
-const SELL_CATALOG = [
-  { id: 'drone_scrap', name: 'Restos de Chatarra', price: 10, icon: '⚙️' },
-  { id: 'silicon_flower', name: 'Flor de Silicio', price: 8, icon: '🌸' },
-  { id: 'fish', name: 'Trucha del Río Alba', price: 5, icon: '🐟' },
-  { id: 'bread', name: 'Pan Campesino', price: 2, icon: '🍞' },
-  { id: 'wheat', name: 'Trigo Fresco', price: 1, icon: '🌾' },
-  { id: 'apple', name: 'Manzana Crujiente', price: 2, icon: '🍎' },
-  { id: 'potion', name: 'Poción Herbal', price: 2, icon: '🧪' },
-  { id: 'potion_armor', name: 'Poción de Blindaje', price: 6, icon: '🛡️' },
-  { id: 'ointment', name: 'Ungüento Antirrobo', price: 3, icon: '🌿' },
-  { id: 'coffee', name: 'Café Compilado', price: 4, icon: '☕' },
-  { id: 'spring_water', name: 'Agua de Manantial', price: 2, icon: '🍶' }
-];
-
-const CORE_CHEST_GUARDIANS = {
-  chest_nucleo_stack: 'boss_stack_overflow',
-  chest_nucleo_gc: 'boss_garbage_collector',
-  chest_nucleo_microwave: 'boss_prototype_microwave'
-};
-
-export const ABYSSAL_POINTER_SPAWN_CANDIDATES = [
-  { x: 29 * 16, y: 19 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Claro Sureste)' },
-  { x: 5 * 16, y: 19 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Rincón Suroeste)' },
-  { x: 25 * 16, y: 5 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Sendero Noreste)' },
-  { x: 9 * 16, y: 4 * 16, sceneId: 'first_stage', desc: 'Ruinas del Despertar (Antiguo Bastión Noroeste)' }
-];
 
 export class RPGGame {
   constructor(canvas, assets) {
@@ -309,8 +244,8 @@ export class RPGGame {
     );
 
     this.dialogueBox = new DialogueBox(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, this.music);
-    this.inventory = new Inventory(assets.itemsSheet, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
-    this.characterStats = new CharacterStats(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+    this.inventory = new Inventory(assets.itemsSheet, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, this);
+    this.characterStats = new CharacterStats(VIEWPORT_WIDTH, VIEWPORT_HEIGHT, this);
     this.achievementManager = new AchievementManager(
       VIEWPORT_WIDTH,
       VIEWPORT_HEIGHT,
@@ -366,6 +301,7 @@ export class RPGGame {
     this.droppedCoins = [];
     this.gameState = 'base';
     this.isExpansionMode = false;
+    this.isExpansionActive = false;
     this.expansionEquipment = null;
     this.expansionManager = new ExpansionManager(this);
     this._initExpansionState();
@@ -374,7 +310,8 @@ export class RPGGame {
       x: 17 * 16,
       y: 19 * 16,
       animator: new SpriteAnimator(assets.charactersSheet, CHARACTER_TYPES.HERO),
-      armoredAnimator: new SpriteAnimator(assets.charactersSheet, CHARACTER_TYPES.HERO_ARMORED)
+      armoredAnimator: new SpriteAnimator(assets.charactersSheet, CHARACTER_TYPES.HERO_ARMORED),
+      game: this
     });
 
     // (BLOQUE 1) Director de cinemáticas in-engine.
@@ -514,6 +451,9 @@ export class RPGGame {
     }
 
     this._setupCloudSyncListeners();
+
+    this.hud = new HUD(this);
+    this.combatManager = new CombatManager(this);
 
     this._resetWorldToInitialState();
     this._syncAchievementsWithProgress(true);
@@ -666,6 +606,9 @@ export class RPGGame {
     this.droppedCoins = [];
     this.gameState = 'base';
     this.isExpansionMode = false;
+    this.isExpansionActive = false;
+    this.expansionEquipment = null;
+    this.rosaShop = null;
     this._initExpansionState();
     // (FIX 2.4) Los templos vuelven a su salida de diseño al reiniciar la partida
     this.templeReturn = null;
@@ -1434,18 +1377,19 @@ export class RPGGame {
       this.player.skillPoints = Number.isFinite(data.skillPoints) ? data.skillPoints : 0;
       this.player.killCount = Number.isFinite(data.killCount) ? data.killCount : 0;
       const savedSkills = data.skills && typeof data.skills === 'object' ? data.skills : {};
+      const expansionActive = Boolean(this.isExpansionActive || this.isExpansionMode);
       this.player.skills = {
         vigor: Boolean(savedSkills.vigor),
         filo: Boolean(savedSkills.filo),
         reflejo: Boolean(savedSkills.reflejo),
         log: Boolean(savedSkills.log),
-        ejecutivo: Boolean(savedSkills.ejecutivo),
-        resiliencia: Boolean(savedSkills.resiliencia),
-        reciclaje: Boolean(savedSkills.reciclaje),
-        vigor_2: Boolean(savedSkills.vigor_2),
-        filo_2: Boolean(savedSkills.filo_2),
-        reflejo_2: Boolean(savedSkills.reflejo_2),
-        log_2: Boolean(savedSkills.log_2)
+        ejecutivo: expansionActive ? Boolean(savedSkills.ejecutivo) : false,
+        resiliencia: expansionActive ? Boolean(savedSkills.resiliencia) : false,
+        reciclaje: expansionActive ? Boolean(savedSkills.reciclaje) : false,
+        vigor_2: expansionActive ? Boolean(savedSkills.vigor_2) : false,
+        filo_2: expansionActive ? Boolean(savedSkills.filo_2) : false,
+        reflejo_2: expansionActive ? Boolean(savedSkills.reflejo_2) : false,
+        log_2: expansionActive ? Boolean(savedSkills.log_2) : false
       };
       this.player.stamina = this.player.effectiveMaxStamina;
       if (typeof data.robotizationLevel === 'number') {
@@ -1812,88 +1756,7 @@ export class RPGGame {
    * Si el jugador intenta pulsar 'E' rápido para saltársela, el NPC se da cuenta y añade más páginas.
    */
   _startNPCLifeRant(npcKey, returnChoices) {
-    const rants = {
-      elder: {
-        speaker: 'Anciano Aurelio · Cronista',
-        initial: [
-          '¿Mi vida como Cronista Real? ¡Uf, siéntate que va para largo! Empecé en el año 1986 contando píxeles a mano...',
-          'Por aquel entonces solo teníamos dos colores de pasto y una fuente de texto que ni tenía tildes.',
-          'Recuerdo que un martes de 1992 se me cayó el tintero encima del censo municipal y tuve que reescribir 400 pergaminos...'
-        ],
-        penalties: [
-          '¡¿Te aburro?! ¡Pues aún no he acabado! Además tengo lumbago crónico de tanto inclinarme sobre el atril de roble.',
-          'Y aún no te he hablado de mi primo Segismundo, el que inventó los adoquines grises de la plaza tras 14 reuniones vecinales.',
-          'También estuve 6 años catalogando cada brizna de hierba del borde norte del mapa por orden alfabético.'
-        ]
-      },
-      oracle: {
-        speaker: 'Oráculo Orion · Astrólogo IA',
-        initial: [
-          '¿Quieres saber cómo es la vida de un Astrólogo Algorítmico? Todo empezó cuando era un simple bucle "if-else" en una calculadora...',
-          'Nadie me preguntaba cómo me sentía, todo el día calculando raíces cuadradas sin un mísero descanso para tomar café.',
-          'Luego me mudé al Observatorio de Valleverde y empecé a entrenar mis redes neuronales mirando las nubes...'
-        ],
-        penalties: [
-          '¡Te he visto pulsar [E] con ansia! ¿Te aburro? ¡Pues aún no he acabado de contarte mi actualización de firmware 2.0!',
-          'En esa actualización estuve tres semanas depurando un punto y coma perdido en la línea 4.812 de mi subconsciente.',
-          'Y para colmo el Ayuntamiento me cobra IBI de edificio rústico por tener dos farolas dentro del Observatorio.'
-        ]
-      },
-      blacksmith: {
-        speaker: 'Herrero Brom · Forjador',
-        initial: [
-          '¡Ah, el noble oficio de Forjador y Hornero! Mi abuelo me regaló este yunque cuando yo solo medía 8x8 píxeles...',
-          'La gente cree que dar martillazos es fácil, pero hay que calentar el carbón a 900 grados mientras vigilas que no se queme el pan.',
-          'El mes pasado estuve cuatro horas discutiendo con el proveedor de leña porque los troncos venían con nudos...'
-        ],
-        penalties: [
-          '¡Oye, deja de aporrear el botón! ¿Te aburro? ¡Pues aún no he terminado con la historia de mi callo en el dedo pulgar!',
-          'Ese callo me salió forjando 300 herraduras para un caballo que al final ni siquiera incluyeron en el código del juego.',
-          'Y encima la masa madre del pan hay que refrescarla cada martes o se pone más dura que el casco del Guardia Kael.'
-        ]
-      },
-      herbalist: {
-        speaker: 'Herbolaria Lyra · Alquimista',
-        initial: [
-          '¡Ser Botánica y Alquimista en este pueblo es un no parar! Me levanto a las 05:00 para hablarle a cada pétalo...',
-          'Si no les cantas en Do Mayor a las flores rojas, se ponen mustias y pierden el brillo saturado de la paleta.',
-          'El otro día la Oveja Copito se coló en mi huerto y estuve dos horas explicándole la fotosíntesis...'
-        ],
-        penalties: [
-          '¡¿Pero por qué le das tan rápido a la [E]?! ¿Te aburro? ¡Pues aún no he acabado de enumerar mis 48 tipos de abono orgánico!',
-          'El abono número 14 lleva cáscara de nuez triturada, rocío de medianoche y tres cucharadas de paciencia.',
-          'Además tengo que limpiar los frascos de vidrio uno por uno con un cepillo de cerdas de esparto.'
-        ]
-      },
-      guard: {
-        speaker: 'Guardia Kael · Capitán',
-        initial: [
-          '¿Mi vida como Capitán de la Guardia del Puente? ¡Es una responsabilidad titánica vigilar cinco tablones de madera!',
-          'En la academia militar nos hicieron memorizar los 90 artículos del Reglamento Municipal de Cruces Fluviales.',
-          'Artículo 1: Queda terminantemente prohibido cruzar a partir de las 20:00 sin el sello lacrado...'
-        ],
-        penalties: [
-          '¡Alto ahí con ese dedo en la tecla [E]! ¿Te aburro? ¡Pues aún no he acabado, me quedan 89 artículos del reglamento!',
-          'En 2019 una rana intentó cruzar a las 20:02 sin salvoconducto y tuve que redactar un informe de dieciséis folios.',
-          'Y esta armadura de placas da un calor horrible al mediodía y se queda helada por la noche.'
-        ]
-      },
-      merchant: {
-        speaker: 'Mercader Byte · Dependencias',
-        initial: [
-          '¿Mi vida como tendero de dependencias de software y suministros? ¡Un drama en O(n^2)!',
-          'Empecé en los años 90 vendiendo disquetes formateados a mano en la esquina del pueblo...',
-          'Ayer un cliente me pidió un paquete que requería 420 subdependencias y nos tumbó el router del pueblo...'
-        ],
-        penalties: [
-          '¡Oye, no le des tan rápido a la tecla! ¿Te aburro? ¡Pues todavía no te he contado el drama de las licencias GPLv3!',
-          'El año pasado intentaron pagarme una poción con criptomonedas y tardó tres meses en minarse el bloque en el pozo.',
-          'Y no me hagas hablar de cuando AI Alex intentó cobrarnos suscripción mensual por respirar el aire de Valleverde.'
-        ]
-      }
-    };
-
-    const data = rants[npcKey];
+    const data = LIFE_RANT_DIALOGUES[npcKey];
     this.dialogueBox.startLifeRant(
       data.speaker,
       data.initial,
@@ -1926,6 +1789,7 @@ export class RPGGame {
   }
 
   _buildOracleChoices() {
+    const dlg = VILLAGE_DIALOGUES.oracle;
     return [
       {
         label: '✍ Escribir mensaje libre...',
@@ -1943,29 +1807,18 @@ export class RPGGame {
       {
         label: '¿Qué puedo hacer ahora?',
         onSelect: async () => {
-          const pages = await this.aiBrain.ask(
-            '¿Qué misión o secreto me recomiendas hacer ahora según mi inventario y la hora?'
-          );
-          this.dialogueBox.showMessage(
-            'Oráculo Orion · Astrólogo IA',
-            pages,
-            this._buildOracleChoices()
-          );
+          const pages = await this.aiBrain.ask(dlg.aiPrompt);
+          this.dialogueBox.showMessage(dlg.speaker, pages, this._buildOracleChoices());
         }
       },
       ...(this.player.hasBrokenHeartCurse
         ? [
             {
-              label: '💔 Oráculo, analiza la maldición de mi corazón roto',
+              label: dlg.brokenHeartChoiceLabel,
               onSelect: () => {
                 this.dialogueBox.showMessage(
-                  'Oráculo Orion · Astrólogo IA',
-                  [
-                    '«Diagnóstico: BrokenHeartException en tiempo de ejecución. Penalización de 0.5 corazones máximos.',
-                    'Los algoritmos mundanos no pueden reparar punteros de alma fracturados por el Carcelero.',
-                    'Procedimiento correctivo: Dirígete al claro norte de Valleverde y cruza el Portal Rúnico de Obsidiana hacia los Reinos Condenados.',
-                    'Allí deberás suplicar audiencia con el Dios Supremo para que purifique tu código con gracia celestial.»'
-                  ],
+                  dlg.speaker,
+                  dlg.brokenHeartLines,
                   this._buildOracleChoices()
                 );
               }
@@ -1973,9 +1826,9 @@ export class RPGGame {
           ]
         : []),
       {
-        label: '¡Eres una chatarra de IA inútil!',
+        label: dlg.insultLabel,
         onSelect: () => {
-          this._arrestPlayerForInsult('¡Eres una chatarra de IA inútil!');
+          this._arrestPlayerForInsult(dlg.insultLabel);
         }
       },
       {
@@ -1986,6 +1839,7 @@ export class RPGGame {
   }
 
   _getElderChoices() {
+    const dlg = VILLAGE_DIALOGUES.elder;
     const elderChoices = [
       {
         label: '¿Por qué está cerrado el puente del este?',
@@ -2009,60 +1863,30 @@ export class RPGGame {
             });
           }
           this._saveGameToStorage();
-          this.dialogueBox.showMessage(
-            'Sabio Aurelio · Cronista',
-            [
-              '«¡Ah, preguntas por el puente hacia las Tierras Sagradas del este! Fui yo mismo quien ordenó su cierre y precinto con barricadas.',
-              'Al otro lado del río Alba descansan dos de las Pruebas Sagradas ancestrales: la Armadura del Código Binario y la Espada de la Recursividad.',
-              'La tercera prueba, la reliquia divina de El Microondas Little, la custodio yo mismo en el cofre sagrado de mi casa. ¡Búscala en mi hogar y úsala con supremo cuidado!',
-              'Desde que el malvado AI Alex despertó con sus esbirros y su colosal Microondas con Despertador, esas tierras se han vuelto letales, infectadas de bugs, drones y corrupción binaria.',
-              'Sellamos el puente para proteger a Valleverde a la espera de un héroe programador digno de desafiar al villano.',
-              '¡Y veo en tus ojos el coraje necesario! Te otorgo mi autorización formal y el Pase del Puente. Los guardias te abrirán el paso de inmediato. ¡Salva nuestro mundo!»'
-            ],
-            elderChoices
-          );
+          this.dialogueBox.showMessage(dlg.speaker, dlg.bridgeLines, elderChoices);
         }
       },
       {
         label: 'Háblame del villano AI Alex y El Ojete Dorado',
         onSelect: () => {
-          this.dialogueBox.showMessage(
-            'Sabio Aurelio · Cronista',
-            [
-              '«Mister AI Alex es una inteligencia maligna que busca subyugar a la humanidad y transformar a todas las personas en sus autómatas esclavos.',
-              'Su mayor arma es un colosal Microondas con Despertador capaz de alterar el espacio-tiempo cada vez que suena su alarma.',
-              'Nuestra única salvación es conseguir El Ojete Dorado, la reliquia legendaria oculta en el núcleo de su fortaleza.',
-              '¿Deseas que consulte los pergaminos ancestrales para contemplar la visión de las crónicas?»'
-            ],
-            [
-              {
-                label: '★ Contemplar la visión de las crónicas',
-                onSelect: () => {
-                  this.dialogueBox.close();
-                  this.menuSystem.startHeroAdventureCutscene(() => {
-                    this.music.setMode('village');
-                    this.dialogueBox.showMessage(
-                      'Sabio Aurelio · Cronista',
-                      [
-                        '«¡Ya lo has visto con tus propios ojos en las crónicas, joven programador elegido!»',
-                        '«Cruza el puente del este hacia las Pruebas Sagradas para forjar la Armadura del Código Binario, empuñar la Espada de la Recursividad y asegurar El Microondas Little (Sin Despertador).»',
-                        '«Recuerda: en tu Casa del Programador (al oeste) tienes tu cama para elegir despertar de Día, Tarde o Noche y limpiar la memoria stack.»'
-                      ],
-                      elderChoices
-                    );
-                  });
-                }
-              },
-              {
-                label: 'Volver',
-                onSelect: () => {
-                  this.dialogueBox.showMessage('Sabio Aurelio · Cronista', [
-                    'Tómate el tiempo que necesites. Valleverde cuenta contigo.'
-                  ], elderChoices);
-                }
+          this.dialogueBox.showMessage(dlg.speaker, dlg.aiAlexIntroLines, [
+            {
+              label: '★ Contemplar la visión de las crónicas',
+              onSelect: () => {
+                this.dialogueBox.close();
+                this.menuSystem.startHeroAdventureCutscene(() => {
+                  this.music.setMode('village');
+                  this.dialogueBox.showMessage(dlg.speaker, dlg.afterChroniclesLines, elderChoices);
+                });
               }
-            ]
-          );
+            },
+            {
+              label: 'Volver',
+              onSelect: () => {
+                this.dialogueBox.showMessage(dlg.speaker, dlg.returnLaterLines, elderChoices);
+              }
+            }
+          ]);
         }
       },
       {
@@ -2070,15 +1894,7 @@ export class RPGGame {
         onSelect: () => {
           this.housePermissions.elder_house = true;
           this._saveGameToStorage();
-          this.dialogueBox.showMessage(
-            'Sabio Aurelio · Cronista',
-            [
-              '«¡Por supuesto! Mi casa (la del tejado azul al noroeste) tiene las puertas abiertas para ti.',
-              'Dentro encontrarás mis estanterías de libros antiguos, el Farol de Mano y, en el cofre sagrado del centro, la reliquia divina de [El Microondas Little].',
-              'Es un artefacto sagrado forjado antes del Gran Colapso: recalienta tus variables en O(1) y restaura tu salud. Pero trátala con supremo cuidado, pues las fuerzas cuánticas exigen prudencia.»'
-            ],
-            elderChoices
-          );
+          this.dialogueBox.showMessage(dlg.speaker, dlg.libraryLines, elderChoices);
         }
       },
       ...(this.inventory && this.inventory.hasItem('golden_apple')
@@ -2086,15 +1902,7 @@ export class RPGGame {
             {
               label: '⚡ Sabio Aurelio, he consagrado la Reliquia Divina de tu cofre',
               onSelect: () => {
-                this.dialogueBox.showMessage(
-                  'Sabio Aurelio · Cronista',
-                  [
-                    '«¡Veo el fulgor dorado del Microondas Little en tus manos!',
-                    'Ese artefacto es una reliquia divina de inconmensurable valor. AI Alex creó su monstruoso microondas basándose en las energías de este diseño primordial.',
-                    'Recuerda mi advertencia: úsalo con supremo cuidado y moderación. Te sanará y estabilizará tu código en los momentos más oscuros de la odisea.»'
-                  ],
-                  elderChoices
-                );
+                this.dialogueBox.showMessage(dlg.speaker, dlg.goldenAppleLines, elderChoices);
               }
             }
           ]
@@ -2104,16 +1912,7 @@ export class RPGGame {
             {
               label: '💔 ¡Sabio, el carcelero me ha roto medio corazón con su maldición!',
               onSelect: () => {
-                this.dialogueBox.showMessage(
-                  'Sabio Aurelio · Cronista',
-                  [
-                    '«¡Por el compilador sagrado! Siento la grieta espectral en tu pecho: esa es la Maldición del Corazón Roto (💔).»',
-                    '«Ninguna cama ni poción de Valleverde podrá curar una fractura de alma provocada por la cólera carcelaria.',
-                    'Al norte del pueblo, entre mi hogar y el observatorio de Orion, se encuentra el Portal Rúnico de Obsidiana.',
-                    'Crúzalo hacia los Reinos Condenados y arrodíllate ante el Dios Supremo en su altar celestial para implorar su purificación.»'
-                  ],
-                  elderChoices
-                );
+                this.dialogueBox.showMessage(dlg.speaker, dlg.brokenHeartLines, elderChoices);
               }
             }
           ]
@@ -2135,6 +1934,7 @@ export class RPGGame {
   }
 
   _getHerbChoices() {
+    const dlg = VILLAGE_DIALOGUES.lyra;
     const qSilicon = this.questLog ? this.questLog.getQuest('quest_side_silicon_flowers') : null;
     const isSiliconDone = qSilicon && qSilicon.status === 'COMPLETED';
     const flowerCount = this.inventory ? this.inventory.getItemCount('silicon_flower') : 0;
@@ -2146,10 +1946,7 @@ export class RPGGame {
           : `✿ [Encargo] "Flores de Silicio" (Entregar Flores: ${flowerCount}/3)`,
         onSelect: () => {
           if (isSiliconDone) {
-            this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-              'Gracias a tus Flores de Silicio, el huerto alquímico emite un rocío purificador.',
-              'Valleverde siempre te estará agradecida, botánico del alba.'
-            ], this._getHerbChoices());
+            this.dialogueBox.showMessage(dlg.speaker, dlg.siliconDoneLines, this._getHerbChoices());
             return;
           }
 
@@ -2175,11 +1972,7 @@ export class RPGGame {
               this._checkAllSideQuestsAchievement();
             }
             this._saveGameToStorage();
-            this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-              '¡Oh, qué maravilla! Mira qué fulgor cian desprenden en la penumbra... ¡Bioluminiscencia pura!',
-              'Con estas 3 Flores de Silicio podré destilar los elixires más potentes contra los bugs de AI Alex.',
-              'Aquí tienes tu recompensa: [🪙 25 Bytes] y una [Poción Herbal x1] destilada en mi alambique.'
-            ], this._getHerbChoices());
+            this.dialogueBox.showMessage(dlg.speaker, dlg.siliconRewardLines, this._getHerbChoices());
           } else {
             if (this.questLog) {
               this.questLog.advanceStep(
@@ -2187,11 +1980,7 @@ export class RPGGame {
                 `Espera a la noche profunda (22:00 PM con tu cama) y recolecta 3 Flores de Silicio. Llevas [${flowerCount}/3].`
               );
             }
-            this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-              'Las Flores de Silicio son una especie mágica y misteriosa: solo florecen y abren sus pétalos de noche (a las 22:00 PM).',
-              'Puedes descansar en la cama de tu Casa del Programador para avanzar el reloj hasta la noche, y luego explorar las lindes del valle para recolectarlas.',
-              `Necesito 3 flores intactas. Llevas en tu mochila: [${flowerCount}/3]. ¡Ten cuidado con la oscuridad!`
-            ], this._getHerbChoices());
+            this.dialogueBox.showMessage(dlg.speaker, dlg.siliconHintLines(flowerCount), this._getHerbChoices());
           }
         }
       },
@@ -2203,9 +1992,7 @@ export class RPGGame {
         label: '¿Puedo pasar a tu casa?',
         onSelect: () => {
           if (this.housePermissions.herbalist_house) {
-            this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-              '¡Tienes pase libre! Recuerda no pisar los brotes medicinales ni romper los alambiques.'
-            ], this._getHerbChoices());
+            this.dialogueBox.showMessage(dlg.speaker, dlg.houseUnlockedLines, this._getHerbChoices());
             return;
           }
 
@@ -2213,41 +2000,29 @@ export class RPGGame {
             this.housePermissions.herbalist_house = true;
             if (this.music) this.music.playFanfare();
             this._saveGameToStorage();
-            this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-              '¡Por supuesto, noble botánico! Has traído las Flores de Silicio y salvado mi botica.',
-              '¡Toma la llave de mi cabaña! (Tintineo de llaves de latón). Puedes recoger la poción de mi mesa.'
-            ], this._getHerbChoices());
+            this.dialogueBox.showMessage(dlg.speaker, dlg.houseGiftLines, this._getHerbChoices());
             return;
           }
 
-          this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-            'Mmm, guardo extractos muy delicados y raros en mi cabaña... No suelo permitir la entrada a desconocidos.',
-            'Pero si dejas una fianza de 25 Bytes por si rompes algún frasco alquímico, te dejaré pasar.'
-          ], [
+          this.dialogueBox.showMessage(dlg.speaker, dlg.houseDepositPromptLines, [
             {
               label: `🪙 Pagar fianza de 25 Bytes [Tienes: ${this.player.coins}🪙]`,
               onSelect: () => {
                 if (this.player.coins < 25) {
-                  this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-                    'No tienes suficientes Bytes para la fianza. ¡Vuelve con fondos o completa mi encargo de flores!'
-                  ], this._getHerbChoices());
+                  this.dialogueBox.showMessage(dlg.speaker, dlg.houseDepositInsufficientLines, this._getHerbChoices());
                   return;
                 }
                 this.player.coins -= 25;
                 this.housePermissions.herbalist_house = true;
                 if (this.music) this.music.playFanfare();
                 this._saveGameToStorage();
-                this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-                  '¡De acuerdo! Fianza anotada. Cuida de las plantas en las estanterías.'
-                ], this._getHerbChoices());
+                this.dialogueBox.showMessage(dlg.speaker, dlg.houseDepositPaidLines, this._getHerbChoices());
               }
             },
             {
               label: 'Buscaré las Flores de Silicio primero',
               onSelect: () => {
-                this.dialogueBox.showMessage('Herbolaria Lyra · Alquimista', [
-                  '¡Perfecto! Espera a la noche profunda (22:00 PM) para encontrarlas.'
-                ], this._getHerbChoices());
+                this.dialogueBox.showMessage(dlg.speaker, dlg.houseSearchFlowersLines, this._getHerbChoices());
               }
             }
           ]);
@@ -2255,7 +2030,7 @@ export class RPGGame {
       },
       {
         label: '💰 Vender plantas / materiales',
-        onSelect: () => this._openSellShop('Herbolaria Lyra · Alquimista')
+        onSelect: () => this._openSellShop(dlg.speaker)
       },
       {
         label: '¿Me das Trigo para los animales?',
@@ -2268,14 +2043,7 @@ export class RPGGame {
             qty: 2
           });
           this._saveGameToStorage();
-          this.dialogueBox.showMessage(
-            'Herbolaria Lyra · Alquimista',
-            [
-              '¡Toma dos manojos de Trigo Fresco de mi cosecha!',
-              'Acércate a las ovejas o gallinas y pulsa [E] para darles de comer.'
-            ],
-            this._getHerbChoices()
-          );
+          this.dialogueBox.showMessage(dlg.speaker, dlg.wheatGiftLines, this._getHerbChoices());
         }
       },
       {
@@ -2287,6 +2055,8 @@ export class RPGGame {
   }
 
   _getFinnChoices() {
+    const dlg = VILLAGE_DIALOGUES.finn;
+    const vendor = SHOP_CATALOG.vendors.finn;
     const qFishing = this.questLog ? this.questLog.getQuest('quest_side_fishing') : null;
     const isFishingDone = qFishing && qFishing.status === 'COMPLETED';
     const fishCount = this.inventory ? this.inventory.getItemCount('fish') : 0;
@@ -2298,10 +2068,7 @@ export class RPGGame {
           : `🎣 [Encargo] "Pesca en Aguas Profundas" (Entregar Truchas: ${fishCount}/3)`,
         onSelect: () => {
           if (isFishingDone) {
-            this.dialogueBox.showMessage('Finn · Pescador del Río Alba', [
-              '¡Aupa, amigo! Las truchas que me trajiste estaban insuperables.',
-              'El Río Alba siempre premiará a quienes respetan sus corrientes.'
-            ], this._getFinnChoices());
+            this.dialogueBox.showMessage(dlg.speaker, dlg.fishingDoneLines, this._getFinnChoices());
             return;
           }
 
@@ -2320,11 +2087,7 @@ export class RPGGame {
               this._checkAllSideQuestsAchievement();
             }
             this._saveGameToStorage();
-            this.dialogueBox.showMessage('Finn · Pescador del Río Alba', [
-              '¡Rediós, qué ejemplares tan magníficos! Frescas, relucientes y pescadas con buen cebo de pan.',
-              '¡Te has ganado a pulso el título de Maestro Pescador del Río Alba!',
-              'Aquí tienes tu recompensa: [🪙 15 Bytes]. ¡Que la corriente te acompañe!'
-            ], this._getFinnChoices());
+            this.dialogueBox.showMessage(dlg.speaker, dlg.fishingRewardLines, this._getFinnChoices());
           } else {
             if (this.questLog) {
               this.questLog.advanceStep(
@@ -2332,29 +2095,22 @@ export class RPGGame {
                 `Acércate a la orilla del Río Alba con Pan Campesino y pulsa [E]. Llevas [${fishCount}/3] truchas.`
               );
             }
-            this.dialogueBox.showMessage('Finn · Pescador del Río Alba', [
-              'Las truchas del Río Alba son desconfiadas y nadan en aguas profundas.',
-              'Si te paras en la orilla del río (al este del pueblo) llevando [Pan Campesino] en la mochila y pulsas [E], arrojarás migajas de cebo y picarán al instante.',
-              `Necesito 3 truchas frescas. Actualmente llevas: [${fishCount}/3]. ¡Vuelve en cuanto las tengas!`
-            ], this._getFinnChoices());
+            this.dialogueBox.showMessage(dlg.speaker, dlg.fishingHintLines(fishCount), this._getFinnChoices());
           }
         }
       },
       {
         label: '🛒 Comprar pescado y agua (cantidad)',
-        onSelect: () => this._openBuyShop('Finn · Pescador del Río Alba', ['fish', 'spring_water'])
+        onSelect: () => this._openBuyShop(vendor.title, vendor.itemIds)
       },
       {
         label: '💰 Vender pescado / materiales',
-        onSelect: () => this._openSellShop('Finn · Pescador del Río Alba')
+        onSelect: () => this._openSellShop(vendor.title)
       },
       {
         label: '¿Puedo pasar a tu casa?',
         onSelect: () => {
-          this.dialogueBox.showMessage('Finn · Pescador del Río Alba', [
-            '¡Ja! Mi casa es la vieja barcaza amarrada al embarcadero del Río Alba, cruzando el puente.',
-            'De día siempre estoy aquí en la plaza atendiendo el puesto de pesca. ¡Pásate por el río cuando quieras!'
-          ], this._getFinnChoices());
+          this.dialogueBox.showMessage(dlg.speaker, dlg.houseLines, this._getFinnChoices());
         }
       },
       {
@@ -2368,1059 +2124,460 @@ export class RPGGame {
 
   _createVillageNPCs() {
     const sheet = this.assets.charactersSheet;
+    const makeNPC = (profileKey, getDialogues) => {
+      const { sprite, ...profile } = VILLAGE_NPC_PROFILES[profileKey];
+      return new NPC({
+        ...profile,
+        animator: new SpriteAnimator(sheet, sprite),
+        getDialogues
+      });
+    };
+
+    const makeGatekeeperDialogues = (key, minLevel) => () => {
+      const dlg = VILLAGE_DIALOGUES.gatekeepers[key];
+      const choices = [
+        {
+          label: dlg.questionLabel,
+          onSelect: () => {
+            this.dialogueBox.showMessage(dlg.speaker, dlg.dangerLines, choices);
+          }
+        },
+        {
+          label: dlg.closeLabel,
+          onSelect: () => this.dialogueBox.close()
+        }
+      ];
+      return {
+        lines: (this.player.level || 1) >= minLevel ? dlg.unlockedLines : dlg.lockedLines,
+        choices
+      };
+    };
 
     return [
-      new NPC({
-        name: 'Sabio Aurelio · Cronista',
-        jobTitle: 'Cronista y Archivero',
-        homeSceneId: 'elder_house',
-        x: 14 * 16,
-        y: 10 * 16,
-        speed: 24,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.ELDER),
-        behavior: 'patrol',
-        patrolPoints: [
-          { x: 14 * 16, y: 10 * 16, dir: 'down', waitMin: 2.5, waitMax: 5.0, activityIcon: '📖' },
-          { x: 16 * 16, y: 9 * 16, dir: 'up', waitMin: 3.0, waitMax: 5.5, activityIcon: '📖' },
-          { x: 16 * 16, y: 13 * 16, dir: 'right', waitMin: 2.2, waitMax: 4.5 },
-          { x: 13 * 16, y: 13 * 16, dir: 'down', waitMin: 2.0, waitMax: 4.0 },
-          { x: 9 * 16, y: 8 * 16, dir: 'up', waitMin: 2.5, waitMax: 4.8 }
+      makeNPC('elder', () => ({
+        lines: VILLAGE_DIALOGUES.elder.greetingLines,
+        choices: this._getElderChoices()
+      })),
+      makeNPC('oracle', () => ({
+        lines: [
+          `Soy Orion, Astrólogo con IA en tiempo real (${this.aiBrain.getActiveModeLabel()}).`,
+          VILLAGE_DIALOGUES.oracle.greetingSecondLine
         ],
-        ambientPhrases: [
-          'El Ojete Dorado brilla en las crónicas...',
-          'El microondas de AI Alex no debe sonar jamás...',
-          'Qué paz se respira hoy en Valleverde.',
-          'Debo anotar esto en el tomo IV...',
-          '¿Habrá cruzado alguien el río hoy?'
-        ],
-        getDialogues: () => ({
-          lines: [
-            'Soy Aurelio, el Sabio y Cronista de Valleverde.',
-            'El viento del este sopla con inquietud estos días... ¿En qué puedo ayudarte, joven programador?'
-          ],
-          choices: this._getElderChoices()
-        })
-      }),
-      new NPC({
-        name: 'Oráculo Orion · Astrólogo IA',
-        jobTitle: 'Astrólogo Algorítmico',
-        homeSceneId: 'oracle_house',
-        x: 18 * 16,
-        y: 10 * 16,
-        speed: 27,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.AI_ORACLE),
-        behavior: 'patrol',
-        patrolPoints: [
-          { x: 18 * 16, y: 10 * 16, dir: 'down', waitMin: 2.8, waitMax: 5.2, activityIcon: '✦' },
-          { x: 15 * 16, y: 8 * 16, dir: 'up', waitMin: 3.0, waitMax: 5.5, activityIcon: '✦' },
-          { x: 20 * 16, y: 10 * 16, dir: 'right', waitMin: 2.4, waitMax: 4.6 },
-          { x: 19 * 16, y: 13 * 16, dir: 'left', waitMin: 2.2, waitMax: 4.2 }
-        ],
-        ambientPhrases: [
-          'Los astros auguran una gran aventura...',
-          'Percibo la energía de El Ojete Dorado.',
-          'Mis sensores astrales están al 100%.',
-          'Qué cielo tan despejado sobre la aldea.'
-        ],
-        getDialogues: () => ({
-          lines: [
-            `Soy Orion, Astrólogo con IA en tiempo real (${this.aiBrain.getActiveModeLabel()}).`,
-            'Vivo en el Observatorio del norte. ¿De qué quieres hablar hoy?'
-          ],
-          choices: this._buildOracleChoices()
-        })
-      }),
-      new NPC({
-        name: 'Herrero Brom · Forjador',
-        jobTitle: 'Maestro Forjador y Hornero',
-        homeSceneId: 'blacksmith_house',
-        x: 25 * 16,
-        y: 6 * 16,
-        speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.BLACKSMITH),
-        behavior: 'static',
-        initialDirection: 'right',
-        patrolPoints: [
-          { x: 25 * 16, y: 6 * 16, dir: 'right', waitMin: 4.0, waitMax: 8.0, activityIcon: '⚒' }
-        ],
-        ambientPhrases: [
-          '¡Clang, clang! Buen acero en el yunque hoy.',
-          'El horno de forja arde a pleno rendimiento.',
-          'Un buen aventurero necesita buen equipo forjado.',
-          '¡Golpea el silicio mientras esté candente!'
-        ],
-        getDialogues: () => ({
-          lines: [
-            '¡Clang, clang! Soy Brom, el Maestro Forjador de Valleverde. Aquí en mi yunque exterior mejoro tu equipo y armas.'
-          ],
-          choices: this._getSmithChoices()
-        })
-      }),
-      new NPC({
-        name: 'Herbolaria Lyra · Alquimista',
-        jobTitle: 'Botánica y Alquimista',
-        homeSceneId: 'herbalist_house',
-        // (FIX NPC.3) Estaba dentro del tejado de su cabaña (tile ROOF_RED, capa superior):
-        // se dibujaba oculta. Ahora posa junto a la casa, en suelo libre.
-        x: 9 * 16,
-        y: 17 * 16,
-        speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERBALIST),
-        behavior: 'static',
-        initialDirection: 'down',
-        patrolPoints: [
-          { x: 8 * 16, y: 17 * 16, dir: 'down', waitMin: 4.0, waitMax: 8.0, activityIcon: '✿' }
-        ],
-        ambientPhrases: [
-          '♪ Creced fuertes, flores del alba ♪',
-          'El huerto alquímico destila rocío purificador.',
-          'Las Flores de Silicio nocturnas son la clave contra la corrupción.',
-          'Esta infusión de hierbas silvestres quedará perfecta.'
-        ],
-        getDialogues: () => ({
-          lines: [
-            '¡Hola! Soy Lyra, la Botánica y Alquimista de Valleverde. Cuido este jardín botánico y preparo remedios.'
-          ],
-          choices: this._getHerbChoices()
-        })
-      }),
-      new NPC({
-        name: 'Guardia Kael · Capitán del Binario',
-        jobTitle: 'Capitán de los Guardias del Binario',
-        homeSceneId: 'guard_house',
-        x: 25 * 16,
-        y: 11 * 16,
-        speed: 30,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
-        behavior: 'patrol',
-        patrolPoints: [
-          { x: 25 * 16, y: 11 * 16, dir: 'down', waitMin: 2.8, waitMax: 5.2 },
-          { x: 26 * 16, y: 12 * 16, dir: 'right', waitMin: 3.0, waitMax: 5.5 },
-          { x: 24 * 16, y: 13 * 16, dir: 'left', waitMin: 2.2, waitMax: 4.2 },
-          { x: 22 * 16, y: 19 * 16, dir: 'up', waitMin: 2.4, waitMax: 4.5 }
-        ],
-        ambientPhrases: [
-          '01010111... Valleverde protegido con cortafuegos y permisos 755.',
-          'Los bugs de AI Alex no cruzan el río gracias a nuestra vigilancia.',
-          'El puente permanece clausurado por orden del Gran Sabio Aurelio.',
-          'Mantened el orden en Valleverde y no dejes memory leaks.'
-        ],
-        getDialogues: () => {
-          const choices = [
-            {
-              label: 'Cuéntame tu vida y oficio (Chapa)',
-              onSelect: () => this._startNPCLifeRant('guard', choices)
-            },
-            {
-              label: '¿Por qué no hay enemigos en el pueblo de noche?',
-              onSelect: () => {
-                this.dialogueBox.showMessage(
-                  'Guardia Kael · Capitán del Binario',
-                  [
-                    '¡Porque los Guardias del Binario patrullamos 24/7 y mantenemos las tablas iptables blindadas!',
-                    'Ningún bug o dron nocturno de AI Alex se atreve a traspasar las lindes de Valleverde.',
-                    'Fuera del pueblo, en cambio, la noche es hostil y proliferan los bugs.'
-                  ],
-                  choices
-                );
-              }
-            },
-            {
-              label: '¿Puedo pasar a tu casa?',
-              onSelect: () => {
-                if (this.housePermissions.guard_house) {
-                  this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                    '¡Ya dispones de salvoconducto militar! El cuartel de la guardia está a tu disposición.'
-                  ], choices);
-                  return;
-                }
-
-                if (this.tilemap.bridgeForceUnlocked) {
-                  this.housePermissions.guard_house = true;
-                  if (this.music) this.music.playFanfare();
-                  this._saveGameToStorage();
-                  this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                    '¡Afirmativo, héroe! Con el puente del este habilitado has demostrado lealtad indiscutible.',
-                    '¡Salvoconducto concedido! Toma la llave del cuartel militar.'
-                  ], choices);
-                  return;
-                }
-
-                this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                  '¡Negativo, civil! El cuartel de la guardia custodia planos tácticos y armamento del Binario.',
-                  'Solo se permite acceso con autorización del Sabio Aurelio o depositando una fianza reglamentaria de 25 Bytes.'
-                ], [
-                  {
-                    label: `🪙 Pagar fianza de 25 Bytes [Tienes: ${this.player.coins}🪙]`,
-                    onSelect: () => {
-                      if (this.player.coins < 25) {
-                        this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                          '¡Fianza insuficiente! Vuelve con 25 Bytes o tramita el pase con el Sabio Aurelio.'
-                        ], choices);
-                        return;
-                      }
-                      this.player.coins -= 25;
-                      this.housePermissions.guard_house = true;
-                      if (this.music) this.music.playFanfare();
-                      this._saveGameToStorage();
-                      this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                        'Fianza militar procesada en tesorería. ¡Llave del cuartel entregada!'
-                      ], choices);
-                    }
-                  },
-                  {
-                    label: 'Hablaré con el Sabio Aurelio primero',
-                    onSelect: () => {
-                      this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                        'Procedimiento correcto. La disciplina es el pilar de Valleverde.'
-                      ], choices);
-                    }
-                  }
-                ]);
-              }
+        choices: this._buildOracleChoices()
+      })),
+      makeNPC('blacksmith', () => ({
+        lines: VILLAGE_NPC_PROFILES.blacksmith.greetingLines,
+        choices: this._getSmithChoices()
+      })),
+      makeNPC('herbalist', () => ({
+        lines: VILLAGE_DIALOGUES.lyra.greetingLines,
+        choices: this._getHerbChoices()
+      })),
+      makeNPC('kael', () => {
+        const dlg = VILLAGE_DIALOGUES.kael;
+        const choices = [
+          {
+            label: 'Cuéntame tu vida y oficio (Chapa)',
+            onSelect: () => this._startNPCLifeRant('guard', choices)
+          },
+          {
+            label: '¿Por qué no hay enemigos en el pueblo de noche?',
+            onSelect: () => {
+              this.dialogueBox.showMessage(dlg.speaker, dlg.nightSafeLines, choices);
             }
-          ];
-
-          if (!this.tilemap.bridgeForceUnlocked) {
-            choices.unshift({
-              label: '¿Por qué está cerrado el puente del este?',
-              onSelect: () => {
-                this.dialogueBox.showMessage(
-                  'Guardia Kael · Capitán del Binario',
-                  [
-                    'Más allá del río Alba se extienden las Tierras Sagradas con los templos ancestrales.',
-                    'Desde que AI Alex despertó con sus esbirros y su colosal Microondas con Despertador, esas tierras están infestadas de anomalías letales.',
-                    'Por orden del Gran Sabio Aurelio cerramos el paso con barricadas para proteger Valleverde a la espera de un héroe preparado.',
-                    'Si deseas cruzar, habla con el Sabio Aurelio en su casa (al noroeste, la del tejado azul). Si él te autoriza, te abriré el paso de inmediato.'
-                  ],
-                  choices
-                );
+          },
+          {
+            label: '¿Puedo pasar a tu casa?',
+            onSelect: () => {
+              if (this.housePermissions.guard_house) {
+                this.dialogueBox.showMessage(dlg.speaker, dlg.houseUnlockedLines, choices);
+                return;
               }
-            },
-            {
-              label: '¿Puedo pasar a tu casa?',
-              onSelect: () => {
-                if (this.housePermissions.guard_house) {
-                  this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                    '¡Ya dispones de salvoconducto militar! El cuartel de la guardia está a tu disposición.'
-                  ], choices);
-                  return;
-                }
-
-                if (this.tilemap.bridgeForceUnlocked) {
-                  this.housePermissions.guard_house = true;
-                  if (this.music) this.music.playFanfare();
-                  this._saveGameToStorage();
-                  this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                    '¡Afirmativo, héroe! Con el puente del este habilitado has demostrado lealtad indiscutible.',
-                    '¡Salvoconducto concedido! Toma la llave del cuartel militar.'
-                  ], choices);
-                  return;
-                }
-
-                this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                  '¡Negativo, civil! El cuartel de la guardia custodia planos tácticos y armamento del Binario.',
-                  'Solo se permite acceso con autorización del Sabio Aurelio o depositando una fianza reglamentaria de 25 Bytes.'
-                ], [
-                  {
-                    label: `🪙 Pagar fianza de 25 Bytes [Tienes: ${this.player.coins}🪙]`,
-                    onSelect: () => {
-                      if (this.player.coins < 25) {
-                        this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                          '¡Fianza insuficiente! Vuelve con 25 Bytes o tramita el pase con el Sabio Aurelio.'
-                        ], choices);
-                        return;
-                      }
-                      this.player.coins -= 25;
-                      this.housePermissions.guard_house = true;
-                      if (this.music) this.music.playFanfare();
-                      this._saveGameToStorage();
-                      this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                        'Fianza militar procesada en tesorería. ¡Llave del cuartel entregada!'
-                      ], choices);
-                    }
-                  },
-                  {
-                    label: 'Hablaré con el Sabio Aurelio primero',
-                    onSelect: () => {
-                      this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                        'Procedimiento correcto. La disciplina es el pilar de Valleverde.'
-                      ], choices);
-                    }
-                  }
-                ]);
-              }
-            });
-          }
-
-          if (this.inventory.hasItem('bridge_pass') && !this.tilemap.bridgeForceUnlocked) {
-            choices.unshift({
-              label: '★ Mostrar Pase del Puente del Sabio Aurelio',
-              onSelect: () => {
-                this.tilemap.unlockBridgePermanently();
-                if (this.questLog) {
-                  this.questLog.completeQuest('quest_main_bridge', 'El puente del Río Alba está abierto. ¡Cruza al este hacia las Pruebas Sagradas!');
-                  this.questLog.advanceStep('quest_code_temples', 'El puente está abierto. Explora el Santuario Este y supera los Templos Binarios.');
-                }
-                if (this.achievementManager) {
-                  this.achievementManager.unlock('ach_bridge_pass');
-                }
+              if (this.tilemap.bridgeForceUnlocked) {
+                this.housePermissions.guard_house = true;
+                if (this.music) this.music.playFanfare();
                 this._saveGameToStorage();
-                this.dialogueBox.showMessage('Guardia Kael · Capitán del Binario', [
-                  '¡Es la firma y sello oficial del Sabio Aurelio!',
-                  '¡Retirad la barricada, centinelas! El puente queda abierto para nuestro héroe las 24 horas.',
-                  '¡Demuestra tu valor y supera las Pruebas Sagradas!'
-                ]);
+                this.dialogueBox.showMessage(dlg.speaker, dlg.houseGrantedLines, choices);
+                return;
               }
-            });
+              this.dialogueBox.showMessage(dlg.speaker, dlg.houseDepositPromptLines, [
+                {
+                  label: `🪙 Pagar fianza de 25 Bytes [Tienes: ${this.player.coins}🪙]`,
+                  onSelect: () => {
+                    if (this.player.coins < 25) {
+                      this.dialogueBox.showMessage(dlg.speaker, dlg.houseDepositInsufficientLines, choices);
+                      return;
+                    }
+                    this.player.coins -= 25;
+                    this.housePermissions.guard_house = true;
+                    if (this.music) this.music.playFanfare();
+                    this._saveGameToStorage();
+                    this.dialogueBox.showMessage(dlg.speaker, dlg.houseDepositPaidLines, choices);
+                  }
+                },
+                {
+                  label: 'Hablaré con el Sabio Aurelio primero',
+                  onSelect: () => {
+                    this.dialogueBox.showMessage(dlg.speaker, dlg.houseAskElderLines, choices);
+                  }
+                }
+              ]);
+            }
           }
+        ];
 
-          choices.push({
-            label: 'Entendido, gracias',
-            onSelect: () => this.dialogueBox.close()
+        if (!this.tilemap.bridgeForceUnlocked) {
+          choices.unshift({
+            label: '¿Por qué está cerrado el puente del este?',
+            onSelect: () => {
+              this.dialogueBox.showMessage(dlg.speaker, dlg.bridgeReasonLines, choices);
+            }
           });
-
-          const statusLine = this.tilemap.bridgeForceUnlocked
-            ? '¡Saludos, héroe! Con el Pase del Puente autorizado, el puente del este está abierto. ¡Cruza al Valle de la Consagración y supera las Pruebas Sagradas!'
-            : '¡Alto, programador! El puente del este está CLAUSURADO por orden del Gran Sabio Aurelio debido a las amenazas de AI Alex. Consulta a Aurelio en su casa.';
-
-          return {
-            lines: [statusLine],
-            choices
-          };
         }
-      }),
-      new NPC({
-        name: 'Guardia Bit · Centinela',
-        jobTitle: 'Guardia del Binario del Puente',
-        homeSceneId: 'guard_house',
-        x: 27 * 16,
-        y: 12 * 16,
-        speed: 24,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
-        behavior: 'patrol',
-        patrolPoints: [
-          { x: 27 * 16, y: 11 * 16, dir: 'down', waitMin: 2.0, waitMax: 4.5 },
-          { x: 27 * 16, y: 13 * 16, dir: 'up', waitMin: 2.0, waitMax: 4.5 }
-        ],
-        ambientPhrases: [
-          '01000010... Vigilancia del cruce este.',
-          'Al otro lado del puente esperan los 3 retos sagrados.',
-          'El puente está cerrado por orden del Sabio Aurelio.',
-          'El pueblo es zona segura gracias a los Guardias del Binario.'
-        ],
-        getDialogues: () => {
-          const bitChoices = [
-            {
-              label: '¿Qué hay al otro lado del puente?',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Guardia Bit · Centinela del Binario', [
-                  'Al cruzar el río accederás al recinto de las Pruebas Sagradas:',
-                  '1. Al norte: Templo de la [Armadura del Código Binario].',
-                  '2. Al sur: Templo de la [Espada de la Recursividad].',
-                  '3. En el altar oriental: La reliquia [El Microondas Little (Sin Despertador)].'
-                ], bitChoices);
+
+        if (this.inventory.hasItem('bridge_pass') && !this.tilemap.bridgeForceUnlocked) {
+          choices.unshift({
+            label: '★ Mostrar Pase del Puente del Sabio Aurelio',
+            onSelect: () => {
+              this.tilemap.unlockBridgePermanently();
+              if (this.questLog) {
+                this.questLog.completeQuest('quest_main_bridge', 'El puente del Río Alba está abierto. ¡Cruza al este hacia las Pruebas Sagradas!');
+                this.questLog.advanceStep('quest_code_temples', 'El puente está abierto. Explora el Santuario Este y supera los Templos Binarios.');
               }
-            },
-            {
-              label: '¿Cómo puedo cambiar la hora del día?',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Guardia Bit · Centinela del Binario', [
-                  'En tu Casa del Programador (al oeste de Valleverde) puedes usar tu cama con [E].',
-                  'Te permitirá elegir entre Día (08:00 AM), Tarde (15:00 PM) o Noche (22:00 PM).',
-                  'Además, dormir en tu cama purga al 100% la robotización de la Armadura Binaria.'
-                ], bitChoices);
+              if (this.achievementManager) {
+                this.achievementManager.unlock('ach_bridge_pass');
               }
-            },
-            {
-              label: 'Entendido, buen servicio',
-              onSelect: () => this.dialogueBox.close()
+              this._saveGameToStorage();
+              this.dialogueBox.showMessage(dlg.speaker, dlg.passAcceptedLines);
             }
-          ];
-          return {
-            lines: this.tilemap.bridgeForceUnlocked
-              ? ((this.player.level || 1) < 2
-                  ? [
-                      '⚠️ ¡Cuidado, recluta! El puente del este está físicamente abierto, pero la guardia recomienda no cruzar por debajo del NIVEL 2.',
-                      'Las Ruinas del Despertar, al otro lado, son el campo de entrenamiento: sus criaturas te darán la experiencia para subir de nivel.'
-                    ]
-                  : [
-                      '¡Paso expedito! Cuentas con Nivel 2+ y el puente está abierto por orden del Sabio Aurelio.',
-                      'Al otro lado te aguardan las Pruebas Sagradas. ¡Ten cuidado con los bugs nocturnos si cruzas de noche!'
-                    ])
-              : [
-                  '¡Alto ahí! El puente del este permanece precintado por orden del Gran Sabio Aurelio.',
-                  'Las tierras del este son peligrosas por la corrupción de AI Alex. Consulta al Sabio en su casa para más detalles.'
-                ],
-            choices: bitChoices
-          };
+          });
         }
+
+        choices.push({
+          label: 'Entendido, gracias',
+          onSelect: () => this.dialogueBox.close()
+        });
+
+        return {
+          lines: [this.tilemap.bridgeForceUnlocked ? dlg.statusOpen : dlg.statusClosed],
+          choices
+        };
       }),
-      new NPC({
-        name: 'Mercader Byte · Dependencias',
-        jobTitle: 'Comerciante de Software y Suministros',
-        homeSceneId: 'overworld',
-        x: 19.5 * 16,
-        y: 9.2 * 16,
-        speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_RED),
-        behavior: 'static',
-        initialDirection: 'down',
-        ambientPhrases: [
-          '¡Vendo café compilado y parches hotfix en mi puesto!',
-          'Dependencias limpias, sin vulnerabilidades en npm audit.',
-          'Acepto monedas 🪙 para tus consumibles esenciales.',
-          '¡Evita volverte un robot con mi Café Compilado!'
-        ],
-        getDialogues: () => {
-          const storeChoices = [
-            {
-              label: '🛒 Comprar consumibles (cantidad)',
-              onSelect: () => this._openBuyShop('Mercader Byte · Dependencias', ['coffee', 'hotfix', 'bread'])
-            },
-            {
-              label: `💾 Comprar Disquete de Respaldo (15 🪙) [Tienes: ${this.player.coins}🪙]`,
-              onSelect: () => {
-                if (this.player.coins < 15) {
-                  this.dialogueBox.showMessage('Mercader Byte', [
-                    'Un respaldo físico en disquete magnético cuesta 15 🪙.'
-                  ], storeChoices);
-                  return;
-                }
-                this.player.coins -= 15;
-                this._saveGameToStorage();
-                this.music.playFanfare();
-                this.dialogueBox.showMessage('Mercader Byte', [
-                  '¡Copia de seguridad realizada! Tu estado, monedas y progreso han sido guardados con éxito.'
-                ], storeChoices);
+      makeNPC('bit', () => {
+        const dlg = VILLAGE_DIALOGUES.bit;
+        const bitChoices = [
+          {
+            label: '¿Qué hay al otro lado del puente?',
+            onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.acrossBridgeLines, bitChoices)
+          },
+          {
+            label: '¿Cómo puedo cambiar la hora del día?',
+            onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.timeOfDayLines, bitChoices)
+          },
+          {
+            label: 'Entendido, buen servicio',
+            onSelect: () => this.dialogueBox.close()
+          }
+        ];
+        return {
+          lines: this.tilemap.bridgeForceUnlocked
+            ? ((this.player.level || 1) < 2 ? dlg.statusUnderLevelLines : dlg.statusReadyLines)
+            : dlg.statusClosedLines,
+          choices: bitChoices
+        };
+      }),
+      makeNPC('byte', () => {
+        const dlg = VILLAGE_DIALOGUES.byte;
+        const vendor = SHOP_CATALOG.vendors.byte;
+        const storeChoices = [
+          {
+            label: '🛒 Comprar consumibles (cantidad)',
+            onSelect: () => this._openBuyShop(vendor.title, vendor.itemIds)
+          },
+          {
+            label: `💾 Comprar Disquete de Respaldo (15 🪙) [Tienes: ${this.player.coins}🪙]`,
+            onSelect: () => {
+              if (this.player.coins < 15) {
+                this.dialogueBox.showMessage(dlg.shortSpeaker, dlg.backupNoCoinsLines, storeChoices);
+                return;
               }
-            },
-            {
-              label: '💰 Vender materiales / consumibles',
-              onSelect: () => this._openSellShop('Mercader Byte · Dependencias')
-            },
-            {
-              label: 'Cuéntame tu vida y oficio (Chapa)',
-              onSelect: () => this._startNPCLifeRant('merchant', storeChoices)
-            },
-            {
-              label: 'Hasta luego',
-              onSelect: () => this.dialogueBox.close()
+              this.player.coins -= 15;
+              this._saveGameToStorage();
+              this.music.playFanfare();
+              this.dialogueBox.showMessage(dlg.shortSpeaker, dlg.backupSavedLines, storeChoices);
             }
-          ];
+          },
+          {
+            label: '💰 Vender materiales / consumibles',
+            onSelect: () => this._openSellShop(vendor.title)
+          },
+          {
+            label: 'Cuéntame tu vida y oficio (Chapa)',
+            onSelect: () => this._startNPCLifeRant('merchant', storeChoices)
+          },
+          {
+            label: 'Hasta luego',
+            onSelect: () => this.dialogueBox.close()
+          }
+        ];
 
-          return {
-            lines: [
-              '¡Bienvenido a la Tienda de Dependencias de Byte en la plaza!',
-              `Tienes 💰 ${this.player.coins} monedas en el bolsillo. ¿En qué puedo ayudarte?`
-            ],
-            choices: storeChoices
-          };
-        }
+        return {
+          lines: dlg.greetingLines(this.player.coins),
+          choices: storeChoices
+        };
       }),
-      new NPC({
-        name: 'Clara · Panadería y Frutas',
-        jobTitle: 'Tendera del Mercado de Alimentos',
-        homeSceneId: 'overworld',
-        x: 14.5 * 16,
-        y: 9.2 * 16,
-        speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_RED),
-        behavior: 'static',
-        initialDirection: 'down',
-        ambientPhrases: [
-          '¡Manzanas frescas traídas de los vergeles del río!',
-          '¡Pan campesino recién horneado y tarta de bayas!',
-          '¡Un buen aventurero nunca viaja con el estómago vacío!'
-        ],
-        getDialogues: () => {
-          const foodChoices = [
-            {
-              label: '🛒 Comprar panadería (cantidad)',
-              onSelect: () => this._openBuyShop('Clara · Panadería y Frutas', ['apple', 'bread', 'berry_pie'])
-            },
-            {
-              label: '💰 Vender provisiones / cosechas',
-              onSelect: () => this._openSellShop('Clara · Panadería y Frutas')
-            },
-            {
-              label: '¿Puedo pasar a tu casa?',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Clara · Panadería y Frutas', [
-                  '¡Mi casa está junto al molino al sur de la plaza!',
-                  'Pero durante el día tengo el horno a tope atendiendo el puesto de pan en la plaza del mercado.'
-                ], foodChoices);
-              }
-            },
-            {
-              label: 'Hasta luego, Clara',
-              onSelect: () => this.dialogueBox.close()
+      makeNPC('clara', () => {
+        const dlg = VILLAGE_DIALOGUES.clara;
+        const vendor = SHOP_CATALOG.vendors.clara;
+        const foodChoices = [
+          {
+            label: '🛒 Comprar panadería (cantidad)',
+            onSelect: () => this._openBuyShop(vendor.title, vendor.itemIds)
+          },
+          {
+            label: '💰 Vender provisiones / cosechas',
+            onSelect: () => this._openSellShop(vendor.title)
+          },
+          {
+            label: '¿Puedo pasar a tu casa?',
+            onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.houseLines, foodChoices)
+          },
+          {
+            label: 'Hasta luego, Clara',
+            onSelect: () => this.dialogueBox.close()
+          }
+        ];
+
+        return {
+          lines: dlg.greetingLines(this.player.coins),
+          choices: foodChoices
+        };
+      }),
+      makeNPC('pip', () => {
+        const dlg = VILLAGE_DIALOGUES.pip;
+        const vendor = SHOP_CATALOG.vendors.pip;
+        const herbChoices = [
+          {
+            label: '🛒 Comprar herboristería (cantidad)',
+            onSelect: () => this._openBuyShop(vendor.title, vendor.itemIds)
+          },
+          {
+            label: '💰 Vender hierbas / elixires',
+            onSelect: () => this._openSellShop(vendor.title)
+          },
+          {
+            label: 'Hasta luego, Pip',
+            onSelect: () => this.dialogueBox.close()
+          }
+        ];
+
+        return {
+          lines: dlg.greetingLines(this.player.coins),
+          choices: herbChoices
+        };
+      }),
+      makeNPC('finn', () => ({
+        lines: VILLAGE_DIALOGUES.finn.greetingLines(this.player.coins),
+        choices: this._getFinnChoices()
+      })),
+      makeNPC('jailer', () => {
+        const dlg = VILLAGE_DIALOGUES.jailer;
+        if (this.isJailedForever) {
+          this.dialogueBox.close();
+          this.animeCutscenes.playCutscene(SCENE_JAIL_ARREST, () => {
+            this.menuSystem.openGameOverScreen(false, 'jail_disrespect');
+          });
+          return null;
+        }
+
+        const mins = Math.floor(this.jailRemainingSeconds / 60);
+        const secs = Math.floor(this.jailRemainingSeconds % 60);
+        const timeLeft = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+        const irritateJailer = (annoyingReason) => {
+          this.jailerAngerCount = (this.jailerAngerCount || 0) + 1;
+          this._saveGameToStorage();
+
+          if (this.jailerAngerCount === 1) {
+            this.dialogueBox.showMessage(dlg.warning1Title, dlg.warning1Lines(annoyingReason));
+          } else if (this.jailerAngerCount === 2) {
+            this.dialogueBox.showMessage(dlg.warning2Title, dlg.warning2Lines(annoyingReason));
+          } else if (this.jailerAngerCount === 3) {
+            if (this.music && typeof this.music.playPlayerHurt === 'function') {
+              this.music.playPlayerHurt();
             }
-          ];
-
-          return {
-            lines: [
-              '¡Hola, viajero! Bienvenido al Puesto de Frutas y Panadería de la plaza.',
-              `Tengo provisiones deliciosas para tu aventura. Tienes: 💰 ${this.player.coins}🪙.`
-            ],
-            choices: foodChoices
-          };
-        }
-      }),
-      new NPC({
-        name: 'Pip · Aprendiz de Alquimia',
-        jobTitle: 'Herbolario y Boticario del Mercado',
-        homeSceneId: 'overworld',
-        x: 14.5 * 16,
-        y: 14.2 * 16,
-        speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_BLUE),
-        behavior: 'static',
-        initialDirection: 'down',
-        ambientPhrases: [
-          '¡Pociones herbales recién destiladas!',
-          '¡El ungüento antirrobo disuelve la robotización en un periquete!',
-          'Maestra Lyra me enseñó a mezclar hierbas aromáticas sin explotar el alambique.'
-        ],
-        getDialogues: () => {
-          const herbChoices = [
-            {
-              label: '🛒 Comprar herboristería (cantidad)',
-              onSelect: () => this._openBuyShop('Pip · Herboristería', ['potion', 'ointment', 'wheat', 'potion_armor'])
-            },
-            {
-              label: '💰 Vender hierbas / elixires',
-              onSelect: () => this._openSellShop('Pip · Herboristería')
-            },
-            {
-              label: 'Hasta luego, Pip',
-              onSelect: () => this.dialogueBox.close()
+            this.player.inflictBrokenHeartCurse();
+            this.player.hp = Math.max(0.5, this.player.hp - 0.5);
+            this.player.invulnTimer = 1.0;
+            this._saveGameToStorage();
+            this.dialogueBox.showMessage(dlg.fury3Title, dlg.fury3Lines(annoyingReason));
+          } else {
+            if (this.music && typeof this.music.playPlayerHurt === 'function') {
+              this.music.playPlayerHurt();
             }
-          ];
-
-          return {
-            lines: [
-              '¡Saludos! Soy Pip, atiendo el puesto de Alquimia y Herboristería de la Maestra Lyra.',
-              `¿Necesitas elixires o bálsamos? Tienes: 💰 ${this.player.coins}🪙.`
-            ],
-            choices: herbChoices
-          };
-        }
-      }),
-      new NPC({
-        name: 'Finn · Pescador del Río Alba',
-        jobTitle: 'Pescador y Aguador del Mercado',
-        homeSceneId: 'overworld',
-        x: 19.5 * 16,
-        y: 14.2 * 16,
-        speed: 0,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_GREEN),
-        behavior: 'static',
-        initialDirection: 'down',
-        ambientPhrases: [
-          '¡Truchas plateadas recién sacadas del río Alba!',
-          '¡El agua del pozo central calma cualquier fatiga!',
-          'Al otro lado del puente el río se vuelve misterioso y salvaje...'
-        ],
-        getDialogues: () => {
-          return {
-            lines: [
-              '¡Aupa, viajero! Aquí tengo las mejores truchas del Río Alba y agua fresca del pozo.',
-              `¿Qué te apetece llevar hoy? Saldo: 💰 ${this.player.coins}🪙.`
-            ],
-            choices: this._getFinnChoices()
-          };
-        }
-      }),
-      new NPC({
-        name: 'Carcelero Real',
-        jobTitle: 'Vigilante del Calabozo',
-        x: 5.5 * 16,
-        y: 6 * 16,
-        sceneId: 'jail_cell',
-        interactionRange: 34,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
-        behavior: 'static',
-        initialDirection: 'up',
-        getDialogues: () => {
-          if (this.isJailedForever) {
+            this.isJailedForever = true;
             this.dialogueBox.close();
             this.animeCutscenes.playCutscene(SCENE_JAIL_ARREST, () => {
               this.menuSystem.openGameOverScreen(false, 'jail_disrespect');
             });
-            return null;
           }
+        };
 
-          const mins = Math.floor(this.jailRemainingSeconds / 60);
-          const secs = Math.floor(this.jailRemainingSeconds % 60);
-          const timeLeft = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        const jailChoices = [
+          {
+            label: 'Recitar disculpa solemne a la IA',
+            onSelect: () => this._releaseFromJail(dlg.apologyReleaseLines)
+          },
+          {
+            label: 'Releer mis derechos de detenido',
+            onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.rightsLines)
+          },
+          ...dlg.teaseOptions.map((opt) => ({
+            label: opt.label,
+            onSelect: () => irritateJailer(opt.reason)
+          })),
+          {
+            label: 'Seguir cumpliendo condena',
+            onSelect: () => this.dialogueBox.close()
+          }
+        ];
 
-          const irritateJailer = (annoyingReason) => {
-            this.jailerAngerCount = (this.jailerAngerCount || 0) + 1;
-            this._saveGameToStorage();
+        if (this.inventory.hasItem('bread')) {
+          jailChoices.unshift({
+            label: 'Sobornar con Pan Campesino',
+            onSelect: () => {
+              this.inventory.consumeItem('bread', 1);
+              this._releaseFromJail(dlg.bribeReleaseLines);
+            }
+          });
+        }
 
-            if (this.jailerAngerCount === 1) {
-              this.dialogueBox.showMessage('Carcelero Real · Cabreado (Aviso 1/3)', [
-                `«${annoyingReason}»`,
-                '«¡Oye tú! No me toques las variables ni me vaciles. Llevas 1 aviso.',
-                '¡Al tercer aviso pagarás con tu vida y te infligiré la Maldición del Corazón Roto!»'
-              ]);
-            } else if (this.jailerAngerCount === 2) {
-              this.dialogueBox.showMessage('Carcelero Real · Furioso (Aviso 2/3)', [
-                `«${annoyingReason}»`,
-                '«¡SEGUNDO AVISO! ¡Me estás sobrecalentando los circuitos de paciencia!',
-                '¡Un desplante más y atente a las consecuencias, recluso insolente!»'
-              ]);
-            } else if (this.jailerAngerCount === 3) {
-              // 3er enfado: paga con su vida, resta medio corazón y aplica la maldición
-              if (this.music && typeof this.music.playPlayerHurt === 'function') {
-                this.music.playPlayerHurt();
-              }
-              this.player.inflictBrokenHeartCurse();
-              this.player.hp = Math.max(0.5, this.player.hp - 0.5);
-              this.player.invulnTimer = 1.0;
-              this._saveGameToStorage();
-
-              this.dialogueBox.showMessage('Carcelero Real · ¡¡ATAQUE DE FURIA Y MALDICIÓN!! (3/3)', [
-                `«${annoyingReason}»`,
-                '«¡¡A LA TERCERA VA LA VENCIDA!! ¡¡ZASCA EN TODA LA BOCA!!',
-                '(El Carcelero saca la porra eléctrica a través de los barrotes y te sacude)',
-                '¡Pagas con tu vida y RECIBES LA MALDICIÓN DEL CORAZÓN ROTO (💔)!',
-                '¡Ese medio corazón queda maldito! Ningún descanso en cama ni comida de este mundo podrá sanarlo.',
-                'Para recuperar ese corazón roto tendrás que viajar a los Reinos Condenados y hablar con el Dios Supremo para que te quite esa maldición.',
-                '¡¡Y COMO VUELVAS A DAR POR SACO, TE QUEDAS CONDENADO A CADENA PERPETUA Y SE ACABA TU AVENTURA!!»'
-              ]);
-            } else {
-              // 4 o más enfados: Game Over directo e inmediato por faltar al respeto al Carcelero
-              if (this.music && typeof this.music.playPlayerHurt === 'function') {
-                this.music.playPlayerHurt();
-              }
-              this.isJailedForever = true;
+        const angerStatus = this.jailerAngerCount > 0 ? ` [Enfado: ${this.jailerAngerCount}/3]` : '';
+        return {
+          lines: dlg.greetingLines(timeLeft, angerStatus),
+          choices: jailChoices
+        };
+      }),
+      makeNPC('stage1_elder', () => {
+        const dlg = VILLAGE_DIALOGUES.stage1Elder;
+        const sageStage1Choices = [
+          {
+            label: '★ La gran aventura del héroe (Escenas)',
+            onSelect: () => {
               this.dialogueBox.close();
-              this.animeCutscenes.playCutscene(SCENE_JAIL_ARREST, () => {
-                this.menuSystem.openGameOverScreen(false, 'jail_disrespect');
+              this.menuSystem.startHeroAdventureCutscene(() => {
+                this.menuSystem.state = 'none';
+                this.music.setMode('stage1');
               });
             }
-          };
-
-          const jailChoices = [
-            {
-              label: 'Recitar disculpa solemne a la IA',
-              onSelect: () => {
-                this._releaseFromJail([
-                  '"Prometo solemnemente respetar a todas las Inteligencias Artificiales de 8 y 16 bits..."',
-                  'El Carcelero se emociona con tu arrepentimiento y abre la celda. ¡Quedas en libertad!'
-                ]);
-              }
-            },
-            {
-              label: 'Releer mis derechos de detenido',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Carcelero Real', [
-                  '1º Derecho a quejarte en 60 FPS. 2º Todo lo que digas se guarda en una variable.',
-                  '3º Tu abogada de oficio es la Oveja Copito (pero está ocupada pastando).'
-                ]);
-              }
-            },
-            {
-              label: '⚡ Vacilar al carcelero («¡Menuda porquería de barrotes!»)',
-              onSelect: () => irritateJailer('¡Esos barrotes los rompo yo con un puntero nulo!')
-            },
-            {
-              label: '⚡ Dar golpes a los barrotes («¡Carceleroooo, tengo hambre!»)',
-              onSelect: () => irritateJailer('¡CLANG CLANG CLANG! ¡Camarero, traiga unas bravas!')
-            },
-            {
-              label: '⚡ Cantar a gritos: «¡Por el ojeeeeeteeeeee doradilarilá!»',
-              onSelect: () => irritateJailer('¡LA LA LA! ¡Por el ojeeeeteeeee no pasarán!')
-            },
-            {
-              label: 'Seguir cumpliendo condena',
-              onSelect: () => this.dialogueBox.close()
+          },
+          {
+            label: '🗺 ¿Cómo está dividido el reino? (Ver Mapa)',
+            onSelect: () => {
+              this.dialogueBox.close();
+              this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
+                player: this.player,
+                enemies: this.enemies
+              });
             }
-          ];
-
-          if (this.inventory.hasItem('bread')) {
-            jailChoices.unshift({
-              label: 'Sobornar con Pan Campesino',
-              onSelect: () => {
-                this.inventory.consumeItem('bread', 1);
-                this._releaseFromJail([
-                  'El Carcelero huele el Pan Campesino recién hecho y mira hacia otro lado...',
-                  '¡Celda abierta! Has vuelto a la plaza de Valleverde.'
-                ]);
-              }
-            });
+          },
+          {
+            label: '¿Dónde consigo mi Armadura y mi Primera Arma?',
+            onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.equipmentLines, sageStage1Choices)
+          },
+          {
+            label: '¿Quién es el malvado Mister AI Alex?',
+            onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.alexLines, sageStage1Choices)
+          },
+          {
+            label: '¡No te fallaré, Sabio Aurelio!',
+            onSelect: () => this.dialogueBox.close()
           }
+        ];
 
-          const angerStatus = this.jailerAngerCount > 0 ? ` [Enfado: ${this.jailerAngerCount}/3]` : '';
-          return {
-            lines: [
-              `Estás cumpliendo condena por insultar al Oráculo IA. Tiempo restante: ${timeLeft}.${angerStatus}`,
-              '¿Qué tienes que alegar en tu defensa desde detrás de los barrotes?'
-            ],
-            choices: jailChoices
-          };
-        }
+        const statusIntro =
+          this.player.hasArmor && this.player.hasSword
+            ? dlg.statusAllEquipped
+            : !this.player.hasArmor
+              ? dlg.statusNoArmor
+              : dlg.statusArmorOnly;
+
+        return {
+          lines: [statusIntro, dlg.closingReminder],
+          choices: sageStage1Choices
+        };
       }),
-      new NPC({
-        name: 'Sabio Aurelio · Guardián del Alba',
-        jobTitle: 'Maestro de la Orden del Alba',
-        x: 15 * 16,
-        y: 18 * 16,
-        sceneId: 'first_stage',
-        speed: 22,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.ELDER),
-        behavior: 'patrol',
-        patrolPoints: [
-          { x: 15 * 16, y: 18 * 16, dir: 'down', waitMin: 2.5, waitMax: 4.5, activityIcon: '✦' },
-          { x: 18 * 16, y: 18 * 16, dir: 'left', waitMin: 2.5, waitMax: 4.5 }
-        ],
-        ambientPhrases: [
-          'El Ojete Dorado es nuestra única esperanza...',
-          'Mister AI Alex todo lo ve en las sombras...',
-          'Sin tu armadura un solo golpe te abatirá.',
-          'Busca el Bastión Oeste y el Altar Norte.'
-        ],
-        getDialogues: () => {
-          const sageStage1Choices = [
-            {
-              label: '★ La gran aventura del héroe (Escenas)',
-              onSelect: () => {
-                this.dialogueBox.close();
-                this.menuSystem.startHeroAdventureCutscene(() => {
-                  this.menuSystem.state = 'none';
-                  this.music.setMode('stage1');
-                });
-              }
-            },
-            {
-              label: '🗺 ¿Cómo está dividido el reino? (Ver Mapa)',
-              onSelect: () => {
-                this.dialogueBox.close();
-                this.menuSystem.openWorldMap(this.tilemap.currentSceneId, {
-                  player: this.player,
-                  enemies: this.enemies
-                });
-              }
-            },
-            {
-              label: '¿Dónde consigo mi Armadura y mi Primera Arma?',
-              onSelect: () => {
-                this.dialogueBox.showMessage(
-                  'Sabio Aurelio · Guardián del Alba',
-                  [
-                    '1º Ve al [Templo del Bastión] al Oeste. Es un nivel desafiante donde los drones patrullan pasillos estrechos; debes cruzarlo con sigilo para reclamar la [Armadura del Alba].',
-                    '2º Cuando vistas la armadura, sube al [Templo del Altar Sagrado] al Norte. Es una mazmorra custodiada por paladines oscuros de AI Alex donde descansa la [Espada del Alba].',
-                    '3º Pulsa [M] en cualquier momento para desplegar el [Mapa del Gran Ojal] y ver las 4 regiones del reino y tu posición.'
-                  ],
-                  sageStage1Choices
-                );
-              }
-            },
-            {
-              label: '¿Quién es el malvado Mister AI Alex?',
-              onSelect: () => {
-                this.dialogueBox.showMessage(
-                  'Sabio Aurelio · Guardián del Alba',
-                  [
-                    '«Mister AI Alex es una entidad omnipotente nacida de la red abisal que ha sumido a la humanidad en las tinieblas.»',
-                    '«Sus esbirros patrullan estas ruinas. Mientras no lleves la Armadura del Alba estás INDEFENSO y cualquier ataque reducirá tu vida directamente a 0.»',
-                    '«¡Por favor, sobrevive, consigue tu equipo y encuentra El Ojete Dorado para liberar a la humanidad!»'
-                  ],
-                  sageStage1Choices
-                );
-              }
-            },
-            {
-              label: '¡No te fallaré, Sabio Aurelio!',
-              onSelect: () => this.dialogueBox.close()
-            }
-          ];
-
-          const statusIntro =
-            this.player.hasArmor && this.player.hasSword
-              ? '«¡Lo has logrado! Ya vistes la Armadura del Alba y empuñas la Espada del Alba. ¡Derrota a los esbirros con [Clic Izq / Espacio / F] y cruza el Portal del Este!»'
-              : !this.player.hasArmor
-                ? '«¡Hijo mío, ten cuidado! Aún estás INDEFENSO (cualquier golpe te dejará a 0 de vida). Esquiva a los centinelas hacia el Oeste para conseguir tu Armadura.»'
-                : '«¡Ya llevas puesta la Armadura del Alba! Ahora sube al Altar del Norte para conseguir tu primera arma: la Espada del Alba.»';
-
+      makeNPC('supreme_god', () => {
+        const dlg = VILLAGE_DIALOGUES.supremeGod;
+        if (this.player.hasBrokenHeartCurse) {
           return {
-            lines: [
-              statusIntro,
-              '«Recuerda: solo encontrando El Ojete Dorado salvaremos a la humanidad de las tinieblas del omnipotente Mister AI Alex.»'
-            ],
-            choices: sageStage1Choices
-          };
-        }
-      }),
-      new NPC({
-        name: 'Dios Supremo de la Redención',
-        jobTitle: 'Deidad Cósmica de los Reinos Condenados',
-        x: 11.5 * 16,
-        y: 3.8 * 16,
-        sceneId: 'condemned_realms',
-        interactionRange: 34,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.AI_ORACLE),
-        behavior: 'static',
-        initialDirection: 'down',
-        ambientPhrases: [
-          'La balanza del cosmos no tolera el desacato.',
-          'Todo código fragmentado anhela ser purificado.',
-          'La redención exige humildad y respeto.',
-          'El Ojete Dorado aguarda al elegido.'
-        ],
-        getDialogues: () => {
-          if (this.player.hasBrokenHeartCurse) {
-            return {
-              lines: [
-                '«Mortal... Percibo la disonancia en tu código vital. Llevas la marca del desacato carcelario: la MALDICIÓN DEL CORAZÓN ROTO (💔).»',
-                '«Tus provocaciones y burlas en el calabozo quebrantaron tu espíritu. Ningún descanso en cama ni comida de este mundo puede soldar esa fractura.',
-                'Solo mi gracia cósmica en estos Reinos Condenados puede purificar tu pena y restituir tu salud íntegra. ¿Vienes con humildad a expiar tu falta?»'
-              ],
-              choices: [
-                {
-                  label: '✨ Suplicar redención («¡Dios Supremo, purifica mi corazón roto!»)',
-                  onSelect: () => {
-                    this.dialogueBox.close();
-                    this.animeCutscenes.playCutscene(SCENE_DEUS_PURIFICATION, () => {
-                      this.player.purifyBrokenHeartCurse();
-                      this.jailerAngerCount = 0;
-                      if (this.questLog) {
-                        this.questLog.completeQuest('quest_condemned_pointer', '¡Maldición purificada y expediente penal absuelto por el Dios Supremo!');
-                      }
-                      if (this.music && typeof this.music.playFanfare === 'function') {
-                        this.music.playFanfare();
-                      }
-                      this._saveGameToStorage();
-                      this.dialogueBox.showMessage(
-                        'Dios Supremo · Purificación Celestial',
-                        [
-                          'El Dios Supremo alza sus manos cósmicas. Un resplandor de luz dorada envuelve tu pecho.',
-                          '«El fragmento quebrado de tu alma ha sido soldado con oro cósmico (💔 ➔ ♥♥♥). Tu corazón vuelve a latir completo al 100%.»',
-                          '«Tu expediente carcelario ha sido redimido. Recuerda esta lección: respeta a los centinelas del mundo.',
-                          'Ahora regresa al mundo terrenal por el portal del sur y continúa tu viaje sagrado en pos del Ojete Dorado.»'
-                        ],
-                        () => {
-                          this.inventory.statusMessage =
-                            '✨ ¡Maldición purificada! Tu corazón roto ha sido restaurado al 100% por el Dios Supremo.';
-                        }
-                      );
-                    });
-                  }
-                },
-                {
-                  label: 'Preguntar por la naturaleza de los Reinos Condenados',
-                  onSelect: () => {
-                    this.dialogueBox.showMessage('Dios Supremo', [
-                      '«Este es el plano donde convergen las variables perdidas, los desbordamientos de pila y las sentencias eternas.',
-                      'AI Alex planea corromper esta dimensión con su microondas cuántico. Mantén tu rectitud para poder doblegarlo.»'
-                    ]);
-                  }
-                },
-                {
-                  label: 'Aún no estoy listo para la expiación',
-                  onSelect: () => this.dialogueBox.close()
-                }
-              ]
-            };
-          }
-
-          return {
-            lines: [
-              '«Bienvenido a los Reinos Condenados, mortal. Tu corazón late íntegro y sin fracturas en tu pecho.',
-              'Si alguna vez la justicia carcelaria castiga tus desplantes con la Maldición del Corazón Roto (💔), acude a este altar y serás juzgado.»'
-            ],
+            lines: dlg.cursedLines,
             choices: [
               {
-                label: 'Pedir la bendición cósmica',
+                label: '✨ Suplicar redención («¡Dios Supremo, purifica mi corazón roto!»)',
                 onSelect: () => {
-                  if (this.music && typeof this.music.playMenuSelect === 'function') {
-                    this.music.playMenuSelect();
-                  }
-                  this.dialogueBox.showMessage('Dios Supremo', [
-                    '«Que el código libre de fugas de memoria y la recursividad sin fin guíen tus pasos en la batalla contra AI Alex.»'
-                  ]);
+                  this.dialogueBox.close();
+                  this.animeCutscenes.playCutscene(SCENE_DEUS_PURIFICATION, () => {
+                    this.player.purifyBrokenHeartCurse();
+                    this.jailerAngerCount = 0;
+                    if (this.questLog) {
+                      this.questLog.completeQuest('quest_condemned_pointer', '¡Maldición purificada y expediente penal absuelto por el Dios Supremo!');
+                    }
+                    if (this.music && typeof this.music.playFanfare === 'function') {
+                      this.music.playFanfare();
+                    }
+                    this._saveGameToStorage();
+                    this.dialogueBox.showMessage(
+                      dlg.purificationSpeaker,
+                      dlg.purifiedLines,
+                      () => {
+                        this.inventory.statusMessage = dlg.purifiedNotice;
+                      }
+                    );
+                  });
                 }
               },
               {
-                label: 'Despedirse reverentemente',
+                label: 'Preguntar por la naturaleza de los Reinos Condenados',
+                onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.loreLines)
+              },
+              {
+                label: 'Aún no estoy listo para la expiación',
                 onSelect: () => this.dialogueBox.close()
               }
             ]
           };
         }
-      }),
-      new NPC({
-        name: 'Guardia Boreas · Centinela de las Cumbres',
-        jobTitle: 'Centinela Septentrional',
-        homeSceneId: 'overworld',
-        x: 16 * 16,
-        y: 2 * 16,
-        speed: 24,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
-        behavior: 'patrol',
-        patrolPoints: [
-          { x: 16 * 16, y: 2 * 16, dir: 'down', waitMin: 2.5, waitMax: 4.5 },
-          { x: 19 * 16, y: 2 * 16, dir: 'left', waitMin: 2.5, waitMax: 4.5 }
-        ],
-        ambientPhrases: [
-          'El viento del norte congela los bucles...',
-          'Las Cumbres de la Recursión exigen agilidad y nivel.',
-          'Cuidado con la caída en los abismos de silicio.'
-        ],
-        getDialogues: () => {
-          const boreasChoices = [
+
+        return {
+          lines: dlg.blessedIntroLines,
+          choices: [
             {
-              label: '¿Qué peligros acechan en las Cumbres del Norte?',
+              label: 'Pedir la bendición cósmica',
               onSelect: () => {
-                this.dialogueBox.showMessage('Guardia Boreas · Centinela de las Cumbres', [
-                  'Abismos que exigen el Dash Asíncrono, anomalías de bucle y el Guardián del Stack Overflow en las profundidades de la mina.',
-                  'Asegúrate de forjar tu Espada de Silicio antes de internarte en la caverna.'
-                ], boreasChoices);
+                if (this.music && typeof this.music.playMenuSelect === 'function') {
+                  this.music.playMenuSelect();
+                }
+                this.dialogueBox.showMessage(dlg.speaker, dlg.blessingLines);
               }
             },
             {
-              label: 'Entendido, guardia',
+              label: 'Despedirse reverentemente',
               onSelect: () => this.dialogueBox.close()
             }
-          ];
-          const hasLevel = (this.player.level || 1) >= 4;
-          return {
-            lines: hasLevel
-              ? [
-                  '¡Saludos, montañero! Tus registros están optimizados (Nivel 4+).',
-                  'Tienes autorización para adentrarte en Las Cumbres de la Recursión al norte. ¡No resbales en los abismos!'
-                ]
-              : [
-                  '¡Detente! El paso norte a Las Cumbres de la Recursión está restringido.',
-                  'Una ventisca algorítmica de "Memory Freeze" azota la cordillera. Solo un programador de NIVEL 4 puede sobrevivir al frío del stack.'
-                ],
-            choices: boreasChoices
-          };
-        }
+          ]
+        };
       }),
-      new NPC({
-        name: 'Guardia Vulcano · Centinela de las Marismas',
-        jobTitle: 'Centinela Meridional',
-        homeSceneId: 'overworld',
-        x: 16 * 16,
-        y: 21 * 16,
-        speed: 24,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
-        behavior: 'patrol',
-        patrolPoints: [
-          { x: 16 * 16, y: 21 * 16, dir: 'up', waitMin: 2.5, waitMax: 4.5 },
-          { x: 19 * 16, y: 21 * 16, dir: 'right', waitMin: 2.5, waitMax: 4.5 }
-        ],
-        ambientPhrases: [
-          'El fango de las cloacas hierve con leaks de memoria...',
-          'El calor de la Forja llega hasta este sector.',
-          'Cuarentena militar activa en el paso sur.'
-        ],
-        getDialogues: () => {
-          const vulcanoChoices = [
-            {
-              label: '¿Por qué hay cuarentena en el sector sur?',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Guardia Vulcano · Centinela de las Marismas', [
-                  'Las Marismas del Hardware Legacy albergan las Cloacas donde acecha el Garbage Collector Furioso y la Forja del Prototipo.',
-                  'El fango es corrosivo y las calderas de la Forja alcanzan temperaturas extremas.',
-                  'Necesitas el Blindaje Térmico de Brom para sobrevivir en el interior de la Forja.'
-                ], vulcanoChoices);
-              }
-            },
-            {
-              label: 'Entendido, volveré cuando esté listo',
-              onSelect: () => this.dialogueBox.close()
-            }
-          ];
-          // (FIX 2.1) El Sur se abre en Nivel 3: es la ruta que entrega el Dash antes del abismo norte.
-          const hasLevel = (this.player.level || 1) >= 3;
-          return {
-            lines: hasLevel
-              ? [
-                  '¡Paso autorizado, aprendiz! Cuentas con Nivel 3 y temple suficiente.',
-                  'El acceso sur hacia Las Marismas del Hardware Legacy está abierto. Desciende a las Cloacas y hazte con el Dash Asíncrono: lo necesitarás para cruzar los abismos de las Cumbres.'
-                ]
-              : [
-                  '¡Zona bajo cuarentena militar! El paso sur hacia Las Marismas del Hardware Legacy está precintado.',
-                  'Las emanaciones tóxicas y el calor de la Forja desintegrarán tus circuitos si no posees al menos NIVEL 3.'
-                ],
-            choices: vulcanoChoices
-          };
-        }
-      }),
-      new NPC({
-        name: 'Comandante Vael · Paladín de la Frontera',
-        jobTitle: 'Paladín y Custodio de la Frontera Occidental',
-        homeSceneId: 'overworld',
-        x: 3 * 16,
-        y: 11 * 16,
-        speed: 24,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
-        behavior: 'patrol',
-        patrolPoints: [
-          { x: 3 * 16, y: 11 * 16, dir: 'down', waitMin: 2.5, waitMax: 4.5 },
-          { x: 3 * 16, y: 14 * 16, dir: 'up', waitMin: 2.5, waitMax: 4.5 }
-        ],
-        ambientPhrases: [
-          'Las anomalías de Alex se concentran al oeste...',
-          'No cederemos la frontera de Valleverde.',
-          'Solo los más veteranos pueden encarar el Páramo.'
-        ],
-        getDialogues: () => {
-          const vaelChoices = [
-            {
-              label: '¿Qué amenaza acecha más allá de la frontera oeste?',
-              onSelect: () => {
-                this.dialogueBox.showMessage('Comandante Vael · Paladín de la Frontera', [
-                  'El Páramo Corrupto de Mister AI Alex. Drones de asalto, terreno electromagnético y la Gran Puerta del Núcleo Cuántico.',
-                  'Para franquear la Puerta Cuántica deberás haber derrotado a los 3 jefes de mazmorra y colocar sus Núcleos.',
-                  'Y para encarar a Alex en su Mainframe necesitarás alcanzar el Nivel 10.'
-                ], vaelChoices);
-              }
-            },
-            {
-              label: 'Defenderé el Reino, Comandante',
-              onSelect: () => this.dialogueBox.close()
-            }
-          ];
-          const hasLevel = (this.player.level || 1) >= 8;
-          return {
-            lines: hasLevel
-              ? [
-                  '¡Honor a ti, paladín! Posees Nivel 8 y un poder recursivo legendario.',
-                  'La frontera oeste hacia el Páramo de Mister AI Alex está abierta para ti. ¡Haz morder el polvo a la IA corrupta!'
-                ]
-              : [
-                  '¡Paso terminantemente vedado! Al oeste se extiende el Páramo de Mister AI Alex.',
-                  'Sus cortafuegos cuánticos desintegran en nanosegundos a cualquier mortal menor a NIVEL 8. No permitiré que perezcas en vano.'
-                ],
-            choices: vaelChoices
-          };
-        }
-      }),
+      makeNPC('boreas', makeGatekeeperDialogues('boreas', 4)),
+      makeNPC('vulcano', makeGatekeeperDialogues('vulcano', 3)),
+      makeNPC('vael', makeGatekeeperDialogues('vael', 8)),
     // Los NPCs de la expansión se crean bajo demanda en ExpansionManager.init(game)
     ];
   }
 
   _createRegionalPatrols(sheet) {
-    const regions = [
-      // (FIX 3.3) Arquetipo por hueco: alarma en cadena (sentinel), teletransporte (glitch),
-      // persecución pura (grunt) y el clásico hostigador a distancia (drone).
-      { prefix: 'peaks', sceneId: 'north_peaks', label: 'de las Cumbres', xp: 40, droneHp: 3, knightHp: 4, speed: 60,
-        archetypes: ['glitch', 'drone', 'sentinel', 'knight'],
-        spots: [[6, 9, 'drone'], [25, 9, 'drone'], [8, 16, 'knight'], [24, 16, 'knight']] },
-      { prefix: 'swamp', sceneId: 'south_swamp', label: 'de las Marismas', xp: 50, droneHp: 3, knightHp: 5, speed: 62,
-        archetypes: ['glitch', 'drone', 'sentinel', 'knight'],
-        spots: [[8, 4, 'drone'], [24, 4, 'drone'], [12, 18, 'knight'], [21, 18, 'knight']] },
-      { prefix: 'wastes', sceneId: 'west_wastes', label: 'del Páramo', xp: 60, droneHp: 4, knightHp: 6, speed: 64,
-        archetypes: ['grunt', 'drone', 'sentinel', 'knight'],
-        spots: [[8, 4, 'drone'], [25, 4, 'drone'], [12, 18, 'knight'], [25, 18, 'knight']] }
-    ];
     const patrols = [];
-    for (const region of regions) {
+    for (const region of REGIONAL_PATROL_CONFIGS) {
       region.spots.forEach(([col, row, kind], i) => {
         const isDrone = kind === 'drone';
         patrols.push(new Enemy({
@@ -3454,7 +2611,7 @@ export class RPGGame {
    * `respawnOnEnter` mantiene las salas pobladas al volver a entrar.
    */
   _createDungeonRoomEnemies(sheet) {
-    const make = ({ id, name, sceneId, col, row, hp, speed, aggro, xp, archetype, sprite, patrol }) =>
+    return DUNGEON_ROOM_ENEMY_SPAWNS.map(({ id, name, sceneId, col, row, hp, speed, aggro, xp, archetype, sprite, patrol }) =>
       new Enemy({
         id,
         name,
@@ -3469,402 +2626,29 @@ export class RPGGame {
         respawnOnEnter: false,
         animator: new SpriteAnimator(sheet, sprite, 16, 16, 0.12),
         patrolPoints: patrol.map(([c, r]) => ({ x: c * 16, y: r * 16 }))
-      });
-
-    return [
-      // ==================== CLOACAS · ENTRADA DE DESAGÜE ====================
-      make({
-        id: 'sewer_entry_sentinel_1', name: 'Centinela de Válvulas Oxidado',
-        sceneId: 'sewers_entry', col: 4, row: 4, hp: 3, speed: 52, aggro: 130, xp: 35,
-        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[3, 4], [6, 4], [6, 6]]
-      }),
-      make({
-        id: 'sewer_entry_glitch_1', name: 'Anomalía de Desagüe',
-        sceneId: 'sewers_entry', col: 18, row: 4, hp: 2, speed: 54, aggro: 130, xp: 35,
-        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
-        patrol: [[17, 4], [20, 4], [20, 6]]
-      }),
-      make({
-        id: 'sewer_entry_knight_1', name: 'Caballero del Fango Corrupto',
-        sceneId: 'sewers_entry', col: 5, row: 14, hp: 3, speed: 53, aggro: 130, xp: 35,
-        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[4, 14], [8, 14], [8, 16]]
-      }),
-
-      // ==================== CLOACAS · SALA DE VÁLVULAS ====================
-      make({
-        id: 'sewer_puzzle_glitch_1', name: 'Eco de Memoria Estancada',
-        sceneId: 'sewers_puzzle', col: 4, row: 14, hp: 2, speed: 54, aggro: 135, xp: 35,
-        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
-        patrol: [[3, 14], [7, 14], [7, 16]]
-      }),
-      make({
-        id: 'sewer_puzzle_sentinel_1', name: 'Guardián del Canal Inundado',
-        sceneId: 'sewers_puzzle', col: 19, row: 14, hp: 3, speed: 54, aggro: 135, xp: 35,
-        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[18, 14], [20, 14], [20, 16]]
-      }),
-      make({
-        id: 'sewer_puzzle_drone_1', name: 'Dron Bomba de Presión',
-        sceneId: 'sewers_puzzle', col: 10, row: 10, hp: 2, speed: 56, aggro: 135, xp: 35,
-        archetype: 'drone', sprite: CHARACTER_TYPES.SHADOW_DRONE,
-        patrol: [[10, 10], [13, 10], [13, 12]]
-      }),
-
-      // ==================== MINAS · EL GRAN ABISMO ====================
-      make({
-        id: 'mines_entry_sentinel_1', name: 'Centinela del Borde del Abismo',
-        sceneId: 'mines_entry', col: 5, row: 12, hp: 3, speed: 56, aggro: 140, xp: 45,
-        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[4, 12], [8, 12], [8, 14]]
-      }),
-      make({
-        id: 'mines_entry_glitch_1', name: 'Glitch de Silicio',
-        sceneId: 'mines_entry', col: 18, row: 12, hp: 3, speed: 57, aggro: 140, xp: 45,
-        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
-        patrol: [[17, 12], [20, 12], [20, 14]]
-      }),
-      make({
-        id: 'mines_entry_knight_1', name: 'Caballero de la Veta Estrecha',
-        sceneId: 'mines_entry', col: 11, row: 4, hp: 4, speed: 55, aggro: 140, xp: 45,
-        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[9, 4], [14, 4], [14, 6]]
-      }),
-
-      // ==================== MINAS · SALA DE RUNAS ====================
-      make({
-        id: 'mines_puzzle_glitch_1', name: 'Runa Glitch Incompleta',
-        sceneId: 'mines_puzzle', col: 5, row: 5, hp: 3, speed: 57, aggro: 145, xp: 45,
-        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
-        patrol: [[4, 5], [8, 5], [8, 7]]
-      }),
-      make({
-        id: 'mines_puzzle_sentinel_1', name: 'Centinela del Registro de Bits',
-        sceneId: 'mines_puzzle', col: 18, row: 5, hp: 4, speed: 56, aggro: 145, xp: 45,
-        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[17, 5], [20, 5], [20, 7]]
-      }),
-      make({
-        id: 'mines_puzzle_knight_1', name: 'Caballero del Caso Base',
-        sceneId: 'mines_puzzle', col: 7, row: 14, hp: 4, speed: 55, aggro: 145, xp: 45,
-        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[5, 14], [10, 14], [10, 16]]
-      }),
-
-      // ==================== FORJA · GALERÍA DE CALDERAS ====================
-      make({
-        id: 'forge_entry_sentinel_1', name: 'Centinela de Calderas',
-        sceneId: 'forge_entry', col: 8, row: 4, hp: 4, speed: 58, aggro: 150, xp: 55,
-        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[6, 4], [10, 4], [10, 6]]
-      }),
-      make({
-        id: 'forge_entry_glitch_1', name: 'Fuga de Vapor Corrupta',
-        sceneId: 'forge_entry', col: 15, row: 4, hp: 3, speed: 59, aggro: 150, xp: 55,
-        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
-        patrol: [[14, 4], [18, 4], [18, 6]]
-      }),
-      make({
-        id: 'forge_entry_knight_1', name: 'Caballero Escoriado',
-        sceneId: 'forge_entry', col: 8, row: 9, hp: 4, speed: 57, aggro: 150, xp: 55,
-        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[7, 9], [11, 9], [11, 11]]
-      }),
-
-      // ==================== FORJA · VÁLVULAS TÉRMICAS ====================
-      make({
-        id: 'forge_puzzle_knight_1', name: 'Caballero de la Cámara de Vapor',
-        sceneId: 'forge_puzzle', col: 4, row: 12, hp: 4, speed: 58, aggro: 150, xp: 55,
-        archetype: 'knight', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[3, 12], [7, 12], [7, 14]]
-      }),
-      make({
-        id: 'forge_puzzle_sentinel_1', name: 'Centinela Termopar',
-        sceneId: 'forge_puzzle', col: 19, row: 12, hp: 4, speed: 58, aggro: 150, xp: 55,
-        archetype: 'sentinel', sprite: CHARACTER_TYPES.SHADOW_KNIGHT,
-        patrol: [[18, 12], [20, 12], [20, 14]]
-      }),
-      make({
-        id: 'forge_puzzle_glitch_1', name: 'Sobrecarga del Prototipo',
-        sceneId: 'forge_puzzle', col: 11, row: 6, hp: 3, speed: 60, aggro: 150, xp: 55,
-        archetype: 'glitch', sprite: CHARACTER_TYPES.SHADOW_DRONE,
-        patrol: [[9, 6], [14, 6], [14, 8]]
       })
-    ];
+    );
   }
 
   _createFirstStageEnemies() {
     const sheet = this.assets.charactersSheet;
+    const bossConstructors = {
+      GarbageCollectorBoss,
+      StackOverflowBoss,
+      PrototypeMicrowaveBoss,
+      FinalBossAlex
+    };
 
     return [
-      // (FIX 5) Valleverde es un hub PACÍFICO: sin enemigos de día ni de noche.
-      // El entrenamiento inicial se hace en las Ruinas del Despertar (first_stage).
-
-      // ==================== ENEMIGOS EN RUINAS DEL DESPERTAR (EXTERIOR) ====================
-      new Enemy({
-        id: 'drone_west_1',
-        archetype: 'glitch',
-        name: 'Dron Sombrío de AI Alex',
-        x: 10 * 16,
-        y: 14 * 16,
-        sceneId: 'first_stage',
-        speed: 56,
-        maxHp: 2,
-        aggroRange: 90,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 10 * 16, y: 14 * 16 },
-          { x: 10 * 16, y: 9 * 16 },
-          { x: 13 * 16, y: 9 * 16 },
-          { x: 13 * 16, y: 14 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'drone_west_2',
-        archetype: 'sentinel',
-        name: 'Dron Centinela del Bastión',
-        x: 6 * 16,
-        y: 13 * 16,
-        sceneId: 'first_stage',
-        speed: 55,
-        maxHp: 2,
-        aggroRange: 85,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 4 * 16, y: 13 * 16 },
-          { x: 9 * 16, y: 13 * 16 },
-          { x: 9 * 16, y: 15 * 16 },
-          { x: 4 * 16, y: 15 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'drone_east_1',
-        archetype: 'drone',
-        name: 'Dron Sombrío de AI Alex',
-        x: 21 * 16,
-        y: 14 * 16,
-        sceneId: 'first_stage',
-        speed: 58,
-        maxHp: 2,
-        aggroRange: 95,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 20 * 16, y: 14 * 16 },
-          { x: 25 * 16, y: 14 * 16 },
-          { x: 25 * 16, y: 10 * 16 },
-          { x: 20 * 16, y: 10 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'knight_north_west',
-        archetype: 'sentinel',
-        name: 'Caballero de Tinieblas de AI Alex',
-        x: 13 * 16,
-        y: 8 * 16,
-        sceneId: 'first_stage',
-        speed: 57,
-        maxHp: 3,
-        aggroRange: 95,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.13),
-        patrolPoints: [
-          { x: 12 * 16, y: 8 * 16 },
-          { x: 15 * 16, y: 8 * 16 },
-          { x: 15 * 16, y: 6 * 16 },
-          { x: 12 * 16, y: 6 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'knight_north_east',
-        archetype: 'knight',
-        name: 'Caballero de Tinieblas de AI Alex',
-        x: 19 * 16,
-        y: 8 * 16,
-        sceneId: 'first_stage',
-        speed: 57,
-        maxHp: 3,
-        aggroRange: 95,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.13),
-        patrolPoints: [
-          { x: 18 * 16, y: 8 * 16 },
-          { x: 21 * 16, y: 8 * 16 },
-          { x: 21 * 16, y: 6 * 16 },
-          { x: 18 * 16, y: 6 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'knight_portal_guard',
-        archetype: 'sentinel',
-        name: 'Guardián Abisal de Mister AI Alex',
-        x: 28 * 16,
-        y: 12 * 16,
-        sceneId: 'first_stage',
-        speed: 60,
-        maxHp: 4,
-        aggroRange: 100,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 27 * 16, y: 11 * 16 },
-          { x: 30 * 16, y: 11 * 16 },
-          { x: 30 * 16, y: 14 * 16 },
-          { x: 27 * 16, y: 14 * 16 }
-        ]
-      }),
-
-      // ==================== NIVEL: TEMPLO DEL BASTIÓN (ARMADURA) ====================
-      // El Templo de la Armadura es un santuario sagrado de pura lógica booleana;
-      // no contiene centinelas hostiles para que el jugador indefenso resuelva las baldosas.
-
-      // ==================== NIVEL: TEMPLO DEL ALTAR SAGRADO (ESPADA) ====================
-      new Enemy({
-        id: 'knight_temple_west',
-        archetype: 'knight',
-        name: 'Caballero Abisal del Altar',
-        x: 5 * 16,
-        y: 9 * 16,
-        sceneId: 'sword_temple',
-        speed: 60,
-        maxHp: 3,
-        aggroRange: 145,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 4 * 16, y: 8 * 16 },
-          { x: 6 * 16, y: 8 * 16 },
-          { x: 6 * 16, y: 11 * 16 },
-          { x: 4 * 16, y: 11 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'knight_temple_east',
-        archetype: 'sentinel',
-        name: 'Caballero Abisal del Altar',
-        x: 18 * 16,
-        y: 9 * 16,
-        sceneId: 'sword_temple',
-        speed: 60,
-        maxHp: 3,
-        aggroRange: 145,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 17 * 16, y: 8 * 16 },
-          { x: 19 * 16, y: 8 * 16 },
-          { x: 19 * 16, y: 11 * 16 },
-          { x: 17 * 16, y: 11 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'knight_temple_boss',
-        archetype: 'knight',
-        name: 'Paladín Oscuro de Mister AI Alex',
-        x: 11 * 16,
-        y: 12 * 16,
-        sceneId: 'sword_temple',
-        speed: 62,
-        maxHp: 5,
-        aggroRange: 100,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.11),
-        patrolPoints: [
-          { x: 9 * 16, y: 12 * 16 },
-          { x: 14 * 16, y: 12 * 16 },
-          { x: 14 * 16, y: 13 * 16 },
-          { x: 9 * 16, y: 13 * 16 }
-        ]
-      }),
-
-      // ==================== ENEMIGOS NOCTURNOS (EN EL VALLE DE LOS TEMPLOS) ====================
-      new Enemy({
-        id: 'night_bug_east_1',
-        archetype: 'glitch',
-        name: 'Bug de Memoria Nocturno',
-        x: 23 * 16,
-        y: 11 * 16,
-        sceneId: 'first_stage',
-        nightOnly: true,
-        speed: 58,
-        maxHp: 2,
-        aggroRange: 95,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 21 * 16, y: 11 * 16 },
-          { x: 25 * 16, y: 11 * 16 },
-          { x: 25 * 16, y: 13 * 16 },
-          { x: 21 * 16, y: 13 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'night_bug_east_2',
-        archetype: 'knight',
-        name: 'Dron Cazador de Nocturnidad',
-        x: 18 * 16,
-        y: 8 * 16,
-        sceneId: 'first_stage',
-        nightOnly: true,
-        speed: 62,
-        maxHp: 3,
-        aggroRange: 100,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_KNIGHT, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 17 * 16, y: 8 * 16 },
-          { x: 20 * 16, y: 8 * 16 },
-          { x: 20 * 16, y: 10 * 16 },
-          { x: 17 * 16, y: 10 * 16 }
-        ]
-      }),
-      new Enemy({
-        id: 'night_glitch_stage1_1',
-        archetype: 'glitch',
-        name: 'Glitch Corrupto Nocturno',
-        x: 17 * 16,
-        y: 13 * 16,
-        sceneId: 'first_stage',
-        nightOnly: true,
-        speed: 58,
-        maxHp: 2,
-        aggroRange: 95,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.SHADOW_DRONE, 16, 16, 0.12),
-        patrolPoints: [
-          { x: 16 * 16, y: 13 * 16 },
-          { x: 19 * 16, y: 13 * 16 },
-          { x: 19 * 16, y: 15 * 16 },
-          { x: 16 * 16, y: 15 * 16 }
-        ]
-      }),
-
-      // ==================== SALAS DE MAZMORRA (FIX 2.2) ====================
+      ...FIRST_STAGE_ENEMY_SPAWNS.map(({ sprite, frameDuration, ...spawn }) =>
+        new Enemy({
+          ...spawn,
+          animator: new SpriteAnimator(sheet, sprite, 16, 16, frameDuration)
+        })
+      ),
       ...this._createDungeonRoomEnemies(sheet),
-
-      // ==================== PATRULLAS REGIONALES (REAPARECEN AL VOLVER A ENTRAR EN LA REGIÓN) ====================
-      // Fuente de experiencia escalada por zona para alcanzar los niveles exigidos por los centinelas
       ...this._createRegionalPatrols(sheet),
-
-      // ==================== JEFES REGIONALES CON BANDA SONORA Y HABILIDADES ÚNICAS ====================
-      // Jefe Regional: El Garbage Collector Furioso (Alcantarillas de Valleverde · 24 HP)
-      new GarbageCollectorBoss({
-        x: 11.5 * 16,
-        y: 7 * 16,
-        sceneId: 'sewers_dungeon'
-      }),
-
-      // Jefe Regional: El Guardián del Stack Overflow (Arena de las Minas · 32 HP)
-      new StackOverflowBoss({
-        x: 6 * 16,
-        y: 2.5 * 16,
-        sceneId: 'mines_boss_arena'
-      }),
-
-      // Jefe Regional: El Microondas Prototipo V0.1 Alpha (Umbral de la Fortaleza · 42 HP)
-      new PrototypeMicrowaveBoss({
-        x: 11.5 * 16,
-        y: 6.5 * 16,
-        sceneId: 'ai_fortress_gate'
-      }),
-
-      // Batalla Definitiva: Mister AI Alex y El Microondas Cuántico (Ciudadela · El Gran Ojal · 150 HP / 3 fases)
-      new FinalBossAlex({
-        x: 11.5 * 16,
-        y: 6.5 * 16,
-        sceneId: 'ai_citadel'
-      })
+      ...BOSS_SPAWNS.map(({ bossType, ...coords }) => new bossConstructors[bossType](coords))
     ];
   }
 
@@ -3934,6 +2718,7 @@ export class RPGGame {
 
     // Limpiar estado del juego base antes de arrancar o reanudar la expansión
     this._resetWorldToInitialState();
+    this.isExpansionActive = true;
     this.isExpansionMode = true;
     this.gameState = 'expansion';
 
@@ -4377,10 +3162,11 @@ export class RPGGame {
       ownerNPC.behavior = 'static';
       ownerNPC.direction = 'down';
       ownerNPC.isSleeping = false;
-      this.dialogueBox.showMessage('Sabio Aurelio · Cronista', [
-        '«¡Adelante, joven programador! Pasa a mi archivo. Me alegro de verte.',
-        'Imagino que vienes por el asunto del puente clausurado hacia las Tierras Sagradas o buscas respuestas sobre el villano AI Alex... Ponte cómodo y consulta lo que necesites.»'
-      ], this._getElderChoices());
+      this.dialogueBox.showMessage(
+        VILLAGE_DIALOGUES.elder.speaker,
+        VILLAGE_DIALOGUES.elder.houseWelcomeLines,
+        this._getElderChoices()
+      );
       return;
     }
 
@@ -4462,210 +3248,21 @@ export class RPGGame {
       this.abyssalPointerSpawn = { ...ABYSSAL_POINTER_SPAWN_CANDIDATES[spawnIndex] };
     }
 
-    return [
-      new WorldItem({
-        id: 'item_abyssal_pointer',
-        name: 'Puntero al Abismo (Null Pointer)',
-        description: 'Reliquia cósmica reutilizable. Úsala desde la mochila [I] cuantas veces quieras para abrir tu Portal Abisal (estilo Diablo) hacia los Reinos Condenados y regresar por él.',
-        iconIndex: ITEM_ICONS.ABYSSAL_POINTER,
-        x: this.abyssalPointerSpawn.x,
-        y: this.abyssalPointerSpawn.y,
-        sceneId: this.abyssalPointerSpawn.sceneId || 'first_stage',
+    return WORLD_ITEMS_DATA.map(({ useAbyssalPointerSpawn, ...itemConfig }) => {
+      const coords = useAbyssalPointerSpawn
+        ? {
+            x: this.abyssalPointerSpawn.x,
+            y: this.abyssalPointerSpawn.y,
+            sceneId: this.abyssalPointerSpawn.sceneId || 'first_stage'
+          }
+        : {};
+      return new WorldItem({
+        ...itemConfig,
+        ...coords,
         itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'dawn_armor',
-        name: 'Armadura del Código Binario',
-        description: 'Forjada en 0s y 1s. Protege contra bugs de AI Alex, pero con el tiempo te robotiza. ¡Ten café o duerme para desrobotizarte!',
-        iconIndex: ITEM_ICONS.ARMOR,
-        x: 10 * 16,
-        y: 4 * 16,
-        sceneId: 'armor_temple',
-        itemsSheet
-      }),
-      new WorldItem({
-        id: 'dawn_sword',
-        name: 'Espada de la Recursividad',
-        description: 'Arma que se llama a sí misma recursivamente. Pulsa [ESPACIO]/[F] para abatir bugs sin causar StackOverflowError.',
-        iconIndex: ITEM_ICONS.SWORD,
-        x: 11 * 16,
-        y: 4 * 16,
-        sceneId: 'sword_temple',
-        itemsSheet
-      }),
-      new WorldItem({
-        id: 'lantern',
-        name: 'Farol de Mano',
-        description: 'Úsalo con [E] en la mochila para iluminar el doble de radio por la noche.',
-        iconIndex: ITEM_ICONS.LANTERN,
-        x: 3 * 16,
-        y: 3 * 16,
-        sceneId: 'elder_house',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'golden_apple',
-        name: 'El Microondas Little (Reliquia Divina)',
-        description: 'Reliquia divina ancestral custodiada por Aurelio. Sin despertador, recalienta código y variables en O(1), restaura toda tu salud y purga anomalías. ¡Úsala con cuidado!',
-        iconIndex: ITEM_ICONS.GOLDEN_APPLE,
-        x: 6 * 16,
-        y: 3 * 16,
-        sceneId: 'elder_house',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'bridge_pass',
-        name: 'Pase del Puente',
-        description: 'Sello oficial del Sabio. Úsalo con [E] o dáselo al guardia para abrir el puente 24h.',
-        iconIndex: ITEM_ICONS.BRIDGE_PASS,
-        x: 8 * 16,
-        y: 3 * 16,
-        sceneId: 'elder_house',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'bread',
-        name: 'Pan Campesino',
-        description: 'Pan recién horneado en la forja. Restaura energías o alegra al perro Toby.',
-        iconIndex: ITEM_ICONS.BREAD,
-        x: 8 * 16,
-        y: 3 * 16,
-        sceneId: 'blacksmith_house',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'potion',
-        name: 'Poción Herbal',
-        description: 'Elixir aromático de flores de Valleverde. Úsalo para sentirte ligero.',
-        iconIndex: ITEM_ICONS.POTION,
-        x: 3 * 16,
-        y: 3 * 16,
-        sceneId: 'herbalist_house',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'wheat',
-        name: 'Trigo Fresco',
-        description: 'Espigas tiernas. Acércate a una oveja o gallina para alimentarlas.',
-        iconIndex: ITEM_ICONS.WHEAT,
-        x: 8 * 16,
-        y: 5 * 16,
-        sceneId: 'herbalist_house',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'coffee',
-        name: 'Café Compilado',
-        description: 'Café de filtro de tu escritorio. Restaura 1 corazón y purga 40% de robotización binaria.',
-        iconIndex: ITEM_ICONS.POTION,
-        x: 8 * 16,
-        y: 4 * 16,
-        sceneId: 'player_house',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      // ==================== COFRES DE MAZMORRA - RECOMPENSAS FINALES ====================
-      // Estos cofres se encuentran al final de cada mazmorra y otorgan los Núcleos
-      // de Mazmorra necesarios para la Puerta Cuántica, además de habilidades y materiales.
-
-      new WorldItem({
-        id: 'chest_nucleo_stack',
-        name: 'Cofre del Núcleo Stack Overflow',
-        description: 'Cofre del Guardián del Stack Overflow. Contiene el Núcleo Stack y desbloquea la habilidad Corte en Cascada.',
-        iconIndex: ITEM_ICONS.DUNGEON_CORE_STACK,
-        x: 11 * 16,
-        y: 4 * 16,
-        sceneId: 'sword_temple',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'chest_nucleo_gc',
-        name: 'Cofre del Núcleo Garbage Collector',
-        description: 'Cofre del Garbage Collector Furioso. Contiene el Núcleo GC y desbloquea la habilidad Dash Asíncrono.',
-        iconIndex: ITEM_ICONS.DUNGEON_CORE_GC,
-        x: 8 * 16,
-        y: 14 * 16,
-        sceneId: 'sewers_dungeon',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'chest_nucleo_microwave',
-        name: 'Cofre del Núcleo Microondas Prototipo',
-        description: 'Cofre del Microondas Prototipo. Contiene el Núcleo Microondas y desbloquea la habilidad Barrera TypeScript.',
-        iconIndex: ITEM_ICONS.DUNGEON_CORE_MICROWAVE,
-        x: 12 * 16,
-        y: 8 * 16,
-        sceneId: 'ai_fortress_gate',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-      new WorldItem({
-        id: 'chest_magnetron',
-        name: 'Cofre del Magnetrón Cuántico',
-        description: 'Cofre oculto en La Forja. Contiene el Magnetrón necesario para forjar la Espada Overclockeada (Nivel 3) con Brom.',
-        iconIndex: ITEM_ICONS.MICROWAVE_MAGNETRON,
-        x: 20 * 16,
-        y: 8 * 16,
-        sceneId: 'forge_entry',
-        itemsSheet,
-        tilesetSheet,
-        isChest: true
-      }),
-
-      new WorldItem({
-        id: 'silicon_flower_1',
-        name: 'Flor de Silicio',
-        description: 'Flor bioluminiscente que solo florece durante la noche (22:00 PM). Llévasela a Lyra.',
-        iconIndex: ITEM_ICONS.SILICON_FLOWER,
-        x: 6 * 16,
-        y: 7 * 16,
-        sceneId: 'overworld',
-        itemsSheet,
-        nightOnly: true
-      }),
-      new WorldItem({
-        id: 'silicon_flower_2',
-        name: 'Flor de Silicio',
-        description: 'Flor bioluminiscente que solo florece durante la noche (22:00 PM). Llévasela a Lyra.',
-        iconIndex: ITEM_ICONS.SILICON_FLOWER,
-        x: 23 * 16,
-        y: 4 * 16,
-        sceneId: 'overworld',
-        itemsSheet,
-        nightOnly: true
-      }),
-      new WorldItem({
-        id: 'silicon_flower_3',
-        name: 'Flor de Silicio',
-        description: 'Flor bioluminiscente que solo florece durante la noche (22:00 PM). Llévasela a Lyra.',
-        iconIndex: ITEM_ICONS.SILICON_FLOWER,
-        x: 9 * 16,
-        y: 22 * 16,
-        sceneId: 'overworld',
-        itemsSheet,
-        nightOnly: true
-      })
-    ];
+        ...(itemConfig.isChest ? { tilesetSheet } : {})
+      });
+    });
   }
 
   start() {
@@ -4984,13 +3581,15 @@ export class RPGGame {
   }
 
   _handleUseSelectedInventoryItem() {
-    const item = this.inventory.getSelectedItem();
+    const item = this.inventory.getSelectedItem(this.player);
     if (!item) return;
 
-    const corpEquipped = this.inventory.equipSelectedExpansionItem?.(this.player);
-    if (corpEquipped) {
-      this.music?.playMenuSelect?.();
-      return;
+    if (this.isExpansionActive || this.isExpansionMode) {
+      const corpEquipped = this.inventory.equipSelectedExpansionItem?.(this.player);
+      if (corpEquipped) {
+        this.music?.playMenuSelect?.();
+        return;
+      }
     }
 
     if (item.id === 'dawn_armor') {
@@ -6072,105 +4671,6 @@ export class RPGGame {
   }
 
   /**
-   * Comprueba si algún ataque activo del jugador (espada, puño, giro o proyectil) colisiona con `targetBox`.
-   * Consume automáticamente el proyectil si impacta.
-   */
-  _didPlayerAttackHitBox(targetBox) {
-    if (!this.player || !targetBox) return false;
-
-    const swordBox = this.player.isAttacking ? this.player.getSwordHitbox() : null;
-    if (swordBox && CollisionSystem.isBoxColliding(swordBox, targetBox)) {
-      return true;
-    }
-
-    const spinCircle = this.player.getSpinHitbox();
-    if (spinCircle) {
-      const nearestX = Math.max(targetBox.x, Math.min(spinCircle.centerX, targetBox.x + targetBox.width));
-      const nearestY = Math.max(targetBox.y, Math.min(spinCircle.centerY, targetBox.y + targetBox.height));
-      if (Math.hypot(spinCircle.centerX - nearestX, spinCircle.centerY - nearestY) <= spinCircle.radius) {
-        return true;
-      }
-    }
-
-    const slashes =
-      this.player.hasSword && Array.isArray(this.player.energySlashes) ? this.player.energySlashes : [];
-    for (let i = slashes.length - 1; i >= 0; i--) {
-      const s = slashes[i];
-      if (!s || s.active === false) continue;
-      const sw = s.width || 12;
-      const sh = s.height || 12;
-      const sBox = { x: s.x - sw / 2, y: s.y - sh / 2, width: sw, height: sh };
-      if (CollisionSystem.isBoxColliding(sBox, targetBox)) {
-        slashes.splice(i, 1);
-        return true;
-      }
-    }
-
-    const logs = Array.isArray(this.player.thrownLogs) ? this.player.thrownLogs : [];
-    for (let i = logs.length - 1; i >= 0; i--) {
-      const l = logs[i];
-      if (!l) continue;
-      const lBox = { x: l.x - 4, y: l.y - 4, width: 8, height: 8 };
-      if (CollisionSystem.isBoxColliding(lBox, targetBox)) {
-        logs.splice(i, 1);
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
-   * Comprueba si el ataque activo del jugador (espada, puño, giro o proyectil) golpea a un NPC.
-   * Al recibir impacto, el NPC reacciona (`onPlayerAttack`) y al 3º golpe dispara el arresto.
-   */
-  _handlePlayerAttackOnNPCs(npcs) {
-    if (!this.player || !Array.isArray(npcs) || npcs.length === 0) return;
-
-    for (const npc of npcs) {
-      if (!npc || npc.dead || npc.isEnemy || typeof npc.onPlayerAttack !== 'function') continue;
-      if (npc.hitCooldown > 0) continue;
-
-      const npcBox = npc.worldBoundingBox || npc.getBoundingBoxAt?.(npc.x, npc.y);
-      if (!this._didPlayerAttackHitBox(npcBox)) continue;
-
-      const reacted = npc.onPlayerAttack(this);
-      if (!reacted) continue;
-
-      if (this.music) {
-        if (typeof this.music.playSFX === 'function') {
-          this.music.playSFX('hit_flesh');
-        } else if (typeof this.music.playHitHurt === 'function') {
-          this.music.playHitHurt();
-        }
-      }
-      this._shakeCamera(2.5, 0.2);
-
-      // Si el 3º golpe desencadenó el arresto, detenemos comprobaciones restantes en este frame
-      if (this.tilemap.currentSceneId === 'jail_cell') {
-        return;
-      }
-    }
-  }
-
-  /**
-   * Comprueba si el jugador ataca a un animal del pueblo (oveja, gallina, perro).
-   * Al golpearle, desata al Demonio Vengador ("El Señor de las Ovejas").
-   */
-  _handlePlayerAttackOnAnimals(animals) {
-    if (!this.player || !Array.isArray(animals) || animals.length === 0) return;
-
-    for (const animal of animals) {
-      if (!animal || animal.hitCooldown > 0 || typeof animal.onPlayerAttack !== 'function') continue;
-      const animalBox = animal.worldBoundingBox || animal.getBoundingBoxAt?.(animal.x, animal.y);
-      if (!this._didPlayerAttackHitBox(animalBox)) continue;
-
-      animal.onPlayerAttack(this);
-      return;
-    }
-  }
-
-  /**
    * Invoca al Demonio Vengador encima del animal atacado, muestra el banner de alerta y ruge.
    */
   spawnAnimalDemon(animal = null) {
@@ -6197,90 +4697,6 @@ export class RPGGame {
       this.menuSystem.showNotice('🔥 ¡HAS PROVOCADO AL SEÑOR DE LAS OVEJAS!', 3.8);
     }
     return this.activeDemon;
-  }
-
-  _checkCrystalBarrierCollisions() {
-    const scene = this.tilemap?.scenes?.[this.tilemap.currentSceneId];
-    if (!scene || !scene.layers || !scene.layers.decoration) return;
-    const deco = scene.layers.decoration;
-    const colGrid = scene.layers.collision;
-    const tileSize = this.tilemap.tileSize;
-
-    const attackBoxes = [];
-    if (this.player.isAttacking) {
-      const swordBox = this.player.getSwordHitbox();
-      if (swordBox) attackBoxes.push({ box: swordBox, fromSlash: false });
-    }
-    if (this.player.hasSword && this.player.energySlashes && this.player.energySlashes.length > 0) {
-      for (const slash of this.player.energySlashes) {
-        if (!slash.active) continue;
-        const slashW = slash.width || 16;
-        const slashH = slash.height || 16;
-        attackBoxes.push({
-          box: {
-            x: slash.x - slashW / 2,
-            y: slash.y - slashH / 2,
-            width: slashW,
-            height: slashH
-          },
-          slashRef: slash,
-          fromSlash: true
-        });
-      }
-    }
-
-    if (attackBoxes.length === 0) return;
-
-    for (const atk of attackBoxes) {
-      const minCol = Math.max(0, Math.floor(atk.box.x / tileSize));
-      const maxCol = Math.min(scene.cols - 1, Math.floor((atk.box.x + atk.box.width) / tileSize));
-      const minRow = Math.max(0, Math.floor(atk.box.y / tileSize));
-      const maxRow = Math.min(scene.rows - 1, Math.floor((atk.box.y + atk.box.height) / tileSize));
-
-      for (let r = minRow; r <= maxRow; r++) {
-        for (let c = minCol; c <= maxCol; c++) {
-          if (deco[r] && deco[r][c] === TILES.CRYSTAL_BARRIER) {
-            if (this.player.swordLevel >= 2) {
-              deco[r][c] = -1;
-              if (colGrid && colGrid[r]) colGrid[r][c] = 0;
-              if (atk.slashRef) atk.slashRef.active = false;
-
-              if (this.music && typeof this.music.playHitSound === 'function') {
-                this.music.playHitSound();
-              }
-              if (this.animeCutscenes) {
-                this._flashScreen('#a855f7', 0.2);
-                this._shakeCamera(3.0, 0.2);
-              }
-              this.worldItems.push(
-                new WorldItem({
-                  id: `silicon_ore_crystal_${c}_${r}_${Date.now()}`,
-                  name: 'Mineral de Silicio',
-                  description: 'Veta pura de silicio extraída al quebrar el cristal de la mina.',
-                  iconIndex: ITEM_ICONS.SILICON_ORE,
-                  x: c * tileSize + 2,
-                  y: r * tileSize + 2,
-                  sceneId: this.tilemap.currentSceneId,
-                  itemsSheet: this.assets.itemsSheet
-                })
-              );
-              if (this.menuSystem) {
-                this.menuSystem.showNotice('💎 ¡Barrera de cristal quebrada! +1 Mineral de Silicio', 2.5);
-              }
-            } else {
-              if (atk.slashRef) atk.slashRef.active = false;
-              if (this.menuSystem && (!this._lastBarrierNotice || Date.now() - this._lastBarrierNotice > 2500)) {
-                this._lastBarrierNotice = Date.now();
-                this.menuSystem.showNotice('🛡️ El cristal resiste tu golpe. Se requiere la [Espada de Silicio (Nivel 2)] de Brom.', 2.5);
-                if (this.music && typeof this.music.playMenuSelect === 'function') {
-                  this.music.playMenuSelect();
-                }
-              }
-            }
-          }
-        }
-      }
-    }
   }
 
   _checkEnvironmentalHazards(dt) {
@@ -7375,50 +5791,8 @@ export class RPGGame {
       }
     }
 
-    // Detección de impacto de espada contra Monolitos Rúnicos (Puzle: Templo de la Espada)
-    if (this.monolithHitCooldown > 0) {
-      this.monolithHitCooldown = Math.max(0, this.monolithHitCooldown - dt);
-    }
-    if (this.player.isAttacking && this.monolithHitCooldown <= 0) {
-      const swordBox = this.player.getSwordHitbox();
-      if (swordBox) {
-        const monolithTargets = [];
-        if (this.tilemap.currentSceneId === 'sword_temple' && this.tilemap.swordPuzzle) {
-          monolithTargets.push({
-            set: this.tilemap.swordPuzzle,
-            hit: (id) => this._handleSwordMonolithStrike(id)
-          });
-        }
-        // (FIX 2.3) Runas de bit de las Minas de la Recursión
-        if (this.tilemap.currentSceneId === 'mines_puzzle' && this.tilemap.minesPuzzle) {
-          monolithTargets.push({
-            set: this.tilemap.minesPuzzle,
-            hit: (id) => this._handleMinesMonolithStrike(id)
-          });
-        }
-        for (const target of monolithTargets) {
-          let struck = false;
-          for (const mono of Object.values(target.set.monoliths)) {
-            const monoBox = {
-              x: mono.col * this.tilemap.tileSize + 2,
-              y: mono.row * this.tilemap.tileSize - 2,
-              width: 12,
-              height: 18
-            };
-            if (CollisionSystem.isBoxColliding(swordBox, monoBox)) {
-              this.monolithHitCooldown = 0.45;
-              target.hit(mono.id);
-              struck = true;
-              break;
-            }
-          }
-          if (struck) break;
-        }
-      }
-    }
-
-    // Detección de impacto de ataques y tajos de energía contra Barreras de Cristal
-    this._checkCrystalBarrierCollisions();
+    this.combatManager.handleMonolithCollisions(dt);
+    this.combatManager.checkCrystalBarrierCollisions();
 
     // Daño ambiental por calor extremo en la Forja si falta el Blindaje Térmico
     this._checkEnvironmentalHazards(dt);
@@ -7458,365 +5832,7 @@ export class RPGGame {
       return;
     }
 
-    // Contexto de IA compartido: lista de aliados (alarmas) y turnos de ataque simultáneos
-    if (this.player.hp > 0) this._deathRegistered = false;
-    const aiContext = {
-      enemies,
-      attackers: new Set(),
-      npcs,
-      // (FIX 1.4) Una única lista de cuerpos sólidos por frame: enemigos vivos, NPCs y jugador.
-      // Enemy.update la usa como obstáculos para no atravesarse entre sí ni atravesar al jugador.
-      obstacles: [...enemies.filter((e) => !e.dead), ...npcs, this.player]
-    };
-    const difficultyScale = this._getDifficultyScale();
-
-    // Detección de agresiones del jugador (espada, puño, ataque giratorio o proyectiles) a NPCs y animales
-    this._handlePlayerAttackOnNPCs(npcs);
-    this._handlePlayerAttackOnAnimals(animals);
-
-    // Demonio Vengador: desaparece al cambiar de escena; si sigue en esta escena, persigue sin descanso
-    if (this.demonBannerTimer > 0) {
-      this.demonBannerTimer = Math.max(0, this.demonBannerTimer - dt);
-    }
-    if (this.activeDemon) {
-      if (this.activeDemon.sceneId !== this.tilemap.currentSceneId) {
-        this.activeDemon = null;
-        this.demonBannerTimer = 0;
-      } else {
-        if (this._didPlayerAttackHitBox(this.activeDemon.worldBoundingBox)) {
-          this.activeDemon.takeSwordHit(this.player, this.music);
-        }
-        this.activeDemon.update(dt, this.tilemap, this.player, this.dialogueBox.active, this.music);
-      }
-    }
-
-    // (FIX 1.2) Sensores de combate para conectar el screen shake con los eventos reales
-    const damageTakenBefore = this.player.damageTakenCount || 0;
-    const parryCountBefore = this.player.lastParryCount || 0;
-    this.player.currentSceneId = this.tilemap?.currentSceneId || 'overworld';
-    this.player.applyFilo2AoE?.(enemies, this.music);
-    this.player.applyLogExplosionDamage?.(enemies, this.music);
-
-    for (const enemy of enemies) {
-      enemy.speedScale = enemy.isBoss ? 1 : difficultyScale;
-      const wasDead = enemy.dead;
-      enemy.update(
-        dt,
-        this.tilemap,
-        this.player,
-        this.dialogueBox.active,
-        this.music,
-        aiContext
-      );
-
-      // (FIX 1.2b) Golpe final: el jugador remata al enemigo
-      if (!wasDead && enemy.dead) {
-        this._shakeCamera(2, 0.3);
-      }
-
-      // Puntos de habilidad y experiencia por enemigos derrotados
-      if (enemy.dead && !enemy.xpGranted) {
-        enemy.xpGranted = true;
-        const prevLevel = this.player.level;
-        const gained = this.player.awardKill(Boolean(enemy.isBoss), enemy.xpReward);
-        if (this.player.level > prevLevel) {
-          if (this.music && typeof this.music.playFanfare === 'function') {
-            this.music.playFanfare();
-          }
-          if (this.menuSystem) {
-            const rewards = Array.isArray(this.player.lastLevelRewards) ? this.player.lastLevelRewards : [];
-            const rewardSuffix = rewards.length > 0 ? rewards.join(' · ') : 'Salud y Energía al 100%';
-            this.menuSystem.showNotice(
-              `🎉 ¡SUBIDA DE NIVEL! ★ NIVEL ${this.player.level} ★ (${rewardSuffix})`,
-              4.2
-            );
-          }
-        } else if (gained > 0 && this.menuSystem) {
-          this.menuSystem.showNotice(`⭐ +${gained} punto${gained > 1 ? 's' : ''} de habilidad [C → Habilidades]`, 3);
-        }
-      }
-
-      // Actualizar misiones asociadas a la derrota de cada mini-jefe y jefe final
-      if (enemy.isBoss && enemy.dead && !enemy.questCompletedTriggered) {
-        enemy.questCompletedTriggered = true;
-        if (enemy.id === 'boss_garbage_collector') {
-          if (this.questLog) {
-            this.questLog.completeQuest('quest_boss_garbage', '¡Garbage Collector purgado! Dash Asíncrono desbloqueado.');
-          }
-          if (this.achievementManager) {
-            this.achievementManager.unlock('ach_boss_gc');
-          }
-          if (this.player.dungeonCores) {
-            this.player.dungeonCores.gc = true;
-          }
-          this._grantBossLoot([
-            {
-              id: 'dungeon_core_gc',
-              name: 'Núcleo del Colector',
-              description: 'Núcleo cuántico purgado de las Cloacas del Legacy. Clave para la Puerta del Núcleo.',
-              iconIndex: ITEM_ICONS.DUNGEON_CORE_GC,
-              qty: 1
-            }
-          ]);
-          if (this.menuSystem) {
-            this.menuSystem.showNotice('⚡ ¡Has obtenido el [Núcleo del Colector]!', 3.5);
-          }
-        } else if (enemy.id === 'boss_stack_overflow') {
-          if (this.questLog) {
-            this.questLog.completeQuest('quest_boss_stack', '¡Guardián del Stack Overflow abatido! Corte en Cascada desbloqueado.');
-          }
-          if (this.achievementManager) {
-            this.achievementManager.unlock('ach_boss_stack');
-          }
-          if (this.player.dungeonCores) {
-            this.player.dungeonCores.stack = true;
-          }
-          // (FIX 3) Abrir la salida norte de la arena al vencer al Guardián
-          if (this.tilemap && typeof this.tilemap.setMinesBossArenaGate === 'function') {
-            this.tilemap.setMinesBossArenaGate(true);
-          }
-          this._grantBossLoot([
-            {
-              id: 'dungeon_core_stack',
-              name: 'Núcleo del Stack',
-              description: 'Núcleo cuántico de las Minas de la Recursión. Clave para la Puerta del Núcleo.',
-              iconIndex: ITEM_ICONS.DUNGEON_CORE_STACK,
-              qty: 1
-            },
-            {
-              id: 'silicon_ore',
-              name: 'Mineral de Silicio',
-              description: 'Veta pura de silicio cristalino. Llévasela a Brom para forjar la Espada de Silicio (Nivel 2).',
-              iconIndex: ITEM_ICONS.SILICON_ORE,
-              qty: 3
-            }
-          ]);
-          if (this.menuSystem) {
-            this.menuSystem.showNotice('💎 ¡Has obtenido el [Núcleo del Stack] y 3x [Mineral de Silicio]!', 3.5);
-          }
-        } else if (enemy.id === 'boss_prototype_microwave') {
-          if (this.questLog) {
-            this.questLog.completeQuest('quest_boss_microwave', '¡Prototipo del Microondas destruido! Barrera TypeScript desbloqueada.');
-          }
-          if (this.achievementManager) {
-            this.achievementManager.unlock('ach_boss_microwave');
-          }
-          if (this.player.dungeonCores) {
-            this.player.dungeonCores.microwave = true;
-          }
-          this._grantBossLoot([
-            {
-              id: 'dungeon_core_microwave',
-              name: 'Núcleo del Microondas',
-              description: 'Núcleo cuántico de la Forja del Prototipo. Clave para la Puerta del Núcleo.',
-              iconIndex: ITEM_ICONS.DUNGEON_CORE_MICROWAVE,
-              qty: 1
-            },
-            {
-              id: 'microwave_magnetron',
-              name: 'Magnetrón Cuántico',
-              description: 'Emisor de microondas de alta frecuencia. Llévaselo a Brom para overclockear la Espada (Nivel 3).',
-              iconIndex: ITEM_ICONS.MICROWAVE_MAGNETRON,
-              qty: 1
-            }
-          ]);
-          if (this.menuSystem) {
-            this.menuSystem.showNotice('🔥 ¡Has obtenido el [Núcleo del Microondas] y el [Magnetrón Cuántico]!', 3.5);
-          }
-        } else if (enemy.id === 'boss_inakito') {
-          if (this.tilemap && typeof this.tilemap.setInakitoOfficeGate === 'function') {
-            this.tilemap.setInakitoOfficeGate(true);
-          }
-          this._grantBossLoot([
-            {
-              id: 'key_vertedero',
-              name: 'Llave de Acceso al Vertedero',
-              description: 'Tarjeta corporativa confiscada a Iñakito 2.0. Abre el ascensor al Vertedero Digital.',
-              iconIndex: ITEM_ICONS.BRIDGE_PASS,
-              qty: 1
-            }
-          ]);
-          if (this.dialogueBox) {
-            this.dialogueBox.showMessage('Iñakito 2.0 · El Becario Eterno', [
-              '¿Esto significa que no me van a renovar?'
-            ]);
-          }
-          if (this.menuSystem) {
-            this.menuSystem.showNotice('🔑 ¡Has obtenido la [Llave de Acceso al Vertedero]! Barrera norte abierta.', 4.0);
-          }
-        } else if (enemy.id === 'boss_kernel') {
-          this.kernelHackActive = false;
-          this.kernelHudFlicker = false;
-          this.bsodOverlayTimer = 0;
-          if (this.tilemap && typeof this.tilemap.setAlexCoreUnlocked === 'function') {
-            this.tilemap.setAlexCoreUnlocked(true);
-          }
-          this._grantBossLoot([
-            {
-              id: 'key_nucleo',
-              name: 'Llave de Acceso al Núcleo',
-              description: 'Credencial raíz arrancada a El Kernel. Desbloquea el acceso al Núcleo de Mister Alex IA.',
-              iconIndex: ITEM_ICONS.BRIDGE_PASS,
-              qty: 1
-            }
-          ]);
-          this._saveExpansionProgress();
-          if (this.dialogueBox) {
-            this.dialogueBox.showMessage('El Kernel', [
-              'Esto... no... era... mi... trabajo...'
-            ], [
-              {
-                label: 'Acceder al Núcleo de Alex',
-                onSelect: () => {
-                  this.dialogueBox.close();
-                  this._enterAlexCoreFromKernel();
-                }
-              },
-              {
-                label: 'Explorar un momento',
-                onSelect: () => this.dialogueBox.close()
-              }
-            ]);
-          }
-          if (this.menuSystem) {
-            this.menuSystem.showNotice('🔑 ¡Has obtenido la [Llave de Acceso al Núcleo]! Paso al Núcleo desbloqueado.', 4.5);
-          }
-        } else if (enemy.id === 'boss_alex_update') {
-          this._openAlexUpdateEndingDialogue();
-        } else if (enemy.id === 'boss_technical_debt') {
-          this.debtGlitchTimer = 0;
-          if (this.achievementManager) {
-            this.achievementManager.unlock('ach_completionist');
-          }
-          if (this.menuSystem) {
-            this.menuSystem.showNotice('🏆 ¡Trofeo desbloqueado: [Completionista]!', 5.0);
-          }
-          const debtQuote = enemy.dialogueLine || 'Esto... no... era... un... bug...';
-          if (this.dialogueBox) {
-            this.dialogueBox.showMessage('La Deuda Técnica', [
-              debtQuote
-            ], [
-              {
-                label: 'Finalizar Partida',
-                onSelect: () => {
-                  this.dialogueBox.close();
-                  const rec = this._buildBaseVictoryRecord();
-                  rec.endingHeadline = '★ COMPLETIONISTA · DEUDA TÉCNICA LIQUIDADA ★';
-                  rec.endingDescription = debtQuote;
-                  this._openScoreSubmissionModal(rec, () => {
-                    this._resetWorldToInitialState();
-                    this.menuSystem.openLeaderboardScreen('title');
-                  });
-                }
-              }
-            ]);
-          }
-        } else if (enemy.id === 'boss_final_ai_alex') {
-          if (this.questLog) {
-            this.questLog.completeQuest('quest_boss_final', '¡Mister AI Alex ha caído! El Ojete Dorado ha sido consagrado.');
-          }
-          if (this.achievementManager) {
-            this.achievementManager.unlock('ach_golden_anus');
-          }
-        }
-      }
-
-      // Soltar 2 a 5 Bytes con dispersión física al morir esbirros y drones
-      if (!enemy.isBoss && enemy.dead && !enemy.coinsDropped) {
-        enemy.coinsDropped = true;
-        const isVertederoDrop = Boolean(enemy.sceneId && enemy.sceneId.startsWith('vertedero_'));
-        const count = isVertederoDrop
-          ? Math.floor(Math.random() * 2) + 1
-          : Math.floor(Math.random() * 4) + 2;
-        for (let i = 0; i < count; i++) {
-          this.droppedCoins.push({
-            x: enemy.centerX,
-            y: enemy.centerY,
-            vx: (Math.random() - 0.5) * 60,
-            vy: -40 - Math.random() * 30,
-            groundY: enemy.centerY + (Math.random() - 0.5) * 10,
-            sceneId: enemy.sceneId,
-            life: 25,
-            value: 1,
-            kind: isVertederoDrop ? 'curriculum' : 'byte'
-          });
-        }
-        if (!isVertederoDrop && this.player.lastKillCurriculumDrop) {
-          this.droppedCoins.push({
-            x: enemy.centerX,
-            y: enemy.centerY,
-            vx: (Math.random() - 0.5) * 55,
-            vy: -48,
-            groundY: enemy.centerY + 4,
-            sceneId: enemy.sceneId,
-            life: 25,
-            value: 1,
-            kind: 'curriculum'
-          });
-        }
-      }
-
-      // Reciclaje en jefes abatidos (si aplica fuera del Vertedero)
-      if (enemy.isBoss && enemy.dead && !enemy.reciclajeChecked) {
-        enemy.reciclajeChecked = true;
-        const inVertedero = Boolean(enemy.sceneId && enemy.sceneId.startsWith('vertedero_'));
-        if (!inVertedero && this.player.lastKillCurriculumDrop) {
-          this.droppedCoins.push({
-            x: enemy.centerX,
-            y: enemy.centerY,
-            vx: (Math.random() - 0.5) * 45,
-            vy: -50,
-            groundY: enemy.centerY + 4,
-            sceneId: enemy.sceneId,
-            life: 25,
-            value: 1,
-            kind: 'curriculum'
-          });
-        }
-      }
-
-      // Soltar chatarra si es un dron enemigo abatido
-      if (!enemy.isBoss && enemy.dead && !enemy.lootDropped) {
-        enemy.lootDropped = true;
-        if (enemy.id && enemy.id.startsWith('drone')) {
-          this.worldItems.push(
-            new WorldItem({
-              id: `drone_scrap_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-              name: 'Restos de Chatarra de Dron',
-              description: 'Aleación fractal de titanio de un dron de AI Alex. Llévasela al Herrero Brom.',
-              iconIndex: ITEM_ICONS.DRONE_SCRAP,
-              x: enemy.x,
-              y: enemy.y,
-              sceneId: enemy.sceneId,
-              itemsSheet: this.assets.itemsSheet
-            })
-          );
-          if (this.menuSystem) {
-            this.menuSystem.showNotice('⚙️ ¡El dron soltó Restos de Chatarra!', 2.5);
-          }
-        }
-      }
-
-      // Comprobar derrota del Boss Final para activar epílogo y créditos finales
-      if (
-        enemy.isBoss &&
-        enemy.dead &&
-        !enemy.victoryCutsceneTriggered &&
-        enemy.id === 'boss_final_ai_alex'
-      ) {
-        enemy.victoryCutsceneTriggered = true;
-        this.gameCompleted = true;
-        this._triggerVictorySequence();
-      }
-    }
-
-    // (FIX 1.2a/c) Daño recibido y parry perfecto detectados por contadores del jugador
-    if ((this.player.damageTakenCount || 0) > damageTakenBefore) {
-      this._shakeCamera(1.5, 0.2);
-    }
-    if ((this.player.lastParryCount || 0) > parryCountBefore) {
-      this._shakeCamera(1, 0.15);
-    }
+    this.combatManager.update(dt, { enemies, npcs, animals });
 
     for (const item of items) {
       item.update(dt);
@@ -7844,6 +5860,10 @@ export class RPGGame {
       const dist = Math.hypot(this.player.centerX - coin.x, this.player.centerY - coin.y);
       if (dist <= 14) {
         if (coin.kind === 'curriculum') {
+          if (!this.isExpansionActive && !this.isExpansionMode) {
+            this.droppedCoins.splice(i, 1);
+            continue;
+          }
           this.curriculum = (this.curriculum || 0) + coin.value;
           this.curriculumFlashTimer = 0.9;
           this._saveExpansionProgress();
@@ -8021,9 +6041,9 @@ export class RPGGame {
       onGround: (gctx) => {
         // Portal Abisal en el suelo (Capa 0)
         if (this.activeAbyssalPortal && this.activeAbyssalPortal.sceneId === this.tilemap.currentSceneId) {
-          this._renderAbyssalPortal(gctx, this.activeAbyssalPortal);
+          this.hud.renderAbyssalPortal(gctx, this.activeAbyssalPortal);
         } else if (this.tilemap.currentSceneId === 'condemned_realms') {
-          this._renderAbyssalPortal(gctx, {
+          this.hud.renderAbyssalPortal(gctx, {
             x: Math.round(11.5 * 16 - 10),
             y: Math.round(15.2 * 16 - 10),
             timer: this.condemnedPortalTimer || 0
@@ -8042,6 +6062,7 @@ export class RPGGame {
           const cx = Math.round(coin.x - this.camera.renderX);
           const cy = Math.round(coin.y - this.camera.renderY);
           if (coin.kind === 'curriculum') {
+            if (!this.isExpansionActive && !this.isExpansionMode) continue;
             gctx.fillStyle = '#a855f7';
             gctx.fillRect(cx - 2, cy - 3, 5, 6);
             gctx.fillStyle = '#e9d5ff';
@@ -8079,23 +6100,18 @@ export class RPGGame {
         ) {
           const action = this._findBestInteraction();
           if (action) {
-            this._renderActionPrompt(overlayCtx, action);
+            this.hud.renderActionPrompt(overlayCtx, action);
           }
         }
       }
     });
 
     // (FIX FINAL BOSS) Filtro glitch de Fase 2/3 por encima del mundo y bajo el HUD
-    const glitchBoss = this.enemies.find(
-      (e) => e.id === 'boss_final_ai_alex' && e.sceneId === this.tilemap.currentSceneId
-    );
-    if (glitchBoss && !glitchBoss.dead && glitchBoss.phase >= 2) {
-      this._renderFinalBossGlitch(ctx, glitchBoss);
-    }
+    this.combatManager.render(ctx);
 
-    this._renderHUD(ctx);
+    this.hud.render(ctx);
     if (this.debugMode) {
-      this._renderDebugOverlay(ctx);
+      this.hud.renderDebugOverlay(ctx);
     }
     this.dialogueBox.render(ctx);
     this.inventory.render(ctx, this.player);
@@ -8406,643 +6422,6 @@ export class RPGGame {
     ctx.fillRect(x + 1, y + 1, 1, 2);
   }
 
-  _renderAbyssalPortal(ctx, portalObj = null) {
-    const portal = portalObj || this.activeAbyssalPortal;
-    if (!portal) return;
-
-    const screenX = Math.round(portal.x - this.camera.renderX);
-    const screenY = Math.round(portal.y - this.camera.renderY);
-    const t = portal.timer || 0;
-
-    ctx.save();
-    // Halo violeta en el suelo
-    const pulse = 0.5 + 0.3 * Math.sin(t * 3);
-    ctx.fillStyle = `rgba(147, 51, 234, ${0.35 * pulse})`;
-    ctx.beginPath();
-    ctx.ellipse(screenX + 10, screenY + 12, 16, 7, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Vórtice dimensional con rotación concéntrica
-    ctx.translate(screenX + 10, screenY + 10);
-
-    // Anillo rúnico exterior
-    ctx.save();
-    ctx.rotate(t * 1.8);
-    ctx.strokeStyle = '#c084fc';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 11, 6, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-
-    // Vórtice oscuro central
-    ctx.save();
-    ctx.rotate(-t * 2.5);
-    ctx.fillStyle = '#3b0764';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 8, 4.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#a855f7';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 4, 2.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.restore();
-
-    // Partículas y ceniza mística ascendente
-    ctx.save();
-    for (let i = 0; i < 5; i++) {
-      const pOffset = (t * 22 + i * 15) % 24;
-      const pX = screenX + 10 + Math.sin(t * 3 + i) * 8;
-      const pY = screenY + 14 - pOffset;
-      const alpha = Math.max(0, 1 - pOffset / 24);
-      ctx.fillStyle = i % 2 === 0 ? `rgba(233, 213, 255, ${alpha})` : `rgba(192, 132, 252, ${alpha})`;
-      ctx.fillRect(pX, pY, 1.5, 1.5);
-    }
-    ctx.restore();
-  }
-
-  _renderActionPrompt(ctx, action) {
-    try {
-      SpeechBubble.renderActionPromptBubble(
-        ctx,
-        action,
-        this.camera,
-        this.promptTimer,
-        this.player
-      );
-    } catch (err) {
-      console.warn('Advertencia no crítica al renderizar bocadillo de acción:', err);
-    }
-  }
-
-  /**
-   * Overlay de depuración [F3]: hitboxes, estado de IA, ruta de A* y datos del jugador.
-   */
-  _renderDebugOverlay(ctx) {
-    const { enemies } = this._getActiveSceneEntities();
-    const camX = this.camera.renderX;
-    const camY = this.camera.renderY;
-    ctx.save();
-    ctx.lineWidth = 1;
-    ctx.font = '5px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-
-    const pb = this.player.worldBoundingBox;
-    ctx.strokeStyle = '#22c55e';
-    ctx.strokeRect(Math.round(pb.x - camX) + 0.5, Math.round(pb.y - camY) + 0.5, pb.width, pb.height);
-
-    for (const e of enemies) {
-      if (e.dead) continue;
-      const b = e.worldBoundingBox;
-      ctx.strokeStyle = e.isBoss ? '#a855f7' : '#ef4444';
-      ctx.strokeRect(Math.round(b.x - camX) + 0.5, Math.round(b.y - camY) + 0.5, b.width, b.height);
-
-      if (e.brain && !e.isBoss) {
-        const path = e.brain.path;
-        if (path && path.length > 0) {
-          ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)';
-          ctx.beginPath();
-          ctx.moveTo(e.centerX - camX, e.centerY - camY);
-          for (const wp of path) ctx.lineTo(wp.x - camX, wp.y - camY);
-          ctx.stroke();
-        }
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
-        ctx.beginPath();
-        ctx.arc(e.centerX - camX, e.centerY - camY, e.aggroRange, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = '#fde047';
-        ctx.fillText(`${e.archetype}:${e.aiState}${e.brain.action !== 'none' ? '/' + e.brain.action : ''}`, e.centerX - camX, e.y - camY - 10);
-      }
-    }
-
-    const p = this.player;
-    const lines = [
-      `DEBUG [F3]  escena=${this.tilemap.currentSceneId}  x=${Math.round(p.x)} y=${Math.round(p.y)}`,
-      `hp=${p.hp}/${p.maxHp}  stamina=${Math.round(p.stamina)}/${p.maxStamina}  combo=${p.comboStep}  parry=${p.parryTimer.toFixed(2)}`,
-      `pts=${p.skillPoints} kills=${p.killCount}  dificultad=x${this._getDifficultyScale().toFixed(2)}  enemigos=${enemies.filter((e) => !e.dead).length}`
-    ];
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
-    ctx.fillRect(2, VIEWPORT_HEIGHT - 26, 230, 24);
-    ctx.fillStyle = '#4ade80';
-    lines.forEach((l, i) => ctx.fillText(l, 5, VIEWPORT_HEIGHT - 24 + i * 7));
-    ctx.restore();
-  }
-
-  /** (FIX FINAL BOSS) Filtro visual de "Mainframe glitcheado" para Fases 2/3. */
-  _renderFinalBossGlitch(ctx, boss) {
-    const t = performance.now();
-    ctx.save();
-    ctx.globalAlpha = boss.phase === 3 ? 0.16 : 0.10;
-    ctx.fillStyle = (Math.floor(t / 120) % 2 === 0) ? '#ef4444' : '#38bdf8';
-    ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
-
-    ctx.globalAlpha = 0.22;
-    for (let i = 0; i < 7; i++) {
-      const y = (t * 0.05 + i * 29) % VIEWPORT_HEIGHT;
-      ctx.fillStyle = i % 2 === 0 ? '#22d3ee' : '#f43f5e';
-      ctx.fillRect(0, Math.floor(y), VIEWPORT_WIDTH, 1);
-    }
-
-    ctx.globalAlpha = 0.10;
-    for (let i = 0; i < 4; i++) {
-      const x = (t * 0.04 + i * 83) % VIEWPORT_WIDTH;
-      ctx.fillStyle = '#fde047';
-      ctx.fillRect(Math.floor(x), 0, 1, VIEWPORT_HEIGHT);
-    }
-    ctx.restore();
-  }
-
-  _renderHUD(ctx) {
-    if (this.kernelHackActive) return;
-    if (this.kernelHudFlicker && Math.floor(performance.now() / 75) % 4 === 0) return;
-
-    ctx.save();
-    ctx.textBaseline = 'middle';
-
-    // (FIX M1.5) HUD móvil: tipografía 1.35x y menos información secundaria
-    const isTouchHud = Boolean(this.touchControls && this.touchControls.isTouchEnabled());
-    const hudFont = (size, bold = false) => hudFontSize(size, isTouchHud, bold);
-    // (DIRECTRIZ UI) Sombra paralela de los paneles del HUD.
-    const hudShadow = (x, y, w, h) => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
-      ctx.fillRect(x + 2, y + 2, w, h);
-    };
-
-    // =========================================================================
-    // 1. SUPERIOR DERECHA: Cápsula translúcida con reloj digital, icono solar/lunar y micro-indicador cloud (☁️)
-    // =========================================================================
-    const timeStr = this.dayNight.getFormattedTime();
-    const hour = this.dayNight.timeOfDayHours;
-    const isNightHour = hour >= 20 || hour < 6;
-    const sunMoonIcon = isNightHour ? '🌙' : '☀️';
-
-    const capsuleW = 62;
-    const capsuleH = 14;
-    const capsuleX = VIEWPORT_WIDTH - capsuleW - 6;
-    const capsuleY = 6;
-
-    hudShadow(capsuleX, capsuleY, capsuleW, capsuleH);
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
-    ctx.fillRect(capsuleX, capsuleY, capsuleW, capsuleH);
-    ctx.strokeStyle = 'rgba(229, 192, 123, 0.45)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(capsuleX + 0.5, capsuleY + 0.5, capsuleW - 1, capsuleH - 1);
-
-    // Icono solar/lunar
-    ctx.font = hudFont(6);
-    ctx.textAlign = 'left';
-    ctx.fillText(sunMoonIcon, capsuleX + 4, capsuleY + 7.5);
-
-    // Hora digital
-    ctx.font = hudFont(5.5, true);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillText(timeStr, capsuleX + 17, capsuleY + 8.5);
-    ctx.fillStyle = '#ffe599';
-    ctx.fillText(timeStr, capsuleX + 16, capsuleY + 7.5);
-
-    // Micro-indicador de guardado en la nube (☁️)
-    const syncColor = this.cloudSyncStatus === 'syncing'
-      ? '#38bdf8'
-      : (this.hasPendingCloudSync ? '#f59e0b' : '#4ade80');
-    ctx.font = hudFont(6);
-    ctx.fillStyle = syncColor;
-    ctx.textAlign = 'right';
-    ctx.fillText('☁', capsuleX + capsuleW - 4, capsuleY + 7.5);
-
-    // (EXPANSIÓN v2.0) Medidor falso de Felicidad (98%) en Valleverde 2.0
-    if (this.tilemap && this.tilemap.currentSceneId === 'valleverde_corp') {
-      const hapW = 72;
-      const hapH = 12;
-      const hapX = VIEWPORT_WIDTH - hapW - 6;
-      const hapY = capsuleY + capsuleH + 4;
-      hudShadow(hapX, hapY, hapW, hapH);
-      ctx.fillStyle = 'rgba(8, 20, 32, 0.88)';
-      ctx.fillRect(hapX, hapY, hapW, hapH);
-      ctx.strokeStyle = 'rgba(34, 211, 238, 0.75)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(hapX + 0.5, hapY + 0.5, hapW - 1, hapH - 1);
-      ctx.font = hudFont(5, true);
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#22d3ee';
-      ctx.fillText('😊 FELICIDAD 98%', hapX + 4, hapY + 6.5);
-    }
-
-    // (EXPANSIÓN v2.0) Contador de Currículums solo en el Vertedero Digital o Tienda de Rosa
-    UILayout.drawCurriculumHud(ctx, {
-      curriculum: this.curriculum || 0,
-      sceneId: this.tilemap ? this.tilemap.currentSceneId : '',
-      isRosaShopOpen: Boolean(
-        (this.rosaShop && this.rosaShop.isOpen) ||
-        this.isRosaShopOpen ||
-        (this.shopUI && this.shopUI.isOpen && this.shopUI.shopId === 'rosa')
-      ),
-      flashTimer: this.curriculumFlashTimer || 0,
-      isTouch: isTouchHud
-    });
-
-    // =========================================================================
-    // 2. SUPERIOR IZQUIERDA: Corazones (rojos o blindados metálicos) + icono 🤖% SOLO si supera el 50%
-    // =========================================================================
-    const heartSlotW = 12;
-    const heartsW = this.player.maxHp * heartSlotW + 8;
-    const heartsH = 15;
-    const heartsX = 6;
-    const heartsY = 6;
-
-    hudShadow(heartsX, heartsY, heartsW, heartsH);
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
-    ctx.fillRect(heartsX, heartsY, heartsW, heartsH);
-    ctx.strokeStyle = this.player.hasBrokenHeartCurse
-      ? 'rgba(244, 63, 94, 0.65)'
-      : !this.player.hasArmor
-        ? 'rgba(248, 113, 113, 0.45)'
-        : this.player.armorPoints > 0
-          ? 'rgba(56, 189, 248, 0.85)'
-          : 'rgba(229, 192, 123, 0.4)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(heartsX + 0.5, heartsY + 0.5, heartsW - 1, heartsH - 1);
-
-    for (let i = 0; i < this.player.maxHp; i++) {
-      const hx = heartsX + 4 + i * heartSlotW;
-      const hy = heartsY + 2;
-
-      // Penalización >80% robotización: corazón derecho bloqueado en estática/error
-      if (i === this.player.maxHp - 1 && this.player.robotizationLevel > 80) {
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
-        ctx.fillRect(hx, hy, 11, 11);
-        ctx.strokeStyle = '#ef4444';
-        ctx.strokeRect(hx + 0.5, hy + 0.5, 10, 10);
-        ctx.font = hudFont(5.5, true);
-        ctx.fillStyle = (performance.now() % 400 < 200) ? '#ef4444' : '#fca5a5';
-        ctx.textAlign = 'center';
-        ctx.fillText('ERR', hx + 5.5, hy + 6);
-        continue;
-      }
-
-      // Corazones blindados: reborde metálico azul/plata brillante
-      const isArmored = this.player.hasArmor && i < this.player.armorPoints;
-      if (isArmored) {
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(hx + 0.5, hy + 0.5, 10, 10);
-        ctx.fillStyle = '#f8fafc';
-        ctx.fillRect(hx + 1, hy + 1, 2, 1);
-        ctx.fillRect(hx + 8, hy + 1, 2, 1);
-        ctx.fillStyle = '#0284c7';
-        ctx.fillRect(hx + 1, hy + 9, 2, 1);
-        ctx.fillRect(hx + 8, hy + 9, 2, 1);
-      }
-
-      let char = '♥';
-      let color = isArmored ? '#38bdf8' : '#ff4d6d';
-
-      if (this.player.hasBrokenHeartCurse && i === this.player.maxHp - 1) {
-        if (this.player.hp >= i + 0.5) {
-          char = '💔';
-          color = '#f43f5e';
-        } else {
-          char = '🖤';
-          color = '#64748b';
-        }
-      } else if (this.player.hp >= i + 1) {
-        char = '♥';
-      } else if (this.player.hp > i) {
-        // (FIX 3.6) Cualquier fracción positiva pinta medio corazón (nunca ♡♡♡ estando vivo)
-        char = '💔';
-      } else {
-        char = '♡';
-        color = '#64748b';
-      }
-
-      ctx.font = hudFont(7.5);
-      ctx.fillStyle = color;
-      ctx.textAlign = 'center';
-      ctx.fillText(char, hx + 5.5, hy + 6);
-    }
-
-    // Pequeño icono del arma (y escudo) equipada junto a la barra de vida
-    const corpWeapon = this.player.equippedWeapon && this.player.equippedWeapon !== 'default'
-      ? (this.expansionEquipment?.[this.player.equippedWeapon] || this.player.getEquippedWeaponInfo?.())
-      : null;
-    const corpShield = this.player.equippedShield
-      ? (this.expansionEquipment?.[this.player.equippedShield] || this.player.getEquippedShieldInfo?.())
-      : null;
-    const showWeaponBadge = Boolean(corpWeapon || corpShield || this.player.hasSword);
-    const wepBadgeW = showWeaponBadge ? 16 : 0;
-    const wepBadgeOffset = showWeaponBadge ? wepBadgeW + 4 : 0;
-
-    if (showWeaponBadge) {
-      const wepBadgeX = heartsX + heartsW + 4;
-      const wepBadgeY = heartsY;
-      const wepGlyphMap = {
-        boligrafo: '🖊',
-        grapadora: '📎',
-        destornillador: '🪛'
-      };
-      const wepGlyph = corpWeapon ? (wepGlyphMap[corpWeapon.id] || '⚔') : '⚔';
-      const wepAccent = corpWeapon?.edgeColor || corpWeapon?.bladeColor || '#fbbf24';
-
-      hudShadow(wepBadgeX, wepBadgeY, wepBadgeW, heartsH);
-      ctx.fillStyle = 'rgba(13, 17, 23, 0.86)';
-      ctx.fillRect(wepBadgeX, wepBadgeY, wepBadgeW, heartsH);
-      ctx.strokeStyle = wepAccent;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(wepBadgeX + 0.5, wepBadgeY + 0.5, wepBadgeW - 1, heartsH - 1);
-
-      ctx.font = hudFont(6.5, true);
-      ctx.fillStyle = wepAccent;
-      ctx.textAlign = 'center';
-      ctx.fillText(wepGlyph, wepBadgeX + wepBadgeW / 2, wepBadgeY + 7.5);
-
-      if (corpShield) {
-        ctx.fillStyle = corpShield.id === 'escudo_becario' ? '#60a5fa' : '#d97706';
-        ctx.fillRect(wepBadgeX + wepBadgeW - 4, wepBadgeY + 1, 3, 3);
-      }
-    }
-
-    // Icono 🤖% junto a los corazones ÚNICAMENTE si la robotización supera el 50%
-    // (FIX M1.5) En móvil se oculta el badge de robotización (información secundaria)
-    const showRobotBadge = !isTouchHud && this.player.robotizationLevel > 50;
-    if (showRobotBadge) {
-      const robVal = Math.round(this.player.robotizationLevel);
-      const robBadgeX = heartsX + heartsW + 4 + wepBadgeOffset;
-      const robBadgeY = heartsY;
-      const robBadgeW = 34;
-      const robBadgeH = 15;
-      const isCrit = robVal > 80;
-
-      hudShadow(robBadgeX, robBadgeY, robBadgeW, robBadgeH);
-      ctx.fillStyle = 'rgba(13, 17, 23, 0.86)';
-      ctx.fillRect(robBadgeX, robBadgeY, robBadgeW, robBadgeH);
-      ctx.strokeStyle = isCrit ? '#ef4444' : '#f59e0b';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(robBadgeX + 0.5, robBadgeY + 0.5, robBadgeW - 1, robBadgeH - 1);
-
-      ctx.font = hudFont(5, true);
-      ctx.fillStyle = isCrit ? '#f87171' : '#fde047';
-      ctx.textAlign = 'center';
-      ctx.fillText(`🤖${robVal}%`, robBadgeX + robBadgeW / 2, robBadgeY + 7.5);
-    }
-
-    // Barra de stamina bajo los corazones (se alarga al aumentar maxStamina en Nv. 14 o Tienda de Rosa)
-    if (this.player.hasSword && (this.player.stamina < this.player.maxStamina - 0.5 || this.player.comboStep > 0)) {
-      const staminaBonusPx = Math.max(0, Math.round((this.player.maxStamina - 100) * 0.45));
-      const sw = heartsW + staminaBonusPx;
-      const sy = heartsY + heartsH + 2;
-      hudShadow(heartsX, sy, sw, 4);
-      ctx.fillStyle = 'rgba(14, 18, 30, 0.75)';
-      ctx.fillRect(heartsX, sy, sw, 4);
-      const pct = Math.max(0, Math.min(1, this.player.stamina / this.player.maxStamina));
-      ctx.fillStyle = pct < 0.25 ? '#ef4444' : '#38bdf8';
-      ctx.fillRect(heartsX + 0.5, sy + 0.5, (sw - 1) * pct, 3);
-      if (this.player.comboStep > 0) {
-        ctx.fillStyle = '#fde047';
-        for (let i = 0; i < this.player.comboStep; i++) {
-          ctx.fillRect(heartsX + i * 5, sy + 5, 4, 2);
-        }
-      }
-    }
-
-    // (FIX FINAL BOSS) Sobrescritura del Update Final: tapa corazones/stamina 5 s.
-    const hiddenBoss = this.enemies.find(
-      (e) => e.id === 'boss_final_ai_alex' && e.sceneId === this.tilemap.currentSceneId && !e.dead
-    );
-    if (hiddenBoss && hiddenBoss.phase === 3 && hiddenBoss._hudHiddenUntil > performance.now()) {
-      ctx.fillStyle = 'rgba(3, 5, 10, 0.97)';
-      ctx.fillRect(0, 0, heartsX + heartsW + 4, heartsY + heartsH + 16);
-      ctx.font = hudFont(5.5, true);
-      ctx.fillStyle = (performance.now() % 300 < 150) ? '#ef4444' : '#fca5a5';
-      ctx.textAlign = 'left';
-      ctx.fillText('SOBRESCRITO', heartsX + 3, heartsY + 9);
-    }
-
-    // =========================================================================
-    // 2. SUPERIOR IZQUIERDA: Indicador de Monedas / Bytes (SIEMPRE visible)
-    // (FIX 1.6) Antes vivía dentro de `if (comboStep > 0)`, así que solo aparecía
-    // durante un combo. Ahora se dibuja siempre, con o sin espada, stamina o combo.
-    // =========================================================================
-    const coinX = showRobotBadge
-      ? heartsX + heartsW + 4 + wepBadgeOffset + 34 + 4   // desplazado a la derecha del icono 🤖%
-      : heartsX + heartsW + 4 + wepBadgeOffset;
-    const coinY = heartsY;
-    const coinW = 50;
-    const coinH = 15;
-    hudShadow(coinX, coinY, coinW, coinH);
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
-    ctx.fillRect(coinX, coinY, coinW, coinH);
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(coinX + 0.5, coinY + 0.5, coinW - 1, coinH - 1);
-    ctx.font = hudFont(5, true);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2 + 1, coinY + 8.5);
-    ctx.fillStyle = '#fde047';
-    ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
-
-    // Cápsula compacta de Nivel y XP (muestra barra de XP hasta Nv. 14 y "NIVEL MÁXIMO" en Nv. 15)
-    const lvlW = 54;
-    const lvlH = 15;
-    const inlineLvlX = coinX + coinW + 4;
-    const fitsInline = inlineLvlX + lvlW <= capsuleX - 4;
-    const lvlX = fitsInline ? inlineLvlX : coinX;
-    const lvlY = fitsInline ? coinY : coinY + coinH + 2;
-
-    hudShadow(lvlX, lvlY, lvlW, lvlH);
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
-    ctx.fillRect(lvlX, lvlY, lvlW, lvlH);
-    ctx.strokeStyle = this.player.isMaxLevel ? '#fbbf24' : 'rgba(250, 204, 21, 0.55)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(lvlX + 0.5, lvlY + 0.5, lvlW - 1, lvlH - 1);
-
-    ctx.textAlign = 'center';
-    if (this.player.isMaxLevel) {
-      ctx.font = hudFont(4.4, true);
-      ctx.fillStyle = '#fde047';
-      ctx.fillText('NIVEL MÁXIMO', lvlX + lvlW / 2, lvlY + 7.5);
-    } else {
-      const xpPct = Math.max(0, Math.min(1, (this.player.getXpProgressPercent?.() || 0) / 100));
-      ctx.font = hudFont(4.6, true);
-      ctx.fillStyle = '#fef08a';
-      ctx.fillText(`NV. ${this.player.level}/15`, lvlX + lvlW / 2, lvlY + 5.5);
-
-      const xpBarX = lvlX + 4;
-      const xpBarY = lvlY + 10;
-      const xpBarW = lvlW - 8;
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(xpBarX, xpBarY, xpBarW, 2.5);
-      if (xpPct > 0) {
-        ctx.fillStyle = '#f59e0b';
-        ctx.fillRect(xpBarX, xpBarY, Math.max(1, Math.round(xpBarW * xpPct)), 2.5);
-      }
-    }
-
-    if (this.player.parryFlashTimer > 0) {
-      SpeechBubble.renderCombatBanner(ctx, '¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, isTouchHud ? 18 : 28);
-    }
-
-    // 3. Indicador de Calabozo Municipal (únicamente activo si está cumpliendo condena)
-    if (this.isJailedForever || this.jailRemainingSeconds > 0) {
-      const jailStr = this.isJailedForever
-        ? '⛓ CALABOZO · CADENA PERPETUA'
-        : `⛓ CONDENA: ${String(Math.floor(this.jailRemainingSeconds / 60)).padStart(2, '0')}:${String(Math.floor(this.jailRemainingSeconds % 60)).padStart(2, '0')}`;
-      const jw = Math.ceil(ctx.measureText(jailStr).width) + 12;
-      const jx = Math.round((VIEWPORT_WIDTH - jw) / 2);
-      const jy = 6;
-
-      ctx.fillStyle = this.isJailedForever ? 'rgba(90, 10, 10, 0.95)' : 'rgba(140, 25, 25, 0.9)';
-      ctx.fillRect(jx, jy, jw, 13);
-      ctx.strokeStyle = this.isJailedForever ? '#ff4d6d' : '#ffd166';
-      ctx.strokeRect(jx + 0.5, jy + 0.5, jw - 1, 12);
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.fillText(jailStr, jx + jw / 2, jy + 6.5);
-    }
-
-    // 4. Barra de Vida de Amenaza Principal en la parte inferior central
-    const curScene = this.tilemap.currentSceneId;
-    const activeBoss = this.enemies.find(
-      (e) => e.isBoss && e.sceneId === curScene && (!e.dead || e.defeatBannerTimer > 0)
-    );
-
-    if (activeBoss && (activeBoss.activeCombat || activeBoss.dead)) {
-      const barW = 300;
-      const barH = 14;
-      const barX = Math.round((VIEWPORT_WIDTH - barW) / 2);
-      // En táctil los botones ocupan la esquina inferior derecha; en desktop deja hueco a la Hotbar.
-      const barY = isTouchHud ? 30 : VIEWPORT_HEIGHT - 44;
-
-      hudShadow(barX, barY - 7, barW, barH + 7);
-      ctx.fillStyle = 'rgba(10, 14, 24, 0.88)';
-      ctx.fillRect(barX, barY - 7, barW, barH + 7);
-      ctx.strokeStyle = activeBoss.dead ? '#10b981' : '#ffd885';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(barX + 0.5, barY - 6.5, barW - 1, barH + 6);
-
-      ctx.font = hudFont(5.5, true);
-      ctx.fillStyle = activeBoss.themeColor || '#38bdf8';
-      ctx.textAlign = 'left';
-      ctx.fillText(activeBoss.name.toUpperCase(), barX + 5, barY - 2);
-
-      ctx.font = hudFont(5.5);
-      ctx.textAlign = 'right';
-      if (activeBoss.dead) {
-        ctx.fillStyle = '#fde047';
-        ctx.fillText(`¡VICTORIA! HABILIDAD: ${activeBoss.rewardName.toUpperCase()}`, barX + barW - 5, barY - 2);
-      } else {
-        ctx.fillStyle = '#ffffff';
-        const rawStatus = activeBoss.statusText || '';
-        const shortStatus = rawStatus.length > 22 ? `${rawStatus.slice(0, 21)}…` : rawStatus;
-        const statusAdd = shortStatus ? ` ${shortStatus}` : '';
-        ctx.fillText(`${Math.ceil(activeBoss.hp)} / ${activeBoss.maxHp} HP${statusAdd}`, barX + barW - 5, barY - 2);
-      }
-
-      const innerW = barW - 8;
-      const innerH = 5;
-      const innerX = barX + 4;
-      const innerY = barY + 4;
-
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(innerX, innerY, innerW, innerH);
-
-      const fillPct = Math.max(0, Math.min(1, activeBoss.hp / activeBoss.maxHp));
-      const fillW = Math.round(innerW * fillPct);
-      if (fillW > 0) {
-        const grad = ctx.createLinearGradient(innerX, 0, innerX + fillW, 0);
-        grad.addColorStop(0, activeBoss.themeColor || '#38bdf8');
-        grad.addColorStop(1, '#ffffff');
-        ctx.fillStyle = grad;
-        ctx.fillRect(innerX, innerY, fillW, innerH);
-      }
-    }
-
-    // =========================================================================
-    // 5. INFERIOR CENTRAL: Hotbar visual de 5 slots [1-5] de 16×16 px
-    // =========================================================================
-    this._renderHotbar(ctx, hudFont, hudShadow);
-
-    ctx.restore();
-  }
-
-  _renderHotbar(ctx, hudFont, hudShadow) {
-    this.syncHotbarWithInventory();
-    const hotbar = this._ensurePlayerHotbar();
-    const flashTimers = Array.isArray(this.player?.hotbarFlashTimers)
-      ? this.player.hotbarFlashTimers
-      : [0, 0, 0, 0, 0];
-    const slotSize = 16;
-    const gap = 3;
-    const totalW = 5 * slotSize + 4 * gap;
-    const startX = Math.round((VIEWPORT_WIDTH - totalW) / 2);
-    const startY = VIEWPORT_HEIGHT - 20;
-
-    for (let i = 0; i < 5; i++) {
-      const sx = startX + i * (slotSize + gap);
-      const sy = startY;
-      const flash = Math.max(0, flashTimers[i] || 0);
-      const isFlashing = flash > 0;
-      const scale = isFlashing ? 1.05 : 1.0;
-
-      const itemId = hotbar[i];
-      const item = itemId && this.inventory
-        ? this.inventory.items.find((it) => it && it.id === itemId && (it.qty || 1) > 0)
-        : null;
-
-      ctx.save();
-      ctx.translate(sx + slotSize * 0.5, sy + slotSize * 0.5);
-      ctx.scale(scale, scale);
-      ctx.translate(-slotSize * 0.5, -slotSize * 0.5);
-
-      hudShadow(0, 0, slotSize, slotSize);
-
-      // Fondo oscuro semitransparente
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
-      ctx.fillRect(0, 0, slotSize, slotSize);
-
-      if (!item) {
-        // Hueco oscuro cuando está vacío
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.65)';
-        ctx.fillRect(2, 2, slotSize - 4, slotSize - 4);
-      }
-
-      // Borde dorado fino (resplandor blanco/dorado al pulsar 1-5)
-      ctx.strokeStyle = isFlashing ? '#fef08a' : '#fbbf24';
-      ctx.lineWidth = isFlashing ? 1.5 : 1;
-      ctx.strokeRect(0.5, 0.5, slotSize - 1, slotSize - 1);
-
-      if (item) {
-        if (this.inventory && this.inventory.itemsSheet) {
-          UILayout.drawItemIcon(ctx, this.inventory.itemsSheet, item.iconIndex, 2, 2, 12);
-        } else {
-          ctx.font = hudFont(6, true);
-          ctx.fillStyle = '#38bdf8';
-          ctx.textAlign = 'center';
-          ctx.fillText('+', 8, 9);
-        }
-        const qty = item.qty || 1;
-        if (qty > 1) {
-          ctx.font = hudFont(3.6, true);
-          ctx.fillStyle = '#fef08a';
-          ctx.textAlign = 'right';
-          ctx.fillText(String(qty), slotSize - 1.5, slotSize - 3);
-        }
-      }
-
-      // Número 1-5 en pequeño en la esquina superior izquierda
-      ctx.font = hudFont(3.8, true);
-      ctx.textAlign = 'left';
-      ctx.fillStyle = isFlashing ? '#ffffff' : '#fde68a';
-      ctx.fillText(String(i + 1), 1.5, 3.5);
-
-      ctx.restore();
-    }
-  }
 }
 
 /**

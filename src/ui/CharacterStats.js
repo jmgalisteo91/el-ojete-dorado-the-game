@@ -11,9 +11,10 @@ import { EXPANSION_SKILLS } from '../expansion/ExpansionData.js?v=8';
 import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
 
 export class CharacterStats {
-  constructor(viewportWidth = 320, viewportHeight = 180) {
+  constructor(viewportWidth = 320, viewportHeight = 180, game = null) {
     this.viewportWidth = viewportWidth;
     this.viewportHeight = viewportHeight;
+    this.game = game;
     this.isOpen = false;
     this.activeTab = 'stats'; // 'stats' | 'achievements' | 'skills'
     this.skillCursor = 0;
@@ -28,11 +29,25 @@ export class CharacterStats {
     this._popStart = null;
   }
 
+  _isExpansionActive(player = null, explicitFlag = null) {
+    if (typeof explicitFlag === 'boolean') return explicitFlag;
+    if (this.isExpansionActive !== undefined) return Boolean(this.isExpansionActive);
+    if (this.game) return Boolean(this.game.isExpansionActive || this.game.isExpansionMode);
+    if (player?.isExpansionActive !== undefined) return Boolean(player.isExpansionActive);
+    if (player?.game) return Boolean(player.game.isExpansionActive || player.game.isExpansionMode);
+    const wg = typeof window !== 'undefined' ? window.game : globalThis?.game;
+    return Boolean(wg && (wg.isExpansionActive || wg.isExpansionMode));
+  }
+
   /**
-   * Devuelve las habilidades visibles para el jugador: base + expansión,
-   * ocultando las mejoras Nivel II mientras no se posea la habilidad base.
+   * Devuelve las habilidades visibles para el jugador:
+   * - En juego base: solo las 4 habilidades originales (SKILL_DEFS).
+   * - En expansión: base + expansión, ocultando Nivel II sin su habilidad base.
    */
-  getVisibleSkills(player = null) {
+  getVisibleSkills(player = null, explicitExpansionActive = null) {
+    if (!this._isExpansionActive(player, explicitExpansionActive)) {
+      return [...SKILL_DEFS];
+    }
     const owned = player?.skills || {};
     const all = [...SKILL_DEFS, ...Object.values(EXPANSION_SKILLS)];
     return all.filter((def) => !def.requires || Boolean(owned[def.requires]));

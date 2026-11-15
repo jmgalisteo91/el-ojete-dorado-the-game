@@ -7,3 +7,5 @@ export const SKILL_DEFS = [
   { key: 'reflejo', name: 'Reflejos de Callback', cost: 1, desc: 'Ventana de parry de la Barrera [Q]: 0.25s → 0.45s.' },
   { key: 'log', name: 'console.log() [R]', cost: 2, desc: 'Lanza un log que daña, revela y aturde al enemigo.' }
 ];
+
+export const BASE_SKILL_KEYS = SKILL_DEFS.map((s) => s.key);

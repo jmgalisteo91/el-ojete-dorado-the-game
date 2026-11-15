@@ -372,15 +372,22 @@ export class WorldMap {
    */
   _generateRealMapTexture(explicitTilemap = null) {
     const tilemap = this._resolveTilemap(explicitTilemap);
+    const expansionState = Boolean(
+      tilemap?.expansionLoaded ||
+      globalThis?.window?.game?.isExpansionActive ||
+      globalThis?.window?.game?.isExpansionMode
+    );
     if (
       this._realMapBuilt &&
       this._mapCanvas &&
+      this._cachedExpansionLoaded === expansionState &&
       (!explicitTilemap || this._sourceTilemap === tilemap)
     ) {
       return this._mapCanvas;
     }
 
     this._sourceTilemap = tilemap;
+    this._cachedExpansionLoaded = expansionState;
     this._realMapBuilt = true;
 
     const canvas = this._createOffscreenCanvas(ATLAS_WIDTH, ATLAS_HEIGHT);
@@ -455,10 +462,16 @@ export class WorldMap {
     offCtx.restore();
 
     // 4. Recorrer todas las escenas de `tilemap.scenes` y pintar tiles reales (`ground` + `decoration`)
+    const expansionActive = Boolean(
+      tilemap?.expansionLoaded ||
+      globalThis?.window?.game?.isExpansionActive ||
+      globalThis?.window?.game?.isExpansionMode
+    );
     const scenes = tilemap?.scenes || {};
     for (const [sceneId, scene] of Object.entries(scenes)) {
       const slot = ATLAS_SCENE_SLOTS[sceneId];
       if (!slot || !scene?.layers) continue;
+      if (slot.zone === 'corp' && !expansionActive) continue;
 
       const groundLayer = scene.layers.ground;
       const decoLayer = scene.layers.decoration;
@@ -758,7 +771,14 @@ export class WorldMap {
    * Cubre con nubes y niebla oscura cualquier zona/mazmorra aún no visitada.
    */
   _drawUnexploredClouds(ctx, explored, tf, t) {
-    const fogEntries = Object.entries(ATLAS_SCENE_SLOTS).filter(([, s]) => !explored.has(s.zone));
+    const expansionActive = Boolean(
+      this._cachedExpansionLoaded ||
+      globalThis?.window?.game?.isExpansionActive ||
+      globalThis?.window?.game?.isExpansionMode
+    );
+    const fogEntries = Object.entries(ATLAS_SCENE_SLOTS).filter(
+      ([, s]) => (s.zone !== 'corp' || expansionActive) && !explored.has(s.zone)
+    );
     if (fogEntries.length === 0) return;
 
     ctx.save();
