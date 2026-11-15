@@ -174,30 +174,6 @@ export class SceneTransitionController {
         }
       }
     }
-
-    // Animación continua del Portal Abisal (se activa pulsando [E], sin bucle de auto-absorción)
-    g.condemnedPortalTimer = (g.condemnedPortalTimer || 0) + dt;
-    if (g.activeAbyssalPortal) {
-      g.activeAbyssalPortal.timer = (g.activeAbyssalPortal.timer || 0) + dt;
-    }
-
-    const allEntities = [g.player, ...npcs, ...animals];
-    for (const npc of npcs) {
-      const isTalking =
-        g.dialogueBox.active && g.dialogueBox.currentNPC === npc;
-      const threat = isTalking ? null : g._findNPCThreat(npc, enemies);
-      npc.update(dt, g.tilemap, allEntities, isTalking, g.player, threat);
-    }
-    for (const animal of animals) {
-      animal.update(
-        dt,
-        g.tilemap,
-        allEntities,
-        g.dialogueBox.active,
-        g.player,
-        g.music
-      );
-    }
   }
 
   executeStageTransition(door) {

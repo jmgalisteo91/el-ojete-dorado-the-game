@@ -5766,6 +5766,16 @@ export class RPGGame {
       return;
     }
 
+    // Failsafe post-cinemática: evitar que coordenadas NaN/undefined congelen el RenderPipeline.
+    if (this.player && (!Number.isFinite(this.player.x) || !Number.isFinite(this.player.y))) {
+      this.player.x = 224;
+      this.player.y = 192;
+    }
+    if (this.camera && (!Number.isFinite(this.camera.x) || !Number.isFinite(this.camera.y))) {
+      this.camera.resetCinematic();
+      this.camera.snapTo(this.player);
+    }
+
     // (FIX SHOP) El modal de tienda pausa el mundo y captura toda la entrada.
     if (this.shopUI && this.shopUI.isOpen) {
       this.shopUI.update(dt);

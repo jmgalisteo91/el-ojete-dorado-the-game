@@ -598,10 +598,32 @@ export class CinematicDirector {
   }
 
   _finalize() {
+    this.isActive = false;
     this.ending = false;
     this.endingTimer = 0;
-    this.isActive = false;
     this.dialogueActive = false;
+    this.dialogue = null;
+    if (this.game?.menuSystem) {
+      this.game.menuSystem.state = 'none';
+    }
+    try {
+      this.game?.dialogueBox?.close?.();
+    } catch {
+      /* diálogo opcional */
+    }
+    try {
+      this.game?.input?.clear?.();
+    } catch {
+      /* input opcional */
+    }
+    if (this.game?.player) {
+      if (this.game.player.isDead) this.game.player.isDead = false;
+      if (this.game.player.isSleeping) this.game.player.isSleeping = false;
+      if (!Number.isFinite(this.game.player.x) || !Number.isFinite(this.game.player.y)) {
+        this.game.player.x = 224;
+        this.game.player.y = 192;
+      }
+    }
     if (this.previousMusicMode) {
       try {
         this.game?.music?.setMode?.(this.previousMusicMode);
@@ -623,6 +645,7 @@ export class CinematicDirector {
   _applyHorizontalInput(input) {
     if (!input || typeof input.consumeKey !== 'function') return;
     if (input.consumeKey('Escape')) {
+      input.clear?.();
       this._finish();
       return;
     }

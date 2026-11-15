@@ -334,16 +334,20 @@ export class InputHandler {
     this.keysDown.delete(event.code);
   }
 
-  _onBlur() {
+  clear() {
     this.keysDown.clear();
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
     this.isPointerDown = false;
     this.activePointers.clear();
-    // (FIX M1.1/M1.8) Al perder el foco no debe quedar un joystick moviendo al jugador
+    // (FIX M1.1/M1.8) Al limpiar/perder el foco no debe quedar un joystick moviendo al jugador
     this.resetTouchState();
     if (this.touchControls) this.touchControls.resetAll();
+  }
+
+  _onBlur() {
+    this.clear();
   }
 
   getMovementVector() {

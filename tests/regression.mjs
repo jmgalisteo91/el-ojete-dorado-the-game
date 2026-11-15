@@ -36,6 +36,7 @@ import { DialogueBox } from '../src/ui/DialogueBox.js';
 import { CollisionSystem } from '../src/physics/CollisionSystem.js';
 import { Camera2D } from '../src/core/Camera2D.js';
 import { SceneTransitionController } from '../src/core/SceneTransitionController.js';
+import { CinematicDirector } from '../src/ui/CinematicDirector.js';
 import { NPC, getBromForgeChoices } from '../src/entities/NPC.js';
 import { TILES } from '../src/graphics/SpriteSheetGenerator.js';
 import { DayNightCycle } from '../src/world/DayNightCycle.js';
@@ -2745,6 +2746,84 @@ test('Spawn fijo de templos: usa spawnX/spawnY y no el borde genérico', () => {
   assert.equal(spawn.x, 168, 'Debe respetar la X del vano del templo');
   assert.equal(spawn.y, 232, 'Debe respetar la Y del vano del templo');
   assert.equal(spawn.facing, 'up', 'Debe mirar hacia el interior');
+});
+
+test('SceneTransitionController.checkEdgeTransitions no lanza ReferenceError al salir de cinemática', () => {
+  let transitioned = false;
+  const fake = {
+    animeCutscenes: { isActive: false },
+    dialogueBox: { active: false },
+    inventory: { isOpen: false },
+    characterStats: { isOpen: false },
+    transitionCooldown: 0,
+    tilemap: {
+      currentSceneId: 'overworld',
+      tileSize: 16,
+      findNearbyDoor: () => null
+    },
+    player: { x: 224, y: 192, centerX: 232, centerY: 200 },
+    _executeInteraction: () => {
+      transitioned = true;
+    }
+  };
+  const controller = new SceneTransitionController(fake);
+  controller.checkEdgeTransitions();
+  assert.equal(transitioned, false);
+});
+
+test('CinematicDirector._finalize limpia estado, menú, diálogo, input y jugador tras Escape', () => {
+  let dialogueClosed = false;
+  let inputCleared = false;
+  let cameraReset = false;
+  let cameraSnapped = false;
+  let completed = false;
+  const fakeGame = {
+    menuSystem: { state: 'cutscene' },
+    dialogueBox: {
+      active: true,
+      close: () => {
+        dialogueClosed = true;
+        fakeGame.dialogueBox.active = false;
+      }
+    },
+    input: {
+      consumeKey: (k) => k === 'Escape',
+      clear: () => {
+        inputCleared = true;
+      }
+    },
+    player: { x: Number.NaN, y: undefined, isDead: true, isSleeping: true },
+    camera: {
+      resetCinematic: () => {
+        cameraReset = true;
+      },
+      snapTo: () => {
+        cameraSnapped = true;
+      }
+    }
+  };
+  const director = new CinematicDirector(fakeGame);
+  director.isActive = true;
+  director.onComplete = () => {
+    completed = true;
+  };
+  director._applyHorizontalInput(fakeGame.input);
+  assert.equal(director.ending, true, 'Escape debe iniciar el cierre de cinemática');
+  assert.equal(inputCleared, true, 'Escape debe limpiar el estado de input');
+
+  inputCleared = false;
+  director._finalize();
+  assert.equal(director.isActive, false, 'isActive debe quedar en false');
+  assert.equal(fakeGame.menuSystem.state, 'none', 'menuSystem.state debe volver a none');
+  assert.equal(dialogueClosed, true, 'dialogueBox.close debe ejecutarse');
+  assert.equal(inputCleared, true, 'input.clear debe ejecutarse en _finalize');
+  assert.equal(fakeGame.player.isDead, false, 'player.isDead debe resetearse');
+  assert.equal(fakeGame.player.isSleeping, false, 'player.isSleeping debe resetearse');
+  assert.equal(fakeGame.player.x, 224, 'player.x NaN debe recuperarse a 224');
+  assert.equal(fakeGame.player.y, 192, 'player.y undefined debe recuperarse a 192');
+  assert.equal(cameraReset, true);
+  assert.equal(cameraSnapped, true);
+  assert.equal(completed, true);
 });
 
 await Promise.all(asyncQueue);
