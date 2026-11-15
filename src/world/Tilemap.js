@@ -2,6 +2,7 @@ import { TILES, ATLAS_SCALE } from '../graphics/SpriteSheetGenerator.js?v=8';
 import { SpeechBubble } from '../ui/SpeechBubble.js?v=8';
 import { buildValleverdeScenes } from './scenes/ValleverdeScenes.js?v=8';
 import { buildDungeonScenes, TEMPLE_TILES } from './scenes/DungeonScenes.js?v=8';
+import { getEnvironmentTheme } from '../data/EnvironmentData.js';
 
 /**
  * Elementos estéticos y decorativos atravesables por jugador, NPCs y animales:
@@ -13,8 +14,9 @@ const PASSABLE_AESTHETIC_TILES = new Set([
   TILES.FENCE_H, TILES.FENCE_POST, TILES.CRATE, TILES.BUSH, TILES.TABLE, TILES.ANVIL,
   TILES.LAMPPOST, TILES.WELL,
   TILES.BOOKSHELF, TILES.BED, TILES.FIREPLACE,
-  TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE,
+  TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE, TILES.ROOF_GREEN,
   TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM,
+  TILES.BARREL, TILES.FLOWER_POT, TILES.SANDBAG, TILES.WALL_TORCH,
   TILES.CORP_PLANT, TILES.CORP_EXTINGUISHER, TILES.CORP_ALEX_POSTER,
   TILES.INAKITO_PAPERS
 ]);
@@ -24,7 +26,7 @@ const PASSABLE_AESTHETIC_TILES = new Set([
  * de las entidades (copas de árboles, tejados y toldos).
  */
 const OVERHEAD_TILE_IDS = new Set([
-  TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE,
+  TILES.TREE_TOP, TILES.ROOF_RED, TILES.ROOF_BLUE, TILES.ROOF_GREEN,
   TILES.CHIMNEY, TILES.STALACTITE, TILES.ROCK, TILES.BEAM,
   TILES.CORP_PLANT, TILES.CORP_EXTINGUISHER, TILES.CORP_ALEX_POSTER,
   TILES.INAKITO_PAPERS
@@ -401,7 +403,9 @@ export class Tilemap {
     this.floorDecals = scene.floorDecals || [];
     this.houseShadows = scene.houseShadows || [];
     this.caveProps = scene.caveProps || [];
+    this.biomeProps = scene.biomeProps || [];
     this.chimneys = scene.chimneys || [];
+    this.clotheslines = scene.clotheslines || [];
 
     // Luces de ventanas (se encienden al anochecer): se calculan una vez por escena y se cachean
     if (!scene.windowLights) {
@@ -416,12 +420,12 @@ export class Tilemap {
     const deco = scene.layers.decoration;
     for (let r = 0; r < scene.rows; r++) {
       for (let c = 0; c < scene.cols; c++) {
-        if (deco[r][c] === TILES.WALL_WINDOW) {
+        if (deco[r][c] === TILES.WALL_WINDOW || deco[r][c] === TILES.WALL_WINDOW_FLOWER) {
           lights.push({
             x: c * this.tileSize + 8,
-            y: r * this.tileSize + 9,
-            radius: 26,
-            intensity: 0.8,
+            y: r * this.tileSize + 8,
+            radius: 28,
+            intensity: 0.88,
             glow: 'amber',
             kind: 'window'
           });
@@ -1767,7 +1771,7 @@ export class Tilemap {
    * (Río Alba). Solo se dibujan aquí las decoraciones planas (flores, alfombras, felpudos...).
    * Los obstáculos sólidos van a la capa 1 (Y-sorted) y las copas/tejados a la capa 2.
    */
-  renderGround(ctx, camera, sun = null) {
+  renderGround(ctx, camera, sun = null, options = {}) {
     const camX = camera.renderX;
     const camY = camera.renderY;
     const { startCol, endCol, startRow, endRow } = this._visibleTileRange(camera);
@@ -1813,7 +1817,9 @@ export class Tilemap {
 
     // (BLOQUES 2/3/4) Capa 0: decals estáticos y sombras de edificios, antes de entidades.
     this._drawFloorDecals(ctx, camera);
-    this._drawHouseShadows(ctx, camera, sun);
+    if (!options.skipHouseShadows) {
+      this._drawHouseShadows(ctx, camera, sun);
+    }
     if (this._expansionOverlayRenderer) {
       this._expansionOverlayRenderer(this, ctx, camera);
     }
@@ -1948,10 +1954,10 @@ export class Tilemap {
       return;
     }
 
-    if (tileId === TILES.LAMPPOST || tileId === TILES.FIREPLACE) {
+    if (tileId === TILES.LAMPPOST || tileId === TILES.FIREPLACE || tileId === TILES.WALL_TORCH) {
       const flicker = Math.sin(t * 10 + fx * 0.12 + fy * 0.07);
-      const flameY = tileId === TILES.LAMPPOST ? fy + 4 : fy + 9;
-      this._drawLightHalo(ctx, cx, flameY, 20, '255, 170, 60', 0.18 + 0.05 * (flicker * 0.5 + 0.5));
+      const flameY = tileId === TILES.LAMPPOST ? fy + 4 : tileId === TILES.WALL_TORCH ? fy + 3 : fy + 9;
+      this._drawLightHalo(ctx, cx, flameY, tileId === TILES.WALL_TORCH ? 22 : 20, '255, 170, 60', 0.2 + 0.06 * (flicker * 0.5 + 0.5));
       ctx.fillStyle = 'rgba(249, 115, 22, 0.9)';
       ctx.fillRect(cx - 1 + Math.round(flicker), flameY - 2, 2, 4);
       ctx.fillStyle = '#fde047';
@@ -2035,6 +2041,7 @@ export class Tilemap {
     scene.floorDecals = this._generateFloorDecals(sceneId, scene, seed);
     scene.houseShadows = this._generateHouseShadows(sceneId, scene);
     scene.caveProps = this._generateCaveProps(sceneId, scene, seed);
+    scene.biomeProps = this._generateBiomeProps(sceneId, scene, seed);
     scene.chimneys = [];
     this._pruneSignposts(sceneId, scene);
   }
@@ -2098,17 +2105,37 @@ export class Tilemap {
   }
 
   _generateHouseShadows(sceneId, scene) {
-    // (FIX 1/4) Sombras de aleros globales: cualquier escena con muros de casa.
+    // (FIX 1/4) Sombras de aleros y volumen de edificios: cualquier escena con muros de casa o tejados.
     const { decoration } = scene.layers;
-    const walls = new Set([TILES.WALL_FRONT, TILES.WALL_WINDOW, TILES.WALL_DOOR]);
+    const walls = new Set([TILES.WALL_FRONT, TILES.WALL_WINDOW, TILES.WALL_WINDOW_FLOWER, TILES.WALL_DOOR]);
+    const roofs = new Set([TILES.ROOF_RED, TILES.ROOF_BLUE, TILES.ROOF_GREEN]);
     const shadows = [];
     for (let r = 0; r < scene.rows; r++) {
       let c = 0;
       while (c < scene.cols) {
         if (walls.has(decoration[r][c])) {
           const c0 = c;
-          while (c < scene.cols && walls.has(decoration[r][c])) c++;
-          shadows.push({ x: c0 * this.tileSize, y: (r + 1) * this.tileSize, w: (c - c0) * this.tileSize });
+          let hasRoof = false;
+          let roofRows = 0;
+          while (c < scene.cols && walls.has(decoration[r][c])) {
+            let rr = r - 1;
+            let count = 0;
+            while (rr >= 0 && roofs.has(decoration[rr][c])) {
+              count++;
+              rr--;
+            }
+            if (count > 0) hasRoof = true;
+            if (count > roofRows) roofRows = count;
+            c++;
+          }
+          shadows.push({
+            x: c0 * this.tileSize,
+            y: (r + 1) * this.tileSize,
+            w: (c - c0) * this.tileSize,
+            h: (1 + roofRows) * this.tileSize,
+            roofRows,
+            hasRoof
+          });
         } else {
           c++;
         }
@@ -2118,13 +2145,19 @@ export class Tilemap {
   }
 
   _generateCaveProps(sceneId, scene, seed) {
-    if (!sceneId.startsWith('mines')) return [];
+    const isMines = sceneId.startsWith('mines');
+    const isSewers = sceneId.startsWith('sewers');
+    const isForge = sceneId.startsWith('forge') || sceneId === 'ai_fortress_gate';
+    if (!isMines && !isSewers && !isForge) return [];
+
     const rand = this._seededRandom(seed ^ 0xc0ffee);
     const { decoration } = scene.layers;
     const props = [];
-    // Estalactitas en el borde superior y las paredes laterales.
+
+    // Estalactitas colgando del techo (en minas, cloacas y forja)
     for (let c = 1; c < scene.cols - 1; c += 2) {
-      if (decoration[0][c] !== -1 || rand() > 0.55) continue;
+      if (rand() > 0.55) continue;
+      if (c === 11 || c === 12) continue; // Respetar paso de puerta norte
       props.push({ tileId: TILES.STALACTITE, x: c * this.tileSize, y: 0 });
     }
     for (let r = 3; r < scene.rows - 2; r += 4) {
@@ -2133,21 +2166,353 @@ export class Tilemap {
         props.push({ tileId: TILES.STALACTITE, x: c * this.tileSize, y: r * this.tileSize });
       }
     }
-    // Vigas horizontales que cruzan el techo de la cueva.
-    for (const r of [2, 8, 14]) {
-      if (r >= scene.rows) continue;
-      for (let c = 1; c < scene.cols - 1; c++) {
-        props.push({ tileId: TILES.BEAM, x: c * this.tileSize, y: r * this.tileSize });
+
+    // Antorchas en paredes que parpadean con luces dinámicas
+    if (!Array.isArray(scene.lightSources)) scene.lightSources = [];
+    const torchCols = [4, 8, 15, 19].filter((c) => c > 1 && c < scene.cols - 2);
+    for (const tc of torchCols) {
+      const tx = tc * this.tileSize;
+      const ty = 1 * this.tileSize;
+      props.push({ tileId: TILES.WALL_TORCH, x: tx, y: ty, animated: true });
+      scene.lightSources.push({
+        x: tx + 8,
+        y: ty + 6,
+        radius: 44,
+        intensity: 0.9,
+        glow: isSewers ? 'warm' : isMines ? 'cyan' : 'warm',
+        kind: 'torch'
+      });
+    }
+
+    if (isMines) {
+      // Vigas horizontales que cruzan el techo de la cueva.
+      for (const r of [2, 8, 14]) {
+        if (r >= scene.rows) continue;
+        for (let c = 1; c < scene.cols - 1; c++) {
+          props.push({ tileId: TILES.BEAM, x: c * this.tileSize, y: r * this.tileSize });
+        }
+      }
+      // Rocas junto a las paredes/ suelo.
+      for (let i = 0; i < 8; i++) {
+        const c = 1 + Math.floor(rand() * (scene.cols - 2));
+        const r = 2 + Math.floor(rand() * (scene.rows - 4));
+        if (decoration[r][c] !== -1) continue;
+        props.push({ tileId: TILES.ROCK, x: c * this.tileSize, y: r * this.tileSize });
       }
     }
-    // Rocas junto a las paredes/ suelo.
-    for (let i = 0; i < 8; i++) {
-      const c = 1 + Math.floor(rand() * (scene.cols - 2));
-      const r = 2 + Math.floor(rand() * (scene.rows - 4));
-      if (decoration[r][c] !== -1) continue;
-      props.push({ tileId: TILES.ROCK, x: c * this.tileSize, y: r * this.tileSize });
-    }
     return props;
+  }
+
+  _generateBiomeProps(sceneId, scene, seed) {
+    if (!scene || !scene.layers) return [];
+    const theme = getEnvironmentTheme(sceneId);
+    const propSet = theme.propSet;
+    if (!propSet) return [];
+
+    const BIOME_PROP_KINDS = {
+      cloacas: {
+        floor: ['moss', 'slime_puddle'],
+        upright: ['broken_pipe'],
+      },
+      minas: {
+        floor: ['broken_rail'],
+        upright: ['pickaxe', 'loose_rock'],
+      },
+      forja: {
+        floor: [],
+        upright: ['mini_anvil', 'chain', 'ingot'],
+      },
+      templos: {
+        floor: ['carpet'],
+        upright: ['knight_statue', 'candle'],
+      },
+      corporativo: {
+        floor: ['papers'],
+        upright: ['cubicle', 'chair', 'coffee_maker'],
+      },
+    };
+
+    const catalog = BIOME_PROP_KINDS[propSet];
+    if (!catalog) return [];
+
+    const rand = this._seededRandom(seed ^ 0x9e3779b9);
+    const { collision, decoration } = scene.layers;
+    const ts = this.tileSize;
+    const props = [];
+    const occupied = new Set();
+
+    // Templos: antorchas parpadeantes en los muros + luces dinámicas de halo
+    if (propSet === 'templos') {
+      if (!Array.isArray(scene.lightSources)) scene.lightSources = [];
+      if (!Array.isArray(scene.caveProps)) scene.caveProps = [];
+      const torchCols = [4, 7, 16, 19].filter((c) => c > 1 && c < scene.cols - 2);
+      for (const tc of torchCols) {
+        const tx = tc * ts;
+        const ty = 1 * ts;
+        scene.caveProps.push({ tileId: TILES.WALL_TORCH, x: tx, y: ty, animated: true });
+        scene.lightSources.push({
+          x: tx + 8,
+          y: ty + 6,
+          radius: 46,
+          intensity: 0.95,
+          glow: 'cyan',
+          kind: 'torch',
+          flicker: true,
+        });
+      }
+    }
+
+    const validCells = [];
+    const midCol = Math.floor(scene.cols / 2);
+    const midRow = Math.floor(scene.rows / 2);
+    for (let r = 2; r < scene.rows - 2; r++) {
+      for (let c = 2; c < scene.cols - 2; c++) {
+        if (collision && collision[r] && collision[r][c] !== 0) continue;
+        if (decoration && decoration[r] && decoration[r][c] !== -1 && decoration[r][c] !== undefined) continue;
+        if (Math.abs(c - midCol) <= 1 && Math.abs(r - midRow) <= 1) continue;
+        validCells.push([c, r]);
+      }
+    }
+
+    // Mezcla determinista de celdas libres para garantizar variedad sin solapamientos
+    for (let i = validCells.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      const tmp = validCells[i];
+      validCells[i] = validCells[j];
+      validCells[j] = tmp;
+    }
+
+    let cursor = 0;
+
+    // Props planos sobre el suelo (siempre debajo de entidades: sortY = y - 2)
+    if (catalog.floor.length > 0 && validCells.length > 0) {
+      const floorTarget = Math.max(
+        catalog.floor.length,
+        Math.min(8, Math.floor((scene.cols * scene.rows) / 48))
+      );
+      for (let i = 0; i < floorTarget && cursor < validCells.length; i++, cursor++) {
+        const [c, r] = validCells[cursor];
+        occupied.add(`${c},${r}`);
+        const kind = catalog.floor[i % catalog.floor.length];
+        const x = c * ts;
+        const y = r * ts;
+        props.push({
+          kind,
+          propSet,
+          x,
+          y,
+          w: kind === 'carpet' ? 16 : 14,
+          h: kind === 'carpet' ? 14 : 12,
+          sortY: y - 2,
+          variant: Math.floor(rand() * 3),
+        });
+      }
+    }
+
+    // Props verticales con Y-sorting (sin colisión: nunca alteran collision[r][c])
+    if (catalog.upright.length > 0 && cursor < validCells.length) {
+      const uprightTarget = Math.max(
+        catalog.upright.length,
+        Math.min(9, Math.floor((scene.cols * scene.rows) / 42))
+      );
+      for (let i = 0; i < uprightTarget && cursor < validCells.length; i++, cursor++) {
+        const [c, r] = validCells[cursor];
+        occupied.add(`${c},${r}`);
+        const kind = catalog.upright[i % catalog.upright.length];
+        const x = c * ts;
+        const y = r * ts;
+        const h = (kind === 'knight_statue' || kind === 'cubicle') ? 16 : 14;
+        props.push({
+          kind,
+          propSet,
+          x,
+          y,
+          w: 16,
+          h,
+          sortY: y + h,
+          variant: Math.floor(rand() * 3),
+        });
+
+        if (kind === 'candle' && Array.isArray(scene.lightSources)) {
+          scene.lightSources.push({
+            x: x + 8,
+            y: y + 5,
+            radius: 28,
+            intensity: 0.72,
+            glow: 'warm',
+            kind: 'candle',
+            flicker: true,
+          });
+        }
+      }
+    }
+
+    return props;
+  }
+
+  _drawBiomeProp(ctx, prop, sx, sy) {
+    const x = Math.round(sx);
+    const y = Math.round(sy);
+    switch (prop.kind) {
+      case 'broken_pipe': {
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(x + 2, y + 6, 12, 6);
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(x + 2, y + 7, 12, 2);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(x + 12, y + 7, 2, 4);
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(x + 4, y + 11, 5, 2);
+        break;
+      }
+      case 'moss': {
+        ctx.fillStyle = '#15803d';
+        ctx.fillRect(x + 2, y + 5, 9, 5);
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(x + 4, y + 4, 6, 3);
+        ctx.fillStyle = '#4ade80';
+        ctx.fillRect(x + 6, y + 5, 2, 2);
+        break;
+      }
+      case 'slime_puddle': {
+        ctx.fillStyle = '#0f766e';
+        ctx.fillRect(x + 2, y + 6, 11, 6);
+        ctx.fillStyle = '#14b8a6';
+        ctx.fillRect(x + 4, y + 7, 7, 3);
+        ctx.fillStyle = '#99f6e4';
+        ctx.fillRect(x + 5, y + 8, 2, 1);
+        break;
+      }
+      case 'broken_rail': {
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(x + 3, y + 4, 2, 8);
+        ctx.fillRect(x + 9, y + 4, 2, 8);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(x + 1, y + 5, 11, 1);
+        ctx.fillRect(x + 2, y + 10, 8, 1);
+        break;
+      }
+      case 'pickaxe': {
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(x + 7, y + 5, 2, 8);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillRect(x + 3, y + 4, 10, 2);
+        ctx.fillRect(x + 2, y + 5, 2, 2);
+        ctx.fillRect(x + 12, y + 5, 2, 2);
+        break;
+      }
+      case 'loose_rock': {
+        ctx.fillStyle = '#475569';
+        ctx.fillRect(x + 3, y + 8, 10, 5);
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(x + 5, y + 6, 6, 4);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(x + 8, y + 8, 2, 2);
+        break;
+      }
+      case 'mini_anvil': {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(x + 4, y + 10, 8, 4);
+        ctx.fillStyle = '#475569';
+        ctx.fillRect(x + 2, y + 6, 12, 4);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(x + 3, y + 6, 10, 1);
+        break;
+      }
+      case 'chain': {
+        ctx.fillStyle = '#334155';
+        for (let i = 0; i < 4; i++) {
+          ctx.fillRect(x + 6 + (i % 2), y + 2 + i * 3, 3, 2);
+        }
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(x + 7, y + 5, 1, 2);
+        ctx.fillRect(x + 7, y + 11, 1, 2);
+        break;
+      }
+      case 'ingot': {
+        ctx.fillStyle = '#b45309';
+        ctx.fillRect(x + 3, y + 10, 5, 3);
+        ctx.fillRect(x + 8, y + 10, 5, 3);
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(x + 5, y + 7, 6, 3);
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(x + 6, y + 7, 4, 1);
+        break;
+      }
+      case 'knight_statue': {
+        ctx.fillStyle = '#475569';
+        ctx.fillRect(x + 4, y + 11, 8, 5);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(x + 5, y + 4, 6, 8);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillRect(x + 6, y + 2, 4, 3);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(x + 11, y + 3, 1, 8);
+        break;
+      }
+      case 'candle': {
+        ctx.fillStyle = '#b45309';
+        ctx.fillRect(x + 6, y + 11, 4, 2);
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(x + 7, y + 7, 2, 4);
+        ctx.fillStyle = '#fb923c';
+        ctx.fillRect(x + 7, y + 5, 2, 2);
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(x + 7, y + 4, 1, 1);
+        break;
+      }
+      case 'carpet': {
+        ctx.fillStyle = '#7f1d1d';
+        ctx.fillRect(x + 1, y + 2, 14, 11);
+        ctx.fillStyle = '#dc2626';
+        ctx.fillRect(x + 2, y + 3, 12, 9);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(x + 4, y + 5, 8, 5);
+        ctx.fillStyle = '#dc2626';
+        ctx.fillRect(x + 5, y + 6, 6, 3);
+        break;
+      }
+      case 'cubicle': {
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(x + 1, y + 2, 14, 12);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(x + 2, y + 3, 12, 2);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillRect(x + 2, y + 7, 12, 5);
+        ctx.fillStyle = '#0ea5e9';
+        ctx.fillRect(x + 5, y + 4, 5, 4);
+        break;
+      }
+      case 'chair': {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(x + 5, y + 4, 6, 5);
+        ctx.fillStyle = '#0284c7';
+        ctx.fillRect(x + 4, y + 9, 8, 3);
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(x + 7, y + 12, 2, 2);
+        break;
+      }
+      case 'coffee_maker': {
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(x + 4, y + 4, 8, 10);
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(x + 6, y + 9, 4, 3);
+        ctx.fillStyle = '#22d3ee';
+        ctx.fillRect(x + 6, y + 5, 3, 1);
+        break;
+      }
+      case 'papers': {
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(x + 2, y + 5, 5, 6);
+        ctx.fillRect(x + 8, y + 7, 5, 5);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(x + 3, y + 7, 3, 1);
+        ctx.fillRect(x + 9, y + 9, 3, 1);
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   _addVillageChimneys(scene) {
@@ -2294,14 +2659,14 @@ export class Tilemap {
     for (let r = 0; r < this.rows - 1; r++) {
       for (let c = 0; c < this.cols; c++) {
         const roof = decoration[r][c];
-        if (roof !== TILES.ROOF_RED && roof !== TILES.ROOF_BLUE) continue;
+        if (roof !== TILES.ROOF_RED && roof !== TILES.ROOF_BLUE && roof !== TILES.ROOF_GREEN) continue;
         const below = decoration[r + 1][c];
-        if (below !== TILES.WALL_FRONT && below !== TILES.WALL_WINDOW && below !== TILES.WALL_DOOR) continue;
+        if (below !== TILES.WALL_FRONT && below !== TILES.WALL_WINDOW && below !== TILES.WALL_WINDOW_FLOWER && below !== TILES.WALL_DOOR) continue;
         const sx = c * this.tileSize - camera.renderX;
         const sy = (r + 1) * this.tileSize - camera.renderY;
         if (sx < -16 || sx > 320 + 16 || sy < -16 || sy > 180 + 16) continue;
         // Alero de 4 px que sobresale sobre el muro frontal.
-        ctx.fillStyle = roof === TILES.ROOF_RED ? '#7a2020' : '#1f3350';
+        ctx.fillStyle = roof === TILES.ROOF_RED ? '#5e1818' : roof === TILES.ROOF_GREEN ? '#163e26' : '#16263d';
         ctx.fillRect(Math.round(sx), Math.round(sy), this.tileSize, 4);
         ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
         ctx.fillRect(Math.round(sx), Math.round(sy) + 4, this.tileSize, 2);
@@ -2316,7 +2681,59 @@ export class Tilemap {
       const sy = prop.y - camera.renderY;
       if (sx < -16 || sx > 320 + 16 || sy < -16 || sy > 180 + 16) continue;
       this._drawTile(ctx, prop.tileId, sx, sy);
+      if (prop.animated) {
+        this._drawAnimatedTileFx(ctx, prop.tileId, sx, sy);
+      }
     }
+  }
+
+  _drawClotheslines(ctx, camera) {
+    if (!this.clotheslines || this.clotheslines.length === 0) return;
+    ctx.save();
+    for (const line of this.clotheslines) {
+      const x1 = Math.round(line.x1 - camera.renderX);
+      const y1 = Math.round(line.y1 - camera.renderY);
+      const x2 = Math.round(line.x2 - camera.renderX);
+      const y2 = Math.round(line.y2 - camera.renderY);
+      if (Math.max(x1, x2) < -16 || Math.min(x1, x2) > 336 || Math.max(y1, y2) < -16 || Math.min(y1, y2) > 196) {
+        continue;
+      }
+      const midX = (x1 + x2) * 0.5;
+      const midY = (y1 + y2) * 0.5 + (line.sag || 5);
+      ctx.strokeStyle = 'rgba(42, 30, 22, 0.85)';
+      ctx.lineWidth = 1;
+      if (typeof ctx.beginPath === 'function' && typeof ctx.moveTo === 'function' && typeof ctx.stroke === 'function') {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        if (typeof ctx.quadraticCurveTo === 'function') {
+          ctx.quadraticCurveTo(midX, midY, x2, y2);
+        } else if (typeof ctx.lineTo === 'function') {
+          ctx.lineTo(midX, midY);
+          ctx.lineTo(x2, y2);
+        }
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgba(42, 30, 22, 0.85)';
+        ctx.fillRect(Math.min(x1, x2), Math.round((y1 + y2) * 0.5), Math.max(1, Math.abs(x2 - x1)), 1);
+      }
+
+      const items = line.items || ['#f8fafc', '#38bdf8', '#f43f5e'];
+      const count = items.length;
+      for (let i = 0; i < count; i++) {
+        const t = (i + 1) / (count + 1);
+        const mt = 1 - t;
+        const px = mt * mt * x1 + 2 * mt * t * midX + t * t * x2;
+        const py = mt * mt * y1 + 2 * mt * t * midY + t * t * y2;
+        const sway = Math.round(Math.sin(this.animationClock * 2.2 + i * 1.4) * 1);
+        ctx.fillStyle = '#3b2416';
+        ctx.fillRect(Math.round(px) - 1, Math.round(py) - 1, 2, 1);
+        ctx.fillStyle = items[i];
+        ctx.fillRect(Math.round(px) - 2 + sway, Math.round(py), 5, 6);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.fillRect(Math.round(px) - 2 + sway, Math.round(py) + 5, 5, 1);
+      }
+    }
+    ctx.restore();
   }
 
   /** Ondulación del agua: dos destellos horizontales por tile que fluyen con una onda senoidal. */
@@ -2353,7 +2770,7 @@ export class Tilemap {
     const acquire = () => {
       let p = this._propPool[used];
       if (!p) {
-        p = { isTileProp: true, tileId: 0, sx: 0, sy: 0, sortY: 0, puzzle: null, mono: null };
+        p = { isTileProp: true, tileId: 0, sx: 0, sy: 0, sortY: 0, puzzle: null, mono: null, biomeProp: null };
         this._propPool[used] = p;
       }
       used++;
@@ -2373,6 +2790,28 @@ export class Tilemap {
         p.sortY = (r + 1) * this.tileSize;
         p.puzzle = null;
         p.mono = null;
+        p.biomeProp = null;
+        out.push(p);
+      }
+    }
+
+    // Props decorativos sin colisión específicos del bioma (ordenados por Y)
+    if (this.biomeProps && this.biomeProps.length > 0) {
+      const vw = camera.viewportWidth || 320;
+      const vh = camera.viewportHeight || 180;
+      for (let i = 0; i < this.biomeProps.length; i++) {
+        const bp = this.biomeProps[i];
+        const sx = bp.x - camX;
+        const sy = bp.y - camY;
+        if (sx + bp.w < -16 || sx > vw + 16 || sy + bp.h < -16 || sy > vh + 16) continue;
+        const p = acquire();
+        p.tileId = -1;
+        p.sx = sx;
+        p.sy = sy;
+        p.sortY = bp.sortY;
+        p.puzzle = null;
+        p.mono = null;
+        p.biomeProp = bp;
         out.push(p);
       }
     }
@@ -2399,6 +2838,7 @@ export class Tilemap {
         p.sortY = (mono.row + 1) * this.tileSize;
         p.puzzle = puzzleKind;
         p.mono = mono;
+        p.biomeProp = null;
         out.push(p);
       }
     }
@@ -2406,7 +2846,9 @@ export class Tilemap {
 
   /** Dibuja una entrada devuelta por collectYSortedProps(). */
   drawProp(ctx, camera, prop) {
-    if (prop.puzzle === 'armor') {
+    if (prop.biomeProp) {
+      this._drawBiomeProp(ctx, prop.biomeProp, prop.sx, prop.sy);
+    } else if (prop.puzzle === 'armor') {
       this.drawArmorMonolith(ctx, camera, prop.mono);
     } else if (prop.puzzle === 'sword') {
       this.drawSwordMonolith(ctx, camera, prop.mono);
@@ -2445,7 +2887,7 @@ export class Tilemap {
         // Sombra de alero proyectada sobre el muro situado justo debajo del tejado
         if (decoTile !== TILES.TREE_TOP && r + 1 < this.rows) {
           const below = decoration[r + 1][c];
-          if (below === TILES.WALL_FRONT || below === TILES.WALL_WINDOW || below === TILES.WALL_DOOR) {
+          if (below === TILES.WALL_FRONT || below === TILES.WALL_WINDOW || below === TILES.WALL_WINDOW_FLOWER || below === TILES.WALL_DOOR) {
             const baseY = Math.round(screenY) + this.tileSize;
             ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
             ctx.fillRect(Math.round(screenX), baseY, this.tileSize, 2);
@@ -2474,7 +2916,9 @@ export class Tilemap {
 
     // (BLOQUE 1.2) Alero de 4 px y sombra bajo el tejado.
     this._drawRoofEaves(ctx, camera);
-    // (BLOQUE 2.1/2.2) Estalactitas, rocas y vigas de cueva en la capa superior.
+    // Ropa tendida entre casas
+    this._drawClotheslines(ctx, camera);
+    // (BLOQUE 2.1/2.2) Estalactitas, rocas, antorchas y vigas de cueva en la capa superior.
     this._drawCaveProps(ctx, camera);
   }
 

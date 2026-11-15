@@ -18,6 +18,8 @@ import { TILES } from '../../src/graphics/SpriteSheetGenerator.js';
 import { DayNightCycle } from '../../src/world/DayNightCycle.js';
 import { RenderPipeline } from '../../src/graphics/RenderPipeline.js';
 import { PremiumEffectsManager, resolveSceneBiome, BIOME_PRESETS } from '../../src/graphics/PremiumEffectsManager.js';
+import { ENVIRONMENT_THEMES, getEnvironmentTheme } from '../../src/data/EnvironmentData.js';
+import { installExpansionScenes } from '../../src/world/scenes/ExpansionScenes.js';
 import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT } from '../../src/ui/UILayout.js';
 import { KernelBoss } from '../../src/expansion/entities/KernelBoss.js';
 import { RosaShop } from '../../src/expansion/entities/RosaShop.js';
@@ -2803,6 +2805,288 @@ export async function run(test, assert) {
 
       pfx.destroy();
       assert.equal(sampleY0 >= -8, true);
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  });
+
+  test('Edificios 2.5D, props exteriores, antorchas de mazmorra, ventanas nocturnas con Bloom, sombras y humo PixiJS en chimeneas', async () => {
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+
+    try {
+      // 1. Variantes de tejados, ventanas y props en Valleverde sin bloquear paso
+      const tm = new Tilemap(null, 16);
+      tm.loadScene('overworld');
+      const deco = tm.layers.decoration;
+      const flatDeco = deco.flat();
+      assert.ok(flatDeco.includes(TILES.ROOF_RED), 'Valleverde debe tener tejados rojos');
+      assert.ok(flatDeco.includes(TILES.ROOF_BLUE), 'Valleverde debe tener tejados azules');
+      assert.ok(flatDeco.includes(TILES.ROOF_GREEN), 'Valleverde debe tener tejados verdes (3ª variante)');
+      assert.ok(flatDeco.includes(TILES.WALL_WINDOW), 'Valleverde debe tener ventanas estándar');
+      assert.ok(flatDeco.includes(TILES.WALL_WINDOW_FLOWER), 'Valleverde debe tener ventanas con maceta (2ª variante)');
+      assert.ok(flatDeco.includes(TILES.BARREL), 'Debe haber barriles exteriores');
+      assert.ok(flatDeco.includes(TILES.FLOWER_POT), 'Debe haber macetas en puertas');
+      assert.ok(flatDeco.includes(TILES.SANDBAG), 'Debe haber sacos de arena junto a tiendas/cuartel');
+      assert.ok(Array.isArray(tm.clotheslines) && tm.clotheslines.length >= 2, 'Debe haber ropa tendida entre casas');
+      assert.ok(Array.isArray(tm.chimneys) && tm.chimneys.length >= 4, 'Valleverde debe registrar chimeneas');
+      assert.ok(tm.windowLights.length >= 6, 'windowLights debe incluir ventanas estándar y con maceta');
+
+      // Verificar que barriles, macetas y sacos de arena no bloquean al jugador
+      for (let r = 0; r < tm.rows; r++) {
+        for (let c = 0; c < tm.cols; c++) {
+          const id = deco[r][c];
+          if (id === TILES.BARREL || id === TILES.FLOWER_POT || id === TILES.SANDBAG) {
+            assert.equal(tm.isSolidAtTile(c, r), false, `El prop exterior (${c},${r}) no debe bloquear al jugador`);
+          }
+        }
+      }
+
+      // Verificar datos de tejado en houseShadows (sombra más ancha en edificios con alero)
+      assert.ok(tm.houseShadows.some((sh) => sh.hasRoof === true && sh.roofRows >= 1));
+
+      // 2. Mazmorras: antorchas parpadeantes en paredes + estalactitas en techo
+      for (const dungeonId of ['sewers_entry', 'mines_entry', 'forge_entry']) {
+        tm.loadScene(dungeonId);
+        assert.ok(tm.caveProps.some((p) => p.tileId === TILES.STALACTITE), `${dungeonId} debe tener estalactitas`);
+        assert.ok(tm.caveProps.some((p) => p.tileId === TILES.WALL_TORCH), `${dungeonId} debe tener antorchas de pared`);
+        assert.ok(tm.lightSources.some((l) => l.kind === 'torch'), `${dungeonId} debe tener luces dinámicas para antorchas`);
+      }
+
+      // 3. RenderPipeline: sombras proyectadas más anchas que el edificio con sol al oeste + luz en ventanas de noche
+      tm.loadScene('overworld');
+      const pipeline = new RenderPipeline(320, 180);
+      const cam = new Camera2D(320, 180);
+      cam.x = 0;
+      cam.y = 0;
+      const recordedPolys = [];
+      const recordedGrads = [];
+      const mockCtx = {
+        canvas: { width: 320, height: 180 },
+        fillStyle: '',
+        strokeStyle: '',
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        save() {},
+        restore() {},
+        beginPath() { this._pts = []; },
+        moveTo(x, y) { this._pts.push({ x, y }); },
+        lineTo(x, y) { this._pts.push({ x, y }); },
+        closePath() { recordedPolys.push([...this._pts]); },
+        fill() {},
+        stroke() {},
+        arc() {},
+        fillRect() {},
+        createRadialGradient() {
+          const g = { addColorStop() {} };
+          recordedGrads.push(g);
+          return g;
+        }
+      };
+
+      const roofShadowSample = tm.houseShadows.find((sh) => sh.hasRoof);
+      pipeline._renderBuildingShadows(mockCtx, cam, { dx: 0.5, dy: 0.18, length: 1.5, alphaScale: 1 }, { houseShadows: [roofShadowSample] });
+      assert.ok(recordedPolys.length >= 1, 'Debe proyectar polígono de sombra de edificio');
+      const shadowSpan = Math.max(...recordedPolys[0].map((p) => p.x)) - Math.min(...recordedPolys[0].map((p) => p.x));
+      assert.ok(shadowSpan > roofShadowSample.w, 'La sombra de casa con tejado debe ser más ancha que la fachada');
+
+      const dn = new DayNightCycle(320, 180, 720);
+      dn.timeOfDayHours = 22.5; // Noche
+      assert.equal(dn.isNight(), true);
+      pipeline._renderNightWindowGlows(mockCtx, cam, dn, tm);
+      assert.ok(recordedGrads.length > 0, 'De noche debe dibujar halos cálidos en las ventanas antes del Bloom');
+
+      // 4. PremiumEffectsManager: humo gris/blanco de chimeneas con PixiJS de día y de noche
+      const createdSmokePuffs = [];
+      class MockContainer {
+        constructor() { this.children = []; this.visible = true; }
+        addChild(c) { this.children.push(c); return c; }
+        removeChild(c) { this.children = this.children.filter((x) => x !== c); }
+        removeChildren() { this.children.length = 0; }
+      }
+      class MockGraphics {
+        constructor() {
+          this.x = 0; this.y = 0; this.alpha = 1; this.rotation = 0;
+          this.scale = { set: (v) => { this.scaleVal = v; } };
+          this.colors = [];
+        }
+        rect() { return this; }
+        fill(c) { this.colors.push(c); createdSmokePuffs.push(c); return this; }
+        destroy() {}
+      }
+      const overlayCanvas = { width: 1280, height: 720, style: {}, setAttribute() {} };
+      const parentNode = { children: [], insertBefore() {}, removeChild() {} };
+      const gameCanvas = { width: 1280, height: 720, clientWidth: 1280, clientHeight: 720, offsetLeft: 0, offsetTop: 0, clientLeft: 0, clientTop: 0, style: {}, parentNode };
+      const mockPixi = {
+        Application: class {
+          constructor() { this.stage = new MockContainer(); this.ticker = { stop() {} }; this.view = overlayCanvas; }
+          async init() {}
+          render() {}
+          destroy() {}
+        },
+        Container: MockContainer,
+        Graphics: MockGraphics
+      };
+      globalThis.document = { body: parentNode, createElement: () => ({ width: 0, height: 0, getContext: () => null }) };
+      globalThis.window = { addEventListener() {}, removeEventListener() {} };
+
+      const pfx = new PremiumEffectsManager(gameCanvas, { pixi: mockPixi, width: 1280, height: 720, useRaf: false });
+      await pfx.init();
+      pfx.spawnParticles('overworld', tm.chimneys);
+      pfx.update(0.3, { sceneId: 'overworld', tilemap: tm, camera: cam, chimneys: tm.chimneys });
+      assert.ok(pfx.chimneySmoke.length > 0, 'Debe emitir humo PixiJS desde las chimeneas de las casas');
+      assert.ok(createdSmokePuffs.some((c) => c === 0xe2e8f0 || c === 0xcbd5e1), 'El humo debe usar tonos blanco/gris');
+      const prevSmokeY = pfx.chimneySmoke[0].y;
+      pfx.update(0.2, { sceneId: 'overworld', tilemap: tm, camera: cam, chimneys: tm.chimneys });
+      assert.ok(pfx.chimneySmoke[0].y < prevSmokeY, 'El humo de chimenea debe ascender lentamente');
+      pfx.destroy();
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.window = prevWin;
+    }
+  });
+
+  test('Biomas Visuales (EnvironmentData): partículas por bioma, props Y-sorted sin colisión, filtros de color y luces/bloom', async () => {
+    // 1. Verificar EnvironmentData para los 8 biomas visuales principales
+    assert.equal(getEnvironmentTheme('overworld').id, 'pueblo');
+    assert.equal(getEnvironmentTheme('first_stage').id, 'bosque');
+    assert.equal(getEnvironmentTheme('sewers_entry').id, 'cloacas');
+    assert.equal(getEnvironmentTheme('mines_entry').id, 'minas');
+    assert.equal(getEnvironmentTheme('forge_entry').id, 'forja');
+    assert.equal(getEnvironmentTheme('armor_temple').id, 'templos');
+    assert.equal(getEnvironmentTheme('valleverde_corp').id, 'corporativo');
+    assert.equal(getEnvironmentTheme('inakito_office').id, 'corporativo');
+    assert.equal(getEnvironmentTheme('kernel_arena').id, 'nucleo');
+    assert.ok(ENVIRONMENT_THEMES.corporativo.bloomAlpha > ENVIRONMENT_THEMES.pueblo.bloomAlpha, 'Corporativo debe potenciar el bloom');
+
+    // 2. Verificar props decorativos por bioma en Tilemap (Y-sorted y completamente atravesables)
+    const tm = new Tilemap(null, 16);
+    installExpansionScenes(tm);
+    const cam = { renderX: 0, renderY: 0, viewportWidth: 320, viewportHeight: 180 };
+    const scenePropExpectations = [
+      ['sewers_entry', ['broken_pipe', 'moss', 'slime_puddle']],
+      ['mines_entry', ['broken_rail', 'pickaxe', 'loose_rock']],
+      ['forge_entry', ['mini_anvil', 'chain', 'ingot']],
+      ['armor_temple', ['knight_statue', 'candle', 'carpet']],
+      ['inakito_office', ['cubicle', 'chair', 'coffee_maker', 'papers']]
+    ];
+
+    for (const [sceneId, expectedKinds] of scenePropExpectations) {
+      tm.loadScene(sceneId);
+      assert.ok(Array.isArray(tm.biomeProps) && tm.biomeProps.length > 0, `${sceneId} debe generar biomeProps`);
+      const foundKinds = new Set(tm.biomeProps.map((p) => p.kind));
+      for (const kind of expectedKinds) {
+        assert.ok(foundKinds.has(kind), `${sceneId} debe incluir prop decorativo '${kind}'`);
+      }
+      for (const p of tm.biomeProps) {
+        const col = Math.floor(p.x / tm.tileSize);
+        const row = Math.floor(p.y / tm.tileSize);
+        assert.equal(tm.isSolidAtTile(col, row), false, `El prop '${p.kind}' de ${sceneId} nunca debe bloquear al jugador`);
+      }
+      const ySorted = [];
+      tm.collectYSortedProps(cam, ySorted);
+      assert.ok(ySorted.some((entry) => entry.biomeProp), `${sceneId} debe inyectar biomeProps en collectYSortedProps`);
+    }
+
+    // Templos: antorchas parpadeantes registradas en lightSources
+    tm.loadScene('armor_temple');
+    assert.ok(tm.lightSources.some((l) => l.kind === 'torch' && l.flicker), 'Los templos deben tener antorchas con parpadeo');
+
+    // 3. RenderPipeline: filtro de tinte por bioma, luces de templo y Bloom corporativo
+    const pipeline = new RenderPipeline(320, 180);
+    const fillColors = [];
+    const alphas = [];
+    const arcCalls = [];
+    const mockCtx = {
+      canvas: { width: 320, height: 180 },
+      save() {},
+      restore() {},
+      setTransform() {},
+      beginPath() {},
+      closePath() {},
+      moveTo() {},
+      lineTo() {},
+      arc(...args) { arcCalls.push(args); },
+      fill() {},
+      fillRect() { fillColors.push(this.fillStyle); },
+      drawImage() { alphas.push(this.globalAlpha); },
+      createLinearGradient() { return { addColorStop() {} }; },
+      createRadialGradient() { return { addColorStop() {} }; },
+      fillStyle: '#000',
+      globalCompositeOperation: 'source-over',
+      globalAlpha: 1
+    };
+
+    tm.loadScene('sewers_entry');
+    pipeline._renderBiomeAtmosphere(mockCtx, tm);
+    assert.ok(fillColors.some((c) => c === ENVIRONMENT_THEMES.cloacas.tintColor), 'Cloacas debe aplicar tinte verdoso');
+
+    tm.loadScene('mines_entry');
+    pipeline._renderBiomeAtmosphere(mockCtx, tm);
+    assert.ok(fillColors.some((c) => c === ENVIRONMENT_THEMES.minas.tintColor), 'Minas debe aplicar tinte azulado');
+
+    tm.loadScene('armor_temple');
+    pipeline.clock = 1.25;
+    pipeline._renderNightWindowGlows(mockCtx, cam, { isNight: () => false, areWindowsLit: () => false }, tm);
+    assert.ok(arcCalls.length > 0, 'Los halos de antorchas de los templos deben dibujarse en _renderNightWindowGlows');
+
+    pipeline._bloomCanvas = { width: 160, height: 90 };
+    pipeline._bloomCtx = { setTransform() {}, clearRect() {}, save() {}, restore() {}, drawImage() {}, filter: '' };
+    tm.loadScene('valleverde_corp');
+    alphas.length = 0;
+    pipeline._renderBloom(mockCtx, tm);
+    assert.equal(alphas[0], ENVIRONMENT_THEMES.corporativo.bloomAlpha, 'Corporativo debe usar mayor intensidad de Bloom');
+
+    // 4. PremiumEffectsManager: partículas diferenciadas en Cloacas, Corporativo ('0'/'1') y Núcleo (glitch)
+    const prevDoc = globalThis.document;
+    const prevWin = globalThis.window;
+    try {
+      class MockContainer {
+        constructor() { this.children = []; this.visible = true; }
+        addChild(c) { this.children.push(c); return c; }
+        removeChildren() { const out = this.children; this.children = []; return out; }
+        destroy() { this.children = []; }
+      }
+      class MockGraphics {
+        constructor() { this.x = 0; this.y = 0; this.alpha = 1; this.rotation = 0; this.scale = { set() {} }; }
+        rect() { return this; }
+        fill(c) { this.fillColor = c; return this; }
+        destroy() {}
+      }
+      const createdTexts = [];
+      class MockText {
+        constructor(opts) { this.text = opts.text; this.x = 0; this.y = 0; this.alpha = 1; this.scale = { set() {} }; createdTexts.push(opts.text); }
+        destroy() {}
+      }
+      globalThis.document = { body: { children: [], insertBefore() {}, removeChild() {} }, createElement: () => ({ width: 0, height: 0, getContext: () => null }) };
+      globalThis.window = { addEventListener() {}, removeEventListener() {} };
+      const mockPixi = {
+        Application: class {
+          constructor() { this.stage = new MockContainer(); this.ticker = { stop() {} }; this.view = { width: 1280, height: 720, style: {}, setAttribute() {} }; }
+          async init() {}
+          render() {}
+          destroy() {}
+        },
+        Container: MockContainer,
+        Graphics: MockGraphics,
+        Text: MockText
+      };
+      const gameCanvas = { width: 1280, height: 720, style: {}, parentNode: { insertBefore() {}, removeChild() {} } };
+      const pfx = new PremiumEffectsManager(gameCanvas, { pixi: mockPixi, width: 1280, height: 720, useRaf: false });
+      await pfx.init();
+
+      pfx.spawnParticles('sewers_entry');
+      assert.ok(pfx.particles.some((p) => p.type === 'drip' && p.obj.fillColor === 0x38bdf8), 'Cloacas debe tener gotas azules cayendo');
+      assert.ok(pfx.particles.some((p) => p.type === 'fly' && p.obj.fillColor === 0x0f172a), 'Cloacas debe tener moscas negras');
+
+      pfx.spawnParticles('valleverde_corp');
+      assert.ok(createdTexts.includes('0') && createdTexts.includes('1'), 'Corporativo debe renderizar código binario 0 y 1');
+
+      pfx.spawnParticles('kernel_arena');
+      assert.ok(pfx.particles.some((p) => p.type === 'glitch' && (p.obj.fillColor === 0xef4444 || p.obj.fillColor === 0x0f172a)), 'Núcleo debe emitir glitches rojos/negros');
+
+      pfx.destroy();
     } finally {
       globalThis.document = prevDoc;
       globalThis.window = prevWin;

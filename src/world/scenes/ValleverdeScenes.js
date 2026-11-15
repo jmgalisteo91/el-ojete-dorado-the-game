@@ -582,28 +582,32 @@ function buildOverworldScene(tilemap) {
   setDeco(15, 8, TILES.ROOF_RED, true);
   setDeco(14, 10, TILES.TABLE, true);
   setDeco(15, 10, TILES.TABLE, true);
-  setDeco(13, 10, TILES.CRATE, true);
+  setDeco(13, 10, TILES.CRATE, false);
+  setDeco(16, 10, TILES.BARREL, false);
   setDeco(13, 9, TILES.LAMPPOST, true);
 
   setDeco(19, 8, TILES.ROOF_BLUE, true);
   setDeco(20, 8, TILES.ROOF_BLUE, true);
   setDeco(19, 10, TILES.TABLE, true);
   setDeco(20, 10, TILES.TABLE, true);
-  setDeco(21, 10, TILES.CRATE, true);
+  setDeco(21, 10, TILES.CRATE, false);
+  setDeco(18, 10, TILES.SANDBAG, false);
   setDeco(21, 9, TILES.LAMPPOST, true);
 
-  setDeco(14, 13, TILES.ROOF_BLUE, true);
-  setDeco(15, 13, TILES.ROOF_BLUE, true);
+  setDeco(14, 13, TILES.ROOF_GREEN, true);
+  setDeco(15, 13, TILES.ROOF_GREEN, true);
   setDeco(14, 15, TILES.TABLE, true);
   setDeco(15, 15, TILES.TABLE, true);
-  setDeco(13, 15, TILES.CRATE, true);
+  setDeco(13, 15, TILES.CRATE, false);
+  setDeco(16, 15, TILES.SANDBAG, false);
   setDeco(13, 14, TILES.LAMPPOST, true);
 
   setDeco(19, 13, TILES.ROOF_RED, true);
   setDeco(20, 13, TILES.ROOF_RED, true);
   setDeco(19, 15, TILES.TABLE, true);
   setDeco(20, 15, TILES.TABLE, true);
-  setDeco(21, 15, TILES.CRATE, true);
+  setDeco(21, 15, TILES.CRATE, false);
+  setDeco(18, 15, TILES.BARREL, false);
   setDeco(21, 14, TILES.LAMPPOST, true);
 
   // Pozo central y flores de la plaza
@@ -620,19 +624,20 @@ function buildOverworldScene(tilemap) {
 
   const houseDoors = [];
 
-  // 1. Casa del Programador
+  // 1. Casa del Programador (Tejado rojo + mix de ventanas + macetas y barril exterior)
   for (let r = 8; r <= 9; r++) {
     for (let c = 2; c <= 6; c++) setDeco(c, r, TILES.ROOF_RED, true);
   }
   setDeco(2, 10, TILES.WALL_FRONT, true);
-  setDeco(3, 10, TILES.WALL_WINDOW, true);
+  setDeco(3, 10, TILES.WALL_WINDOW_FLOWER, true);
   setDeco(4, 10, TILES.WALL_DOOR, true);
   setDeco(5, 10, TILES.WALL_WINDOW, true);
   setDeco(6, 10, TILES.WALL_FRONT, true);
-  setDeco(2, 11, TILES.CRATE, true);
-  setDeco(3, 11, TILES.FLOWERS_1, false);
+  setDeco(2, 11, TILES.CRATE, false);
+  setDeco(3, 11, TILES.FLOWER_POT, false);
   ground[11][4] = TILES.PATH;
-  setDeco(6, 11, TILES.FLOWERS_2, false);
+  setDeco(5, 11, TILES.FLOWER_POT, false);
+  setDeco(6, 11, TILES.BARREL, false);
   houseDoors.push({
     sceneId: 'player_house',
     label: 'Casa del Programador (Tu Hogar)',
@@ -647,20 +652,21 @@ function buildOverworldScene(tilemap) {
     interiorSpawnY: 6 * ts
   });
 
-  // 2. Mansión del Sabio Aurelio
+  // 2. Mansión del Sabio Aurelio (Tejado azul + ventanas alternas + macetas en puerta)
   for (let r = 3; r <= 4; r++) {
     for (let c = 6; c <= 11; c++) setDeco(c, r, TILES.ROOF_BLUE, true);
   }
   setDeco(6, 5, TILES.WALL_FRONT, true);
-  setDeco(7, 5, TILES.WALL_WINDOW, true);
+  setDeco(7, 5, TILES.WALL_WINDOW_FLOWER, true);
   setDeco(8, 5, TILES.WALL_DOOR, true);
   setDeco(9, 5, TILES.WALL_WINDOW, true);
-  setDeco(10, 5, TILES.WALL_WINDOW, true);
+  setDeco(10, 5, TILES.WALL_WINDOW_FLOWER, true);
   setDeco(11, 5, TILES.WALL_FRONT, true);
   setDeco(6, 6, TILES.TEMPLE_PILLAR, true);
-  setDeco(7, 6, TILES.FLOWERS_1, false);
+  setDeco(7, 6, TILES.FLOWER_POT, false);
   ground[6][8] = TILES.COBBLE;
   ground[7][8] = TILES.PATH;
+  setDeco(9, 6, TILES.FLOWER_POT, false);
   setDeco(10, 6, TILES.FLOWERS_2, false);
   setDeco(11, 6, TILES.TEMPLE_PILLAR, true);
   houseDoors.push({
@@ -677,16 +683,17 @@ function buildOverworldScene(tilemap) {
     interiorSpawnY: 6 * ts
   });
 
-  // 3. Observatorio de Orion
+  // 3. Observatorio de Orion (3ª variante: tejado verde + ventana con maceta + barril/cajas)
   for (let r = 3; r <= 4; r++) {
-    for (let c = 13; c <= 16; c++) setDeco(c, r, TILES.ROOF_BLUE, true);
+    for (let c = 13; c <= 16; c++) setDeco(c, r, TILES.ROOF_GREEN, true);
   }
-  setDeco(13, 5, TILES.WALL_INTERIOR, true);
+  setDeco(13, 5, TILES.WALL_FRONT, true);
   setDeco(14, 5, TILES.WALL_DOOR, true);
-  setDeco(15, 5, TILES.WALL_WINDOW, true);
-  setDeco(16, 5, TILES.WALL_INTERIOR, true);
-  setDeco(13, 6, TILES.CRATE, true);
+  setDeco(15, 5, TILES.WALL_WINDOW_FLOWER, true);
+  setDeco(16, 5, TILES.WALL_FRONT, true);
+  setDeco(13, 6, TILES.CRATE, false);
   ground[6][14] = TILES.PATH;
+  setDeco(15, 6, TILES.FLOWER_POT, false);
   setDeco(16, 6, TILES.LAMPPOST, true);
   houseDoors.push({
     sceneId: 'oracle_house',
@@ -702,7 +709,7 @@ function buildOverworldScene(tilemap) {
     interiorSpawnY: 6 * ts
   });
 
-  // 4. Herrería y Forja de Brom
+  // 4. Herrería y Forja de Brom (Tejado rojo + barriles, cajas y sacos de arena)
   for (let r = 4; r <= 5; r++) {
     for (let c = 21; c <= 25; c++) setDeco(c, r, TILES.ROOF_RED, true);
   }
@@ -712,8 +719,11 @@ function buildOverworldScene(tilemap) {
   setDeco(24, 6, TILES.WALL_FRONT, true);
   setDeco(25, 6, TILES.FIREPLACE, true);
   fillRect(ground, 24, 5, 3, 3, TILES.COBBLE);
-  setDeco(24, 5, TILES.CRATE, true);
-  setDeco(26, 5, TILES.CRATE, true);
+  setDeco(20, 6, TILES.BARREL, false);
+  setDeco(21, 7, TILES.BARREL, false);
+  setDeco(23, 7, TILES.SANDBAG, false);
+  setDeco(24, 5, TILES.CRATE, false);
+  setDeco(26, 5, TILES.CRATE, false);
   setDeco(26, 6, TILES.ANVIL, true);
   ground[7][22] = TILES.PATH;
   houseDoors.push({
@@ -730,19 +740,20 @@ function buildOverworldScene(tilemap) {
     interiorSpawnY: 6 * ts
   });
 
-  // 5. Cabaña Botánica de Lyra
+  // 5. Cabaña Botánica de Lyra (Tejado verde + ventanas con flores + macetas y barril)
   for (let r = 16; r <= 17; r++) {
-    for (let c = 4; c <= 8; c++) setDeco(c, r, TILES.ROOF_RED, true);
+    for (let c = 4; c <= 8; c++) setDeco(c, r, TILES.ROOF_GREEN, true);
   }
-  setDeco(4, 18, TILES.WALL_WINDOW, true);
+  setDeco(4, 18, TILES.WALL_WINDOW_FLOWER, true);
   setDeco(5, 18, TILES.WALL_FRONT, true);
   setDeco(6, 18, TILES.WALL_DOOR, true);
-  setDeco(7, 18, TILES.WALL_WINDOW, true);
+  setDeco(7, 18, TILES.WALL_WINDOW_FLOWER, true);
   setDeco(8, 18, TILES.WALL_FRONT, true);
+  setDeco(3, 18, TILES.BARREL, false);
   setDeco(4, 19, TILES.FENCE_POST, true);
-  setDeco(5, 19, TILES.FLOWERS_1, false);
+  setDeco(5, 19, TILES.FLOWER_POT, false);
   ground[19][6] = TILES.PATH;
-  setDeco(7, 19, TILES.FLOWERS_2, false);
+  setDeco(7, 19, TILES.FLOWER_POT, false);
   setDeco(8, 19, TILES.FENCE_POST, true);
   setDeco(4, 20, TILES.FENCE_H, true);
   setDeco(5, 20, TILES.FLOWERS_2, false);
@@ -763,7 +774,7 @@ function buildOverworldScene(tilemap) {
     interiorSpawnY: 6 * ts
   });
 
-  // 6. Cuartel de Kael y Campo de Entrenamiento del Binario
+  // 6. Cuartel de Kael y Campo de Entrenamiento del Binario (Tejado azul + sacos de arena + cajas)
   for (let r = 16; r <= 17; r++) {
     for (let c = 20; c <= 24; c++) setDeco(c, r, TILES.ROOF_BLUE, true);
   }
@@ -772,7 +783,9 @@ function buildOverworldScene(tilemap) {
   setDeco(22, 18, TILES.WALL_DOOR, true);
   setDeco(23, 18, TILES.WALL_WINDOW, true);
   setDeco(24, 18, TILES.WALL_FRONT, true);
-  setDeco(21, 19, TILES.CRATE, true);
+  setDeco(20, 19, TILES.SANDBAG, false);
+  setDeco(21, 19, TILES.CRATE, false);
+  setDeco(25, 18, TILES.SANDBAG, false);
   ground[19][22] = TILES.PATH;
   fillRect(ground, 22, 19, 5, 4, TILES.PATH);
   setDeco(23, 19, TILES.FENCE_H, true);
@@ -836,10 +849,11 @@ function buildOverworldScene(tilemap) {
     setDeco(fc, fr, TILES.FLOWERS_1, false);
   }
 
-  // Farolas
+  // Farolas de pie (emiten luz cálida de noche)
   const lampposts = [
     [13, 9], [21, 9], [13, 14], [21, 14],
-    [8, 11], [26, 11], [32, 11]
+    [8, 11], [26, 11], [32, 11],
+    [16, 6], [9, 17], [19, 18]
   ];
   for (const [lc, lr] of lampposts) {
     setDeco(lc, lr, TILES.LAMPPOST, true);
@@ -850,6 +864,34 @@ function buildOverworldScene(tilemap) {
       intensity: 1.0
     });
   }
+
+  // Ropa tendida entre casas y puestos del mercado
+  const clotheslines = [
+    {
+      x1: 6.5 * ts,
+      y1: 8.6 * ts,
+      x2: 11.2 * ts,
+      y2: 5.2 * ts,
+      sag: 6,
+      items: ['#f43f5e', '#f8fafc', '#38bdf8', '#facc15']
+    },
+    {
+      x1: 16.5 * ts,
+      y1: 4.5 * ts,
+      x2: 21.2 * ts,
+      y2: 5.0 * ts,
+      sag: 5,
+      items: ['#e2e8f0', '#a855f7', '#4ade80']
+    },
+    {
+      x1: 15.8 * ts,
+      y1: 8.4 * ts,
+      x2: 19.2 * ts,
+      y2: 8.4 * ts,
+      sag: 4,
+      items: ['#fb923c', '#f8fafc', '#60a5fa']
+    }
+  ];
 
   const signposts = [
     {
@@ -943,6 +985,7 @@ function buildOverworldScene(tilemap) {
       rows,
       layers: { ground, decoration, collision },
       lightSources,
+      clotheslines,
       signposts
     },
     houseDoors

@@ -115,6 +115,14 @@ export const TILES = {
   INAKITO_PAPERS: 68,
   INAKITO_COPIER: 69,
 
+  // (2.5D PUEBLO & MAZMORRAS) Variantes de tejados, ventanas y props exteriores
+  ROOF_GREEN: 70,
+  WALL_WINDOW_FLOWER: 71,
+  BARREL: 72,
+  FLOWER_POT: 73,
+  SANDBAG: 74,
+  WALL_TORCH: 75,
+
   // Alias semánticos usados por los constructores de escenas
   DOOR: 15,          // WALL_DOOR
   ALTAR: 37,         // ALTAR_PEDESTAL
@@ -906,7 +914,7 @@ async function generateCharacterSheet() {
 
 async function generateTilesetSheet() {
   const cols = 8;
-  const rows = 9;
+  const rows = 10;
   const canvas = document.createElement('canvas');
   canvas.width = cols * TILE_SIZE * ATLAS_SCALE;
   canvas.height = rows * TILE_SIZE * ATLAS_SCALE;
@@ -1028,33 +1036,68 @@ async function generateTilesetSheet() {
   {
     const { ox, oy } = cellOrigin(TILES.ROOF_RED);
     px(ctx, ox, oy, 16, 16, '#8f2d2d');
-    for (let y = 0; y < 16; y += 4) {
+    for (let y = 0; y < 12; y += 4) {
       px(ctx, ox, oy + y, 16, 3, '#b03a3a');
       px(ctx, ox, oy + y, 16, 1, '#c94c4c');
+      for (let x = (y % 8 === 0 ? 1 : 3); x < 16; x += 4) {
+        px(ctx, ox + x, oy + y + 1, 1, 2, '#782222');
+      }
     }
+    // Borde inferior oscuro de 4 px (sombra proyectada del alero sobre la fachada)
+    px(ctx, ox, oy + 12, 16, 4, '#5e1818');
+    px(ctx, ox, oy + 12, 16, 1, '#7a2222');
+    px(ctx, ox, oy + 15, 16, 1, '#3b0e0e');
   }
   {
     const { ox, oy } = cellOrigin(TILES.ROOF_BLUE);
     px(ctx, ox, oy, 16, 16, '#2b4466');
-    for (let y = 0; y < 16; y += 4) {
+    for (let y = 0; y < 12; y += 4) {
       px(ctx, ox, oy + y, 16, 3, '#385985');
       px(ctx, ox, oy + y, 16, 1, '#4c74ab');
+      for (let x = (y % 8 === 0 ? 1 : 3); x < 16; x += 4) {
+        px(ctx, ox + x, oy + y + 1, 1, 2, '#223754');
+      }
     }
+    // Borde inferior oscuro de 4 px (sombra proyectada del alero sobre la fachada)
+    px(ctx, ox, oy + 12, 16, 4, '#16263d');
+    px(ctx, ox, oy + 12, 16, 1, '#203657');
+    px(ctx, ox, oy + 15, 16, 1, '#0d1726');
   }
   {
     const { ox, oy } = cellOrigin(TILES.WALL_WOOD);
     px(ctx, ox, oy, 16, 16, '#dfd3c3');
-    px(ctx, ox, oy, 2, 16, '#5c3d28');
-    px(ctx, ox + 14, oy, 2, 16, '#5c3d28');
-    px(ctx, ox, oy, 16, 2, '#5c3d28');
-    px(ctx, ox, oy + 13, 16, 3, '#6e737b');
+    // Textura sutil de estuco
+    px(ctx, ox + 3, oy + 4, 2, 1, '#cfc0ad');
+    px(ctx, ox + 10, oy + 8, 3, 1, '#cfc0ad');
+    // Vigas verticales, viga superior y vigas marrones diagonales (entramado medieval)
+    px(ctx, ox, oy, 2, 13, '#5c3d28');
+    px(ctx, ox + 14, oy, 2, 13, '#5c3d28');
+    px(ctx, ox, oy, 16, 2, '#4a3020');
+    for (let i = 0; i < 6; i++) {
+      px(ctx, ox + 2 + i, oy + 2 + i * 2, 2, 2, '#6b472e');
+      px(ctx, ox + 12 - i, oy + 2 + i * 2, 2, 2, '#5c3d28');
+    }
+    // Zócalo de piedra en la base
+    px(ctx, ox, oy + 12, 16, 4, '#5a6069');
+    px(ctx, ox, oy + 12, 16, 1, '#8a949e');
+    px(ctx, ox + 2, oy + 13, 4, 2, '#737a84');
+    px(ctx, ox + 8, oy + 13, 5, 2, '#686f78');
   }
   {
     const { ox, oy } = cellOrigin(TILES.WALL_WINDOW);
-    px(ctx, ox, oy, 16, 16, '#b7a88f');
+    px(ctx, ox, oy, 16, 16, '#c4b59b');
     px(ctx, ox, oy, 16, 2, '#4a3020');
-    px(ctx, ox, oy + 13, 16, 3, '#6e737b');
-    // Marco grueso de 2 px y brillo de vela en el interior.
+    // Vigas laterales y diagonales de refuerzo bajo el dintel
+    px(ctx, ox, oy + 2, 2, 11, '#5c3d28');
+    px(ctx, ox + 14, oy + 2, 2, 11, '#5c3d28');
+    px(ctx, ox + 2, oy + 2, 2, 2, '#6b472e');
+    px(ctx, ox + 12, oy + 2, 2, 2, '#6b472e');
+    // Zócalo de piedra detallado
+    px(ctx, ox, oy + 12, 16, 4, '#5a6069');
+    px(ctx, ox, oy + 12, 16, 1, '#8a949e');
+    px(ctx, ox + 1, oy + 13, 5, 2, '#737a84');
+    px(ctx, ox + 8, oy + 13, 6, 2, '#686f78');
+    // Marco grueso de 2 px y brillo cálido interior
     px(ctx, ox + 3, oy + 3, 10, 9, '#3b2416');
     px(ctx, ox + 4, oy + 4, 8, 7, '#5a3a24');
     px(ctx, ox + 5, oy + 5, 6, 5, '#f6c967');
@@ -1065,9 +1108,12 @@ async function generateTilesetSheet() {
   }
   {
     const { ox, oy } = cellOrigin(TILES.WALL_DOOR);
-    px(ctx, ox, oy, 16, 16, '#b7a88f');
+    px(ctx, ox, oy, 16, 16, '#c4b59b');
     px(ctx, ox, oy, 16, 2, '#4a3020');
-    px(ctx, ox, oy + 13, 16, 3, '#6e737b');
+    px(ctx, ox, oy + 2, 2, 11, '#5c3d28');
+    px(ctx, ox + 14, oy + 2, 2, 11, '#5c3d28');
+    px(ctx, ox, oy + 12, 16, 4, '#5a6069');
+    px(ctx, ox, oy + 12, 16, 1, '#8a949e');
     px(ctx, ox + 3, oy + 2, 10, 12, '#4a2c18');
     px(ctx, ox + 4, oy + 3, 8, 10, '#7c4a2b');
     px(ctx, ox + 5, oy + 4, 1, 7, '#9a6238');
@@ -1389,22 +1435,26 @@ async function generateTilesetSheet() {
     px(ctx, ox + 4, oy + 5, 8, 6, '#111827');
     px(ctx, ox + 6, oy + 7, 4, 3, '#6366f1'); // Resplandor de sincronización
   }
-  // 51: WALL_FRONT (muro frontal con borde superior oscuro y zócalo)
+  // 51: WALL_FRONT (muro frontal con vigas diagonales de madera, borde superior oscuro y zócalo de piedra)
   {
     const { ox, oy } = cellOrigin(TILES.WALL_FRONT);
-    px(ctx, ox, oy, 16, 16, '#8b7b63');
+    px(ctx, ox, oy, 16, 16, '#c4b59b');
     px(ctx, ox, oy, 16, 3, '#3a2a1e');
     px(ctx, ox, oy + 1, 16, 1, '#20150f');
-    for (let y = 4; y < 13; y += 3) {
-      px(ctx, ox, oy + y, 16, 1, 'rgba(92, 61, 40, 0.45)');
-      for (let x = (y % 2 ? 0 : 5); x < 16; x += 10) {
-        px(ctx, ox + x, oy + y - 2, 1, 2, 'rgba(92, 61, 40, 0.5)');
-      }
+    // Entramado de vigas de madera verticales y diagonales marrones
+    px(ctx, ox, oy + 3, 2, 9, '#5c3d28');
+    px(ctx, ox + 14, oy + 3, 2, 9, '#5c3d28');
+    px(ctx, ox + 7, oy + 3, 2, 9, '#6b472e');
+    for (let i = 0; i < 5; i++) {
+      px(ctx, ox + 2 + i, oy + 3 + i * 2, 2, 2, '#6b472e');
+      px(ctx, ox + 12 - i, oy + 3 + i * 2, 2, 2, '#5c3d28');
     }
-    px(ctx, ox, oy + 4, 2, 9, '#5c3d28');
-    px(ctx, ox + 14, oy + 4, 2, 9, '#5c3d28');
-    px(ctx, ox, oy + 13, 16, 3, '#6e737b');
-    px(ctx, ox, oy + 13, 16, 1, '#8a949e');
+    // Zócalo de piedra en la base con juntas visibles
+    px(ctx, ox, oy + 12, 16, 4, '#5a6069');
+    px(ctx, ox, oy + 12, 16, 1, '#8a949e');
+    px(ctx, ox + 1, oy + 13, 4, 2, '#737a84');
+    px(ctx, ox + 6, oy + 13, 5, 2, '#686f78');
+    px(ctx, ox + 12, oy + 13, 3, 2, '#7a828c');
   }
   // 52: CHIMNEY (chimenea de ladrillo sobre el tejado)
   {
@@ -1607,6 +1657,97 @@ async function generateTilesetSheet() {
     px(ctx, ox + 3, oy + 5, 10, 1, '#22d3ee');
     px(ctx, ox + 4, oy + 7, 8, 3, '#475569');
     px(ctx, ox + 5, oy + 11, 6, 3, '#f8fafc');
+  }
+  // 70: ROOF_GREEN (3ª variante de tejado: verde bosque con borde inferior oscuro de 4 px)
+  {
+    const { ox, oy } = cellOrigin(TILES.ROOF_GREEN);
+    px(ctx, ox, oy, 16, 16, '#235e3b');
+    for (let y = 0; y < 12; y += 4) {
+      px(ctx, ox, oy + y, 16, 3, '#2f7a4d');
+      px(ctx, ox, oy + y, 16, 1, '#3f9963');
+      for (let x = (y % 8 === 0 ? 1 : 3); x < 16; x += 4) {
+        px(ctx, ox + x, oy + y + 1, 1, 2, '#1c4d30');
+      }
+    }
+    // Borde inferior oscuro de 4 px (alero 2.5D)
+    px(ctx, ox, oy + 12, 16, 4, '#163e26');
+    px(ctx, ox, oy + 12, 16, 1, '#205736');
+    px(ctx, ox, oy + 15, 16, 1, '#0d2617');
+  }
+  // 71: WALL_WINDOW_FLOWER (2ª variante de ventana: con jardinera/maceta y flores en el alféizar)
+  {
+    const { ox, oy } = cellOrigin(TILES.WALL_WINDOW_FLOWER);
+    px(ctx, ox, oy, 16, 16, '#c4b59b');
+    px(ctx, ox, oy, 16, 2, '#4a3020');
+    px(ctx, ox, oy + 2, 2, 11, '#5c3d28');
+    px(ctx, ox + 14, oy + 2, 2, 11, '#5c3d28');
+    // Zócalo de piedra
+    px(ctx, ox, oy + 12, 16, 4, '#5a6069');
+    px(ctx, ox, oy + 12, 16, 1, '#8a949e');
+    px(ctx, ox + 2, oy + 13, 4, 2, '#737a84');
+    px(ctx, ox + 9, oy + 13, 5, 2, '#686f78');
+    // Ventana iluminada
+    px(ctx, ox + 3, oy + 3, 10, 7, '#3b2416');
+    px(ctx, ox + 4, oy + 4, 8, 5, '#5a3a24');
+    px(ctx, ox + 5, oy + 5, 6, 4, '#f6c967');
+    px(ctx, ox + 6, oy + 5, 4, 4, '#ffe9a8');
+    px(ctx, ox + 7, oy + 5, 1, 4, '#4a3020');
+    // Maceta de terracota + flores bajo la ventana
+    px(ctx, ox + 3, oy + 10, 10, 2, '#9a3412');
+    px(ctx, ox + 4, oy + 10, 8, 1, '#c2410c');
+    px(ctx, ox + 4, oy + 8, 8, 2, '#22c55e');
+    px(ctx, ox + 4, oy + 8, 2, 2, '#f43f5e');
+    px(ctx, ox + 7, oy + 8, 2, 2, '#facc15');
+    px(ctx, ox + 10, oy + 8, 2, 2, '#ec4899');
+  }
+  // 72: BARREL (Barril de madera exterior)
+  {
+    const { ox, oy } = cellOrigin(TILES.BARREL);
+    px(ctx, ox + 3, oy + 13, 10, 2, 'rgba(0,0,0,0.35)');
+    px(ctx, ox + 4, oy + 3, 8, 11, '#7c4a2b');
+    px(ctx, ox + 3, oy + 5, 10, 7, '#8c5834');
+    px(ctx, ox + 5, oy + 4, 2, 9, '#a66b43');
+    px(ctx, ox + 4, oy + 3, 8, 2, '#5c3d28');
+    px(ctx, ox + 5, oy + 3, 6, 1, '#9e663f');
+    // Aros metálicos oscuros
+    px(ctx, ox + 3, oy + 5, 10, 1, '#334155');
+    px(ctx, ox + 3, oy + 10, 10, 1, '#334155');
+  }
+  // 73: FLOWER_POT (Maceta decorativa con flores en las puertas)
+  {
+    const { ox, oy } = cellOrigin(TILES.FLOWER_POT);
+    px(ctx, ox + 4, oy + 13, 8, 2, 'rgba(0,0,0,0.3)');
+    px(ctx, ox + 5, oy + 9, 6, 5, '#9a3412');
+    px(ctx, ox + 4, oy + 8, 8, 2, '#c2410c');
+    px(ctx, ox + 5, oy + 5, 6, 4, '#16a34a');
+    px(ctx, ox + 4, oy + 4, 3, 3, '#22c55e');
+    px(ctx, ox + 9, oy + 4, 3, 3, '#22c55e');
+    px(ctx, ox + 5, oy + 3, 2, 2, '#fb7185');
+    px(ctx, ox + 8, oy + 4, 2, 2, '#fde047');
+    px(ctx, ox + 10, oy + 5, 2, 2, '#38bdf8');
+  }
+  // 74: SANDBAG (Sacos de arena y provisiones junto a tiendas)
+  {
+    const { ox, oy } = cellOrigin(TILES.SANDBAG);
+    px(ctx, ox + 2, oy + 13, 12, 2, 'rgba(0,0,0,0.32)');
+    px(ctx, ox + 2, oy + 9, 6, 5, '#a88b5a');
+    px(ctx, ox + 8, oy + 9, 6, 5, '#947849');
+    px(ctx, ox + 3, oy + 9, 4, 2, '#c2a673');
+    px(ctx, ox + 9, oy + 9, 4, 2, '#b59866');
+    px(ctx, ox + 5, oy + 5, 6, 5, '#b89b6a');
+    px(ctx, ox + 6, oy + 6, 4, 2, '#d4b886');
+    px(ctx, ox + 7, oy + 5, 1, 4, '#6b5331');
+    px(ctx, ox + 4, oy + 10, 1, 3, '#6b5331');
+    px(ctx, ox + 11, oy + 10, 1, 3, '#6b5331');
+  }
+  // 75: WALL_TORCH (Antorcha de pared para mazmorras)
+  {
+    const { ox, oy } = cellOrigin(TILES.WALL_TORCH);
+    px(ctx, ox + 6, oy + 8, 4, 3, '#334155');
+    px(ctx, ox + 7, oy + 7, 2, 6, '#5c3d28');
+    px(ctx, ox + 6, oy + 4, 4, 4, '#ea580c');
+    px(ctx, ox + 7, oy + 3, 2, 4, '#f59e0b');
+    px(ctx, ox + 7, oy + 2, 2, 2, '#fef08a');
   }
 
   return canvasToImage(canvas);

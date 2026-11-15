@@ -325,7 +325,10 @@ export class RPGGame {
       resolution: 1,
       quality: this.performanceProfile
     });
-    this.premiumEffects.spawnParticles(this.tilemap?.currentSceneId || 'overworld');
+    this.premiumEffects.spawnParticles(
+      this.tilemap?.currentSceneId || 'overworld',
+      this.tilemap?.chimneys || []
+    );
 
     // (FIX M2.3) Pausa automática al perder el foco (móvil y desktop)
     this._installAutoPause();
@@ -965,7 +968,7 @@ export class RPGGame {
       if (typeof onMidpoint === 'function') onMidpoint();
       else if (targetScene) this.tilemap?.loadScene?.(targetScene);
       const activeScene = this.tilemap?.currentSceneId || targetScene;
-      this.premiumEffects?.spawnParticles?.(activeScene);
+      this.premiumEffects?.spawnParticles?.(activeScene, this.tilemap?.chimneys || []);
       this.fadeAlpha = 0;
       this.sceneFade = null;
       return;
@@ -996,7 +999,7 @@ export class RPGGame {
             this.tilemap?.loadScene?.(fade.targetScene);
           }
           const activeScene = this.tilemap?.currentSceneId || fade.targetScene;
-          this.premiumEffects?.spawnParticles?.(activeScene);
+          this.premiumEffects?.spawnParticles?.(activeScene, this.tilemap?.chimneys || []);
         }
         fade.phase = 'in';
       }
@@ -5755,6 +5758,7 @@ export class RPGGame {
           sceneId: this.tilemap.currentSceneId,
           tilemap: this.tilemap,
           camera: this.camera,
+          chimneys: this.tilemap.chimneys || [],
           paused: false
         });
       }
@@ -6116,6 +6120,7 @@ export class RPGGame {
         sceneId: this.tilemap.currentSceneId,
         tilemap: this.tilemap,
         camera: this.camera,
+        chimneys: this.tilemap.chimneys || [],
         paused: this.menuSystem ? this.menuSystem.isBlockingGameplay() : false
       });
     }

@@ -8,6 +8,8 @@
  * En entornos headless (tests Node sin DOM/WebGL) se degrada de forma segura a no-op.
  */
 
+import { getEnvironmentTheme, resolveEnvironmentBiome } from '../data/EnvironmentData.js';
+
 const DEFAULT_LOGICAL_WIDTH = 320;
 const DEFAULT_LOGICAL_HEIGHT = 180;
 const DEFAULT_DISPLAY_WIDTH = 1280;
@@ -112,21 +114,8 @@ export const BIOME_PRESETS = Object.freeze({
  * Clasifica un sceneId del juego en uno de los biomas de efectos PixiJS.
  */
 export function resolveSceneBiome(sceneId) {
-  const id = String(sceneId || '').toLowerCase();
-  if (!id) return 'interior';
-  if (/^(house|shop|inn|jail|rosa_bar)/.test(id) || id.endsWith('_house')) {
-    return 'interior';
-  }
-  if (/^sewers/.test(id)) return 'cloacas';
-  if (/^(forge|ai_fortress_gate)/.test(id)) return 'forja';
-  if (/temple/.test(id) || /^mines/.test(id)) return 'templos';
-  if (/^(ai_|quantum|condemned|citadel|valleverde_corp|inakito_office|vertedero|kernel_arena)/.test(id)) {
-    return 'ciudadela';
-  }
-  if (/^(overworld|first_stage|valley|north_peaks|south_swamp|west_wastes)/.test(id)) {
-    return 'valleverde';
-  }
-  return 'interior';
+  if (!sceneId) return 'interior';
+  return resolveEnvironmentBiome(sceneId);
 }
 
 function buildAtlasCanvas(doc) {
@@ -215,14 +204,16 @@ function buildAtlasCanvas(doc) {
 const PARTICLE_COLORS = Object.freeze({
   leaf: 0x4ade80,
   pollen: 0xfef3c7,
-  drip: 0x67e8f9,
-  fly: 0xcbd5e1,
+  firefly: 0xfde047,
+  drip: 0x38bdf8,
+  fly: 0x0f172a,
   spark: 0xf97316,
   smoke: 0x94a3b8,
   dust: 0xfde047,
   bit0: 0x4ade80,
   bit1: 0x22d3ee,
-  glitch: 0xc084fc
+  glitch: 0xef4444,
+  glitchDark: 0x0f172a
 });
 
 export class PremiumEffectsManager {
@@ -243,6 +234,7 @@ export class PremiumEffectsManager {
     this.overlayCanvas = null;
     this.shaderContainer = null;
     this.particleContainer = null;
+    this.chimneyContainer = null;
     this.heatSprite = null;
     this.waterSprite = null;
     this.heatUniforms = null;
@@ -252,7 +244,13 @@ export class PremiumEffectsManager {
 
     this.sceneId = null;
     this.biome = 'interior';
+    this.theme = getEnvironmentTheme('interior');
     this.particles = [];
+    this.chimneys = [];
+    this.chimneySmoke = [];
+    this._chimneyCamX = 0;
+    this._chimneyCamY = 0;
+    this._chimneySpawnTimer = 0;
     this.time = 0;
     this.ready = false;
     this._destroyed = false;
@@ -445,6 +443,9 @@ export class PremiumEffectsManager {
       this.particleContainer = new pixi.Container();
     }
     this.app.stage.addChild(this.particleContainer);
+
+    this.chimneyContainer = new pixi.Container();
+    this.app.stage.addChild(this.chimneyContainer);
   }
 
   _buildShaders(pixi) {
@@ -552,7 +553,8 @@ export class PremiumEffectsManager {
   }
 
   _syncVisibility() {
-    const active = this.enabled && this.visible && this.biome !== 'interior';
+    const hasChimneys = this.chimneys.length > 0;
+    const active = this.enabled && this.visible && (this.biome !== 'interior' || hasChimneys);
     if (this.overlayCanvas && this.overlayCanvas.style) {
       this.overlayCanvas.style.display = active ? 'block' : 'none';
     }
@@ -560,17 +562,42 @@ export class PremiumEffectsManager {
       this.app.stage.visible = active;
     }
     if (this.particleContainer) {
-      this.particleContainer.visible = active && this.particlesEnabled;
+      this.particleContainer.visible = this.enabled && this.visible && this.biome !== 'interior' && this.particlesEnabled;
     }
+    if (this.chimneyContainer) {
+      this.chimneyContainer.visible = this.enabled && this.visible && hasChimneys && this.particlesEnabled;
+    }
+  }
+
+  _clearChimneySmoke() {
+    for (let i = 0; i < this.chimneySmoke.length; i++) {
+      const obj = this.chimneySmoke[i]?.obj;
+      if (obj && typeof obj.destroy === 'function') {
+        try {
+          obj.destroy();
+        } catch (_) {}
+      }
+    }
+    if (this.chimneyContainer && typeof this.chimneyContainer.removeChildren === 'function') {
+      this.chimneyContainer.removeChildren();
+    }
+    this.chimneySmoke.length = 0;
   }
 
   setScene(sceneId) {
     const nextId = sceneId ? String(sceneId) : null;
-    const nextBiome = resolveSceneBiome(nextId);
+    const nextTheme = nextId ? getEnvironmentTheme(nextId) : getEnvironmentTheme('interior');
+    const nextBiome = nextId ? nextTheme.biomeId : 'interior';
+    const prevThemeId = this.theme?.id;
     const sceneChanged = nextId !== this.sceneId;
-    const biomeChanged = nextBiome !== this.biome;
+    const biomeChanged = nextBiome !== this.biome || nextTheme.id !== prevThemeId;
     this.sceneId = nextId;
     this.biome = nextBiome;
+    this.theme = nextTheme;
+    if (sceneChanged) {
+      this.chimneys = [];
+      this._clearChimneySmoke();
+    }
     this._syncVisibility();
 
     if ((biomeChanged || sceneChanged) && this.ready) {
@@ -582,11 +609,18 @@ export class PremiumEffectsManager {
   /**
    * Genera/reinicia las partículas visibles para la escena actual y limpia las anteriores.
    */
-  spawnParticles(sceneId) {
+  spawnParticles(sceneId, chimneys = null) {
     const targetScene = sceneId !== undefined ? sceneId : this.sceneId;
     this.sceneId = targetScene ? String(targetScene) : this.sceneId;
-    this.biome = resolveSceneBiome(this.sceneId);
+    this.theme = this.sceneId ? getEnvironmentTheme(this.sceneId) : getEnvironmentTheme('interior');
+    this.biome = this.sceneId ? this.theme.biomeId : 'interior';
     this._clearParticles();
+    this._clearChimneySmoke();
+    if (Array.isArray(chimneys)) {
+      this.chimneys = chimneys;
+    } else if (sceneId !== undefined) {
+      this.chimneys = [];
+    }
     this._syncVisibility();
     if (this.ready) {
       this._rebuildParticlesForBiome(this.biome);
@@ -617,12 +651,54 @@ export class PremiumEffectsManager {
     this.particles.length = 0;
   }
 
-  _createParticleGraphic(pixi, pType) {
-    const color = PARTICLE_COLORS[pType] ?? 0xffffff;
+  _createParticleGraphic(pixi, pType, index = 0) {
+    const color = pType === 'glitch'
+      ? (index % 2 === 0 ? PARTICLE_COLORS.glitch : PARTICLE_COLORS.glitchDark)
+      : (PARTICLE_COLORS[pType] ?? 0xffffff);
+
+    // Código binario ('0' / '1') con Sprite de atlas o PIXI.Text para legibilidad nítida
+    if ((pType === 'bit0' || pType === 'bit1')) {
+      const tex = this.textures[pType];
+      if (tex && typeof pixi.Sprite === 'function' && typeof this.particleContainer.addChild === 'function') {
+        const sprite = new pixi.Sprite(tex);
+        if (sprite.anchor && typeof sprite.anchor.set === 'function') {
+          sprite.anchor.set(0.5);
+        }
+        sprite.fillColor = color;
+        this.particleContainer.addChild(sprite);
+        return sprite;
+      }
+      if (typeof pixi.Text === 'function' && typeof this.particleContainer.addChild === 'function') {
+        const glyph = pType === 'bit0' ? '0' : '1';
+        const txt = new pixi.Text({
+          text: glyph,
+          style: { fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold', fill: color }
+        });
+        if (txt.anchor && typeof txt.anchor.set === 'function') {
+          txt.anchor.set(0.5);
+        }
+        txt.fillColor = color;
+        this.particleContainer.addChild(txt);
+        return txt;
+      }
+    }
+
     if (typeof pixi.Graphics === 'function' && typeof this.particleContainer.addChild === 'function') {
       const g = new pixi.Graphics();
-      const sizeW = pType === 'glitch' ? 12 : pType === 'drip' ? 3 : 4;
-      const sizeH = pType === 'glitch' ? 3 : pType === 'drip' ? 8 : 4;
+      const sizeW = pType === 'glitch'
+        ? (index % 3 === 0 ? 12 : 6)
+        : pType === 'drip'
+          ? 2
+          : pType === 'fly'
+            ? 3
+            : 4;
+      const sizeH = pType === 'glitch'
+        ? (index % 3 === 0 ? 3 : 6)
+        : pType === 'drip'
+          ? 9
+          : pType === 'fly'
+            ? 3
+            : 4;
       if (typeof g.rect === 'function' && typeof g.fill === 'function') {
         g.rect(-sizeW / 2, -sizeH / 2, sizeW, sizeH).fill(color);
       } else if (typeof g.beginFill === 'function' && typeof g.drawRect === 'function') {
@@ -630,6 +706,7 @@ export class PremiumEffectsManager {
         g.drawRect(-sizeW / 2, -sizeH / 2, sizeW, sizeH);
         g.endFill();
       }
+      g.fillColor = color;
       this.particleContainer.addChild(g);
       return g;
     }
@@ -643,6 +720,7 @@ export class PremiumEffectsManager {
         anchorX: 0.5,
         anchorY: 0.5
       });
+      pObj.fillColor = color;
       this.particleContainer.addParticle(pObj);
       return pObj;
     }
@@ -650,6 +728,7 @@ export class PremiumEffectsManager {
     if (sprite.anchor && typeof sprite.anchor.set === 'function') {
       sprite.anchor.set(0.5);
     }
+    sprite.fillColor = color;
     this.particleContainer.addChild(sprite);
     return sprite;
   }
@@ -658,17 +737,20 @@ export class PremiumEffectsManager {
     this._clearParticles();
     if (!this.particlesEnabled) return;
     const pixi = this._getPixi();
+    const theme = this.sceneId ? getEnvironmentTheme(this.sceneId) : null;
     const preset = BIOME_PRESETS[biomeId] || BIOME_PRESETS.interior;
-    if (!preset.maxParticles || !preset.types.length || !pixi || !this.particleContainer) {
+    const types = theme && theme.particles && theme.particles.types ? theme.particles.types : preset.types;
+    const maxParticles = theme && theme.particles ? theme.particles.count : preset.maxParticles;
+    if (!maxParticles || !types.length || !pixi || !this.particleContainer) {
       return;
     }
 
     const qScale = QUALITY_SCALE[this.quality] || 1;
-    const isExact50Scene = biomeId === 'valleverde' || biomeId === 'forja';
-    const count = isExact50Scene ? preset.maxParticles : Math.max(4, Math.round(preset.maxParticles * qScale));
+    const isExact50Scene = (biomeId === 'valleverde' || biomeId === 'forja') && maxParticles === 50;
+    const count = isExact50Scene ? maxParticles : Math.max(4, Math.round(maxParticles * qScale));
     for (let i = 0; i < count; i++) {
-      const pType = preset.types[i % preset.types.length];
-      const displayObj = this._createParticleGraphic(pixi, pType);
+      const pType = types[i % types.length];
+      const displayObj = this._createParticleGraphic(pixi, pType, i);
 
       const record = {
         type: pType,
@@ -709,13 +791,14 @@ export class PremiumEffectsManager {
         p.maxLife = 6 + Math.random() * 3;
         break;
       case 'pollen':
+      case 'firefly':
         p.x = Math.random() * w;
         p.y = Math.random() * h;
         p.vx = (3 + Math.random() * 4) * dimScale;
         p.vy = (-1 + Math.random() * 3) * dimScale;
         p.rotSpeed = 0;
-        p.scale = gScale * 0.8;
-        p.baseAlpha = 0.75;
+        p.scale = gScale * (p.type === 'firefly' ? 0.95 : 0.8);
+        p.baseAlpha = p.type === 'firefly' ? 0.92 : 0.75;
         p.maxLife = 4 + Math.random() * 3;
         break;
       case 'drip':
@@ -904,6 +987,98 @@ export class PremiumEffectsManager {
     void dt;
   }
 
+  _spawnChimneySmokePuff(chimney) {
+    const pixi = this._getPixi();
+    if (!pixi || !this.chimneyContainer || !chimney) return;
+    const scaleX = this.width / DEFAULT_LOGICAL_WIDTH;
+    const scaleY = this.height / DEFAULT_LOGICAL_HEIGHT;
+    const sx = (chimney.x - this._chimneyCamX) * scaleX;
+    const sy = (chimney.y - this._chimneyCamY) * scaleY;
+    if (sx < -32 || sx > this.width + 32 || sy < -32 || sy > this.height + 32) return;
+
+    const shade = Math.random() < 0.5 ? 0xe2e8f0 : 0xcbd5e1;
+    let obj;
+    if (typeof pixi.Graphics === 'function' && typeof this.chimneyContainer.addChild === 'function') {
+      obj = new pixi.Graphics();
+      if (typeof obj.rect === 'function' && typeof obj.fill === 'function') {
+        obj.rect(-3, -3, 6, 6).fill(shade);
+      } else if (typeof obj.beginFill === 'function' && typeof obj.drawRect === 'function') {
+        obj.beginFill(shade);
+        obj.drawRect(-3, -3, 6, 6);
+        obj.endFill();
+      }
+      this.chimneyContainer.addChild(obj);
+    } else if (pixi.Sprite && pixi.Texture?.WHITE && typeof this.chimneyContainer.addChild === 'function') {
+      obj = new pixi.Sprite(pixi.Texture.WHITE);
+      obj.tint = shade;
+      obj.width = 6;
+      obj.height = 6;
+      this.chimneyContainer.addChild(obj);
+    }
+    if (!obj) return;
+
+    const puff = {
+      obj,
+      x: sx + (Math.random() - 0.5) * 4 * scaleX,
+      y: sy,
+      vx: (3 + Math.random() * 5) * scaleX,
+      vy: -(12 + Math.random() * 8) * scaleY,
+      life: 1.5 + Math.random() * 0.7,
+      maxLife: 2.0,
+      scale: Math.max(0.85, scaleX * 0.45),
+      phase: Math.random() * Math.PI * 2
+    };
+    puff.maxLife = puff.life;
+    obj.x = puff.x;
+    obj.y = puff.y;
+    obj.alpha = 0.65;
+    this.chimneySmoke.push(puff);
+  }
+
+  _stepChimneySmoke(safeDt) {
+    if (!this.ready || !this.particlesEnabled) return;
+    if (this.chimneys.length > 0 && this.chimneySmoke.length < 72) {
+      this._chimneySpawnTimer -= safeDt;
+      if (this._chimneySpawnTimer <= 0) {
+        this._chimneySpawnTimer = 0.22;
+        for (let i = 0; i < this.chimneys.length; i++) {
+          this._spawnChimneySmokePuff(this.chimneys[i]);
+        }
+      }
+    }
+
+    const scaleX = Math.max(1, this.width / DEFAULT_LOGICAL_WIDTH);
+    for (let i = this.chimneySmoke.length - 1; i >= 0; i--) {
+      const p = this.chimneySmoke[i];
+      p.life -= safeDt;
+      if (p.life <= 0) {
+        if (this.chimneyContainer && typeof this.chimneyContainer.removeChild === 'function') {
+          try {
+            this.chimneyContainer.removeChild(p.obj);
+          } catch (_) {}
+        }
+        if (p.obj && typeof p.obj.destroy === 'function') {
+          try {
+            p.obj.destroy();
+          } catch (_) {}
+        }
+        this.chimneySmoke.splice(i, 1);
+        continue;
+      }
+
+      p.x += (p.vx + Math.sin(this.time * 2.2 + p.phase) * 4 * scaleX) * safeDt;
+      p.y += p.vy * safeDt;
+      p.scale += 0.42 * safeDt;
+      const ratio = Math.max(0, p.life / Math.max(0.01, p.maxLife));
+      p.obj.x = p.x;
+      p.obj.y = p.y;
+      p.obj.alpha = 0.62 * ratio;
+      if (p.obj.scale && typeof p.obj.scale.set === 'function') {
+        p.obj.scale.set(p.scale);
+      }
+    }
+  }
+
   _startRafLoop() {
     if (this._rafId !== null || this._destroyed || typeof requestAnimationFrame !== 'function') return;
     this._lastRafTs = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -915,8 +1090,10 @@ export class PremiumEffectsManager {
       const cur = typeof now === 'number' ? now : (typeof performance !== 'undefined' ? performance.now() : Date.now());
       const dt = Math.min(Math.max((cur - this._lastRafTs) / 1000, 0), 0.1);
       this._lastRafTs = cur;
-      if (this.enabled && this.visible && this.biome !== 'interior' && this.ready) {
+      const hasActiveOverlay = this.enabled && this.visible && (this.biome !== 'interior' || this.chimneys.length > 0);
+      if (hasActiveOverlay && this.ready) {
         this._stepParticles(dt);
+        this._stepChimneySmoke(dt);
         this.render();
       }
       this._rafId = requestAnimationFrame(tick);
@@ -941,11 +1118,18 @@ export class PremiumEffectsManager {
         p.y += p.vy * safeDt;
         p.obj.rotation += p.rotSpeed * safeDt;
       } else if (p.type === 'fly') {
-        p.x += (p.vx + Math.cos(this.time * 9 + p.phase) * 16 * swayScale) * safeDt;
-        p.y += (p.vy + Math.sin(this.time * 11 + p.phase) * 14 * swayScale) * safeDt;
-      } else if (p.type === 'pollen' || p.type === 'dust') {
+        p.vx += (Math.random() - 0.5) * 60 * swayScale * safeDt;
+        p.vy += (Math.random() - 0.5) * 50 * swayScale * safeDt;
+        p.vx = Math.max(-42 * swayScale, Math.min(42 * swayScale, p.vx));
+        p.vy = Math.max(-34 * swayScale, Math.min(34 * swayScale, p.vy));
+        p.x += (p.vx + Math.cos(this.time * 11 + p.phase) * 20 * swayScale) * safeDt;
+        p.y += (p.vy + Math.sin(this.time * 13 + p.phase) * 18 * swayScale) * safeDt;
+      } else if (p.type === 'pollen' || p.type === 'dust' || p.type === 'firefly') {
         p.x += (p.vx + Math.sin(this.time * 1.3 + p.phase) * 2.5 * swayScale) * safeDt;
         p.y += (p.vy + Math.cos(this.time * 1.1 + p.phase) * 1.8 * swayScale) * safeDt;
+      } else if (p.type === 'glitch') {
+        p.x += (Math.random() - 0.5) * 14 * swayScale;
+        p.y += 42 * swayScale * safeDt;
       } else {
         p.x += p.vx * safeDt;
         p.y += p.vy * safeDt;
@@ -970,25 +1154,46 @@ export class PremiumEffectsManager {
     if (context.sceneId !== undefined && context.sceneId !== this.sceneId) {
       this.setScene(context.sceneId);
     }
+    if (Array.isArray(context.chimneys)) {
+      const prevLen = this.chimneys.length;
+      this.chimneys = context.chimneys;
+      if (prevLen !== this.chimneys.length) {
+        this._syncVisibility();
+      }
+    } else if (Array.isArray(context.tilemap?.chimneys)) {
+      const prevLen = this.chimneys.length;
+      this.chimneys = context.tilemap.chimneys;
+      if (prevLen !== this.chimneys.length) {
+        this._syncVisibility();
+      }
+    }
+    if (context.camera) {
+      this._chimneyCamX = context.camera.renderX ?? context.camera.x ?? 0;
+      this._chimneyCamY = context.camera.renderY ?? context.camera.y ?? 0;
+    }
     if (context.visible !== undefined) {
       this.setVisible(context.visible);
     }
 
-    if (!this.enabled || !this.visible || this.biome === 'interior' || !this.ready) {
+    const hasChimneys = this.chimneys.length > 0;
+    if (!this.enabled || !this.visible || (this.biome === 'interior' && !hasChimneys) || !this.ready) {
       return;
     }
     if (context.paused) return;
 
     if (this._rafId === null) {
       this._stepParticles(safeDt);
+      this._stepChimneySmoke(safeDt);
     }
 
-    this._updateShaders(safeDt, context);
+    if (this.biome !== 'interior') {
+      this._updateShaders(safeDt, context);
+    }
   }
 
   render() {
     if (this._destroyed || !this.ready || !this.app) return;
-    if (!this.enabled || !this.visible || this.biome === 'interior') return;
+    if (!this.enabled || !this.visible || (this.biome === 'interior' && this.chimneys.length === 0)) return;
     this.syncLayout();
     if (typeof this.app.render === 'function') {
       try {
@@ -1015,6 +1220,7 @@ export class PremiumEffectsManager {
     }
     this._rafId = null;
     this._clearParticles();
+    this._clearChimneySmoke();
 
     if (typeof window !== 'undefined' && this._onResize) {
       window.removeEventListener('resize', this._onResize);

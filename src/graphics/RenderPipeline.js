@@ -16,6 +16,8 @@
  * reutiliza sus buffers entre fotogramas para no generar basura y mantener los 60 FPS.
  */
 
+import { getEnvironmentTheme } from '../data/EnvironmentData.js';
+
 const FOG_TEXTURE_WIDTH = 192;
 const FOG_TEXTURE_HEIGHT = 96;
 
@@ -96,7 +98,8 @@ export class RenderPipeline {
     this._renderParallaxBackdrop(ctx, camera, dayNight, tilemap);
 
     // ── CAPA 0 · Suelo + decals + sombras de edificios ───────────────────────
-    tilemap.renderGround(ctx, camera, sun);
+    tilemap.renderGround(ctx, camera, sun, { skipHouseShadows: true });
+    this._renderBuildingShadows(ctx, camera, sun, tilemap);
     if (typeof frame.onGround === 'function') {
       frame.onGround(ctx);
     }
@@ -157,15 +160,19 @@ export class RenderPipeline {
       dayNight.render(ctx, camera, tilemap.lightSources, player, isInterior, tilemap.windowLights);
     }
 
-    // (BLOQUE 2.3) Viñeta radial de cueva/mazmorra en la capa de atmósfera.
-    this._renderCaveVignette(ctx, tilemap);
+    // Ventanas iluminadas de noche y halos de antorchas ANTES del pase de Bloom para que brillen de verdad
+    this._renderNightWindowGlows(ctx, camera, dayNight, tilemap);
 
-    // (BLOQUE 4) Niebla baja de cloacas + partículas ambientales por zona.
+    // (BLOQUE 2.3) Viñeta radial de cueva/mazmorra y tinte de color por bioma.
+    this._renderCaveVignette(ctx, tilemap);
+    this._renderBiomeAtmosphere(ctx, tilemap);
+
+    // (BLOQUE 4) Niebla baja (bosque/cloacas/minas) + partículas ambientales por zona.
     this._renderLowFog(ctx, tilemap.currentSceneId);
     this._renderAmbientParticles(ctx, camera);
 
-    // (BLOQUE 1.2) Bloom solo del mundo: antes de viñeta, scanlines y HUD.
-    this._renderBloom(ctx);
+    // (BLOQUE 1.2) Bloom solo del mundo (potenciado en corporativo/núcleo).
+    this._renderBloom(ctx, tilemap);
 
     // (FIX M2.6) La viñeta también se omite en gama baja
     if (this.quality !== 'low') {
@@ -730,7 +737,14 @@ export class RenderPipeline {
   /** (BLOQUE 4) Niebla baja de cloacas, independiente de la niebla atmosférica. */
   _renderLowFog(ctx, sceneId) {
     if (!this.effects.particles || this.quality === 'low') return;
-    if (!sceneId || !String(sceneId).startsWith('sewers')) return;
+    if (!sceneId) return;
+    const theme = getEnvironmentTheme(sceneId);
+    if (!theme?.lowFog && !String(sceneId).startsWith('sewers')) return;
+    const fogColor = theme?.id === 'cloacas'
+      ? '34, 197, 94'
+      : theme?.id === 'minas'
+        ? '56, 189, 248'
+        : '148, 163, 184';
     const t = this.clock;
     const w = this.viewportWidth;
     const h = this.viewportHeight;
@@ -738,9 +752,9 @@ export class RenderPipeline {
     for (let i = 0; i < 2; i++) {
       const y = h - 34 + i * 12 + Math.sin(t * 0.8 + i * 1.7) * 2;
       const g = ctx.createLinearGradient(0, y, 0, h);
-      g.addColorStop(0, 'rgba(148,163,184,0)');
-      g.addColorStop(0.55, `rgba(148,163,184,${(0.05 + i * 0.02).toFixed(3)})`);
-      g.addColorStop(1, 'rgba(148,163,184,0)');
+      g.addColorStop(0, `rgba(${fogColor}, 0)`);
+      g.addColorStop(0.55, `rgba(${fogColor}, ${(0.06 + i * 0.025).toFixed(3)})`);
+      g.addColorStop(1, `rgba(${fogColor}, 0)`);
       ctx.fillStyle = g;
       ctx.fillRect(0, y, w, h - y);
     }
@@ -870,11 +884,22 @@ export class RenderPipeline {
     this._bloomCtx = this._bloomCanvas.getContext('2d');
   }
 
+  _renderBiomeAtmosphere(ctx, tilemap) {
+    const sceneId = tilemap?.currentSceneId;
+    if (!sceneId) return;
+    const theme = getEnvironmentTheme(sceneId);
+    if (!theme || !theme.tintColor) return;
+    ctx.save();
+    ctx.fillStyle = theme.tintColor;
+    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+    ctx.restore();
+  }
+
   /**
    * (BLOQUE 3.2) Bloom barato: copia el mundo a 1/4, lo desenfoca/realza y lo
-   * superpone con 'lighter' al 40%. Se ejecuta antes de viñeta, overlays y HUD.
+   * superpone con 'lighter'. En Corporativo/Núcleo aumenta el brillo de neones.
    */
-  _renderBloom(ctx) {
+  _renderBloom(ctx, tilemap = null) {
     if (!this.effects.bloom || this.quality === 'low') return;
     if (!ctx || !ctx.canvas) return;
     this._ensureBloom();
@@ -898,12 +923,168 @@ export class RenderPipeline {
     bctx.filter = 'none';
     bctx.restore();
 
+    const theme = tilemap?.currentSceneId ? getEnvironmentTheme(tilemap.currentSceneId) : null;
+    const bloomAlpha = theme && Number.isFinite(theme.bloomAlpha) ? theme.bloomAlpha : 0.5;
+
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = bloomAlpha;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'low';
     ctx.drawImage(this._bloomCanvas, 0, 0, bw, bh, 0, 0, this.viewportWidth, this.viewportHeight);
+    ctx.restore();
+  }
+
+  /**
+   * Proyecta sombras 2.5D de edificios en el suelo siguiendo la dirección del sol (`sun.dx`, `sun.length`).
+   * Si la casa tiene tejado con alero (`hasRoof`), la sombra proyectada es más ancha que el edificio.
+   */
+  _renderBuildingShadows(ctx, camera, sun, tilemap) {
+    const shadows = tilemap?.houseShadows;
+    if (!shadows || shadows.length === 0) return;
+
+    const lengthScale = sun && Number.isFinite(sun.length) ? sun.length : 0.85;
+    const sunDx = sun && Number.isFinite(sun.dx) ? sun.dx : 0.35;
+    const alphaScale = sun && Number.isFinite(sun.alphaScale) ? sun.alphaScale : 1;
+    const dropY = Math.max(6, Math.round(9 * lengthScale));
+    const shiftX = Math.round(sunDx * Math.max(7, dropY * 0.9));
+
+    ctx.save();
+    ctx.fillStyle = `rgba(0, 0, 0, ${(0.28 * alphaScale).toFixed(3)})`;
+    for (const sh of shadows) {
+      const overhang = sh.hasRoof ? 5 : 0;
+      const sx = sh.x - camera.renderX;
+      const sy = sh.y - camera.renderY;
+      const w = sh.w;
+      if (sx + w + Math.abs(shiftX) + overhang < -16 || sx - Math.abs(shiftX) - overhang > this.viewportWidth + 16) {
+        continue;
+      }
+      if (sy + dropY < -16 || sy - (sh.h || 16) > this.viewportHeight + 16) {
+        continue;
+      }
+
+      const baseLeft = Math.round(sx - (overhang > 0 ? 2 : 0));
+      const baseRight = Math.round(sx + w + (overhang > 0 ? 2 : 0));
+      const tipLeft = Math.round(sx + shiftX - overhang);
+      const tipRight = Math.round(sx + w + shiftX + overhang);
+      const yTop = Math.round(sy);
+      const yBot = Math.round(sy + dropY);
+
+      ctx.beginPath();
+      ctx.moveTo(baseLeft, yTop);
+      ctx.lineTo(baseRight, yTop);
+      ctx.lineTo(tipRight, yBot);
+      ctx.lineTo(tipLeft, yBot);
+      ctx.closePath();
+      ctx.fill();
+
+      // Sombra lateral del volumen del edificio cuando el sol inclina la sombra al este o al oeste
+      if (Math.abs(shiftX) >= 3) {
+        const bHeight = Math.min(32, sh.h || 16);
+        const sideX = shiftX > 0 ? Math.round(sx + w) : Math.round(sx);
+        const tipSideX = sideX + shiftX + (shiftX > 0 ? overhang : -overhang);
+        ctx.beginPath();
+        ctx.moveTo(sideX, yTop - bHeight);
+        ctx.lineTo(tipSideX, yTop - bHeight + Math.round(dropY * 0.45));
+        ctx.lineTo(tipSideX, yBot);
+        ctx.lineTo(sideX, yTop);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Dibuja brillo cálido delante de cada ventana iluminada por la noche y antorchas de mazmorra
+   * justo antes de `_renderBloom` para potenciar su resplandor.
+   */
+  _renderNightWindowGlows(ctx, camera, dayNight, tilemap) {
+    const isInterior = Boolean(tilemap?.isInterior?.());
+    const nightActive = Boolean(dayNight?.isNight?.() || dayNight?.areWindowsLit?.());
+    const camX = camera?.renderX || 0;
+    const camY = camera?.renderY || 0;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    if (!isInterior && nightActive && Array.isArray(tilemap?.windowLights)) {
+      const pulse = 0.88 + 0.12 * Math.sin(this.clock * 3.1);
+      for (const win of tilemap.windowLights) {
+        const sx = Math.round(win.x - camX);
+        const sy = Math.round(win.y - camY);
+        if (sx < -32 || sx > this.viewportWidth + 32 || sy < -32 || sy > this.viewportHeight + 32) continue;
+
+        // Núcleo luminoso de la ventana para disparar el filtro de Bloom
+        ctx.fillStyle = `rgba(255, 224, 120, ${(0.58 * pulse).toFixed(3)})`;
+        ctx.fillRect(sx - 3, sy - 3, 6, 5);
+
+        // Halo cálido delante de la ventana
+        const r = (win.radius || 28) * 0.65;
+        if (typeof ctx.createRadialGradient === 'function') {
+          const grad = ctx.createRadialGradient(sx, sy + 2, 1, sx, sy + 2, r);
+          grad.addColorStop(0, `rgba(255, 198, 86, ${(0.42 * pulse).toFixed(3)})`);
+          grad.addColorStop(0.55, `rgba(249, 115, 22, ${(0.18 * pulse).toFixed(3)})`);
+          grad.addColorStop(1, 'rgba(249, 115, 22, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(sx, sy + 2, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    const theme = getEnvironmentTheme(tilemap?.currentSceneId);
+    const hasTorchBiome = Boolean(theme?.flickeringTorches || theme?.id === 'cloacas' || theme?.id === 'minas' || theme?.id === 'forja');
+
+    // Antorchas/velas parpadeantes en templos/mazmorras o farolas de noche
+    if ((isInterior || nightActive || hasTorchBiome) && Array.isArray(tilemap?.lightSources)) {
+      for (const src of tilemap.lightSources) {
+        const isTorchOrCandle = src && (src.kind === 'torch' || src.kind === 'candle');
+        if (!src || ((isInterior || !nightActive) && !isTorchOrCandle && !src.color)) continue;
+        const sx = Math.round(src.x - camX);
+        const sy = Math.round(src.y - camY);
+        if (sx < -36 || sx > this.viewportWidth + 36 || sy < -36 || sy > this.viewportHeight + 36) continue;
+        const flicker = 0.82 + 0.18 * Math.sin(this.clock * 8.5 + src.x * 0.2 + src.y * 0.13);
+        const r = Math.min(28, (src.radius || 44) * 0.48);
+        if (typeof ctx.createRadialGradient === 'function') {
+          const grad = ctx.createRadialGradient(sx, sy, 1, sx, sy, r);
+          const isCyan = src.glow === 'cyan' || src.color === '#38bdf8';
+          grad.addColorStop(0, isCyan ? `rgba(125, 211, 252, ${(0.38 * flicker).toFixed(3)})` : `rgba(255, 186, 82, ${(0.38 * flicker).toFixed(3)})`);
+          grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // Luces de neón / CRT en distrito corporativo y núcleo de la IA antes del pase de Bloom
+    if (theme?.neonGlow && tilemap?.layers?.decoration) {
+      const deco = tilemap.layers.decoration;
+      const ts = tilemap.tileSize || 16;
+      const startCol = Math.max(0, Math.floor(camX / ts));
+      const endCol = Math.min((tilemap.cols || 0) - 1, Math.ceil((camX + this.viewportWidth) / ts));
+      const startRow = Math.max(0, Math.floor(camY / ts));
+      const endRow = Math.min((tilemap.rows || 0) - 1, Math.ceil((camY + this.viewportHeight) / ts));
+      const pulse = 0.85 + 0.15 * Math.sin(this.clock * 4.2);
+      ctx.fillStyle = theme.id === 'nucleo'
+        ? `rgba(239, 68, 68, ${(0.28 * pulse).toFixed(3)})`
+        : `rgba(34, 211, 238, ${(0.26 * pulse).toFixed(3)})`;
+      for (let r = startRow; r <= endRow; r++) {
+        const row = deco[r];
+        if (!row) continue;
+        for (let c = startCol; c <= endCol; c++) {
+          const id = row[c];
+          // 57 = CORP_GLASS_WALL, 58 = CORP_CRT_WALL, 62 = CORP_ALEX_POSTER
+          if (id === 57 || id === 58 || id === 62) {
+            ctx.fillRect(Math.round(c * ts - camX) + 1, Math.round(r * ts - camY) + 1, ts - 2, ts - 2);
+          }
+        }
+      }
+    }
+
     ctx.restore();
   }
 
