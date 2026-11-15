@@ -331,7 +331,7 @@ export class SpeechBubble {
    * ambientales que emiten los NPCs mientras deambulan por la villa.
    * Se ancla a las coordenadas del mundo donde se emitió para que no persiga al jugador.
    */
-  static renderNPCBarkBubble(ctx, sx, sy, text, timer, maxTimer = 3.0) {
+  static renderNPCBarkBubble(ctx, sx, sy, text, timer, maxTimer = 3.0, kind = 'normal') {
     if (!text || timer <= 0) return;
 
     // Culling preventivo si el anclaje está completamente fuera de la pantalla
@@ -408,16 +408,18 @@ export class SpeechBubble {
     ctx.fill();
     ctx.restore();
 
-    // Fondo blanco nítido estilo cómic moderno
+    // Fondo nítido estilo cómic moderno (con acento de alerta en quejas/advertencias)
+    const isWarning = kind === 'warning';
+    const isComplaint = kind === 'complaint';
     drawSpeechBalloonPath(ctx, bx, by, bubbleW, bubbleH, 4, anchorX, tailTipY, 6);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = isWarning ? '#fef2f2' : isComplaint ? '#fffbeb' : '#ffffff';
     ctx.fill();
-    ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = isWarning ? '#dc2626' : isComplaint ? '#d97706' : '#0f172a';
+    ctx.lineWidth = isWarning || isComplaint ? 1.4 : 1.2;
     ctx.stroke();
 
     // Texto interior oscuro con contraste absoluto
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = isWarning ? '#7f1d1d' : '#0f172a';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 

@@ -5,7 +5,16 @@ import { GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=8';
 import { getLocalLeaderboard, fetchGlobalLeaderboard } from '../core/ScoreSystem.js?v=8';
 import { LeaderboardView } from './LeaderboardView.js?v=8';
 import { UILayout, GAME_VERSION } from './UILayout.js?v=8';
-import { EXPANSION_INFO, EXPANSION_UNLOCK_KEY } from '../expansion/ExpansionData.js?v=8';
+
+const EXPANSION_UNLOCK_KEY = 'el_ojete_dorado_victory_trophy';
+const EXPANSION_MENU_INFO = {
+  id: 'resurgir_mister_alex',
+  version: 'v2.0',
+  title: 'El Resurgir de Mister Alex IA',
+  subtitle: 'EL UPDATE UNIVERSAL',
+  teaser: 'Prepárate porque el resurgir del Mister es más fuerte y viene con amigos...',
+  message: 'El Update Universal está en camino. Mister Alex IA ha reescrito el futuro. ¿Estás listo para el Valleverde 2.0?'
+};
 
 /**
  * Sistema de Menú de Inicio, Pausa, Guardado/Carga, Opciones y Escenas Cinemáticas en Pixel Art
@@ -45,6 +54,10 @@ export class MainMenuAndScenes {
     this.noticeTimer = 0;
     this.animTime = 0;
     this.expansionTeaserOpen = false;
+    this.falseEndingTimer = 0;
+    this.falseEndingDuration = 4.0;
+    this.falseEndingText = 'SISTEMA CORRUPTO. BUSCANDO BACKUP...';
+    this.falseEndingOnComplete = null;
     this._modalPopStart = -1;
 
     // Opciones persistentes
@@ -173,6 +186,8 @@ export class MainMenuAndScenes {
     if (this.worldMap) {
       this.worldMap.isTouchDevice = this.isTouchDevice;
       this.worldMap.resetView();
+      const tilemap = context?.tilemap || this.callbacks?.getGameState?.().tilemap || null;
+      if (tilemap) this.worldMap._generateRealMapTexture(tilemap);
     }
     this.currentSceneId = currentSceneId;
     if (context) {
@@ -606,10 +621,29 @@ export class MainMenuAndScenes {
     else if (typeof onComplete === 'function') onComplete();
   }
 
+  /**
+   * Falso final tras créditos del juego base: glitch con estática, aviso temporal
+   * ("SISTEMA CORRUPTO. BUSCANDO BACKUP...") durante 4s, fundido a negro y retorno al título.
+   */
+  startFalseEndingGlitch(onComplete = null, duration = 4.0) {
+    this.state = 'false_ending_glitch';
+    this.falseEndingDuration = Math.max(0.5, duration);
+    this.falseEndingTimer = this.falseEndingDuration;
+    this.falseEndingText = 'SISTEMA CORRUPTO. BUSCANDO BACKUP...';
+    this.falseEndingOnComplete = typeof onComplete === 'function' ? onComplete : null;
+    this.fadeAlpha = 0;
+    if (this.music && typeof this.music.playSFX === 'function') {
+      this.music.playSFX('ui_glitch');
+    } else if (this.music && typeof this.music.playGlitch === 'function') {
+      this.music.playGlitch();
+    }
+  }
+
   _hasVictoryTrophy() {
     try {
-      return typeof localStorage !== 'undefined' &&
-        Boolean(localStorage.getItem(EXPANSION_UNLOCK_KEY));
+      if (typeof localStorage === 'undefined') return false;
+      const val = localStorage.getItem(EXPANSION_UNLOCK_KEY);
+      return val === 'true' || (Boolean(val) && val !== 'false' && val !== 'null');
     } catch {
       return false;
     }
@@ -653,18 +687,32 @@ export class MainMenuAndScenes {
           }
         },
         {
-          label: EXPANSION_INFO.title,
-          subtext: EXPANSION_INFO.teaser,
+          label: EXPANSION_MENU_INFO.title,
+          subtext: this._hasVictoryTrophy()
+            ? EXPANSION_MENU_INFO.teaser
+            : 'Completa el juego base para desbloquear',
           expansion: true,
           locked: !this._hasVictoryTrophy(),
           action: () => {
             if (!this._hasVictoryTrophy()) {
               this.music.playCaughtSkipSound();
-              this.showNotice('Debes completar el juego base para desbloquear esto.');
+              this.showNotice('Completa el juego base para desbloquear.');
               return;
             }
             this.music.playMenuSelect();
-            this.expansionTeaserOpen = true;
+            if (typeof this.callbacks.onStartExpansion === 'function') {
+              if (typeof this.music.stopTitleMusic === 'function') {
+                this.music.stopTitleMusic(350);
+              }
+              this.callbacks.onStartExpansion();
+            } else if (typeof this.callbacks.game?.expansionManager?.init === 'function') {
+              if (typeof this.music.stopTitleMusic === 'function') {
+                this.music.stopTitleMusic(350);
+              }
+              this.callbacks.game.expansionManager.init(this.callbacks.game);
+            } else {
+              this.expansionTeaserOpen = true;
+            }
           }
         },
         {
@@ -1037,6 +1085,26 @@ export class MainMenuAndScenes {
       return;
     }
 
+    // Secuencia de glitch del Falso Final ("SISTEMA CORRUPTO. BUSCANDO BACKUP...") + fundido a negro
+    if (this.state === 'false_ending_glitch') {
+      this.falseEndingTimer = Math.max(0, this.falseEndingTimer - dt);
+      if (this.falseEndingTimer <= 0.8) {
+        this.fadeAlpha = Math.min(1, (0.8 - this.falseEndingTimer) / 0.8);
+      } else {
+        this.fadeAlpha = 0;
+      }
+      if (this.falseEndingTimer <= 0) {
+        const doneCb = this.falseEndingOnComplete;
+        this.falseEndingOnComplete = null;
+        if (doneCb) {
+          doneCb();
+        } else {
+          this.openTitleScreen();
+        }
+      }
+      return;
+    }
+
     // Mapa del Reino del Gran Ojal
     if (this.state === 'world_map') {
       // (FIX M3.3) Pan/zoom/pinch y botones; el clic ya no cierra el mapa
@@ -1381,6 +1449,11 @@ export class MainMenuAndScenes {
       if (this.endingCredits) {
         this.endingCredits.render(ctx);
       }
+      return;
+    }
+
+    if (this.state === 'false_ending_glitch') {
+      this._renderFalseEndingGlitch(ctx);
       return;
     }
 
@@ -1860,6 +1933,16 @@ export class MainMenuAndScenes {
       }
       ctx.fillRect(cx - 16, heartY + 4, 32, 2);
       ctx.fillRect(cx - 16, heartY + 16, 32, 2);
+    } else if (this.gameOverReason === 'animal_demon') {
+      // Cuernos y ojos amarillos del Señor de las Ovejas
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(cx - 8, heartY + 5, 16, 12);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(cx - 11, heartY + 1, 3, 5);
+      ctx.fillRect(cx + 8, heartY + 1, 3, 5);
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(cx - 5, heartY + 9, 3, 2);
+      ctx.fillRect(cx + 2, heartY + 9, 3, 2);
     }
 
     // Título Principal
@@ -1872,7 +1955,9 @@ export class MainMenuAndScenes {
     const mainTitle =
       this.gameOverReason === 'jail_disrespect'
         ? '⚔ CONDENA PERPETUA · GAME OVER ⚔'
-        : '⚔ SE ACABÓ LA AVENTURA ⚔';
+        : this.gameOverReason === 'animal_demon'
+          ? '👹 IRA DEL REBAÑO · GAME OVER 👹'
+          : '⚔ SE ACABÓ LA AVENTURA ⚔';
     ctx.fillText(mainTitle, cx + 1, 49);
     ctx.fillText(mainTitle, cx - 1, 49);
     ctx.fillStyle = '#ff4d6d';
@@ -1885,6 +1970,10 @@ export class MainMenuAndScenes {
       ctx.fillText('Has aceptado tu condena por faltar al respeto al Carcelero.', cx, 66);
       ctx.fillStyle = '#e2e8f0';
       ctx.fillText('Tus provocaciones agotaron la paciencia de la guardia. La celda sella tu destino.', cx, 78);
+    } else if (this.gameOverReason === 'animal_demon') {
+      ctx.fillText('Has sido juzgado por el Señor de las Ovejas. Muestra respeto.', cx, 66);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillText('Las criaturas inocentes de Valleverde tienen quien las vengue.', cx, 78);
     } else if (this.gameOverWasDefenseless) {
       ctx.fillText('¡Caíste indefenso! Sin la Armadura del Alba, cualquier golpe apaga tu vida.', cx, 66);
       ctx.fillStyle = '#e2e8f0';
@@ -1914,7 +2003,8 @@ export class MainMenuAndScenes {
     const gameState = this.callbacks?.getGameState ? this.callbacks.getGameState() : {};
     const player = this.worldMapContext?.player || gameState.player || null;
     const enemies = this.worldMapContext?.enemies || gameState.enemies || null;
-    this.worldMap.render(ctx, this.currentSceneId, player, enemies);
+    const tilemap = this.worldMapContext?.tilemap || gameState.tilemap || null;
+    this.worldMap.render(ctx, this.currentSceneId, player, enemies, tilemap);
   }
 
   /**
@@ -2221,25 +2311,61 @@ export class MainMenuAndScenes {
     return 'star4';
   }
 
+  _renderFalseEndingGlitch(ctx) {
+    ctx.save();
+    ctx.fillStyle = '#04060d';
+    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+
+    const t = this.animTime || 0;
+    for (let i = 0; i < 18; i++) {
+      const y = Math.floor(((i * 19 + t * 180) % this.viewportHeight));
+      const h = 2 + (i % 4) * 2;
+      ctx.fillStyle = i % 3 === 0
+        ? 'rgba(34, 211, 238, 0.25)'
+        : i % 3 === 1
+          ? 'rgba(244, 63, 94, 0.24)'
+          : 'rgba(255, 255, 255, 0.14)';
+      ctx.fillRect(0, y, this.viewportWidth, h);
+    }
+
+    const jitterX = Math.round(Math.sin(t * 48) * 2);
+    const jitterY = Math.round(Math.cos(t * 37) * 1);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillText(this.falseEndingText, this.viewportWidth * 0.5 + jitterX + 1, this.viewportHeight * 0.5 + jitterY);
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillText(this.falseEndingText, this.viewportWidth * 0.5 - jitterX, this.viewportHeight * 0.5 + jitterY + 1);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillText(this.falseEndingText, this.viewportWidth * 0.5, this.viewportHeight * 0.5);
+
+    if (this.fadeAlpha > 0) {
+      ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, Math.max(0, this.fadeAlpha))})`;
+      ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+    }
+    ctx.restore();
+  }
+
   _renderExpansionTeaser(ctx) {
     if (!this.expansionTeaserOpen) return;
     const frame = UILayout.drawModalFrame(ctx, {
-      title: EXPANSION_INFO.title,
+      title: EXPANSION_MENU_INFO.title,
       icon: '✦',
-      badge: `${EXPANSION_INFO.version} · ${EXPANSION_INFO.subtitle}`,
+      badge: `${EXPANSION_MENU_INFO.version} · ${EXPANSION_MENU_INFO.subtitle}`,
       closeLabel: '[E / Esc] Cerrar'
     });
     const { content } = frame;
     ctx.save();
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    UILayout.drawText(ctx, EXPANSION_INFO.message, content.x + 5, content.y + 8, {
+    UILayout.drawText(ctx, EXPANSION_MENU_INFO.message, content.x + 5, content.y + 8, {
       font: 'bold 6px monospace',
       color: '#ffd700',
       shadow: true,
       maxWidth: content.w - 10
     });
-    UILayout.drawText(ctx, EXPANSION_INFO.teaser, content.x + 5, content.y + 40, {
+    UILayout.drawText(ctx, EXPANSION_MENU_INFO.teaser, content.x + 5, content.y + 40, {
       font: '5px monospace',
       color: '#cbd5e1',
       shadow: true,

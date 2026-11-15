@@ -254,32 +254,72 @@ export class SceneTransitionController {
         };
       }
     }
-    g.tilemap.loadScene(door.targetScene);
+    let activeDoor = door;
+    if (activeDoor.targetScene === 'vertedero_digital') {
+      if (typeof g._startVertederoRun === 'function') {
+        g._startVertederoRun();
+      }
+      activeDoor = { ...activeDoor, targetScene: 'vertedero_piso_1' };
+    }
+
+    g.tilemap.loadScene(activeDoor.targetScene);
     // (FIX 3) Sincronizar la puerta norte de la arena con el estado real del Núcleo
-    if (door.targetScene === 'mines_boss_arena') {
+    if (activeDoor.targetScene === 'mines_boss_arena') {
       g._syncMinesBossArenaGate();
     }
     for (const en of g.enemies) {
-      if (en.respawnOnEnter && en.dead && en.sceneId === door.targetScene) {
+      if (en.respawnOnEnter && en.dead && en.sceneId === activeDoor.targetScene) {
         en.reset();
       }
     }
     g.camera.setWorldBounds(g.tilemap.width, g.tilemap.height);
     // (FIX ESPACIAL) Entrada por el borde OPUESTO a la salida, con margen de 2 tiles.
-    const spawn = g._resolveStageSpawn(door);
+    const spawn = g._resolveStageSpawn(activeDoor);
     g.player.x = spawn.x;
     g.player.y = spawn.y;
-    g.player.direction = door.forceDirection || spawn.facing;
+    g.player.direction = activeDoor.forceDirection || spawn.facing;
     g.camera.snapTo(g.player);
+
+    if (typeof g._syncFrancoCompanionOnTransition === 'function') {
+      g._syncFrancoCompanionOnTransition(activeDoor.targetScene);
+    }
 
     if (g.music && g.music.currentBossTrack) {
       g.music.stopBossMusic(false);
     }
 
-    if (door.targetScene === 'valleverde_corp') {
+    if (activeDoor.targetScene !== 'kernel_arena') {
+      g.kernelHackActive = false;
+      g.kernelHudFlicker = false;
+      g.bsodOverlayTimer = 0;
+    }
+
+    if (activeDoor.targetScene === 'valleverde_corp' || activeDoor.targetScene === 'rosa_bar') {
       registerExpansionMusic();
       g.music.setMode('valleverde_corp');
-    } else if (door.targetScene === 'inakito_office') {
+    } else if (activeDoor.targetScene === 'ai_nucleus_core') {
+      registerExpansionMusic();
+      g.music.setMode('boss_alex_final');
+    } else if (activeDoor.targetScene === 'kernel_arena') {
+      registerExpansionMusic();
+      const kernelBoss = g.enemies.find((e) => e.id === 'boss_kernel');
+      if (kernelBoss && !kernelBoss.dead) {
+        if (typeof kernelBoss.startSecurityProtocol === 'function') {
+          kernelBoss.startSecurityProtocol(g.music);
+        }
+        g.kernelHackActive = Boolean(kernelBoss.hudHackActive);
+        g.kernelHudFlicker = Boolean(kernelBoss.hudFlicker);
+        g.music.playBossMusic('boss_final');
+        if (g.menuSystem) {
+          g.menuSystem.showNotice('⚠️ KERNEL: "Identificación no reconocida. Iniciando purga."', 3.2);
+        }
+      } else {
+        g.music.setMode('vertedero');
+      }
+    } else if (activeDoor.targetScene.startsWith('vertedero_')) {
+      registerExpansionMusic();
+      g.music.setMode('vertedero');
+    } else if (activeDoor.targetScene === 'inakito_office') {
       registerExpansionMusic();
       const inakitoBoss = g.enemies.find((e) => e.id === 'boss_inakito');
       if (g.tilemap && typeof g.tilemap.setInakitoOfficeGate === 'function') {
@@ -292,17 +332,17 @@ export class SceneTransitionController {
       }
     } else {
       g.music.setMode(
-        STAGE_TRANSITION_SCENE_IDS.has(door.targetScene) ? 'stage1' : 'village'
+        STAGE_TRANSITION_SCENE_IDS.has(activeDoor.targetScene) ? 'stage1' : 'village'
       );
     }
 
-    if (door.type === 'enter') {
-      g._handleHouseOwnerConfrontation(door.targetScene);
+    if (activeDoor.type === 'enter') {
+      g._handleHouseOwnerConfrontation(activeDoor.targetScene);
     } else {
       g._saveGameToStorage();
     }
 
-    if (door.targetScene === 'condemned_realms') {
+    if (activeDoor.targetScene === 'condemned_realms') {
       if (g.questLog) {
         g.questLog.advanceStep('quest_condemned_pointer', 'Habla con el Dios Supremo en el altar sagrado para purificar tu corazón e historial penal.');
       }

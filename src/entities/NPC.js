@@ -84,6 +84,11 @@ export class NPC extends Entity {
     this.isNpc = true;
     // (FIX NPC.4/NPC.5) Amenaza viva en la escena: huye y no suelta barks
     this.inCombat = false;
+    // Reacción a agresiones del jugador y temporizador de calma (10 s)
+    this.hitCount = 0;
+    this.hitResetTimer = 0;
+    this.hitCooldown = 0;
+    this.ambientBubbleKind = 'normal';
   }
 
   canInteract(player) {
@@ -108,9 +113,11 @@ export class NPC extends Entity {
     this.isMoving = false;
   }
 
-  triggerAmbientBark(customText = null) {
-    // (FIX NPC.5) Nada de bocadillos ambientales en mitad de un combate
-    if (this.inCombat) return;
+  triggerAmbientBark(customText = null, options = {}) {
+    const force = Boolean(options && options.force);
+    const kind = (options && options.kind) || 'normal';
+    // (FIX NPC.5) Nada de bocadillos ambientales en mitad de un combate salvo quejas directas
+    if (this.inCombat && !force) return;
     const text =
       customText ||
       (this.ambientPhrases.length > 0
@@ -121,7 +128,101 @@ export class NPC extends Entity {
       this.ambientBubbleTimer = 3.0;
       this.ambientBubbleWorldX = this.centerX;
       this.ambientBubbleWorldY = this.y;
+      this.ambientBubbleKind = kind;
     }
+  }
+
+  /**
+   * Restaura el estado pacífico del NPC (tras 10s de calma o tras cumplir condena).
+   */
+  resetAttackReaction() {
+    this.hitCount = 0;
+    this.hitResetTimer = 0;
+    this.hitCooldown = 0;
+  }
+
+  /**
+   * Gestiona un ataque directo del jugador sobre este NPC:
+   * - 1º golpe: queja cómica según juego base o expansión.
+   * - 2º golpe: advertencia explícita del Carcelero.
+   * - 3º golpe: activa el arresto inmediato mediante game.triggerArrest(this).
+   */
+  onPlayerAttack(game = null) {
+    if (this.hitCooldown > 0) return false;
+    this.hitCooldown = 0.32;
+    this.hitCount = (this.hitCount || 0) + 1;
+    this.hitResetTimer = 10.0;
+
+    if (this.hitCount === 1) {
+      const complaints = [
+        '¿Qué haces, coño?',
+        '¡Tu eres tonto!',
+        '¡Tus padres no te dieron educación!',
+        '¿Te has vuelto loco o qué?'
+      ];
+      const phrase = complaints[Math.floor(Math.random() * complaints.length)];
+      this.triggerAmbientBark(phrase, { force: true, kind: 'complaint' });
+      return true;
+    }
+
+    if (this.hitCount === 2) {
+      const warnings = [
+        '¡Que llame al Carcelero, eh!',
+        '¡Como me des otra, te vas a la trena!',
+        '¡A mí con esas, ni de coña!'
+      ];
+      const phrase = warnings[Math.floor(Math.random() * warnings.length)];
+      this.triggerAmbientBark(phrase, { force: true, kind: 'warning' });
+      return true;
+    }
+
+    if (this.hitCount >= 3) {
+      this.triggerAmbientBark('¡GUARDIAS! ¡A LA CÁRCEL!', { force: true, kind: 'warning' });
+      if (game && typeof game.triggerArrest === 'function') {
+        game.triggerArrest(this);
+      }
+      return true;
+    }
+
+    return true;
+  }
+
+  /**
+   * Actualiza los temporizadores de enfriamiento entre golpes, calma (10s) y burbuja de texto.
+   */
+  tickReactionTimers(dt) {
+    if (this.hitCooldown > 0) {
+      this.hitCooldown = Math.max(0, this.hitCooldown - dt);
+    }
+
+    if (this.hitCount > 0 && this.hitResetTimer > 0) {
+      this.hitResetTimer = Math.max(0, this.hitResetTimer - dt);
+      if (this.hitResetTimer === 0) {
+        this.hitCount = 0;
+      }
+    }
+
+    if (this.ambientBubbleTimer > 0) {
+      this.ambientBubbleTimer = Math.max(0, this.ambientBubbleTimer - dt);
+      if (this.ambientBubbleTimer === 0) {
+        this.ambientBubbleKind = 'normal';
+      }
+    }
+  }
+
+  /**
+   * Dibuja la burbuja flotante de diálogo/queja del NPC si está activa.
+   */
+  renderAmbientBubble(ctx, camera) {
+    if (this.ambientBubbleTimer > 0 && this.ambientBubbleText) {
+      const worldX = typeof this.ambientBubbleWorldX === 'number' ? this.ambientBubbleWorldX : this.centerX;
+      const worldY = typeof this.ambientBubbleWorldY === 'number' ? this.ambientBubbleWorldY : this.y;
+      const sx = Math.round(worldX - camera.renderX);
+      const sy = Math.round(worldY - camera.renderY);
+      renderNPCBarkBubble(ctx, sx, sy, this.ambientBubbleText, this.ambientBubbleTimer, 3.0, this.ambientBubbleKind);
+      return true;
+    }
+    return false;
   }
 
   update(dt, tilemap, obstacles, isTalking = false, player = null, threat = null) {
@@ -130,12 +231,10 @@ export class NPC extends Entity {
     this.inCombat = Boolean(threat);
     this.jobAnimTimer += dt;
 
+    this.tickReactionTimers(dt);
+
     if (this.politePauseCooldown > 0) {
       this.politePauseCooldown = Math.max(0, this.politePauseCooldown - dt);
-    }
-
-    if (this.ambientBubbleTimer > 0) {
-      this.ambientBubbleTimer = Math.max(0, this.ambientBubbleTimer - dt);
     }
 
     if (this.isSleeping) {
@@ -512,13 +611,7 @@ export class NPC extends Entity {
    */
   renderSpeechBubble(ctx, camera) {
     if (this.isSleeping) return;
-    if (this.ambientBubbleTimer > 0 && this.ambientBubbleText) {
-      const worldX = typeof this.ambientBubbleWorldX === 'number' ? this.ambientBubbleWorldX : this.centerX;
-      const worldY = typeof this.ambientBubbleWorldY === 'number' ? this.ambientBubbleWorldY : this.y;
-      const sx = Math.round(worldX - camera.renderX);
-      const sy = Math.round(worldY - camera.renderY);
-      renderNPCBarkBubble(ctx, sx, sy, this.ambientBubbleText, this.ambientBubbleTimer, 3.0);
-    } else if (this.currentActivityIcon && !this.isMoving) {
+    if (!this.renderAmbientBubble(ctx, camera) && this.currentActivityIcon && !this.isMoving) {
       const sx = Math.round(this.centerX - camera.renderX);
       const sy = Math.round(this.y - camera.renderY);
       const bob = Math.round(Math.sin(this.promptBobTimer) * 1.2);

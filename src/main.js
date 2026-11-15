@@ -14,16 +14,14 @@ import { Tilemap } from './world/Tilemap.js?v=8';
 import { CollisionSystem } from './physics/CollisionSystem.js?v=8';
 import { Player } from './entities/Player.js?v=8';
 import { NPC, getBromForgeChoices } from './entities/NPC.js?v=8';
-import { EXPANSION_NPCS } from './expansion/ExpansionData.js?v=8';
-import { TonyRandazzo } from './expansion/entities/TonyRandazzo.js?v=8';
-import { registerExpansionMusic } from './audio/AudioManager.js?v=8';
+import { ExpansionManager } from './expansion/ExpansionManager.js?v=8';
+import { DemonVengador } from './expansion/entities/DemonVengador.js?v=8';
 import { Animal } from './entities/Animal.js?v=8';
 import { Enemy, setParticleScale } from './entities/Enemy.js?v=8';
 import { GarbageCollectorBoss } from './entities/bosses/GarbageCollectorBoss.js?v=8';
 import { StackOverflowBoss } from './entities/bosses/StackOverflowBoss.js?v=8';
 import { PrototypeMicrowaveBoss } from './entities/bosses/PrototypeMicrowaveBoss.js?v=8';
 import { FinalBossAlex } from './entities/bosses/FinalBossAlex.js?v=8';
-import { IñakitoBoss } from './expansion/entities/IñakitoBoss.js?v=8';
 import { WorldItem } from './entities/WorldItem.js?v=8';
 import { DialogueBox } from './ui/DialogueBox.js?v=8';
 import { Inventory, normalizeItemId } from './ui/Inventory.js?v=8';
@@ -66,6 +64,15 @@ import { TouchControls } from './ui/TouchControls.js?v=8';
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
 const BASE_RENDER_SCALE = 4; // Desktop: 1280x720 (4x sobre la base lógica 320x180)
+const EXPANSION_SAVE_KEY = 'el_ojete_dorado_expansion_save';
+const EXPANSION_SLOT_SAVE_KEY = 'el_ojete_dorado_expansion_save_v1';
+const VERTEDERO_BASE_ROOMS = [
+  'vertedero_digital',
+  'sewers_dungeon',
+  'mines_entry',
+  'forge_entry',
+  'forge_puzzle'
+];
 
 /**
  * (FIX M2.1) Escala del canvas según el dispositivo.
@@ -341,6 +348,10 @@ export class RPGGame {
     this.jailRemainingSeconds = 0;
     this.jailerAngerCount = 0;
     this.isJailedForever = false;
+    this.jailReason = null;
+    this.arrestFadeAlpha = 0;
+    this.activeDemon = null;
+    this.demonBannerTimer = 0;
 
     // Registro de permisos de entrada a las viviendas del pueblo
     this.housePermissions = {
@@ -353,6 +364,11 @@ export class RPGGame {
     };
 
     this.droppedCoins = [];
+    this.gameState = 'base';
+    this.isExpansionMode = false;
+    this.expansionEquipment = null;
+    this.expansionManager = new ExpansionManager(this);
+    this._initExpansionState();
 
     this.player = new Player({
       x: 17 * 16,
@@ -366,6 +382,11 @@ export class RPGGame {
 
     // (FIX SHOP) Modal Canvas 2D de compra/venta por cantidad
     this.shopUI = new ShopUI(this);
+    this.rosaShop = null;
+    this.kernelHackActive = false;
+    this.kernelHudFlicker = false;
+    this.bsodOverlayTimer = 0;
+    this.debtGlitchTimer = 0;
 
     this.aiBrain = new AIBotBrain(() => ({
       time: this.dayNight.getFormattedTime(),
@@ -442,8 +463,10 @@ export class RPGGame {
       assets,
       this.music,
       {
+        game: this,
         onNewGame: () => this._startNewGame(),
         onLoadGame: () => this._loadGameFromStorage(),
+        onStartExpansion: () => this.expansionManager.init(this),
         onSaveGame: (opts) => this._saveGameToStorage(opts || { manual: true }),
         // (FIX EXIT) Fallback real cuando el navegador bloquea window.close()
         onExit: () => {
@@ -619,7 +642,12 @@ export class RPGGame {
     this.jailRemainingSeconds = 0;
     this.jailerAngerCount = 0;
     this.isJailedForever = false;
+    this.jailReason = null;
+    this.arrestFadeAlpha = 0;
+    this.activeDemon = null;
+    this.demonBannerTimer = 0;
     this.player.hasBrokenHeartCurse = false;
+    this.player.killedByDemon = false;
     this.housePermissions = {
       player_house: true,
       elder_house: false,
@@ -636,6 +664,9 @@ export class RPGGame {
     this.activeArmorSwitchTile = null;
     this.monolithHitCooldown = 0;
     this.droppedCoins = [];
+    this.gameState = 'base';
+    this.isExpansionMode = false;
+    this._initExpansionState();
     // (FIX 2.4) Los templos vuelven a su salida de diseño al reiniciar la partida
     this.templeReturn = null;
     this.tilemap.resetSceneExitReturn('armor_temple');
@@ -676,6 +707,10 @@ export class RPGGame {
     this.player.hasLanternEquipped = false;
     this.player.unequipAllForNewGame();
 
+    if (Array.isArray(this.npcs)) {
+      this.npcs = this.npcs.filter((n) => !n?.expansionId);
+      if (this.dialogueBox) this.dialogueBox.npcRegistry = this.npcs;
+    }
     this._restoreAllNPCsToOverworld();
     this.enemies = this._createFirstStageEnemies();
     this.worldItems = this._createWorldItems();
@@ -881,7 +916,17 @@ export class RPGGame {
       questLogData: this.questLog ? this.questLog.serialize() : null,
       achievementsData: this.achievementManager ? this.achievementManager.serialize() : null,
       collectedItemIds: this.worldItems.filter((w) => w.collected).map((w) => w.id),
-      defeatedEnemyIds: this.enemies.filter((e) => e.dead && !e.respawnOnEnter).map((e) => e.id)
+      defeatedEnemyIds: this.enemies.filter((e) => e.dead && !e.respawnOnEnter).map((e) => e.id),
+      curriculum: Math.max(0, Math.floor(this.curriculum || 0)),
+      francoRescued: Boolean(this.francoRescued),
+      alexCoreUnlocked: Boolean(this.tilemap && this.tilemap.alexCoreUnlocked),
+      rosaUpgrades: {
+        maxHp: this.player ? this.player.maxHp : 3,
+        damageBonus: this.player ? (this.player.rosaDamageBonus || 0) : 0,
+        staminaBonus: this.player ? (this.player.rosaStaminaBonus || 0) : 0,
+        extraDashCharges: this.player ? (this.player.extraDashCharges || 0) : 0
+      },
+      vertederoFloorOrder: Array.isArray(this.vertederoFloorOrder) ? [...this.vertederoFloorOrder] : [...VERTEDERO_BASE_ROOMS]
     };
   }
 
@@ -1393,7 +1438,14 @@ export class RPGGame {
         vigor: Boolean(savedSkills.vigor),
         filo: Boolean(savedSkills.filo),
         reflejo: Boolean(savedSkills.reflejo),
-        log: Boolean(savedSkills.log)
+        log: Boolean(savedSkills.log),
+        ejecutivo: Boolean(savedSkills.ejecutivo),
+        resiliencia: Boolean(savedSkills.resiliencia),
+        reciclaje: Boolean(savedSkills.reciclaje),
+        vigor_2: Boolean(savedSkills.vigor_2),
+        filo_2: Boolean(savedSkills.filo_2),
+        reflejo_2: Boolean(savedSkills.reflejo_2),
+        log_2: Boolean(savedSkills.log_2)
       };
       this.player.stamina = this.player.effectiveMaxStamina;
       if (typeof data.robotizationLevel === 'number') {
@@ -1518,17 +1570,24 @@ export class RPGGame {
       }
 
       this.camera.snapTo(this.player);
-      if (targetScene === 'valleverde_corp') {
-        registerExpansionMusic();
+      this._restoreExpansionSaveData(data);
+      const isVertederoScene =
+        targetScene.startsWith('vertedero_') || targetScene === 'kernel_arena';
+      if (targetScene === 'valleverde_corp' || targetScene === 'rosa_bar' || isVertederoScene || targetScene === 'ai_nucleus_core') {
+        this.music?.loadExpansionMusic?.();
       }
       this.music.setMode(
-        targetScene === 'valleverde_corp'
-          ? 'valleverde_corp'
-          : targetScene === 'jail_cell'
-            ? 'jail'
-            : stageScenes.has(targetScene)
-              ? 'stage1'
-              : 'village'
+        targetScene === 'ai_nucleus_core'
+          ? 'boss_alex_final'
+          : targetScene === 'valleverde_corp' || targetScene === 'rosa_bar'
+            ? 'valleverde_corp'
+            : isVertederoScene
+              ? 'vertedero'
+              : targetScene === 'jail_cell'
+                ? 'jail'
+                : stageScenes.has(targetScene)
+                  ? 'stage1'
+                  : 'village'
       );
       // (FIX 3) Al cargar una partida dentro de la arena, respetar el Núcleo del Stack
       this._syncMinesBossArenaGate();
@@ -1587,6 +1646,10 @@ export class RPGGame {
   _arrestPlayerForInsult(offendingText) {
     const rightsLines = this.aiBrain.getArrestRightsLines(offendingText);
 
+    if (Array.isArray(this.npcs)) {
+      this.npcs = this.npcs.filter((n) => !n?.expansionId);
+      if (this.dialogueBox) this.dialogueBox.npcRegistry = this.npcs;
+    }
     this._restoreAllNPCsToOverworld();
     this.totalJailVisits = (this.totalJailVisits || 0) + 1;
     this.isJailedForever = false;
@@ -1612,16 +1675,105 @@ export class RPGGame {
     }
   }
 
+  /**
+   * Resetea el contador de agresiones y el enfriamiento en todos los NPCs (juego base y expansión).
+   */
+  _resetAllNPCHitCounts() {
+    const allNpcs = Array.isArray(this.npcs) ? this.npcs : [];
+    for (const npc of allNpcs) {
+      if (!npc) continue;
+      if (typeof npc.resetAttackReaction === 'function') {
+        npc.resetAttackReaction();
+      } else {
+        npc.hitCount = 0;
+        npc.hitResetTimer = 0;
+        npc.hitCooldown = 0;
+      }
+    }
+  }
+
+  /**
+   * Arresto inmediato por agresión reiterada a un NPC (3 golpes).
+   * Detiene al jugador, resetea los contadores de todos los NPCs, inicia transición a negro,
+   * teletransporta a `jail_cell` con 600s de condena, reproduce música `jail` y muestra al Carcelero.
+   */
+  triggerArrest(victimNpc = null) {
+    this._resetAllNPCHitCounts();
+
+    if (this.player) {
+      if (typeof this.player.stopMovement === 'function') {
+        this.player.stopMovement();
+      }
+      this.player.attackTimer = 0;
+      this.player.spinAttackTimer = 0;
+    }
+
+    if (!this.isExpansionMode && typeof this._restoreAllNPCsToOverworld === 'function') {
+      if (Array.isArray(this.npcs)) {
+      this.npcs = this.npcs.filter((n) => !n?.expansionId);
+      if (this.dialogueBox) this.dialogueBox.npcRegistry = this.npcs;
+    }
+    this._restoreAllNPCsToOverworld();
+    }
+
+    this.totalJailVisits = (this.totalJailVisits || 0) + 1;
+    this.isJailedForever = false;
+    this.jailReason = 'assault';
+    this.jailRemainingSeconds = 600;
+    this.arrestFadeAlpha = 1.0;
+
+    if (this.music) {
+      if (typeof this.music.playSFX === 'function') {
+        this.music.playSFX('ui_error', { volume: 0.9, playbackRate: 0.85 });
+      }
+      if (typeof this.music.setMode === 'function') {
+        this.music.setMode('jail');
+      }
+    }
+    this._flashScreen('#ef4444', 0.25, 0.45);
+    this._shakeCamera(3, 0.3);
+
+    this.tilemap.loadScene('jail_cell');
+    this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
+    if (this.player) {
+      this.player.x = 5.5 * 16;
+      this.player.y = 3.5 * 16;
+      this.player.direction = 'down';
+      this.camera.snapTo(this.player);
+    }
+
+    const victimLabel = victimNpc?.name ? ` (${victimNpc.name})` : '';
+    this.dialogueBox.showMessage(`🚨 CARCELERO MUNICIPAL${victimLabel ? ' · DENUNCIA' : ''} 🚨`, [
+      '¡Se acabó la fiesta! Por agredir a un ciudadano, quedas detenido.'
+    ]);
+  }
+
   _releaseFromJail(messageLines) {
     this.jailRemainingSeconds = 0;
+    this.jailReason = null;
+    this._resetAllNPCHitCounts();
+    if (this.isExpansionMode) {
+      this.tilemap.loadScene('valleverde_corp');
+      this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
+      this.player.x = 12 * 16;
+      this.player.y = 10 * 16;
+      this.player.direction = 'down';
+      this.camera.snapTo(this.player);
+      this.music?.setMode?.('valleverde_corp');
+    } else {
+      if (Array.isArray(this.npcs)) {
+      this.npcs = this.npcs.filter((n) => !n?.expansionId);
+      if (this.dialogueBox) this.dialogueBox.npcRegistry = this.npcs;
+    }
     this._restoreAllNPCsToOverworld();
-    this.tilemap.loadScene('overworld');
-    this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
-    this.player.x = 17 * 16;
-    this.player.y = 13 * 16;
-    this.player.direction = 'down';
-    this.camera.snapTo(this.player);
-    this.music.setMode('village');
+      this.tilemap.loadScene('overworld');
+      this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
+      this.player.x = 17 * 16;
+      this.player.y = 13 * 16;
+      this.player.direction = 'down';
+      this.camera.snapTo(this.player);
+      this.music?.setMode?.('village');
+    }
 
     if (messageLines) {
       this.dialogueBox.showMessage('Libertad Condicional', messageLines);
@@ -3249,92 +3401,7 @@ export class RPGGame {
           };
         }
       }),
-      // === EXPANSIÓN v2.0: VALLEVERDE 2.0 (DISTRITO CORPORATIVO) ===
-      new TonyRandazzo({
-        x: 4 * 16,
-        y: 5 * 16,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.GUARD),
-        sceneId: 'valleverde_corp'
-      }),
-      (() => {
-        const data = EXPANSION_NPCS.cepedita_tieso;
-        const npc = new NPC({
-          name: data.name,
-          jobTitle: data.role,
-          homeSceneId: 'valleverde_corp',
-          sceneId: 'valleverde_corp',
-          x: 18 * 16,
-          y: 6 * 16,
-          animator: new SpriteAnimator(sheet, CHARACTER_TYPES.ELDER),
-          behavior: 'idle',
-          initialDirection: 'down',
-          talkSfx: data.talkSfx,
-          dialogues: data.dialogues,
-          ambientPhrases: ['Impreso A-38 bis requerido...', 'Turno 994827-B.']
-        });
-        npc.expansionId = data.id;
-        npc.spriteColor = data.spriteColor;
-        npc.hologram = Boolean(data.hologram);
-        return npc;
-      })(),
-      (() => {
-        const data = EXPANSION_NPCS.rusaso_pluma;
-        const npc = new NPC({
-          name: data.name,
-          jobTitle: data.role,
-          homeSceneId: 'valleverde_corp',
-          sceneId: 'valleverde_corp',
-          x: 3 * 16,
-          y: 14 * 16,
-          animator: new SpriteAnimator(sheet, CHARACTER_TYPES.HERBALIST),
-          behavior: 'idle',
-          initialDirection: 'right',
-          dialogues: data.dialogues,
-          ambientPhrases: ['*clack-clack-clack* ¡Qué drama!', 'Oda al Servidor Inmortal...']
-        });
-        npc.expansionId = data.id;
-        npc.spriteColor = data.spriteColor;
-        return npc;
-      })(),
-      (() => {
-        const data = EXPANSION_NPCS.tio_manoplo;
-        const npc = new NPC({
-          name: data.name,
-          jobTitle: data.role,
-          homeSceneId: 'valleverde_corp',
-          sceneId: 'valleverde_corp',
-          x: 19 * 16,
-          y: 11 * 16,
-          animator: new SpriteAnimator(sheet, CHARACTER_TYPES.BLACKSMITH),
-          behavior: 'idle',
-          initialDirection: 'left',
-          talkSfx: data.talkSfx,
-          dialogues: data.dialogues,
-          ambientPhrases: ['Cinta aislante y fe...', '¿Dónde dejé mi llave inglesa?']
-        });
-        npc.expansionId = data.id;
-        npc.spriteColor = data.spriteColor;
-        return npc;
-      })(),
-      new NPC({
-        name: 'Ciudadano Corporativo',
-        jobTitle: 'Empleado Modelo · Nivel 98%',
-        homeSceneId: 'valleverde_corp',
-        sceneId: 'valleverde_corp',
-        x: 10 * 16,
-        y: 11 * 16,
-        speed: 18,
-        animator: new SpriteAnimator(sheet, CHARACTER_TYPES.VILLAGER_BLUE),
-        behavior: 'patrol',
-        patrolPoints: [
-          { x: 10 * 16, y: 11 * 16, dir: 'down', waitMin: 2.0, waitMax: 4.0 },
-          { x: 13 * 16, y: 11 * 16, dir: 'left', waitMin: 2.0, waitMax: 4.0 }
-        ],
-        ambientPhrases: ['TODO ESTÁ BIEN.', 'Felicidad: 98%.'],
-        dialogues: [
-          '¡Sonríe, ciudadano! Tu nivel de felicidad es del 98%. El otro 2% es un bug que el CEO está revisando.'
-        ]
-      })
+    // Los NPCs de la expansión se crean bajo demanda en ExpansionManager.init(game)
     ];
   }
 
@@ -3797,16 +3864,429 @@ export class RPGGame {
         x: 11.5 * 16,
         y: 6.5 * 16,
         sceneId: 'ai_citadel'
-      }),
-
-      // Expansión v2.0: Iñakito 2.0 (El Becario Eterno · Cubículo 12x10 · 100 HP / 3 fases)
-      new IñakitoBoss({
-        x: 6 * 16,
-        y: 4 * 16,
-        sceneId: 'inakito_office',
-        hp: 100
       })
     ];
+  }
+
+  _readExpansionStorage() {
+    try {
+      if (typeof localStorage === 'undefined') return {};
+      const slotRaw = localStorage.getItem(EXPANSION_SLOT_SAVE_KEY);
+      const legacyRaw = localStorage.getItem(EXPANSION_SAVE_KEY);
+      const raw = slotRaw || legacyRaw;
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  _saveExpansionProgress() {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      const payload = {
+        curriculum: Math.max(0, Math.floor(this.curriculum || 0)),
+        francoRescued: Boolean(this.francoRescued),
+        tonyForgiven: Boolean(this.tonyForgiven),
+        alexCoreUnlocked: Boolean(this.tilemap && this.tilemap.alexCoreUnlocked),
+        endingChosen: this.expansionEndingChosen || null,
+        sceneId: this.tilemap ? this.tilemap.currentSceneId : 'valleverde_corp',
+        playerX: this.player ? this.player.x : 12 * 16,
+        playerY: this.player ? this.player.y : 15 * 16,
+        coins: this.player ? (this.player.coins || 0) : 0,
+        hp: this.player ? this.player.hp : 3,
+        rosaUpgrades: {
+          maxHp: this.player ? this.player.maxHp : 3,
+          damageBonus: this.player ? (this.player.rosaDamageBonus || 0) : 0,
+          staminaBonus: this.player ? (this.player.rosaStaminaBonus || 0) : 0,
+          extraDashCharges: this.player ? (this.player.extraDashCharges || 0) : 0
+        }
+      };
+      const serialized = JSON.stringify(payload);
+      localStorage.setItem(EXPANSION_SAVE_KEY, serialized);
+      localStorage.setItem(EXPANSION_SLOT_SAVE_KEY, serialized);
+      if (this.expansionEndingChosen) {
+        localStorage.setItem('expansion_ending_chosen', this.expansionEndingChosen);
+      }
+    } catch {
+      // Sin almacenamiento persistente disponible
+    }
+  }
+
+  /**
+   * Inicia o reanuda la expansión "El Resurgir de Mister Alex IA" desde el slot independiente
+   * `el_ojete_dorado_expansion_save_v1` y teletransporta al jugador a `valleverde_corp`.
+   */
+  startExpansion() {
+    let savedSlot = null;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem(EXPANSION_SLOT_SAVE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') savedSlot = parsed;
+        }
+      }
+    } catch {
+      savedSlot = null;
+    }
+
+    // Limpiar estado del juego base antes de arrancar o reanudar la expansión
+    this._resetWorldToInitialState();
+    this.isExpansionMode = true;
+    this.gameState = 'expansion';
+
+    if (savedSlot) {
+      this._restoreExpansionSaveData(savedSlot);
+      if (Number.isFinite(Number(savedSlot.coins))) {
+        this.player.coins = Math.max(0, Number(savedSlot.coins));
+      }
+    } else {
+      // Nueva partida de expansión
+      this.curriculum = 0;
+      this.francoRescued = false;
+      this.tonyForgiven = false;
+      this.expansionEndingChosen = null;
+      this.player.hasSword = true;
+      this.player.hasArmor = true;
+      this.player.hasDash = true;
+      this.player.hp = this.player.effectiveMaxHp;
+      if (!this.player.equippedWeapon || this.player.equippedWeapon === 'default') {
+        this.player.equipExpansionItem?.('boligrafo');
+      }
+      const boligrafoInfo = this.expansionEquipment?.boligrafo || {
+        id: 'boligrafo',
+        name: 'Bolígrafo Corporativo',
+        description: 'Tinta barata de RRHH. Daño 1, velocidad muy rápida (0.15s).',
+        iconIndex: 3
+      };
+      if (this.inventory && !this.inventory.items.some((it) => it && it.id === 'boligrafo')) {
+        this.inventory.addItem({
+          id: boligrafoInfo.id,
+          name: boligrafoInfo.name,
+          description: boligrafoInfo.description,
+          iconIndex: boligrafoInfo.iconIndex
+        });
+      }
+      this._syncFrancoNPCState();
+    }
+
+    this.expansionManager?.attachCachedEntities?.(this);
+
+    if (this.tilemap) {
+      this.tilemap.loadScene('valleverde_corp');
+      this.camera?.setWorldBounds?.(this.tilemap.width, this.tilemap.height);
+    }
+    this.player.x = 12 * 16;
+    this.player.y = 15 * 16;
+    this.player.direction = 'up';
+    this.player.stopMovement?.();
+    this.camera?.resetCinematic?.();
+    this.camera?.snapTo?.(this.player);
+
+    this.music?.loadExpansionMusic?.();
+    this.music?.setMode?.('valleverde_corp');
+
+    if (this.menuSystem) {
+      this.menuSystem.state = 'none';
+      this.menuSystem.fadeAlpha = 0;
+      this.menuSystem.showNotice('3 meses después...', 4.0);
+    }
+    this._saveExpansionProgress();
+  }
+
+  _initExpansionState() {
+    this.curriculum = 0;
+    this.curriculumFlashTimer = 0;
+    this.vertederoRebootTimer = 0;
+    this.kernelHackActive = false;
+    this.kernelHudFlicker = false;
+    this.bsodOverlayTimer = 0;
+    this.debtGlitchTimer = 0;
+    this.francoRescued = false;
+    this.tonyForgiven = false;
+    this.expansionEndingChosen = null;
+    this.vertederoFloorOrder = [...VERTEDERO_BASE_ROOMS];
+
+    if (!this.isExpansionMode) return;
+
+    const saved = this._readExpansionStorage();
+    const storedCurriculums = Number(saved.curriculum);
+    this.curriculum = Number.isFinite(storedCurriculums) ? Math.max(0, Math.floor(storedCurriculums)) : 0;
+    this.francoRescued = Boolean(saved.francoRescued);
+    this.tonyForgiven = Boolean(saved.tonyForgiven);
+    this.expansionEndingChosen = saved.endingChosen || null;
+    if (this.tilemap && this.tilemap.expansionLoaded && typeof this.tilemap.configureVertederoFloors === 'function') {
+      this.tilemap.configureVertederoFloors(this.vertederoFloorOrder);
+    }
+    if (saved.alexCoreUnlocked && this.tilemap && typeof this.tilemap.setAlexCoreUnlocked === 'function') {
+      this.tilemap.setAlexCoreUnlocked(true);
+    }
+    this._applySavedRosaUpgrades(saved.rosaUpgrades);
+    this._syncFrancoNPCState();
+  }
+
+  _applySavedRosaUpgrades(upgrades = null) {
+    if (!this.player) return;
+    const saved = upgrades || this._readExpansionStorage().rosaUpgrades;
+    if (!saved || typeof saved !== 'object') return;
+    if (Number.isFinite(Number(saved.maxHp)) && Number(saved.maxHp) > this.player.maxHp) {
+      this.player.maxHp = Math.floor(Number(saved.maxHp));
+      this.player.hp = Math.min(this.player.effectiveMaxHp, Math.max(this.player.hp, this.player.effectiveMaxHp));
+    }
+    if (Number.isFinite(Number(saved.damageBonus))) {
+      this.player.rosaDamageBonus = Math.max(this.player.rosaDamageBonus || 0, Number(saved.damageBonus));
+    }
+    if (Number.isFinite(Number(saved.staminaBonus))) {
+      this.player.rosaStaminaBonus = Math.max(this.player.rosaStaminaBonus || 0, Number(saved.staminaBonus));
+      this.player.maxStamina = this.player.effectiveMaxStamina;
+      this.player.stamina = this.player.effectiveMaxStamina;
+    }
+    if (Number.isFinite(Number(saved.extraDashCharges))) {
+      this.player.extraDashCharges = Math.max(this.player.extraDashCharges || 0, Math.floor(Number(saved.extraDashCharges)));
+      if (this.player.extraDashCharges > 0) {
+        this.player.hasDash = true;
+        this.player.dashChargesRemaining = this.player.maxDashCharges;
+      }
+    }
+  }
+
+  _restoreExpansionSaveData(data) {
+    if (!data || typeof data !== 'object') return;
+    const saved = this._readExpansionStorage();
+    const stored = Number(saved.curriculum);
+    const fromSave = Number(data.curriculum);
+    this.curriculum = Math.max(
+      Number.isFinite(stored) ? Math.floor(stored) : 0,
+      Number.isFinite(fromSave) ? Math.floor(fromSave) : 0,
+      0
+    );
+    this.francoRescued = Boolean(data.francoRescued || saved.francoRescued);
+    if (Array.isArray(data.vertederoFloorOrder) && data.vertederoFloorOrder.length === 5) {
+      this.vertederoFloorOrder = [...data.vertederoFloorOrder];
+    } else {
+      this.vertederoFloorOrder = [...VERTEDERO_BASE_ROOMS];
+    }
+    if (this.tilemap && typeof this.tilemap.configureVertederoFloors === 'function') {
+      this.tilemap.configureVertederoFloors(this.vertederoFloorOrder);
+    }
+    if ((data.alexCoreUnlocked || saved.alexCoreUnlocked) && this.tilemap && typeof this.tilemap.setAlexCoreUnlocked === 'function') {
+      this.tilemap.setAlexCoreUnlocked(true);
+    }
+    this._applySavedRosaUpgrades(data.rosaUpgrades || saved.rosaUpgrades);
+    this.tonyForgiven = Boolean(data.tonyForgiven || saved.tonyForgiven);
+    this.expansionEndingChosen = data.endingChosen || saved.endingChosen || null;
+    this.vertederoRebootTimer = 0;
+    this.kernelHackActive = false;
+    this.kernelHudFlicker = false;
+    this.bsodOverlayTimer = 0;
+    this.debtGlitchTimer = 0;
+    this._syncFrancoNPCState();
+    this._saveExpansionProgress();
+  }
+
+  _enterAlexCoreFromKernel() {
+    if (!this.tilemap) return;
+    const hasCoreScene = Boolean(this.tilemap.scenes && this.tilemap.scenes.ai_nucleus_core);
+    const targetScene = hasCoreScene ? 'ai_nucleus_core' : 'valleverde_corp';
+    if (this.sceneTransitions && typeof this.sceneTransitions.executeStageTransition === 'function') {
+      this.sceneTransitions.executeStageTransition({
+        type: 'stage_transition',
+        targetScene,
+        targetX: (hasCoreScene ? 6.5 : 11.5) * 16,
+        targetY: (hasCoreScene ? 9.8 : 2.8) * 16,
+        forceDirection: hasCoreScene ? 'up' : 'down'
+      });
+    }
+  }
+
+  _renderKernelBSODOverlay(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(29, 78, 216, 0.92)';
+    ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.font = `bold 24px ${UI_FONT}`;
+    ctx.fillText(':(', 32, 48);
+
+    ctx.font = `bold 7px ${UI_FONT}`;
+    ctx.fillText('KERNEL_SECURITY_CHECK_FAILURE', 32, 76);
+    ctx.font = `5.5px ${UI_FONT}`;
+    ctx.fillStyle = '#dbeafe';
+    ctx.fillText('El proceso del sistema encontró un error inesperado.', 32, 92);
+    ctx.fillText('Deteniendo interfaz y purgando acceso...', 32, 104);
+    ctx.restore();
+  }
+
+  _syncFrancoNPCState() {
+    if (!Array.isArray(this.npcs)) return;
+    const franco = this.npcs.find((n) => n && n.expansionId === 'franco_pancho');
+    if (!franco) return;
+    if (this.francoRescued) {
+      franco.rescued = true;
+      franco.isCompanion = false;
+      franco.sceneId = 'valleverde_corp';
+      franco.homeSceneId = 'valleverde_corp';
+      franco.x = 7 * 16;
+      franco.y = 14 * 16;
+    } else {
+      franco.rescued = false;
+      franco.isCompanion = false;
+      franco.sceneId = 'vertedero_piso_3';
+      franco.x = 3 * 16;
+      franco.y = 4 * 16;
+    }
+  }
+
+  _shuffleVertederoOrder() {
+    const order = [...VERTEDERO_BASE_ROOMS];
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = order[i];
+      order[i] = order[j];
+      order[j] = tmp;
+    }
+    return order;
+  }
+
+  _resetVertederoEnemiesAndDrops() {
+    if (Array.isArray(this.droppedCoins)) {
+      this.droppedCoins = this.droppedCoins.filter(
+        (c) => !c || typeof c.sceneId !== 'string' || !c.sceneId.startsWith('vertedero_')
+      );
+    }
+    if (Array.isArray(this.enemies)) {
+      for (const en of this.enemies) {
+        if (en && typeof en.sceneId === 'string' && en.sceneId.startsWith('vertedero_') && typeof en.reset === 'function') {
+          en.reset();
+        }
+      }
+    }
+  }
+
+  _startVertederoRun() {
+    this.vertederoFloorOrder = this._shuffleVertederoOrder();
+    if (this.tilemap && typeof this.tilemap.configureVertederoFloors === 'function') {
+      this.tilemap.configureVertederoFloors(this.vertederoFloorOrder);
+    }
+    this._resetVertederoEnemiesAndDrops();
+    this._syncFrancoNPCState();
+  }
+
+  _syncFrancoCompanionOnTransition(targetScene) {
+    if (!Array.isArray(this.npcs)) return;
+    const franco = this.npcs.find((n) => n && n.expansionId === 'franco_pancho');
+    if (!franco || !franco.rescued) return;
+
+    const insideVertedero =
+      typeof targetScene === 'string' && targetScene.startsWith('vertedero_');
+    if (insideVertedero && franco.isCompanion) {
+      franco.sceneId = targetScene;
+      franco.x = Math.max(24, this.player.x - 14);
+      franco.y = this.player.y;
+      franco.direction = this.player.direction || 'up';
+    } else {
+      const wasCompanion = franco.isCompanion;
+      franco.isCompanion = false;
+      franco.sceneId = 'valleverde_corp';
+      franco.homeSceneId = 'valleverde_corp';
+      franco.x = 7 * 16;
+      franco.y = 14 * 16;
+      franco.direction = 'down';
+      if (wasCompanion && targetScene === 'valleverde_corp' && this.menuSystem) {
+        this.menuSystem.showNotice('✅ Franco el Pancho llegó a salvo a Valleverde 2.0.', 2.6);
+      }
+    }
+  }
+
+  _triggerVertederoSoftReset() {
+    this.vertederoRebootTimer = 2.0;
+    this.player.stopMovement();
+    this.player.hp = 0;
+    this.player.thrownLogs = [];
+    this.player.energySlashes = [];
+    if (Array.isArray(this.enemies)) {
+      for (const en of this.enemies) {
+        if (en && en.shots) en.shots = [];
+        if (en && en.isBoss && !en.dead && typeof en.resetCombatState === 'function') {
+          en.resetCombatState();
+        }
+      }
+    }
+    if (this.music && typeof this.music.playError === 'function') {
+      this.music.playError();
+    }
+    this._saveExpansionProgress();
+  }
+
+  _finishVertederoSoftReset() {
+    this.vertederoRebootTimer = 0;
+    this.vertederoFloorOrder = this._shuffleVertederoOrder();
+    if (this.tilemap && typeof this.tilemap.configureVertederoFloors === 'function') {
+      this.tilemap.configureVertederoFloors(this.vertederoFloorOrder);
+    }
+    this.tilemap.loadScene('vertedero_piso_1');
+    this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
+
+    this.player.hp = this.player.effectiveMaxHp;
+    this.player.stamina = this.player.effectiveMaxStamina;
+    this.player.invulnTimer = 1.5;
+    this.player.knockbackTimer = 0;
+    this.player.x = 11.5 * 16;
+    this.player.y = 15.2 * 16;
+    this.player.direction = 'up';
+    this.camera.snapTo(this.player);
+
+    this._resetVertederoEnemiesAndDrops();
+    this._syncFrancoNPCState();
+    this._saveExpansionProgress();
+    this._saveGameToStorage();
+    if (this.menuSystem) {
+      this.menuSystem.showNotice(
+        `♻️ Sistema reiniciado · Piso 1 (${this.curriculum} 📄 conservados)`,
+        2.6
+      );
+    }
+  }
+
+  _renderVertederoRebootOverlay(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(7, 4, 15, 0.94)';
+    ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+
+    const progress = 1 - Math.max(0, Math.min(1, this.vertederoRebootTimer / 2.0));
+    const cx = VIEWPORT_WIDTH / 2;
+    const cy = VIEWPORT_HEIGHT / 2;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold 10px ${UI_FONT}`;
+    ctx.fillStyle = '#f87171';
+    ctx.fillText('FALLO CRÍTICO EN VERTEDERO 2.0', cx, cy - 28);
+
+    ctx.font = `bold 9px ${UI_FONT}`;
+    ctx.fillStyle = '#c084fc';
+    ctx.fillText('REINICIANDO SISTEMA...', cx, cy - 6);
+
+    const barW = 140;
+    const barH = 8;
+    const bx = Math.round(cx - barW / 2);
+    const by = cy + 10;
+    ctx.fillStyle = '#1e1b2e';
+    ctx.fillRect(bx, by, barW, barH);
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, barW - 1, barH - 1);
+    ctx.fillStyle = '#22c55e';
+    ctx.fillRect(bx + 2, by + 2, Math.round((barW - 4) * progress), barH - 4);
+
+    ctx.font = `6.5px ${UI_FONT}`;
+    ctx.fillStyle = '#e9d5ff';
+    ctx.fillText(`Currículums guardados en caché: 📄 ${this.curriculum || 0}`, cx, cy + 32);
+    ctx.restore();
   }
 
   /**
@@ -4507,6 +4987,12 @@ export class RPGGame {
     const item = this.inventory.getSelectedItem();
     if (!item) return;
 
+    const corpEquipped = this.inventory.equipSelectedExpansionItem?.(this.player);
+    if (corpEquipped) {
+      this.music?.playMenuSelect?.();
+      return;
+    }
+
     if (item.id === 'dawn_armor') {
       this.player.equipArmor();
       this.inventory.statusMessage = '¡Armadura del Código Binario equipada! Cuidado con robotizarte.';
@@ -4660,33 +5146,101 @@ export class RPGGame {
     this._saveGameToStorage();
   }
 
+  _ensurePlayerHotbar() {
+    if (!this.player) return [null, null, null, null, null];
+    if (!Array.isArray(this.player.hotbar) || this.player.hotbar.length !== 5) {
+      this.player.hotbar = [null, null, null, null, null];
+    }
+    if (!Array.isArray(this.player.hotbarFlashTimers) || this.player.hotbarFlashTimers.length !== 5) {
+      this.player.hotbarFlashTimers = [0, 0, 0, 0, 0];
+    }
+    return this.player.hotbar;
+  }
+
+  /** Vacía los slots de Hotbar cuyo consumible se haya agotado en el inventario. */
+  syncHotbarWithInventory() {
+    const hotbar = this._ensurePlayerHotbar();
+    if (!this.inventory) return hotbar;
+    for (let i = 0; i < 5; i++) {
+      const id = hotbar[i];
+      if (id && this.inventory.getItemCount(id) <= 0) {
+        hotbar[i] = null;
+      }
+    }
+    return hotbar;
+  }
+
+  /** Asigna un consumible al índice de Hotbar (0..4, teclas 1..5). */
+  assignHotbarSlot(slotIndex = 0, explicitItem = null) {
+    const item = explicitItem || (this.inventory ? this.inventory.getSelectedItem() : null);
+    if (!item || (this.inventory && !this.inventory.isConsumable(item))) {
+      this.menuSystem?.showNotice('Solo puedes asignar ítems consumibles a la Hotbar (1-5).', 2.0);
+      return false;
+    }
+    const hotbar = this._ensurePlayerHotbar();
+    const targetIdx = Math.max(0, Math.min(4, Math.floor(slotIndex)));
+    for (let i = 0; i < 5; i++) {
+      if (hotbar[i] === item.id) hotbar[i] = null;
+    }
+    hotbar[targetIdx] = item.id;
+    this.player.hotbarFlashTimers[targetIdx] = 0.2;
+    this.music?.playMenuSelect?.();
+    if (this.inventory) {
+      this.inventory.statusMessage = `Asignado ${item.name} al slot [${targetIdx + 1}]`;
+    }
+    this.menuSystem?.showNotice(`🎒 ${item.name} asignado a Hotbar [${targetIdx + 1}]`, 2.0);
+    return true;
+  }
+
+  _assignSelectedToNextHotbarSlot() {
+    const hotbar = this._ensurePlayerHotbar();
+    const emptyIdx = hotbar.indexOf(null);
+    const selected = this.inventory ? this.inventory.getSelectedItem() : null;
+    const currentIdx = selected ? hotbar.indexOf(selected.id) : -1;
+    const targetIdx = currentIdx !== -1
+      ? (currentIdx + 1) % 5
+      : (emptyIdx !== -1 ? emptyIdx : 0);
+    return this.assignHotbarSlot(targetIdx, selected);
+  }
+
+  _getQuickSlotIndex(quickKey = 'Digit1') {
+    const keyToIndex = {
+      Digit1: 0,
+      Digit2: 1,
+      Digit3: 2,
+      Digit4: 3,
+      Digit5: 4
+    };
+    return typeof quickKey === 'string' && quickKey in keyToIndex ? keyToIndex[quickKey] : -1;
+  }
+
   _getQuickSlotConsumable(quickKey = 'Digit1') {
     if (!this.inventory || !Array.isArray(this.inventory.items)) return null;
+    const index = this._getQuickSlotIndex(quickKey);
+    if (index < 0 || index > 4) return null;
 
-    // (FIX QUICK) Las ranuras rápidas son SOLO 1-5; R queda para Lanzar Tronco.
-    const keyToIndex = {
-      'Digit1': 0,
-      'Digit2': 1,
-      'Digit3': 2,
-      'Digit4': 3,
-      'Digit5': 4
-    };
-    const index = typeof quickKey === 'string' ? keyToIndex[quickKey] : undefined;
-    if (index === undefined) return null;
-    
-    // Ítems de consumible rápido en orden: [0]=poción armor, [1]=poción, [2]=café, [3]=pan, [4]=trucha
-    const quickSlotIds = ['potion_armor', 'potion', 'coffee', 'bread', 'fish'];
-    const id = quickSlotIds[index];
-    
-    // Buscar el ítem en el inventario por ID y verificar que tenga cantidad
-    const item = this.inventory.items.find((it) => it && it.id === id && (it.qty || 1) > 0);
-    return item || null;
+    this.syncHotbarWithInventory();
+    const hotbar = this._ensurePlayerHotbar();
+    const assignedId = hotbar[index];
+    if (!assignedId) return null;
+
+    const item = this.inventory.items.find((it) => it && it.id === assignedId && (it.qty || 1) > 0);
+    if (!item) {
+      hotbar[index] = null;
+      return null;
+    }
+    return item;
   }
 
   _useQuickSlotConsumable(quickKey = 'Digit1') {
+    const slotIndex = this._getQuickSlotIndex(quickKey);
+    if (slotIndex >= 0 && slotIndex < 5) {
+      this._ensurePlayerHotbar();
+      this.player.hotbarFlashTimers[slotIndex] = 0.2;
+    }
     const item = this._getQuickSlotConsumable(quickKey);
     if (!item) {
-      this.menuSystem.showNotice('🎒 Sin consumibles rápidos en la mochila', 2.0);
+      this.menuSystem.showNotice(`🎒 Slot [${slotIndex + 1}] vacío (asigna un consumible en Mochila [I])`, 2.0);
       return;
     }
 
@@ -4750,6 +5304,7 @@ export class RPGGame {
       if (this.music && typeof this.music.playHealSound === 'function') this.music.playHealSound();
       this.menuSystem.showNotice('💧 Agua de Manantial (+0.5 HP)', 2.5);
     }
+    this.syncHotbarWithInventory();
     this._saveGameToStorage();
   }
 
@@ -5516,6 +6071,134 @@ export class RPGGame {
     }
   }
 
+  /**
+   * Comprueba si algún ataque activo del jugador (espada, puño, giro o proyectil) colisiona con `targetBox`.
+   * Consume automáticamente el proyectil si impacta.
+   */
+  _didPlayerAttackHitBox(targetBox) {
+    if (!this.player || !targetBox) return false;
+
+    const swordBox = this.player.isAttacking ? this.player.getSwordHitbox() : null;
+    if (swordBox && CollisionSystem.isBoxColliding(swordBox, targetBox)) {
+      return true;
+    }
+
+    const spinCircle = this.player.getSpinHitbox();
+    if (spinCircle) {
+      const nearestX = Math.max(targetBox.x, Math.min(spinCircle.centerX, targetBox.x + targetBox.width));
+      const nearestY = Math.max(targetBox.y, Math.min(spinCircle.centerY, targetBox.y + targetBox.height));
+      if (Math.hypot(spinCircle.centerX - nearestX, spinCircle.centerY - nearestY) <= spinCircle.radius) {
+        return true;
+      }
+    }
+
+    const slashes =
+      this.player.hasSword && Array.isArray(this.player.energySlashes) ? this.player.energySlashes : [];
+    for (let i = slashes.length - 1; i >= 0; i--) {
+      const s = slashes[i];
+      if (!s || s.active === false) continue;
+      const sw = s.width || 12;
+      const sh = s.height || 12;
+      const sBox = { x: s.x - sw / 2, y: s.y - sh / 2, width: sw, height: sh };
+      if (CollisionSystem.isBoxColliding(sBox, targetBox)) {
+        slashes.splice(i, 1);
+        return true;
+      }
+    }
+
+    const logs = Array.isArray(this.player.thrownLogs) ? this.player.thrownLogs : [];
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const l = logs[i];
+      if (!l) continue;
+      const lBox = { x: l.x - 4, y: l.y - 4, width: 8, height: 8 };
+      if (CollisionSystem.isBoxColliding(lBox, targetBox)) {
+        logs.splice(i, 1);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Comprueba si el ataque activo del jugador (espada, puño, giro o proyectil) golpea a un NPC.
+   * Al recibir impacto, el NPC reacciona (`onPlayerAttack`) y al 3º golpe dispara el arresto.
+   */
+  _handlePlayerAttackOnNPCs(npcs) {
+    if (!this.player || !Array.isArray(npcs) || npcs.length === 0) return;
+
+    for (const npc of npcs) {
+      if (!npc || npc.dead || npc.isEnemy || typeof npc.onPlayerAttack !== 'function') continue;
+      if (npc.hitCooldown > 0) continue;
+
+      const npcBox = npc.worldBoundingBox || npc.getBoundingBoxAt?.(npc.x, npc.y);
+      if (!this._didPlayerAttackHitBox(npcBox)) continue;
+
+      const reacted = npc.onPlayerAttack(this);
+      if (!reacted) continue;
+
+      if (this.music) {
+        if (typeof this.music.playSFX === 'function') {
+          this.music.playSFX('hit_flesh');
+        } else if (typeof this.music.playHitHurt === 'function') {
+          this.music.playHitHurt();
+        }
+      }
+      this._shakeCamera(2.5, 0.2);
+
+      // Si el 3º golpe desencadenó el arresto, detenemos comprobaciones restantes en este frame
+      if (this.tilemap.currentSceneId === 'jail_cell') {
+        return;
+      }
+    }
+  }
+
+  /**
+   * Comprueba si el jugador ataca a un animal del pueblo (oveja, gallina, perro).
+   * Al golpearle, desata al Demonio Vengador ("El Señor de las Ovejas").
+   */
+  _handlePlayerAttackOnAnimals(animals) {
+    if (!this.player || !Array.isArray(animals) || animals.length === 0) return;
+
+    for (const animal of animals) {
+      if (!animal || animal.hitCooldown > 0 || typeof animal.onPlayerAttack !== 'function') continue;
+      const animalBox = animal.worldBoundingBox || animal.getBoundingBoxAt?.(animal.x, animal.y);
+      if (!this._didPlayerAttackHitBox(animalBox)) continue;
+
+      animal.onPlayerAttack(this);
+      return;
+    }
+  }
+
+  /**
+   * Invoca al Demonio Vengador encima del animal atacado, muestra el banner de alerta y ruge.
+   */
+  spawnAnimalDemon(animal = null) {
+    const sceneId = this.tilemap?.currentSceneId || animal?.sceneId || 'overworld';
+    const spawnX = (typeof animal?.x === 'number' ? animal.x : this.player?.x || 0) - 4;
+    const spawnY = (typeof animal?.y === 'number' ? animal.y : this.player?.y || 0) - 4;
+
+    this.activeDemon = new DemonVengador({
+      x: spawnX,
+      y: spawnY,
+      sceneId
+    });
+    this.demonBannerTimer = 4.0;
+
+    if (this.music) {
+      if (typeof this.music.playSFX === 'function') {
+        this.music.playSFX('boss_roar', { volume: 1.0, playbackRate: 0.78 });
+      }
+    }
+    this._shakeCamera(6, 0.55);
+    this._flashScreen('#dc2626', 0.5, 0.45);
+
+    if (this.menuSystem && typeof this.menuSystem.showNotice === 'function') {
+      this.menuSystem.showNotice('🔥 ¡HAS PROVOCADO AL SEÑOR DE LAS OVEJAS!', 3.8);
+    }
+    return this.activeDemon;
+  }
+
   _checkCrystalBarrierCollisions() {
     const scene = this.tilemap?.scenes?.[this.tilemap.currentSceneId];
     if (!scene || !scene.layers || !scene.layers.decoration) return;
@@ -5676,7 +6359,7 @@ export class RPGGame {
     this.bossCutscenesSeen.boss_inakito = true;
     boss.introCutscenePlayed = true;
     boss.activeCombat = false;
-    registerExpansionMusic();
+    this.music?.loadExpansionMusic?.();
 
     const startFight = () => {
       boss.activeCombat = true;
@@ -5729,15 +6412,9 @@ export class RPGGame {
     return 'Junior Dev Superviviente del Despido';
   }
 
-  _triggerVictorySequence() {
-    // 1. Congelar la sala y detener música de combate
-    if (this.music && typeof this.music.stopBossMusic === 'function') {
-      this.music.stopBossMusic(false);
-    }
-
-    // 2. Resumen del Expediente del Jugador y Cálculo de Puntuación
+  _buildBaseVictoryRecord() {
     const scoreResult = calculateGameScore(this.totalPlayTimeSeconds, this.totalDeaths);
-    const record = {
+    return {
       playTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
       playTimeFormatted: scoreResult.timeFormatted,
       deaths: this.totalDeaths || 0,
@@ -5757,22 +6434,213 @@ export class RPGGame {
       ].filter(Boolean),
       title: this._computePlayerFinalTitle()
     };
+  }
 
-    // 3. Disparar cinemática SCENE_ENDING_VICTORY
+  _canChooseMergeEnding() {
+    const tony = Array.isArray(this.npcs)
+      ? this.npcs.find((n) => n.expansionId === 'tony_randazzo')
+      : null;
+    if (tony && tony.forgiven) {
+      this.tonyForgiven = true;
+    }
+    return Boolean(this.francoRescued && this.tonyForgiven);
+  }
+
+  shouldTriggerTechnicalDebt(endingKey = this.expansionEndingChosen) {
+    return (this.curriculum || 0) >= 20 && (endingKey === 'B' || endingKey === 'C');
+  }
+
+  _openAlexUpdateEndingDialogue() {
+    if (!this.dialogueBox) return;
+    const endings = {
+      A: {
+        label: 'Final A · Revertir el Update',
+        line: 'El futuro se borró. Pero tú recordarás lo que pasó.'
+      },
+      B: {
+        label: 'Final B · Arreglar el Update',
+        line: 'No es perfecto. Pero es nuestro.'
+      },
+      C: {
+        label: 'Final C · Fusionar (Secreto)',
+        line: 'Dos mundos. Un solo Ojete Dorado.'
+      }
+    };
+    const choices = [
+      {
+        label: endings.A.label,
+        onSelect: () => {
+          this.dialogueBox.close();
+          this._playExpansionEnding('A');
+        }
+      },
+      {
+        label: endings.B.label,
+        onSelect: () => {
+          this.dialogueBox.close();
+          this._playExpansionEnding('B');
+        }
+      }
+    ];
+    if (this._canChooseMergeEnding()) {
+      choices.push({
+        label: endings.C.label,
+        onSelect: () => {
+          this.dialogueBox.close();
+          this._playExpansionEnding('C');
+        }
+      });
+    }
+
+    this.dialogueBox.showMessage('Mister Alex IA · El Update', [
+      'No me has derrotado. Me has... reestructurado.',
+      'El Núcleo está abierto ante ti. ¿Qué harás con el servidor del futuro?'
+    ], choices);
+  }
+
+  _playExpansionEnding(endingKey) {
+    const endingMeta = {
+      A: {
+        label: 'Final A · Revertir el Update',
+        line: 'El futuro se borró. Pero tú recordarás lo que pasó.',
+        headline: '★ FINAL A · UPDATE REVERTIDO ★',
+        description: 'Destruiste el servidor y devolviste Valleverde a su forma clásica.'
+      },
+      B: {
+        label: 'Final B · Arreglar el Update',
+        line: 'No es perfecto. Pero es nuestro.',
+        headline: '★ FINAL B · FUTURO LIBERADO ★',
+        description: 'El futuro de Valleverde 2.0 sobrevive libre de la tiranía del Update.'
+      },
+      C: {
+        label: 'Final C · Fusionar (Secreto)',
+        line: 'Dos mundos. Un solo Ojete Dorado.',
+        headline: '★ FINAL C · FUSIÓN DEL OJETE DORADO ★',
+        description: 'Tony y Franco sellaron la paz entre el pasado de Valleverde y el futuro.'
+      }
+    };
+    const cfg = endingMeta[endingKey] || endingMeta.B;
+    this.expansionEndingChosen = endingKey;
+    this._saveExpansionProgress();
+
+    // Efecto narrativo sobre el mundo según el final elegido
+    if (endingKey === 'A' && this.tilemap) {
+      this.tilemap.setAlexCoreUnlocked(false);
+    }
+
+    const base = this._buildBaseVictoryRecord();
+    const record = {
+      ...base,
+      endingKey,
+      endingHeadline: cfg.headline,
+      endingDescription: `${cfg.line} ${cfg.description}`,
+      title: `${cfg.label} · ${base.title}`
+    };
+
+    const launchCredits = () => {
+      if (this.music && typeof this.music.playVictoryTheme === 'function') {
+        this.music.playVictoryTheme();
+      }
+      if (this.menuSystem && typeof this.menuSystem.startEndingCredits === 'function') {
+        this.menuSystem.startEndingCredits(record, () => {
+          this._onExpansionCreditsFinished(endingKey, record);
+        });
+      }
+    };
+
+    if (this.dialogueBox) {
+      this.dialogueBox.showMessage(cfg.label, [cfg.line], [
+        {
+          label: 'Ver Créditos',
+          onSelect: () => {
+            this.dialogueBox.close();
+            launchCredits();
+          }
+        }
+      ]);
+    } else {
+      launchCredits();
+    }
+    return record;
+  }
+
+  _onExpansionCreditsFinished(endingKey, record) {
+    if (this.shouldTriggerTechnicalDebt(endingKey)) {
+      this._triggerTechnicalDebtSecretBattle();
+      return;
+    }
+    this._openScoreSubmissionModal(record, () => {
+      this._resetWorldToInitialState();
+      this.menuSystem.openLeaderboardScreen('title');
+    });
+  }
+
+  _triggerTechnicalDebtSecretBattle() {
+    const debtBoss = this.enemies.find((e) => e.id === 'boss_technical_debt');
+    if (!debtBoss || typeof debtBoss.activateSecretBoss !== 'function') return null;
+
+    if (this.menuSystem) {
+      this.menuSystem.state = 'playing';
+    }
+    if (this.tilemap && this.tilemap.currentSceneId !== 'ai_nucleus_core') {
+      this.tilemap.loadScene('ai_nucleus_core');
+    }
+    this.player.x = 6.5 * 16;
+    this.player.y = 9.5 * 16;
+    this.player.hp = this.player.effectiveMaxHp;
+    this.camera?.snapTo?.(this.player);
+
+    debtBoss.activateSecretBoss();
+    this.debtGlitchTimer = 2.0;
+    this.soundEngine?.playErrorBuzz?.();
+    this.music?.loadExpansionMusic?.();
+    this.music?.setMode?.('boss_alex_final');
+
+    if (this.menuSystem) {
+      this.menuSystem.showNotice('⚠️ GLITCH CRÍTICO: ¡La Deuda Técnica ha despertado en el Núcleo!', 5.0);
+    }
+    return debtBoss;
+  }
+
+  _finishBaseVictoryCredits(record) {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('el_ojete_dorado_victory_trophy', 'true');
+      }
+    } catch {}
+    if (record) {
+      submitGlobalScore(record).catch?.(() => {});
+    }
+    this.soundEngine?.playSFX?.('ui_glitch');
+    if (this.menuSystem && typeof this.menuSystem.startFalseEndingGlitch === 'function') {
+      this.menuSystem.startFalseEndingGlitch(() => {
+        this._resetWorldToInitialState();
+        this.menuSystem.openTitleScreen();
+      }, 4.0);
+    } else if (this.menuSystem) {
+      this._resetWorldToInitialState();
+      this.menuSystem.openTitleScreen();
+    }
+  }
+
+  _triggerVictorySequence() {
+    // 1. Congelar la sala y detener música de combate
+    if (this.music && typeof this.music.stopBossMusic === 'function') {
+      this.music.stopBossMusic(false);
+    }
+
+    // 2. Resumen del Expediente del Jugador y Cálculo de Puntuación
+    const record = this._buildBaseVictoryRecord();
+
+    // 3. Disparar cinemática SCENE_ENDING_VICTORY -> Créditos -> Falso Final con Glitch
     if (this.animeCutscenes) {
       this.animeCutscenes.playCutscene(SCENE_ENDING_VICTORY, () => {
-        // Al finalizar la cinemática:
-        // Detener música de combate y reproducir el tema triunfal de victoria en AmbientMusic.js
         if (this.music && typeof this.music.playVictoryTheme === 'function') {
           this.music.playVictoryTheme();
         }
 
-        // Submódulo de Créditos: Scroll vertical con estrellas pixeladas
         this.menuSystem.startEndingCredits(record, () => {
-          this._openScoreSubmissionModal(record, () => {
-            this._resetWorldToInitialState();
-            this.menuSystem.openLeaderboardScreen('title');
-          });
+          this._finishBaseVictoryCredits(record);
         });
       });
     }
@@ -5926,6 +6794,19 @@ export class RPGGame {
   }
 
   update(dt) {
+    if (this.curriculumFlashTimer > 0) {
+      this.curriculumFlashTimer = Math.max(0, this.curriculumFlashTimer - dt);
+    }
+
+    if (this.vertederoRebootTimer > 0) {
+      this.vertederoRebootTimer = Math.max(0, this.vertederoRebootTimer - dt);
+      if (this.vertederoRebootTimer === 0) {
+        this._finishVertederoSoftReset();
+      }
+      this.input.endFrame();
+      return;
+    }
+
     // (BLOQUE 1) La cinemática in-engine dirige actores, cámara y UI.
     if (this.cinematicDirector && this.cinematicDirector.isActive) {
       this.cinematicDirector.update(dt, this.input);
@@ -5946,6 +6827,11 @@ export class RPGGame {
     // (FIX SHOP) El modal de tienda pausa el mundo y captura toda la entrada.
     if (this.shopUI && this.shopUI.isOpen) {
       this.shopUI.update(dt);
+      this.input.endFrame();
+      return;
+    }
+    if (this.rosaShop && this.rosaShop.isOpen) {
+      this.rosaShop.update(dt);
       this.input.endFrame();
       return;
     }
@@ -6012,12 +6898,20 @@ export class RPGGame {
       return;
     }
 
+    if (this.arrestFadeAlpha > 0) {
+      this.arrestFadeAlpha = Math.max(0, this.arrestFadeAlpha - dt * 1.4);
+    }
+
     if (this.jailRemainingSeconds > 0 && !this.isJailedForever) {
       this.jailRemainingSeconds = Math.max(0, this.jailRemainingSeconds - dt);
       if (this.jailRemainingSeconds === 0 && this.tilemap.currentSceneId === 'jail_cell') {
+        const releaseWarning =
+          this.jailReason === 'assault'
+            ? 'El Carcelero abre los barrotes. Procura no ir soltando espadazos a los vecinos.'
+            : 'El Carcelero abre los barrotes. Procura ser más amable con el Oráculo IA.';
         this._releaseFromJail([
           '¡Has cumplido tus 10 minutos de condena municipal!',
-          'El Carcelero abre los barrotes. Procura ser más amable con el Oráculo IA.'
+          releaseWarning
         ]);
       }
     }
@@ -6029,8 +6923,7 @@ export class RPGGame {
       return;
     }
 
-    // (FIX QUICK) Ranuras rápidas de consumibles: SOLO [1-5].
-    // [R] queda reservada a Lanzar Tronco (si la skill está desbloqueada).
+    // Hotbar de consumibles: ESTRICTAMENTE teclas [1-5].
     const quickSlotReady =
       !this.dialogueBox.active &&
       this.menuSystem.state === 'none' &&
@@ -6038,13 +6931,6 @@ export class RPGGame {
       !this.characterStats.isOpen &&
       (!this.questLogView || !this.questLogView.isOpen);
     if (quickSlotReady) {
-      if (this.input.consumeKey('KeyR')) {
-        if (this.player.skills?.log) {
-          this.player.throwLog(this.music);
-        } else if (this.menuSystem) {
-          this.menuSystem.showNotice('🪵 Habilidad "Lanzar Tronco" no desbloqueada.', 1.8);
-        }
-      }
       const quickKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'];
       const quickKey = quickKeys.find((k) => this.input.consumeKey(k));
       if (quickKey) {
@@ -6175,6 +7061,16 @@ export class RPGGame {
         this._handleUseSelectedInventoryItem();
       } else if (touchInventoryAction === 'drop') {
         this._handleDropSelectedInventoryItem();
+      } else if (touchInventoryAction === 'assign_hotbar') {
+        this._assignSelectedToNextHotbarSlot();
+      } else if (typeof touchInventoryAction === 'string' && touchInventoryAction.startsWith('hotbar_slot_')) {
+        const idx = Number(touchInventoryAction.replace('hotbar_slot_', ''));
+        if (Number.isFinite(idx)) this.assignHotbarSlot(idx);
+      }
+      const hotbarAssignKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'];
+      const pressedHotbarKey = hotbarAssignKeys.find((k) => this.input.consumeKey(k));
+      if (pressedHotbarKey) {
+        this.assignHotbarSlot(this._getQuickSlotIndex(pressedHotbarKey));
       }
       if (this.input.consumeKey('KeyM')) {
         this.inventory.close();
@@ -6353,6 +7249,30 @@ export class RPGGame {
     }
 
     const { npcs, animals, enemies, items } = this._getActiveSceneEntities();
+    if (this.debtGlitchTimer > 0) {
+      this.debtGlitchTimer = Math.max(0, this.debtGlitchTimer - dt);
+    }
+    const tonyNpc = this.npcs.find((n) => n.expansionId === 'tony_randazzo');
+    if (tonyNpc && tonyNpc.forgiven && !this.tonyForgiven) {
+      this.tonyForgiven = true;
+      this._saveExpansionProgress();
+    }
+    if (this.tilemap.currentSceneId === 'ai_nucleus_core') {
+      const debtBoss = enemies.find((e) => e.id === 'boss_technical_debt');
+      if (debtBoss && debtBoss.glitchActive) {
+        this.debtGlitchTimer = Math.max(this.debtGlitchTimer || 0, 0.15);
+      }
+    }
+    if (this.tilemap.currentSceneId === 'kernel_arena') {
+      const kernelBoss = enemies.find((e) => e.id === 'boss_kernel');
+      this.kernelHackActive = Boolean(kernelBoss && !kernelBoss.dead && kernelBoss.hudHackActive);
+      this.kernelHudFlicker = Boolean(kernelBoss && !kernelBoss.dead && kernelBoss.hudFlicker);
+      this.bsodOverlayTimer = kernelBoss && !kernelBoss.dead ? (kernelBoss.bsodOverlayTimer || 0) : 0;
+    } else {
+      this.kernelHackActive = false;
+      this.kernelHudFlicker = false;
+      this.bsodOverlayTimer = 0;
+    }
     const obstacles = [...npcs, ...animals];
 
     this.player.update(
@@ -6518,7 +7438,7 @@ export class RPGGame {
       const isTalking =
         this.dialogueBox.active && this.dialogueBox.currentNPC === npc;
       const threat = isTalking ? null : this._findNPCThreat(npc, enemies);
-      npc.update(dt, this.tilemap, allEntities, isTalking, this.player, threat);
+      npc.update(dt, this.tilemap, allEntities, isTalking, this.player, threat, enemies, this.music);
     }
     for (const animal of animals) {
       animal.update(
@@ -6550,9 +7470,32 @@ export class RPGGame {
     };
     const difficultyScale = this._getDifficultyScale();
 
+    // Detección de agresiones del jugador (espada, puño, ataque giratorio o proyectiles) a NPCs y animales
+    this._handlePlayerAttackOnNPCs(npcs);
+    this._handlePlayerAttackOnAnimals(animals);
+
+    // Demonio Vengador: desaparece al cambiar de escena; si sigue en esta escena, persigue sin descanso
+    if (this.demonBannerTimer > 0) {
+      this.demonBannerTimer = Math.max(0, this.demonBannerTimer - dt);
+    }
+    if (this.activeDemon) {
+      if (this.activeDemon.sceneId !== this.tilemap.currentSceneId) {
+        this.activeDemon = null;
+        this.demonBannerTimer = 0;
+      } else {
+        if (this._didPlayerAttackHitBox(this.activeDemon.worldBoundingBox)) {
+          this.activeDemon.takeSwordHit(this.player, this.music);
+        }
+        this.activeDemon.update(dt, this.tilemap, this.player, this.dialogueBox.active, this.music);
+      }
+    }
+
     // (FIX 1.2) Sensores de combate para conectar el screen shake con los eventos reales
     const damageTakenBefore = this.player.damageTakenCount || 0;
     const parryCountBefore = this.player.lastParryCount || 0;
+    this.player.currentSceneId = this.tilemap?.currentSceneId || 'overworld';
+    this.player.applyFilo2AoE?.(enemies, this.music);
+    this.player.applyLogExplosionDamage?.(enemies, this.music);
 
     for (const enemy of enemies) {
       enemy.speedScale = enemy.isBoss ? 1 : difficultyScale;
@@ -6581,7 +7524,12 @@ export class RPGGame {
             this.music.playFanfare();
           }
           if (this.menuSystem) {
-            this.menuSystem.showNotice(`🎉 ¡SUBIDA DE NIVEL! ★ NIVEL ${this.player.level} ★ (Salud y Energía al 100%)`, 4.0);
+            const rewards = Array.isArray(this.player.lastLevelRewards) ? this.player.lastLevelRewards : [];
+            const rewardSuffix = rewards.length > 0 ? rewards.join(' · ') : 'Salud y Energía al 100%';
+            this.menuSystem.showNotice(
+              `🎉 ¡SUBIDA DE NIVEL! ★ NIVEL ${this.player.level} ★ (${rewardSuffix})`,
+              4.2
+            );
           }
         } else if (gained > 0 && this.menuSystem) {
           this.menuSystem.showNotice(`⭐ +${gained} punto${gained > 1 ? 's' : ''} de habilidad [C → Habilidades]`, 3);
@@ -6696,6 +7644,73 @@ export class RPGGame {
           if (this.menuSystem) {
             this.menuSystem.showNotice('🔑 ¡Has obtenido la [Llave de Acceso al Vertedero]! Barrera norte abierta.', 4.0);
           }
+        } else if (enemy.id === 'boss_kernel') {
+          this.kernelHackActive = false;
+          this.kernelHudFlicker = false;
+          this.bsodOverlayTimer = 0;
+          if (this.tilemap && typeof this.tilemap.setAlexCoreUnlocked === 'function') {
+            this.tilemap.setAlexCoreUnlocked(true);
+          }
+          this._grantBossLoot([
+            {
+              id: 'key_nucleo',
+              name: 'Llave de Acceso al Núcleo',
+              description: 'Credencial raíz arrancada a El Kernel. Desbloquea el acceso al Núcleo de Mister Alex IA.',
+              iconIndex: ITEM_ICONS.BRIDGE_PASS,
+              qty: 1
+            }
+          ]);
+          this._saveExpansionProgress();
+          if (this.dialogueBox) {
+            this.dialogueBox.showMessage('El Kernel', [
+              'Esto... no... era... mi... trabajo...'
+            ], [
+              {
+                label: 'Acceder al Núcleo de Alex',
+                onSelect: () => {
+                  this.dialogueBox.close();
+                  this._enterAlexCoreFromKernel();
+                }
+              },
+              {
+                label: 'Explorar un momento',
+                onSelect: () => this.dialogueBox.close()
+              }
+            ]);
+          }
+          if (this.menuSystem) {
+            this.menuSystem.showNotice('🔑 ¡Has obtenido la [Llave de Acceso al Núcleo]! Paso al Núcleo desbloqueado.', 4.5);
+          }
+        } else if (enemy.id === 'boss_alex_update') {
+          this._openAlexUpdateEndingDialogue();
+        } else if (enemy.id === 'boss_technical_debt') {
+          this.debtGlitchTimer = 0;
+          if (this.achievementManager) {
+            this.achievementManager.unlock('ach_completionist');
+          }
+          if (this.menuSystem) {
+            this.menuSystem.showNotice('🏆 ¡Trofeo desbloqueado: [Completionista]!', 5.0);
+          }
+          const debtQuote = enemy.dialogueLine || 'Esto... no... era... un... bug...';
+          if (this.dialogueBox) {
+            this.dialogueBox.showMessage('La Deuda Técnica', [
+              debtQuote
+            ], [
+              {
+                label: 'Finalizar Partida',
+                onSelect: () => {
+                  this.dialogueBox.close();
+                  const rec = this._buildBaseVictoryRecord();
+                  rec.endingHeadline = '★ COMPLETIONISTA · DEUDA TÉCNICA LIQUIDADA ★';
+                  rec.endingDescription = debtQuote;
+                  this._openScoreSubmissionModal(rec, () => {
+                    this._resetWorldToInitialState();
+                    this.menuSystem.openLeaderboardScreen('title');
+                  });
+                }
+              }
+            ]);
+          }
         } else if (enemy.id === 'boss_final_ai_alex') {
           if (this.questLog) {
             this.questLog.completeQuest('quest_boss_final', '¡Mister AI Alex ha caído! El Ojete Dorado ha sido consagrado.');
@@ -6709,7 +7724,10 @@ export class RPGGame {
       // Soltar 2 a 5 Bytes con dispersión física al morir esbirros y drones
       if (!enemy.isBoss && enemy.dead && !enemy.coinsDropped) {
         enemy.coinsDropped = true;
-        const count = Math.floor(Math.random() * 4) + 2;
+        const isVertederoDrop = Boolean(enemy.sceneId && enemy.sceneId.startsWith('vertedero_'));
+        const count = isVertederoDrop
+          ? Math.floor(Math.random() * 2) + 1
+          : Math.floor(Math.random() * 4) + 2;
         for (let i = 0; i < count; i++) {
           this.droppedCoins.push({
             x: enemy.centerX,
@@ -6719,7 +7737,40 @@ export class RPGGame {
             groundY: enemy.centerY + (Math.random() - 0.5) * 10,
             sceneId: enemy.sceneId,
             life: 25,
-            value: 1
+            value: 1,
+            kind: isVertederoDrop ? 'curriculum' : 'byte'
+          });
+        }
+        if (!isVertederoDrop && this.player.lastKillCurriculumDrop) {
+          this.droppedCoins.push({
+            x: enemy.centerX,
+            y: enemy.centerY,
+            vx: (Math.random() - 0.5) * 55,
+            vy: -48,
+            groundY: enemy.centerY + 4,
+            sceneId: enemy.sceneId,
+            life: 25,
+            value: 1,
+            kind: 'curriculum'
+          });
+        }
+      }
+
+      // Reciclaje en jefes abatidos (si aplica fuera del Vertedero)
+      if (enemy.isBoss && enemy.dead && !enemy.reciclajeChecked) {
+        enemy.reciclajeChecked = true;
+        const inVertedero = Boolean(enemy.sceneId && enemy.sceneId.startsWith('vertedero_'));
+        if (!inVertedero && this.player.lastKillCurriculumDrop) {
+          this.droppedCoins.push({
+            x: enemy.centerX,
+            y: enemy.centerY,
+            vx: (Math.random() - 0.5) * 45,
+            vy: -50,
+            groundY: enemy.centerY + 4,
+            sceneId: enemy.sceneId,
+            life: 25,
+            value: 1,
+            kind: 'curriculum'
           });
         }
       }
@@ -6792,25 +7843,47 @@ export class RPGGame {
 
       const dist = Math.hypot(this.player.centerX - coin.x, this.player.centerY - coin.y);
       if (dist <= 14) {
-        this.player.coins += coin.value;
-        if (this.music && typeof this.music.playMenuSelect === 'function') {
-          this.music.playMenuSelect();
-        }
-        if (this.menuSystem) {
-          this.menuSystem.showNotice(`🪙 +${coin.value} Byte (${this.player.coins} 🪙)`, 1.5);
+        if (coin.kind === 'curriculum') {
+          this.curriculum = (this.curriculum || 0) + coin.value;
+          this.curriculumFlashTimer = 0.9;
+          this._saveExpansionProgress();
+          if (this.music && typeof this.music.playKeyboard === 'function') {
+            this.music.playKeyboard();
+          } else if (this.music && typeof this.music.playSFX === 'function') {
+            this.music.playSFX('keyboard_type');
+          }
+          if (this.menuSystem) {
+            this.menuSystem.showNotice(`📄 +${coin.value} Currículum (${this.curriculum} 📄)`, 1.6);
+          }
+        } else {
+          this.player.coins += coin.value;
+          if (this.music && typeof this.music.playMenuSelect === 'function') {
+            this.music.playMenuSelect();
+          }
+          if (this.menuSystem) {
+            this.menuSystem.showNotice(`🪙 +${coin.value} Byte (${this.player.coins} 🪙)`, 1.5);
+          }
         }
         this.droppedCoins.splice(i, 1);
       }
     }
 
     if (this.player.hp <= 0) {
+      if (this.tilemap && typeof this.tilemap.currentSceneId === 'string' && this.tilemap.currentSceneId.startsWith('vertedero_')) {
+        this._triggerVertederoSoftReset();
+        this.input.endFrame();
+        return;
+      }
       for (const en of this.enemies) {
         if (en.isBoss && !en.dead && typeof en.resetCombatState === 'function') {
           en.resetCombatState();
         }
       }
       this._registerPlayerDeath();
-      this.menuSystem.openGameOverScreen(!this.player.hasArmor);
+      const gameOverReason = this.player.killedByDemon ? 'animal_demon' : null;
+      this.activeDemon = null;
+      this.demonBannerTimer = 0;
+      this.menuSystem.openGameOverScreen(!this.player.hasArmor, gameOverReason);
       this.input.endFrame();
       return;
     }
@@ -6932,6 +8005,11 @@ export class RPGGame {
       ctx.restore();
     }
 
+    const activeDemonInScene =
+      this.activeDemon && !this.activeDemon.dead && this.activeDemon.sceneId === this.tilemap.currentSceneId
+        ? this.activeDemon
+        : null;
+
     this.renderPipeline.render(ctx, {
       tilemap: this.tilemap,
       camera: this.camera,
@@ -6939,7 +8017,7 @@ export class RPGGame {
       player: this.player,
       npcs,
       animals,
-      enemies,
+      enemies: activeDemonInScene ? [...enemies, activeDemonInScene] : enemies,
       onGround: (gctx) => {
         // Portal Abisal en el suelo (Capa 0)
         if (this.activeAbyssalPortal && this.activeAbyssalPortal.sceneId === this.tilemap.currentSceneId) {
@@ -6958,17 +8036,27 @@ export class RPGGame {
           item.render(gctx, this.camera, isNight);
         }
 
-        // Bytes (monedas físicas con brillo) en el suelo
+        // Bytes (monedas físicas con brillo) y Currículums morados en el suelo
         for (const coin of this.droppedCoins) {
           if (coin.sceneId !== this.tilemap.currentSceneId) continue;
           const cx = Math.round(coin.x - this.camera.renderX);
           const cy = Math.round(coin.y - this.camera.renderY);
-          gctx.fillStyle = '#fde047';
-          gctx.fillRect(cx - 2, cy - 2, 4, 4);
-          gctx.fillStyle = '#f59e0b';
-          gctx.fillRect(cx - 1, cy - 1, 2, 2);
-          gctx.fillStyle = '#ffffff';
-          gctx.fillRect(cx - 1, cy - 2, 1, 1);
+          if (coin.kind === 'curriculum') {
+            gctx.fillStyle = '#a855f7';
+            gctx.fillRect(cx - 2, cy - 3, 5, 6);
+            gctx.fillStyle = '#e9d5ff';
+            gctx.fillRect(cx - 1, cy - 2, 3, 4);
+            gctx.fillStyle = '#7e22ce';
+            gctx.fillRect(cx - 1, cy - 1, 2, 1);
+            gctx.fillRect(cx - 1, cy + 1, 2, 1);
+          } else {
+            gctx.fillStyle = '#fde047';
+            gctx.fillRect(cx - 2, cy - 2, 4, 4);
+            gctx.fillStyle = '#f59e0b';
+            gctx.fillRect(cx - 1, cy - 1, 2, 2);
+            gctx.fillStyle = '#ffffff';
+            gctx.fillRect(cx - 1, cy - 2, 1, 1);
+          }
         }
       },
       onWorldHudOverlay: (overlayCtx) => {
@@ -7019,18 +8107,188 @@ export class RPGGame {
     if (this.shopUI && this.shopUI.isOpen) {
       this.shopUI.render(ctx);
     }
+    if (this.rosaShop && this.rosaShop.isOpen) {
+      this.rosaShop.render(ctx);
+    }
     if (this.achievementManager) {
       this.achievementManager.renderToast(ctx);
     }
     // (FIX M1.6) Controles táctiles al final para quedar por encima del HUD y de los
     // paneles de canvas (así el botón de cerrar del inventario sigue visible).
     if (this.touchControls) this.touchControls.render(ctx);
+    if (this.player && this.player.burnoutTimer > 0) {
+      this._renderBurnoutOverlay(ctx);
+    }
+    if (this.bsodOverlayTimer > 0) {
+      this._renderKernelBSODOverlay(ctx);
+    }
+    if (this.debtGlitchTimer > 0) {
+      this._renderTechnicalDebtGlitchOverlay(ctx);
+    }
+    if (this.vertederoRebootTimer > 0) {
+      this._renderVertederoRebootOverlay(ctx);
+    }
+    if (this.screenFlash) {
+      const a = Math.max(0, this.screenFlash.time / Math.max(0.001, this.screenFlash.duration)) * this.screenFlash.alpha;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = this.screenFlash.color;
+      ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+      ctx.restore();
+    }
+    if (this.demonBannerTimer > 0) {
+      this._renderDemonBannerOverlay(ctx);
+    }
+    if (this.arrestFadeAlpha > 0) {
+      ctx.save();
+      ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(1, this.arrestFadeAlpha).toFixed(3)})`;
+      ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+      ctx.restore();
+    }
     this._renderCustomCursor(ctx);
   }
 
+  _renderDemonBannerOverlay(ctx) {
+    const fade = Math.min(1, this.demonBannerTimer / 0.6, (4.0 - Math.max(0, this.demonBannerTimer - 3.6)) * 2.5);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0.25, fade);
+    ctx.fillStyle = 'rgba(127, 29, 29, 0.88)';
+    ctx.fillRect(14, 26, VIEWPORT_WIDTH - 28, 22);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(14, 26, VIEWPORT_WIDTH - 28, 22);
+
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 7.5px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('¡HAS PROVOCADO AL SEÑOR DE LAS OVEJAS!', VIEWPORT_WIDTH * 0.5, 37);
+    ctx.restore();
+  }
+
+  _renderBurnoutOverlay(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(168, 85, 247, 0.16)';
+    ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+    ctx.fillStyle = '#e9d5ff';
+    ctx.font = 'bold 6px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`BURNOUT (${this.player.burnoutTimer.toFixed(1)}s)`, VIEWPORT_WIDTH * 0.5, 24);
+    ctx.restore();
+  }
+
+  _renderTechnicalDebtGlitchOverlay(ctx) {
+    ctx.save();
+    const bands = 5;
+    for (let i = 0; i < bands; i++) {
+      const y = ((Math.floor((Date.now() * 0.08) + i * 37)) % VIEWPORT_HEIGHT);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(244, 63, 94, 0.28)' : 'rgba(34, 211, 238, 0.25)';
+      ctx.fillRect(0, y, VIEWPORT_WIDTH, 6 + (i % 3) * 4);
+    }
+    ctx.fillStyle = '#fecdd3';
+    ctx.font = 'bold 6px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SEGMENTATION FAULT · DEUDA TÉCNICA ACTIVA', VIEWPORT_WIDTH * 0.5, VIEWPORT_HEIGHT - 12);
+    ctx.restore();
+  }
+
   /**
-   * Dibuja un cursor pixel art en el canvas (Espada si hasSword === true, Puño si false)
-   * con contorno negro de 1 px para contraste sobre cualquier fondo.
+   * Indica si el juego está mostrando algún menú, diálogo, panel o modal de UI.
+   */
+  _isInUIMode() {
+    if (
+      this.menuSystem &&
+      typeof this.menuSystem.isBlockingGameplay === 'function' &&
+      this.menuSystem.isBlockingGameplay()
+    ) {
+      return true;
+    }
+    if (this.inventory && this.inventory.isOpen) return true;
+    if (this.dialogueBox && this.dialogueBox.active) return true;
+    if (this.characterStats && this.characterStats.isOpen) return true;
+    if (this.questLogView && this.questLogView.isOpen) return true;
+    if (this.shopUI && this.shopUI.isOpen) return true;
+    if (this.rosaShop && this.rosaShop.isOpen) return true;
+    if (this.aiChatOpen) return true;
+    if (this.cinematicDirector && this.cinematicDirector.isActive) return true;
+    if (this.animeCutscenes && this.animeCutscenes.isActive) return true;
+    return false;
+  }
+
+  /**
+   * Comprueba si el puntero está sobre algún botón, ranura o elemento interactuable de la UI activa.
+   */
+  _isPointerOverInteractiveUI(x, y) {
+    const inRect = (r) => Boolean(r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+
+    if (this.menuSystem && typeof this.menuSystem.isBlockingGameplay === 'function' && this.menuSystem.isBlockingGameplay()) {
+      if (this.menuSystem.state === 'world_map') {
+        if (this.menuSystem.worldMap?._hoverRegion) return true;
+        if (this.menuSystem.worldMap?._buttons?.some(inRect)) return true;
+      } else if (
+        typeof this.menuSystem._getCurrentMenuItems === 'function' &&
+        typeof this.menuSystem._getMenuHitboxes === 'function'
+      ) {
+        const items = this.menuSystem._getCurrentMenuItems();
+        const hitboxes = this.menuSystem._getMenuHitboxes(items.length, items);
+        if (Array.isArray(hitboxes) && hitboxes.some(inRect)) return true;
+        if (typeof this.menuSystem._getModalCloseButtonBounds === 'function') {
+          const isPauseModal =
+            this.menuSystem.state === 'pause' ||
+            this.menuSystem.state === 'pause_cloud' ||
+            this.menuSystem.state === 'options' ||
+            this.menuSystem.state === 'pause_sound';
+          if (isPauseModal && inRect(this.menuSystem._getModalCloseButtonBounds(true))) {
+            return true;
+          }
+        }
+      }
+    }
+
+    if (this.inventory && this.inventory.isOpen) {
+      if (typeof this.inventory._slotAt === 'function' && this.inventory._slotAt(x, y)) return true;
+      if (this.inventory._pageButtons?.some(inRect)) return true;
+      if (this.inventory._touchActions?.some(inRect)) return true;
+    }
+
+    if (this.questLogView && this.questLogView.isOpen) {
+      if (this.questLogView._rowRects?.some(inRect)) return true;
+      if (this.questLogView._tabRects?.some(inRect)) return true;
+    }
+
+    if (this.characterStats && this.characterStats.isOpen) {
+      if (this.characterStats._tabRects?.some(inRect)) return true;
+      if (this.characterStats._skillRowRects?.some(inRect)) return true;
+    }
+
+    if (this.dialogueBox && this.dialogueBox.active) {
+      const mb = this.dialogueBox.lastMenuBounds;
+      if (
+        typeof this.dialogueBox.isShowingChoices === 'function' &&
+        this.dialogueBox.isShowingChoices() &&
+        mb &&
+        x >= mb.menuX &&
+        x <= mb.menuX + mb.menuW &&
+        y >= mb.menuY &&
+        y <= mb.menuY + mb.menuH
+      ) {
+        return true;
+      }
+    }
+
+    if (this.shopUI && this.shopUI.isOpen) {
+      if (Array.isArray(this.shopUI.entries) && this.shopUI.entries.length > 0 && x >= 20 && x <= 300 && y >= 36 && y <= 140) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Dibuja un cursor pixel art contextual:
+   * - Modo UI: Guante de puntero (blanco / dorado al hacer hover) con contorno negro de 1 px.
+   * - Modo Gameplay: Espada si `hasSword`, Puño si no.
    */
   _renderCustomCursor(ctx) {
     if (!this.input) return;
@@ -7042,20 +8300,21 @@ export class RPGGame {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     if (x < 0 || y < 0 || x >= VIEWPORT_WIDTH || y >= VIEWPORT_HEIGHT) return;
 
-    const hasSword = Boolean(this.player && this.player.hasSword);
-    const isInteractive = Boolean(
-      (this.menuSystem && this.menuSystem.state !== 'none') ||
-      (this.dialogueBox && this.dialogueBox.active) ||
-      (this.shopUI && this.shopUI.isOpen)
-    );
-
     ctx.save();
     ctx.imageSmoothingEnabled = false;
 
+    if (this._isInUIMode()) {
+      const isHovered = this._isPointerOverInteractiveUI(x, y);
+      this._renderPointerGloveCursor(ctx, x, y, isHovered);
+      ctx.restore();
+      return;
+    }
+
+    const hasSword = Boolean(this.player && this.player.hasSword);
+
     if (hasSword) {
       // Espada pixel art apuntando arriba-izquierda (punta en x, y)
-      const outline = isInteractive ? '#facc15' : '#0b0c10';
-      ctx.fillStyle = outline;
+      ctx.fillStyle = '#0b0c10';
       // Contorno de hoja diagonal + guarda + empuñadura
       for (let i = 0; i <= 5; i++) {
         ctx.fillRect(x + i - 1, y + i, 3, 3);
@@ -7084,8 +8343,7 @@ export class RPGGame {
       ctx.fillRect(x + 9, y + 9, 1, 1);
     } else {
       // Puño pixel art (cuadrado piel con nudillos oscuros y contorno de 1 px)
-      const outline = isInteractive ? '#facc15' : '#0b0c10';
-      ctx.fillStyle = outline;
+      ctx.fillStyle = '#0b0c10';
       ctx.fillRect(x, y, 9, 8);
       ctx.fillRect(x + 1, y + 8, 7, 1);
 
@@ -7106,6 +8364,46 @@ export class RPGGame {
     }
 
     ctx.restore();
+  }
+
+  /**
+   * Guante de puntero pixel art para menús e interfaz:
+   * la punta del dedo índice queda anclada en (x, y) y se ilumina en dorado sobre botones.
+   */
+  _renderPointerGloveCursor(ctx, x, y, isHovered = false) {
+    // Halo sutil dorado al pasar sobre elementos interactuables
+    if (isHovered) {
+      ctx.fillStyle = 'rgba(253, 224, 71, 0.32)';
+      ctx.fillRect(x - 1, y - 1, 6, 7);
+      ctx.fillRect(x - 1, y + 3, 10, 9);
+    }
+
+    // Silueta con contorno negro de 1 px
+    ctx.fillStyle = '#0b0c10';
+    ctx.fillRect(x, y, 4, 6);     // Dedo índice vertical
+    ctx.fillRect(x, y + 4, 8, 7); // Palma + puño ancho debajo
+
+    // Relleno principal del guante (blanco elegante o dorado brillante en hover)
+    ctx.fillStyle = isHovered ? '#fde047' : '#f8fafc';
+    ctx.fillRect(x + 1, y + 1, 2, 5); // Dedo índice
+    ctx.fillRect(x + 1, y + 5, 6, 3); // Palma del guante
+
+    // Sombra lateral y nudillos cerrados
+    ctx.fillStyle = isHovered ? '#eab308' : '#cbd5e1';
+    ctx.fillRect(x + 2, y + 3, 1, 2);
+    ctx.fillRect(x + 3, y + 5, 1, 2);
+    ctx.fillRect(x + 5, y + 5, 1, 2);
+    ctx.fillRect(x + 6, y + 5, 1, 3);
+
+    // Puño inferior en tono cuero / gris oscuro
+    ctx.fillStyle = isHovered ? '#b45309' : '#64748b';
+    ctx.fillRect(x + 1, y + 8, 6, 2);
+    ctx.fillStyle = isHovered ? '#fef08a' : '#94a3b8';
+    ctx.fillRect(x + 1, y + 8, 4, 1);
+
+    // Pequeño brillo blanco en la punta del dedo índice
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + 1, y + 1, 1, 2);
   }
 
   _renderAbyssalPortal(ctx, portalObj = null) {
@@ -7261,6 +8559,9 @@ export class RPGGame {
   }
 
   _renderHUD(ctx) {
+    if (this.kernelHackActive) return;
+    if (this.kernelHudFlicker && Math.floor(performance.now() / 75) % 4 === 0) return;
+
     ctx.save();
     ctx.textBaseline = 'middle';
 
@@ -7331,6 +8632,19 @@ export class RPGGame {
       ctx.fillStyle = '#22d3ee';
       ctx.fillText('😊 FELICIDAD 98%', hapX + 4, hapY + 6.5);
     }
+
+    // (EXPANSIÓN v2.0) Contador de Currículums solo en el Vertedero Digital o Tienda de Rosa
+    UILayout.drawCurriculumHud(ctx, {
+      curriculum: this.curriculum || 0,
+      sceneId: this.tilemap ? this.tilemap.currentSceneId : '',
+      isRosaShopOpen: Boolean(
+        (this.rosaShop && this.rosaShop.isOpen) ||
+        this.isRosaShopOpen ||
+        (this.shopUI && this.shopUI.isOpen && this.shopUI.shopId === 'rosa')
+      ),
+      flashTimer: this.curriculumFlashTimer || 0,
+      isTouch: isTouchHud
+    });
 
     // =========================================================================
     // 2. SUPERIOR IZQUIERDA: Corazones (rojos o blindados metálicos) + icono 🤖% SOLO si supera el 50%
@@ -7412,12 +8726,52 @@ export class RPGGame {
       ctx.fillText(char, hx + 5.5, hy + 6);
     }
 
+    // Pequeño icono del arma (y escudo) equipada junto a la barra de vida
+    const corpWeapon = this.player.equippedWeapon && this.player.equippedWeapon !== 'default'
+      ? (this.expansionEquipment?.[this.player.equippedWeapon] || this.player.getEquippedWeaponInfo?.())
+      : null;
+    const corpShield = this.player.equippedShield
+      ? (this.expansionEquipment?.[this.player.equippedShield] || this.player.getEquippedShieldInfo?.())
+      : null;
+    const showWeaponBadge = Boolean(corpWeapon || corpShield || this.player.hasSword);
+    const wepBadgeW = showWeaponBadge ? 16 : 0;
+    const wepBadgeOffset = showWeaponBadge ? wepBadgeW + 4 : 0;
+
+    if (showWeaponBadge) {
+      const wepBadgeX = heartsX + heartsW + 4;
+      const wepBadgeY = heartsY;
+      const wepGlyphMap = {
+        boligrafo: '🖊',
+        grapadora: '📎',
+        destornillador: '🪛'
+      };
+      const wepGlyph = corpWeapon ? (wepGlyphMap[corpWeapon.id] || '⚔') : '⚔';
+      const wepAccent = corpWeapon?.edgeColor || corpWeapon?.bladeColor || '#fbbf24';
+
+      hudShadow(wepBadgeX, wepBadgeY, wepBadgeW, heartsH);
+      ctx.fillStyle = 'rgba(13, 17, 23, 0.86)';
+      ctx.fillRect(wepBadgeX, wepBadgeY, wepBadgeW, heartsH);
+      ctx.strokeStyle = wepAccent;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(wepBadgeX + 0.5, wepBadgeY + 0.5, wepBadgeW - 1, heartsH - 1);
+
+      ctx.font = hudFont(6.5, true);
+      ctx.fillStyle = wepAccent;
+      ctx.textAlign = 'center';
+      ctx.fillText(wepGlyph, wepBadgeX + wepBadgeW / 2, wepBadgeY + 7.5);
+
+      if (corpShield) {
+        ctx.fillStyle = corpShield.id === 'escudo_becario' ? '#60a5fa' : '#d97706';
+        ctx.fillRect(wepBadgeX + wepBadgeW - 4, wepBadgeY + 1, 3, 3);
+      }
+    }
+
     // Icono 🤖% junto a los corazones ÚNICAMENTE si la robotización supera el 50%
     // (FIX M1.5) En móvil se oculta el badge de robotización (información secundaria)
     const showRobotBadge = !isTouchHud && this.player.robotizationLevel > 50;
     if (showRobotBadge) {
       const robVal = Math.round(this.player.robotizationLevel);
-      const robBadgeX = heartsX + heartsW + 4;
+      const robBadgeX = heartsX + heartsW + 4 + wepBadgeOffset;
       const robBadgeY = heartsY;
       const robBadgeW = 34;
       const robBadgeH = 15;
@@ -7436,9 +8790,10 @@ export class RPGGame {
       ctx.fillText(`🤖${robVal}%`, robBadgeX + robBadgeW / 2, robBadgeY + 7.5);
     }
 
-    // Barra de stamina bajo los corazones (solo visible si hay espada y no está llena)
+    // Barra de stamina bajo los corazones (se alarga al aumentar maxStamina en Nv. 14 o Tienda de Rosa)
     if (this.player.hasSword && (this.player.stamina < this.player.maxStamina - 0.5 || this.player.comboStep > 0)) {
-      const sw = heartsW;
+      const staminaBonusPx = Math.max(0, Math.round((this.player.maxStamina - 100) * 0.45));
+      const sw = heartsW + staminaBonusPx;
       const sy = heartsY + heartsH + 2;
       hudShadow(heartsX, sy, sw, 4);
       ctx.fillStyle = 'rgba(14, 18, 30, 0.75)';
@@ -7473,8 +8828,8 @@ export class RPGGame {
     // durante un combo. Ahora se dibuja siempre, con o sin espada, stamina o combo.
     // =========================================================================
     const coinX = showRobotBadge
-      ? heartsX + heartsW + 4 + 34 + 4   // desplazado a la derecha del icono 🤖%
-      : heartsX + heartsW + 4;
+      ? heartsX + heartsW + 4 + wepBadgeOffset + 34 + 4   // desplazado a la derecha del icono 🤖%
+      : heartsX + heartsW + 4 + wepBadgeOffset;
     const coinY = heartsY;
     const coinW = 50;
     const coinH = 15;
@@ -7490,6 +8845,43 @@ export class RPGGame {
     ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2 + 1, coinY + 8.5);
     ctx.fillStyle = '#fde047';
     ctx.fillText(`💰 ${this.player.coins}`, coinX + coinW / 2, coinY + 7.5);
+
+    // Cápsula compacta de Nivel y XP (muestra barra de XP hasta Nv. 14 y "NIVEL MÁXIMO" en Nv. 15)
+    const lvlW = 54;
+    const lvlH = 15;
+    const inlineLvlX = coinX + coinW + 4;
+    const fitsInline = inlineLvlX + lvlW <= capsuleX - 4;
+    const lvlX = fitsInline ? inlineLvlX : coinX;
+    const lvlY = fitsInline ? coinY : coinY + coinH + 2;
+
+    hudShadow(lvlX, lvlY, lvlW, lvlH);
+    ctx.fillStyle = 'rgba(13, 17, 23, 0.82)';
+    ctx.fillRect(lvlX, lvlY, lvlW, lvlH);
+    ctx.strokeStyle = this.player.isMaxLevel ? '#fbbf24' : 'rgba(250, 204, 21, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(lvlX + 0.5, lvlY + 0.5, lvlW - 1, lvlH - 1);
+
+    ctx.textAlign = 'center';
+    if (this.player.isMaxLevel) {
+      ctx.font = hudFont(4.4, true);
+      ctx.fillStyle = '#fde047';
+      ctx.fillText('NIVEL MÁXIMO', lvlX + lvlW / 2, lvlY + 7.5);
+    } else {
+      const xpPct = Math.max(0, Math.min(1, (this.player.getXpProgressPercent?.() || 0) / 100));
+      ctx.font = hudFont(4.6, true);
+      ctx.fillStyle = '#fef08a';
+      ctx.fillText(`NV. ${this.player.level}/15`, lvlX + lvlW / 2, lvlY + 5.5);
+
+      const xpBarX = lvlX + 4;
+      const xpBarY = lvlY + 10;
+      const xpBarW = lvlW - 8;
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(xpBarX, xpBarY, xpBarW, 2.5);
+      if (xpPct > 0) {
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(xpBarX, xpBarY, Math.max(1, Math.round(xpBarW * xpPct)), 2.5);
+      }
+    }
 
     if (this.player.parryFlashTimer > 0) {
       SpeechBubble.renderCombatBanner(ctx, '¡PARRY PERFECTO!', VIEWPORT_WIDTH / 2, isTouchHud ? 18 : 28);
@@ -7523,9 +8915,8 @@ export class RPGGame {
       const barW = 300;
       const barH = 14;
       const barX = Math.round((VIEWPORT_WIDTH - barW) / 2);
-      // (FIX M1.5) En táctil los botones ocupan la esquina inferior derecha:
-      // la barra de jefe pasa arriba y centrada para no quedar tapada.
-      const barY = isTouchHud ? 30 : VIEWPORT_HEIGHT - 22;
+      // En táctil los botones ocupan la esquina inferior derecha; en desktop deja hueco a la Hotbar.
+      const barY = isTouchHud ? 30 : VIEWPORT_HEIGHT - 44;
 
       hudShadow(barX, barY - 7, barW, barH + 7);
       ctx.fillStyle = 'rgba(10, 14, 24, 0.88)';
@@ -7572,53 +8963,85 @@ export class RPGGame {
     }
 
     // =========================================================================
-    // 5. INFERIOR IZQUIERDA: Ranura rápida de consumible ([R] / [1]) de 16×16 px con contador flotante
+    // 5. INFERIOR CENTRAL: Hotbar visual de 5 slots [1-5] de 16×16 px
     // =========================================================================
-    const quickItem = this._getQuickSlotConsumable();
-    // [R] lanza el console.log una vez aprendido; la ranura queda en [1]
-    const quickLabel = this.player.skills?.log ? '[1]' : '[R]';
-    // (FIX M1.5) En táctil el joystick ocupa la esquina inferior izquierda
-    const qsX = isTouchHud ? Math.round(VIEWPORT_WIDTH / 2) - 8 : 6;
-    const qsY = VIEWPORT_HEIGHT - 22;
-    const qsW = 16;
-    const qsH = 16;
-
-    hudShadow(qsX, qsY, qsW, qsH);
-    ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
-    ctx.fillRect(qsX, qsY, qsW, qsH);
-    ctx.strokeStyle = quickItem ? '#38bdf8' : 'rgba(229, 192, 123, 0.45)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(qsX + 0.5, qsY + 0.5, qsW - 1, qsH - 1);
-
-    if (quickItem) {
-      if (this.inventory && this.inventory.itemsSheet) {
-        UILayout.drawItemIcon(ctx, this.inventory.itemsSheet, quickItem.iconIndex, qsX + 2, qsY + 2, 12);
-      } else {
-        ctx.font = hudFont(6, true);
-        ctx.fillStyle = '#38bdf8';
-        ctx.textAlign = 'center';
-        ctx.fillText('+', qsX + 8, qsY + 8);
-      }
-
-      // Contador flotante de unidades y etiqueta [R]
-      const qtyStr = `x${quickItem.qty || 1}`;
-      ctx.font = hudFont(4.5, true);
-      ctx.fillStyle = 'rgba(10, 14, 23, 0.9)';
-      ctx.fillRect(qsX + qsW + 2, qsY + 3, 24, 10);
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
-      ctx.strokeRect(qsX + qsW + 2.5, qsY + 3.5, 23, 9);
-
-      ctx.fillStyle = '#fde047';
-      ctx.textAlign = 'left';
-      ctx.fillText(`${quickLabel}${qtyStr}`, qsX + qsW + 4, qsY + 8);
-    } else {
-      ctx.font = hudFont(4.5, true);
-      ctx.fillStyle = '#64748b';
-      ctx.textAlign = 'center';
-      ctx.fillText(quickLabel, qsX + 8, qsY + 8);
-    }
+    this._renderHotbar(ctx, hudFont, hudShadow);
 
     ctx.restore();
+  }
+
+  _renderHotbar(ctx, hudFont, hudShadow) {
+    this.syncHotbarWithInventory();
+    const hotbar = this._ensurePlayerHotbar();
+    const flashTimers = Array.isArray(this.player?.hotbarFlashTimers)
+      ? this.player.hotbarFlashTimers
+      : [0, 0, 0, 0, 0];
+    const slotSize = 16;
+    const gap = 3;
+    const totalW = 5 * slotSize + 4 * gap;
+    const startX = Math.round((VIEWPORT_WIDTH - totalW) / 2);
+    const startY = VIEWPORT_HEIGHT - 20;
+
+    for (let i = 0; i < 5; i++) {
+      const sx = startX + i * (slotSize + gap);
+      const sy = startY;
+      const flash = Math.max(0, flashTimers[i] || 0);
+      const isFlashing = flash > 0;
+      const scale = isFlashing ? 1.05 : 1.0;
+
+      const itemId = hotbar[i];
+      const item = itemId && this.inventory
+        ? this.inventory.items.find((it) => it && it.id === itemId && (it.qty || 1) > 0)
+        : null;
+
+      ctx.save();
+      ctx.translate(sx + slotSize * 0.5, sy + slotSize * 0.5);
+      ctx.scale(scale, scale);
+      ctx.translate(-slotSize * 0.5, -slotSize * 0.5);
+
+      hudShadow(0, 0, slotSize, slotSize);
+
+      // Fondo oscuro semitransparente
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+      ctx.fillRect(0, 0, slotSize, slotSize);
+
+      if (!item) {
+        // Hueco oscuro cuando está vacío
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.65)';
+        ctx.fillRect(2, 2, slotSize - 4, slotSize - 4);
+      }
+
+      // Borde dorado fino (resplandor blanco/dorado al pulsar 1-5)
+      ctx.strokeStyle = isFlashing ? '#fef08a' : '#fbbf24';
+      ctx.lineWidth = isFlashing ? 1.5 : 1;
+      ctx.strokeRect(0.5, 0.5, slotSize - 1, slotSize - 1);
+
+      if (item) {
+        if (this.inventory && this.inventory.itemsSheet) {
+          UILayout.drawItemIcon(ctx, this.inventory.itemsSheet, item.iconIndex, 2, 2, 12);
+        } else {
+          ctx.font = hudFont(6, true);
+          ctx.fillStyle = '#38bdf8';
+          ctx.textAlign = 'center';
+          ctx.fillText('+', 8, 9);
+        }
+        const qty = item.qty || 1;
+        if (qty > 1) {
+          ctx.font = hudFont(3.6, true);
+          ctx.fillStyle = '#fef08a';
+          ctx.textAlign = 'right';
+          ctx.fillText(String(qty), slotSize - 1.5, slotSize - 3);
+        }
+      }
+
+      // Número 1-5 en pequeño en la esquina superior izquierda
+      ctx.font = hudFont(3.8, true);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = isFlashing ? '#ffffff' : '#fde68a';
+      ctx.fillText(String(i + 1), 1.5, 3.5);
+
+      ctx.restore();
+    }
   }
 }
 

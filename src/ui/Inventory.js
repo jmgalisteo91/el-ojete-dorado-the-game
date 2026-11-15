@@ -7,6 +7,7 @@
  */
 
 import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
+import { EXPANSION_EQUIPMENT, getExpansionEquipment } from '../expansion/ExpansionData.js?v=8';
 
 const KEY_OR_QUEST_ITEM_IDS = new Set([
   'dawn_armor',
@@ -279,10 +280,14 @@ export class Inventory {
   }
 
   /**
-   * Devuelve el primer consumible activo para la ranura rápida (Quick-Slot [R]/[1])
+   * Devuelve el primer consumible disponible en la mochila.
    */
   getFirstConsumable() {
     return this.items.find((it) => CONSUMABLE_ITEM_IDS.has(it.id) && it.qty > 0) || null;
+  }
+
+  isConsumable(item) {
+    return Boolean(item && CONSUMABLE_ITEM_IDS.has(item.id));
   }
 
   /**
@@ -317,15 +322,50 @@ export class Inventory {
   }
 
   /**
+   * Indica si el ítem corresponde al arma o escudo corporativo equipado actualmente.
+   */
+  isEquipped(item, player) {
+    if (!item || !player) return false;
+    const eq = getExpansionEquipment(item.id);
+    if (!eq) return false;
+    return (
+      (eq.slot === 'weapon' && player.equippedWeapon === eq.id) ||
+      (eq.slot === 'shield' && player.equippedShield === eq.id)
+    );
+  }
+
+  /**
+   * Equipa un objeto corporativo si pertenece a `EXPANSION_EQUIPMENT`. Devuelve el objeto equipado o null.
+   */
+  equipSelectedExpansionItem(player) {
+    const item = this.getSelectedItem();
+    if (!item || !player) return null;
+    const eq = typeof player.equipExpansionItem === 'function' ? player.equipExpansionItem(item.id) : null;
+    if (!eq) return null;
+    this.statusMessage =
+      eq.slot === 'weapon'
+        ? `¡${eq.name} equipado! (${eq.badgeLabel})`
+        : `¡${eq.name} equipado en ranura de escudo!`;
+    return eq;
+  }
+
+  /**
    * Clasifica el tipo semántico del objeto para el panel de detalles
    */
   getItemCategory(item) {
     if (!item || !item.id) return { label: 'VACÍO', color: UI_COLORS.textMuted };
+    const corpEq = getExpansionEquipment(item.id);
+    if (corpEq) {
+      return {
+        label: corpEq.slot === 'shield' ? 'ESCUDO CORP.' : 'ARMA CORP.',
+        color: corpEq.bladeColor || corpEq.badgeColor || UI_COLORS.gold
+      };
+    }
     if (item.id === 'dawn_armor' || item.id === 'dawn_sword' || item.id === 'item_abyssal_pointer') {
       return { label: 'RELIQUIA SAGRADA', color: UI_COLORS.gold };
     }
     if (CONSUMABLE_ITEM_IDS.has(item.id)) {
-      return { label: 'CONSUMIBLE [R]', color: UI_COLORS.emerald };
+      return { label: 'CONSUMIBLE [1-5]', color: UI_COLORS.emerald };
     }
     if (KEY_OR_QUEST_ITEM_IDS.has(item.id)) {
       return { label: 'OBJETO CLAVE', color: UI_COLORS.cyan };
@@ -457,7 +497,7 @@ export class Inventory {
     const gridStartY = leftRect.y + 16;
 
     const firstSlotIndex = currentPage * this.visibleSlots;
-    const quickItem = this.getFirstConsumable();
+    const hotbarList = Array.isArray(player?.hotbar) ? player.hotbar : [];
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -498,13 +538,20 @@ export class Inventory {
           ctx.fillStyle = UI_COLORS.gold;
           ctx.fillText(qtyStr, sx + slotSize - qw - 2, sy + slotSize - 6);
 
-          // Indicador discreto si es el Quick-Slot [R] activo
-          if (quickItem && quickItem.id === item.id) {
-            ctx.fillStyle = UI_COLORS.emerald;
-            ctx.fillRect(sx + 1, sy + 1, 5, 5);
-            ctx.font = `bold 3.5px ${UI_FONT}`;
+          // Indicador discreto del número de Hotbar [1-5] asignado o badge [EQ] si está equipado
+          const assignedSlot = hotbarList.indexOf(item.id);
+          if (assignedSlot !== -1) {
+            ctx.fillStyle = UI_COLORS.gold;
+            ctx.fillRect(sx + 1, sy + 1, 6, 6);
+            ctx.font = `bold 3.8px ${UI_FONT}`;
             ctx.fillStyle = '#06101e';
-            ctx.fillText('R', sx + 2, sy + 1.5);
+            ctx.fillText(String(assignedSlot + 1), sx + 2.5, sy + 2);
+          } else if (this.isEquipped(item, player)) {
+            ctx.fillStyle = '#22d3ee';
+            ctx.fillRect(sx + 1, sy + 1, 8, 5);
+            ctx.font = `bold 3.2px ${UI_FONT}`;
+            ctx.fillStyle = '#06101e';
+            ctx.fillText('EQ', sx + 2, sy + 1.5);
           }
         } else {
           // Ranura vacía
@@ -530,12 +577,17 @@ export class Inventory {
     ctx.fillStyle = UI_COLORS.gold;
     ctx.fillText(`◈ BYTES: ${coins}`, leftRect.x + 6, summaryY + 5);
 
+    const eqWep = player && player.equippedWeapon && player.equippedWeapon !== 'default'
+      ? EXPANSION_EQUIPMENT[player.equippedWeapon]
+      : null;
+    const eqShd = player && player.equippedShield ? EXPANSION_EQUIPMENT[player.equippedShield] : null;
     ctx.font = `4px ${UI_FONT}`;
-    ctx.fillStyle = UI_COLORS.textSecondary;
-    const quickText = quickItem
-      ? `[R] Rápido: ${quickItem.name} (x${quickItem.qty})`
-      : '[R] Rápido: Sin consumible';
-    ctx.fillText(UILayout.fitText(ctx, quickText, leftRect.w - 12), leftRect.x + 6, summaryY + 14);
+    ctx.fillStyle = eqWep ? '#38bdf8' : UI_COLORS.textSecondary;
+    const assignedCount = hotbarList.filter(Boolean).length;
+    const equipSummary = eqWep || eqShd
+      ? `Eq: ${eqWep ? eqWep.badgeLabel : 'Espada'}${eqShd ? ` · ${eqShd.badgeLabel}` : ''}`
+      : `Hotbar [1-5]: ${assignedCount}/5 asignados`;
+    ctx.fillText(UILayout.fitText(ctx, equipSummary, leftRect.w - 12), leftRect.x + 6, summaryY + 14);
 
     if (totalPages > 1) {
       UILayout.drawPager(ctx, leftRect.x + leftRect.w - 28, summaryY + 4, currentPage + 1, totalPages);
@@ -612,8 +664,9 @@ export class Inventory {
         ctx.fillText(line, padX, sepY + 5 + idx * 7);
       });
 
-      // (BLOQUE 4.B) Botones de acción clicables para ratón y táctil.
+      // (BLOQUE 4.B) Botones de acción clicables para ratón y táctil + Asignación Hotbar (1-5).
       this._touchActions = [];
+      const pointer = this._lastPointer || { x: -1, y: -1, down: false };
       const gap = 4;
       const btnW = (innerW - gap) / 2;
       const btnH = 17;
@@ -621,7 +674,44 @@ export class Inventory {
       const useRect = { id: 'use', x: padX, y: actY, w: btnW, h: btnH };
       const dropRect = { id: 'drop', x: padX + btnW + gap, y: actY, w: btnW, h: btnH };
 
-      const pointer = this._lastPointer || { x: -1, y: -1, down: false };
+      if (this.isConsumable(selected)) {
+        const hbY = actY - 19;
+        const assignBtnW = Math.floor(innerW * 0.56);
+        const assignRect = { id: 'assign_hotbar', x: padX, y: hbY, w: assignBtnW, h: 15 };
+        const hoverAssign = pointer.x >= assignRect.x && pointer.x <= assignRect.x + assignRect.w &&
+          pointer.y >= assignRect.y && pointer.y <= assignRect.y + assignRect.h;
+
+        ctx.fillStyle = hoverAssign ? 'rgba(202, 138, 4, 0.35)' : 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(assignRect.x, assignRect.y, assignRect.w, assignRect.h);
+        ctx.strokeStyle = hoverAssign ? '#fef08a' : UI_COLORS.goldDim;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(assignRect.x + 0.5, assignRect.y + 0.5, assignRect.w - 1, assignRect.h - 1);
+        ctx.font = `bold 3.6px ${UI_FONT}`;
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.textAlign = 'center';
+        ctx.fillText('Asignar a Hotbar (1-5)', assignRect.x + assignRect.w / 2, assignRect.y + 5.5);
+        this._touchActions.push(assignRect);
+
+        const slotsX0 = assignRect.x + assignRect.w + 3;
+        const slotBtnW = Math.max(9, Math.floor((innerW - assignBtnW - 11) / 5));
+        for (let idx = 0; idx < 5; idx++) {
+          const sx = slotsX0 + idx * (slotBtnW + 2);
+          const sRect = { id: `hotbar_slot_${idx}`, x: sx, y: hbY, w: slotBtnW, h: 15 };
+          const isAssignedHere = hotbarList[idx] === selected.id;
+          const hoverS = pointer.x >= sRect.x && pointer.x <= sRect.x + sRect.w &&
+            pointer.y >= sRect.y && pointer.y <= sRect.y + sRect.h;
+          ctx.fillStyle = isAssignedHere ? 'rgba(234, 179, 8, 0.35)' : (hoverS ? 'rgba(56, 189, 248, 0.25)' : 'rgba(15, 23, 42, 0.9)');
+          ctx.fillRect(sRect.x, sRect.y, sRect.w, sRect.h);
+          ctx.strokeStyle = isAssignedHere ? '#fde047' : UI_COLORS.borderInner;
+          ctx.strokeRect(sRect.x + 0.5, sRect.y + 0.5, sRect.w - 1, sRect.h - 1);
+          ctx.font = `bold 4.2px ${UI_FONT}`;
+          ctx.fillStyle = isAssignedHere ? '#fef08a' : '#e2e8f0';
+          ctx.fillText(String(idx + 1), sRect.x + sRect.w / 2, sRect.y + 5);
+          this._touchActions.push(sRect);
+        }
+        ctx.textAlign = 'left';
+      }
+
       const hoverUse = pointer.x >= useRect.x && pointer.x <= useRect.x + useRect.w &&
         pointer.y >= useRect.y && pointer.y <= useRect.y + useRect.h;
       const hoverDrop = pointer.x >= dropRect.x && pointer.x <= dropRect.x + dropRect.w &&
@@ -653,7 +743,7 @@ export class Inventory {
       ctx.fillText('TIRAR', dropRect.x + dropRect.w / 2, dropRect.y + 5 + dropSink);
 
       ctx.textAlign = 'left';
-      this._touchActions = [useRect, dropRect];
+      this._touchActions.push(useRect, dropRect);
     } else {
       ctx.font = `bold 4.5px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.textMuted;

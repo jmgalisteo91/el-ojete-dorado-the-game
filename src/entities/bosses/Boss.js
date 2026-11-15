@@ -24,7 +24,8 @@ export class Boss extends Enemy {
     rewardAbility,
     rewardName,
     themeColor = '#38bdf8',
-    requiresIntroCutscene = false
+    requiresIntroCutscene = false,
+    armor = 0
   }) {
     super({
       id,
@@ -39,6 +40,7 @@ export class Boss extends Enemy {
 
     this.width = width;
     this.height = height;
+    this.armor = armor;
     this.title = title;
     this.trackName = trackName;
     this.rewardAbility = rewardAbility;
@@ -111,16 +113,22 @@ export class Boss extends Enemy {
   takeSwordHit(player, soundEngine = null, customDamage = null) {
     if (this.dead || this.hitFlashTimer > 0) return false;
 
-    // Si el jefe está temporalmente invulnerable (ej: Ciclo de Calentamiento del Microondas)
-    if (this.invulnerable) {
+    const ignoresArmor = Boolean(player && player.equippedWeapon === 'destornillador');
+
+    // Si el jefe está temporalmente invulnerable (salvo que el jugador empuñe el Destornillador del Destino)
+    if (this.invulnerable && !ignoresArmor) {
       if (soundEngine && typeof soundEngine.playMetalClink === 'function') {
         soundEngine.playMetalClink();
       }
       return false;
     }
 
-    const baseDamage = customDamage !== null ? customDamage : 1;
-    const damage = this.isStunned ? baseDamage * 2 : baseDamage;
+    const baseDamage =
+      customDamage !== null
+        ? customDamage
+        : (player && typeof player.getSwordDamage === 'function' ? player.getSwordDamage(this) : 1);
+    const effectiveBase = this.armor > 0 && !ignoresArmor ? Math.max(0.5, baseDamage - this.armor) : baseDamage;
+    const damage = this.isStunned ? effectiveBase * 2 : effectiveBase;
     this.hp = Math.max(0, this.hp - damage);
     // (FIX BOSS UX) Invulnerabilidad de 0.5 s tras recibir daño: evita multi-hit por frame.
     this.hitFlashTimer = 0.5;
@@ -251,7 +259,7 @@ export class Boss extends Enemy {
     const swordBox = player ? player.getSwordHitbox() : null;
     const targetHitbox = this.hurtbox || this.worldBoundingBox;
     if (swordBox && CollisionSystem.checkAABB(swordBox, targetHitbox)) {
-      this.takeSwordHit(player, soundEngine, player.getSwordDamage());
+      this.takeSwordHit(player, soundEngine, player.getSwordDamage(this));
       if (this.dead) return { hitPlayer: false };
     }
 

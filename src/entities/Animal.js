@@ -1,5 +1,6 @@
 import { Entity } from './Entity.js?v=8';
 import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
+import { renderNPCBarkBubble } from '../ui/SpeechBubble.js?v=8';
 
 /**
  * Animal del pueblo (Oveja, Gallina, Perro) con deambulación orgánica (wander AI),
@@ -42,6 +43,10 @@ export class Animal extends Entity {
     this.moveDir = { x: 0, y: 0 };
     this.heartTimer = 0;
     this.ambientSoundCooldown = 4 + Math.random() * 6;
+    this.hitCooldown = 0;
+    this.fleeTimer = 0;
+    this.fleeDir = { x: 0, y: -1 };
+    this.panicText = '';
 
     // (FIX NPC.4) El dash del jugador no se bloquea con animales del pueblo
     this.isAnimal = true;
@@ -60,6 +65,9 @@ export class Animal extends Entity {
     this.stateTimer = 1 + Math.random() * 2;
     this.heartTimer = 0;
     this.ambientSoundCooldown = 4 + Math.random() * 6;
+    this.hitCooldown = 0;
+    this.fleeTimer = 0;
+    this.panicText = '';
   }
 
   canInteract(player) {
@@ -70,13 +78,88 @@ export class Animal extends Entity {
     this.heartTimer = 2.2;
   }
 
+  /**
+   * Reacción secreta al atacar a una oveja, gallina o perro (efecto Cucco / Zelda):
+   * - Sonido distorsionado del animal herido.
+   * - Shake fuerte + flash rojo rápido.
+   * - Huye despavorido y despierta al Demonio Vengador (`game.spawnAnimalDemon(this)`).
+   */
+  onPlayerAttack(game = null) {
+    if (this.hitCooldown > 0) return false;
+    this.hitCooldown = 0.5;
+    this.heartTimer = 0;
+    this.fleeTimer = 4.5;
+    this.panicText = this.species === 'chicken' ? '¡COCOROCÓÓÓ!' : this.species === 'dog' ? '¡GUAUUU!' : '¡BEEEEEEE!';
+
+    const px = game?.player?.centerX ?? this.centerX;
+    const py = game?.player?.centerY ?? this.centerY + 8;
+    const dx = this.centerX - px;
+    const dy = this.centerY - py;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    this.fleeDir = { x: dx / len, y: dy / len };
+    this.moveDir = { ...this.fleeDir };
+    this.isMoving = true;
+
+    const music = game?.music;
+    if (music) {
+      if (typeof music.playAnimalHurtSound === 'function') {
+        music.playAnimalHurtSound(this.species);
+      } else if (typeof music.playAnimalSound === 'function') {
+        music.playAnimalSound(this.species);
+      }
+    }
+
+    if (game) {
+      if (typeof game._shakeCamera === 'function') game._shakeCamera(6, 0.55);
+      if (typeof game._flashScreen === 'function') game._flashScreen('#dc2626', 0.55, 0.45);
+      if (typeof game.spawnAnimalDemon === 'function') game.spawnAnimalDemon(this);
+    }
+
+    return true;
+  }
+
   update(dt, tilemap, obstacles, paused = false, player = null, soundEngine = null) {
+    if (this.hitCooldown > 0) {
+      this.hitCooldown = Math.max(0, this.hitCooldown - dt);
+    }
     if (this.heartTimer > 0) {
       this.heartTimer = Math.max(0, this.heartTimer - dt);
     }
 
     if (paused) {
       this.isMoving = false;
+      super.update(dt);
+      return;
+    }
+
+    // Huida despavorida tras recibir una agresión
+    if (this.fleeTimer > 0) {
+      this.fleeTimer = Math.max(0, this.fleeTimer - dt);
+      if (player) {
+        const dx = this.centerX - player.centerX;
+        const dy = this.centerY - player.centerY;
+        const len = Math.max(1, Math.hypot(dx, dy));
+        this.fleeDir = { x: dx / len, y: dy / len };
+      }
+      this.moveDir = this.fleeDir;
+      this.isMoving = true;
+      this.direction =
+        Math.abs(this.moveDir.x) >= Math.abs(this.moveDir.y)
+          ? this.moveDir.x >= 0 ? 'right' : 'left'
+          : this.moveDir.y >= 0 ? 'down' : 'up';
+
+      const fleeSpeed = this.speed * 2.6;
+      const { blockedX, blockedY } = CollisionSystem.moveWithCollisions(
+        this,
+        this.moveDir.x * fleeSpeed * dt,
+        this.moveDir.y * fleeSpeed * dt,
+        tilemap,
+        obstacles
+      );
+      if (blockedX && blockedY) {
+        // Rebota ligeramente en ángulo lateral para seguir huyendo sin quedarse atascado
+        this.fleeDir = { x: -this.fleeDir.y, y: this.fleeDir.x };
+      }
       super.update(dt);
       return;
     }
@@ -155,6 +238,10 @@ export class Animal extends Entity {
       ctx.textAlign = 'center';
       ctx.fillText('♥', sx, sy);
       ctx.restore();
+    } else if (this.fleeTimer > 0 && this.panicText) {
+      const sx = Math.round(this.centerX - camera.renderX);
+      const sy = Math.round(this.y - camera.renderY);
+      renderNPCBarkBubble(ctx, sx, sy, this.panicText, this.fleeTimer, 4.5, 'warning');
     }
   }
 }

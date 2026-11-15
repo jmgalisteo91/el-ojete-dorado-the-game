@@ -58,6 +58,8 @@ export class EndingCredits {
     const scoreVal = typeof scoreResult.score === 'number' ? scoreResult.score : 0;
     const coins = typeof r.coins === 'number' ? r.coins : 0;
     const robot = typeof r.robotization === 'number' ? r.robotization : 0;
+    const headline = r.endingHeadline || '★ EL OJETE DORADO HA SIDO CONSAGRADO ★';
+    const subdesc = r.endingDescription || 'Las fugas de memoria han sido purgadas del multiverso.';
 
     const hasDash = Array.isArray(r.abilities) && r.abilities.some(a => a && a.toLowerCase().includes('dash'));
     const hasSpin = Array.isArray(r.abilities) && r.abilities.some(a => a && a.toLowerCase().includes('cascada'));
@@ -71,8 +73,8 @@ export class EndingCredits {
 
       { type: 'emblem', text: 'GOLDEN_ANUS_EMBLEM' },
       { type: 'spacer', height: 12 },
-      { type: 'gold', text: '★ EL OJETE DORADO HA SIDO CONSAGRADO ★' },
-      { type: 'desc', text: 'Las fugas de memoria han sido purgadas del multiverso.' },
+      { type: 'gold', text: headline },
+      { type: 'desc', text: subdesc },
       { type: 'spacer', height: 22 },
 
       { type: 'header', text: '═══ [ EXPEDIENTE DEL PROGRAMADOR ] ═══' },
@@ -142,15 +144,9 @@ export class EndingCredits {
 
   _saveVictoryTrophy() {
     try {
-      const trophyPayload = {
-        unlockedAt: Date.now(),
-        dateFormatted: new Date().toLocaleDateString('es-ES'),
-        title: this.record.title || 'Senior Lead Architect del Gran Ojal',
-        playTime: this.record.playTimeFormatted || '00:00',
-        jailVisits: this.record.jailVisits || 0,
-        coins: this.record.coins || 0
-      };
-      localStorage.setItem('el_ojete_dorado_victory_trophy', JSON.stringify(trophyPayload));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('el_ojete_dorado_victory_trophy', 'true');
+      }
     } catch {}
   }
 

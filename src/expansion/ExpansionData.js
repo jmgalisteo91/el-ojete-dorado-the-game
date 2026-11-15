@@ -135,3 +135,142 @@ export function getExpansionDialogueSfx(npcId, text = '') {
   }
   return null;
 }
+
+/**
+ * (EXPANSIÓN v2.0) Catálogo de armas y escudos del futuro corporativo.
+ * Actúan como modificadores sobre el combate base del jugador sin romper las mecánicas existentes.
+ */
+export const EXPANSION_EQUIPMENT = {
+  boligrafo: {
+    id: 'boligrafo',
+    itemId: 'equip_boligrafo',
+    slot: 'weapon',
+    name: 'Bolígrafo Corporativo',
+    description: 'Arma inicial de Valleverde 2.0. Tinta azul corporativa: golpes veloces (cooldown 0.15s).',
+    baseDamage: 1,
+    attackDuration: 0.14,
+    cooldown: 0.15,
+    effect: 'none',
+    bladeColor: '#2563eb',
+    arcColor: 'rgba(59, 130, 246, 0.92)',
+    edgeColor: '#bfdbfe',
+    badgeLabel: '🖊️ Boli Corp.'
+  },
+  grapadora: {
+    id: 'grapadora',
+    itemId: 'equip_grapadora',
+    slot: 'weapon',
+    name: 'Grapadora Industrial',
+    description: 'Daño 2 y cadencia media (0.3s). Dispara una grapa perforante cada 3er golpe.',
+    baseDamage: 2,
+    attackDuration: 0.22,
+    cooldown: 0.30,
+    effect: 'staple_every_3',
+    bladeColor: '#64748b',
+    arcColor: 'rgba(249, 115, 22, 0.9)',
+    edgeColor: '#fdba74',
+    badgeLabel: '📎 Grapadora'
+  },
+  destornillador: {
+    id: 'destornillador',
+    itemId: 'equip_destornillador',
+    slot: 'weapon',
+    name: 'Destornillador del Destino',
+    description: 'Arma Legendaria (Daño 3, lento 0.45s). Ignora la armadura e invulnerabilidad de los jefes.',
+    baseDamage: 3,
+    attackDuration: 0.30,
+    cooldown: 0.45,
+    effect: 'ignore_boss_armor',
+    bladeColor: '#eab308',
+    arcColor: 'rgba(250, 204, 21, 0.95)',
+    edgeColor: '#fef9c3',
+    badgeLabel: '🪛 Destornillador'
+  },
+  carpeta: {
+    id: 'carpeta',
+    itemId: 'equip_carpeta',
+    slot: 'shield',
+    name: 'Carpeta de Plástico',
+    description: 'Pasiva: reduce el daño recibido en 0.5 corazones. Parry: ralentiza al enemigo 2s.',
+    damageReduction: 0.5,
+    parrySlowDuration: 2.0,
+    badgeColor: '#06b6d4',
+    badgeLabel: '📁 Carpeta'
+  },
+  escudo_becario: {
+    id: 'escudo_becario',
+    itemId: 'equip_escudo_becario',
+    slot: 'shield',
+    name: 'Escudo del Becario',
+    description: 'Parry reforzado: amplía la ventana de parry en +0.2s adicionales.',
+    extraParryWindow: 0.2,
+    badgeColor: '#a855f7',
+    badgeLabel: '🛡️ Escudo Bec.'
+  }
+};
+
+export function getExpansionEquipment(idOrItemId) {
+  if (!idOrItemId || typeof idOrItemId !== 'string') return null;
+  if (EXPANSION_EQUIPMENT[idOrItemId]) return EXPANSION_EQUIPMENT[idOrItemId];
+  const stripped = idOrItemId.replace(/^equip_/, '');
+  return EXPANSION_EQUIPMENT[stripped] || null;
+}
+
+/**
+ * (EXPANSIÓN v2.0) Catálogo ampliado de habilidades (Niveles 11-15 y mejoras Nivel II).
+ */
+export const EXPANSION_SKILLS = {
+  ejecutivo: {
+    key: 'ejecutivo',
+    name: 'Ejecutivo',
+    cost: 2,
+    icon: '💼',
+    desc: '+15% de daño contra jefes (isBoss).'
+  },
+  resiliencia: {
+    key: 'resiliencia',
+    name: 'Resiliencia',
+    cost: 2,
+    icon: '🧱',
+    desc: '-15% de daño recibido en mazmorras y Núcleo.'
+  },
+  reciclaje: {
+    key: 'reciclaje',
+    name: 'Reciclaje',
+    cost: 3,
+    icon: '♻️',
+    desc: '10% de prob. de que enemigos suelten Currículum.'
+  },
+  vigor_2: {
+    key: 'vigor_2',
+    name: 'Vigor II',
+    cost: 2,
+    requires: 'vigor',
+    icon: '❤',
+    desc: '+40 de stamina máxima adicional (140 → 180).'
+  },
+  filo_2: {
+    key: 'filo_2',
+    name: 'Filo II',
+    cost: 2,
+    requires: 'filo',
+    icon: '⚔',
+    desc: 'El 3er golpe (finisher) inflige 1 de daño AoE (24px).'
+  },
+  reflejo_2: {
+    key: 'reflejo_2',
+    name: 'Reflejo II',
+    cost: 2,
+    requires: 'reflejo',
+    icon: '✦',
+    desc: 'El parry devuelve el 50% del daño absorbido.'
+  },
+  log_2: {
+    key: 'log_2',
+    name: 'Log II',
+    cost: 2,
+    requires: 'log',
+    icon: '📜',
+    desc: 'El tronco lanzado explota en área (radio 20px).'
+  }
+};

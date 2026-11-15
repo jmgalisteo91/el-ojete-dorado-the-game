@@ -42,6 +42,13 @@ import { TILES } from '../src/graphics/SpriteSheetGenerator.js';
 import { DayNightCycle } from '../src/world/DayNightCycle.js';
 import { RenderPipeline } from '../src/graphics/RenderPipeline.js';
 import { UILayout, SAFE_WIDTH, SAFE_HEIGHT, MODAL_WIDTH, MODAL_HEIGHT, GAME_VERSION } from '../src/ui/UILayout.js';
+import { KernelBoss } from '../src/expansion/entities/KernelBoss.js';
+import { RosaShop } from '../src/expansion/entities/RosaShop.js';
+import { AlexUpdateBoss, ALEX_UPDATE_DEATH_QUOTE } from '../src/expansion/entities/AlexUpdateBoss.js';
+import { TechnicalDebtBoss, TECH_DEBT_DEATH_QUOTE } from '../src/expansion/entities/TechnicalDebtBoss.js';
+import { DemonVengador, DEMON_GAME_OVER_MESSAGE } from '../src/expansion/entities/DemonVengador.js?v=8';
+import { Animal } from '../src/entities/Animal.js';
+import { AchievementManager } from '../src/core/AchievementManager.js';
 import { CloudStorage } from '../src/services/CloudStorage.js';
 import { LeaderboardView } from '../src/ui/LeaderboardView.js';
 import { AudioManager, BGM_TRACKS, BGM_MAX_VOLUME, registerExpansionMusic } from '../src/audio/AudioManager.js?v=8';
@@ -54,12 +61,13 @@ import { QuestLogView } from '../src/ui/QuestLogView.js';
 import { CharacterStats } from '../src/ui/CharacterStats.js';
 import { InputHandler } from '../src/core/InputHandler.js';
 import { WorldMap } from '../src/ui/WorldMap.js';
-import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY, EXPANSION_BGM, getExpansionDialogueSfx } from '../src/expansion/ExpansionData.js';
+import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY, EXPANSION_BGM, EXPANSION_EQUIPMENT, EXPANSION_SKILLS, getExpansionEquipment, getExpansionDialogueSfx } from '../src/expansion/ExpansionData.js';
 import { CinematicTimeline } from '../src/ui/CinematicTimeline.js';
 import { CINEMATIC_TIMELINES, CINEMATIC_TIMELINE_DURATIONS, PROLOGUE_ALEX, SCENE_ALEX_FINAL, SCENE_INTRO_INAKITO } from '../src/assets/CinematicTimelines.js';
 import { TonyRandazzo } from '../src/expansion/entities/TonyRandazzo.js';
 import { FrancoPancho } from '../src/expansion/entities/FrancoPancho.js';
 import { IñakitoBoss } from '../src/expansion/entities/IñakitoBoss.js';
+import { ExpansionManager } from '../src/expansion/ExpansionManager.js?v=8';
 
 let passed = 0;
 const failures = [];
@@ -68,18 +76,17 @@ function test(name, fn) {
   try {
     const res = fn();
     if (res && typeof res.then === 'function') {
-      asyncQueue.push(
-        res
-          .then(() => {
-            passed++;
-            console.log(`  ✓ ${name}`);
-          })
-          .catch((err) => {
-            failures.push(name);
-            console.log(`  ✗ ${name}\n      ${err.message}`);
-          })
-      );
-      return;
+      const p = res
+        .then(() => {
+          passed++;
+          console.log(`  ✓ ${name}`);
+        })
+        .catch((err) => {
+          failures.push(name);
+          console.log(`  ✗ ${name}\n      ${err.message}`);
+        });
+      asyncQueue.push(p);
+      return p;
     }
     passed++;
     console.log(`  ✓ ${name}`);
@@ -1959,9 +1966,13 @@ test('Sistema de Niveles (1-10), Experiencia, Centinelas Guardianes y Desbloqueo
   p.gainXp(170); // 50 + 170 = 220 XP (alcanza Nivel 4)
   assert.equal(p.level, 4, 'Alcanza Nivel 4 a 220 XP');
 
-  // Subir hasta Nivel 10 (Nivel Máximo)
-  p.gainXp(2000);
-  assert.equal(p.level, 10, 'El nivel máximo debe ser 10');
+  // Alcanzar Nivel 10 (1700 XP) y tope de Nivel 15 (5200 XP)
+  p.gainXp(1480); // 220 + 1480 = 1700 XP
+  assert.equal(p.level, 10);
+  assert.equal(p.isMaxLevel, false, 'En Nivel 10 aún no se alcanza el nuevo tope 15');
+  p.gainXp(4000);
+  assert.equal(p.level, 15, 'El nivel máximo ampliado debe ser 15');
+  assert.equal(p.isMaxLevel, true);
   assert.equal(p.getXpProgressPercent(), 100);
 
   // Reset del jugador restaura Nivel 1 y 0 XP
@@ -2022,7 +2033,7 @@ test('Sistema de Niveles (1-10), Experiencia, Centinelas Guardianes y Desbloqueo
   assert.equal(cleanSave.xp, 820);
 
   const clampedSave = CloudStorage.sanitizeSaveData({ level: 50, xp: -100 });
-  assert.equal(clampedSave.level, 10);
+  assert.equal(clampedSave.level, 15);
   assert.equal(clampedSave.xp, 0);
 });
 
@@ -2439,7 +2450,7 @@ test('M14/M17: la vida se ajusta al máximo efectivo y el Dash no acorta la invu
   assert.equal(p.invulnTimer, 1.1);
 });
 
-test('Expansión v2.0: teaser bloqueado/desbloqueado, 5 NPCs y fases de Iñakito', () => {
+test('Expansión v2.0: teaser bloqueado/desbloqueado, 5 NPCs y fases de Iñakito', async () => {
   // 1. Datos de la expansión.
   const npcs = Object.values(EXPANSION_NPCS);
   assert.equal(npcs.length, 5, 'La expansión debe registrar 5 NPCs');
@@ -2508,15 +2519,16 @@ test('Expansión v2.0: teaser bloqueado/desbloqueado, 5 NPCs y fases de Iñakito
     assert.equal(items.length, 8, 'El título debe incluir la opción de expansión');
     const lockedItem = items[2];
     assert.equal(lockedItem.label, EXPANSION_INFO.title);
-    assert.ok(lockedItem.subtext.includes('Prepárate'));
+    assert.ok(lockedItem.subtext.includes('Completa el juego base para desbloquear'));
     assert.equal(lockedItem.locked, true);
     lockedItem.action();
-    assert.match(menu.noticeText, /completar el juego base/);
+    assert.match(menu.noticeText, /Completa el juego base/);
 
-    store.set(EXPANSION_UNLOCK_KEY, '{}');
+    store.set(EXPANSION_UNLOCK_KEY, 'true');
     items = menu._getCurrentMenuItems();
     const unlockedItem = items[2];
     assert.equal(unlockedItem.locked, false);
+    assert.ok(unlockedItem.subtext.includes('Prepárate'));
     unlockedItem.action();
     assert.equal(menu.expansionTeaserOpen, true);
   } finally {
@@ -2569,6 +2581,7 @@ test('Expansión v2.0: teaser bloqueado/desbloqueado, 5 NPCs y fases de Iñakito
 
   // Arena inakito_office (12x10): barrera norte bloqueada hasta vencer a Iñakito
   const tmArena = new Tilemap(null, 16);
+  await tmArena.loadExpansionScenes();
   tmArena.loadScene('inakito_office');
   assert.equal(tmArena.scenes.inakito_office.cols, 12);
   assert.equal(tmArena.scenes.inakito_office.rows, 10);
@@ -2598,6 +2611,7 @@ test('Expansión v2.0: BGM/SFX nuevos y hooks de audio en diálogos', () => {
   registerExpansionMusic();
   for (const [key, path] of Object.entries(EXPANSION_BGM)) {
     assert.equal(BGM_TRACKS[key], path, `Falta la pista ${key}`);
+    delete BGM_TRACKS[key];
   }
   assert.equal(BGM_MAX_VOLUME, 0.35, 'La BGM debe mantenerse al 35%');
 
@@ -2890,8 +2904,9 @@ test('Elementos estéticos (toldos, faroles, pozo, mesas, cajas, mobiliario y co
   assert.equal(tm.isSolidAtTile(2, 10), true, 'Muro de fachada debe seguir bloqueando');
 });
 
-test('Expansión v2.0: escena valleverde_corp (24x18), props pequeños sin colisión, puertas y colores NPC', () => {
+test('Expansión v2.0: escena valleverde_corp (24x18), props pequeños sin colisión, puertas y colores NPC', async () => {
   const tm = new Tilemap(null, 16);
+  await tm.loadExpansionScenes();
   tm.loadScene('valleverde_corp');
   const scene = tm.scenes.valleverde_corp;
   assert.ok(scene, 'La escena valleverde_corp debe existir');
@@ -2937,6 +2952,1719 @@ test('QuestLogView: render con puntero/hover sobre filas no provoca TDZ en ry', 
   qlv._hoverPointer = { x: 60, y: 80 };
   assert.doesNotThrow(() => qlv.render(ctx));
   assert.ok(qlv._rowRects.length >= 2, 'Debe registrar las tarjetas visibles tras renderizar');
+});
+
+test('WorldMap estilo Zelda: textura offscreen con tiles reales, filtro 0.4, niebla, tooltip y posición exacta', () => {
+  const prevDoc = globalThis.document;
+  const offFillStyles = new Set();
+  let offscreenCreates = 0;
+  const offMockCtx = {
+    imageSmoothingEnabled: true,
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+    globalAlpha: 1,
+    font: '',
+    textAlign: 'left',
+    textBaseline: 'top',
+    createRadialGradient: () => ({ addColorStop: () => {} }),
+    createLinearGradient: () => ({ addColorStop: () => {} }),
+    setLineDash: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    arc: () => {},
+    closePath: () => {},
+    stroke: () => {},
+    fill: () => {},
+    strokeRect: () => {},
+    fillText: () => {},
+    save: () => {},
+    restore: () => {},
+    fillRect: () => { offFillStyles.add(offMockCtx.fillStyle); }
+  };
+
+  globalThis.document = {
+    createElement: (tag) => {
+      if (tag !== 'canvas') return {};
+      offscreenCreates += 1;
+      return { width: 0, height: 0, getContext: () => offMockCtx };
+    }
+  };
+
+  try {
+    const tm = new Tilemap(null, 16);
+    const wm = new WorldMap();
+    const tex1 = wm._generateRealMapTexture(tm);
+    const tex2 = wm._generateRealMapTexture(tm);
+
+    assert.ok(tex1, 'Debe generar un canvas offscreen');
+    assert.equal(tex1, tex2, 'Debe reutilizar la textura cacheada en llamadas posteriores');
+    assert.equal(offscreenCreates, 1, 'El canvas offscreen debe crearse una sola vez');
+    assert.ok(offFillStyles.has('#2d5a27'), 'Debe pintar hierba verde oscuro (#2d5a27)');
+    assert.ok(offFillStyles.has('#1e3a8a'), 'Debe pintar agua azul profundo (#1e3a8a)');
+    assert.ok(offFillStyles.has('#8b5a2b'), 'Debe pintar caminos marrón claro (#8b5a2b)');
+    assert.ok(offFillStyles.has('#4b5563'), 'Debe pintar piedra/mazmorra gris oscuro (#4b5563)');
+    assert.ok(offFillStyles.has('#10b981'), 'Debe pintar copas de árboles verde brillante (#10b981)');
+
+    // Posición exacta basada en (x, y) real del jugador
+    const posA = wm._resolvePlayerLocation('overworld', new Player({ x: 48, y: 48 }), tm);
+    const posB = wm._resolvePlayerLocation('overworld', new Player({ x: 420, y: 260 }), tm);
+    assert.ok(posB.x > posA.x && posB.y > posA.y, 'La posición en el mapa debe reflejar (x, y) real en la escena');
+
+    // Render completo con drawImage, overlay 0.4, niebla sobre zonas no visitadas y tooltip
+    let drawImageCalled = false;
+    const renderFills = [];
+    const renderTexts = [];
+    const renderCtx = {
+      imageSmoothingEnabled: true,
+      globalAlpha: 1,
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      font: '',
+      textAlign: 'left',
+      textBaseline: 'top',
+      createLinearGradient: () => ({ addColorStop: () => {} }),
+      createRadialGradient: () => ({ addColorStop: () => {} }),
+      measureText: (t) => ({ width: String(t).length * 4 }),
+      save: () => {},
+      restore: () => {},
+      beginPath: () => {},
+      rect: () => {},
+      clip: () => {},
+      translate: () => {},
+      scale: () => {},
+      rotate: () => {},
+      arc: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      closePath: () => {},
+      stroke: () => {},
+      fill: () => {},
+      strokeRect: () => {},
+      fillRect: () => { renderFills.push(renderCtx.fillStyle); },
+      fillText: (t) => { renderTexts.push(String(t)); },
+      drawImage: () => { drawImageCalled = true; }
+    };
+
+    wm._hoverRegion = 'north';
+    wm.render(renderCtx, 'overworld', new Player({ x: 200, y: 180 }), [], tm);
+    assert.equal(drawImageCalled, true, 'render() debe dibujar la textura offscreen con drawImage');
+    assert.ok(renderFills.includes('rgba(0, 0, 0, 0.4)'), 'render() debe aplicar el filtro negro alpha 0.4');
+    assert.ok(renderTexts.includes('???'), 'Las zonas sin visitar deben quedar cubiertas por niebla oscura');
+    assert.ok(renderTexts.includes('Cumbres de la Recursión'), 'El hover debe mostrar el tooltip de la región');
+  } finally {
+    globalThis.document = prevDoc;
+  }
+});
+
+test('Cursor contextual: guante de puntero en UI (dorado en hover), puño/espada solo en gameplay', () => {
+  const makeCursorCtx = () => {
+    const fills = [];
+    return {
+      fills,
+      imageSmoothingEnabled: true,
+      fillStyle: '',
+      save() {},
+      restore() {},
+      fillRect(x, y, w, h) {
+        fills.push({ color: this.fillStyle, x, y, w, h });
+      }
+    };
+  };
+
+  const fakeGame = {
+    input: { pointerX: 50, pointerY: 60, lastPointerType: 'mouse', isDOMBlocked: () => false },
+    player: { hasSword: false },
+    menuSystem: {
+      state: 'title',
+      isBlockingGameplay() { return this.state !== 'none'; },
+      _getCurrentMenuItems: () => [{ label: 'Nueva Partida' }],
+      _getMenuHitboxes: () => [{ x: 100, y: 90, w: 80, h: 14 }]
+    },
+    inventory: { isOpen: false, _slotAt: () => null },
+    dialogueBox: { active: false, isShowingChoices: () => false },
+    characterStats: { isOpen: false },
+    questLogView: { isOpen: false },
+    shopUI: { isOpen: false },
+    aiChatOpen: false,
+    _isInUIMode: RPGGame.prototype._isInUIMode,
+    _isPointerOverInteractiveUI: RPGGame.prototype._isPointerOverInteractiveUI,
+    _renderPointerGloveCursor: RPGGame.prototype._renderPointerGloveCursor,
+    _renderCustomCursor: RPGGame.prototype._renderCustomCursor
+  };
+
+  // 1. Menú de título sin hover sobre botón -> guante blanco anclado en (50, 60)
+  assert.equal(fakeGame._isInUIMode(), true);
+  let ctx = makeCursorCtx();
+  fakeGame._renderCustomCursor(ctx);
+  assert.ok(ctx.fills.some((f) => f.color === '#f8fafc' && f.x === 51 && f.y === 61), 'En UI debe dibujar guante blanco');
+  assert.ok(ctx.fills.some((f) => f.color === '#ffffff' && f.x === 51 && f.y === 61), 'Debe incluir brillo blanco en punta');
+  assert.equal(ctx.fills.some((f) => f.color === '#f1c27d'), false, 'En UI no debe dibujar el puño de combate');
+
+  // 2. Hover sobre "Nueva Partida" -> guante dorado iluminado
+  fakeGame.input.pointerX = 120;
+  fakeGame.input.pointerY = 96;
+  ctx = makeCursorCtx();
+  fakeGame._renderCustomCursor(ctx);
+  assert.ok(ctx.fills.some((f) => f.color === '#fde047'), 'Al hacer hover en botón de menú debe iluminarse en dorado');
+
+  // 3. Gameplay puro sin espada -> puño (#f1c27d)
+  fakeGame.menuSystem.state = 'none';
+  assert.equal(fakeGame._isInUIMode(), false);
+  ctx = makeCursorCtx();
+  fakeGame._renderCustomCursor(ctx);
+  assert.ok(ctx.fills.some((f) => f.color === '#f1c27d'), 'En gameplay sin espada debe dibujar puño');
+  assert.equal(ctx.fills.some((f) => f.color === '#ffffff'), false, 'En gameplay sin UI no dibuja el brillo del guante');
+
+  // 4. Gameplay con espada -> espada (#eab308 guarda / #94a3b8 hoja)
+  fakeGame.player.hasSword = true;
+  ctx = makeCursorCtx();
+  fakeGame._renderCustomCursor(ctx);
+  assert.ok(ctx.fills.some((f) => f.color === '#eab308'), 'En gameplay con espada debe dibujar guarda de espada');
+
+  // 5. Inventario abierto (aunque tenga espada) -> vuelve al guante de puntero
+  fakeGame.inventory.isOpen = true;
+  assert.equal(fakeGame._isInUIMode(), true);
+  ctx = makeCursorCtx();
+  fakeGame._renderCustomCursor(ctx);
+  assert.ok(ctx.fills.some((f) => f.color === '#f8fafc'), 'Con inventario abierto debe volver al guante de puntero');
+  assert.equal(ctx.fills.some((f) => f.color === '#92400e'), false, 'Con inventario abierto no debe dibujar mango de espada');
+
+  // 6. Otros modales también activan _isInUIMode()
+  fakeGame.inventory.isOpen = false;
+  fakeGame.shopUI.isOpen = true;
+  assert.equal(fakeGame._isInUIMode(), true);
+  fakeGame.shopUI.isOpen = false;
+  fakeGame.questLogView.isOpen = true;
+  assert.equal(fakeGame._isInUIMode(), true);
+  fakeGame.questLogView.isOpen = false;
+  fakeGame.characterStats.isOpen = true;
+  assert.equal(fakeGame._isInUIMode(), true);
+  fakeGame.characterStats.isOpen = false;
+  fakeGame.dialogueBox.active = true;
+  assert.equal(fakeGame._isInUIMode(), true);
+});
+
+test('Vertedero Digital 2.0: 5 pisos modulares, puertas, Currículum HUD, soft-reset y Franco el Pancho', async () => {
+  // 1. Escenas modulares en Tilemap
+  const tm = new Tilemap(null, 16);
+  await tm.loadExpansionScenes();
+  const customOrder = ['forge_puzzle', 'mines_entry', 'vertedero_digital', 'forge_entry', 'sewers_dungeon'];
+  tm.configureVertederoFloors(customOrder);
+
+  tm.loadScene('vertedero_digital');
+  assert.equal(tm.cols, 24);
+  assert.equal(tm.rows, 18);
+  assert.ok(tm.scenes.kernel_arena, 'Debe existir la escena kernel_arena');
+
+  for (let i = 1; i <= 5; i++) {
+    const id = `vertedero_piso_${i}`;
+    tm.loadScene(id);
+    assert.equal(tm.cols, 24);
+    assert.equal(tm.rows, 18);
+
+    // Salida sur desde cualquier piso vuelve a valleverde_corp
+    const southDoor = tm.findNearbyDoor({ centerX: 11.5 * 16, centerY: 16.8 * 16 });
+    assert.ok(southDoor, `${id} debe tener salida sur`);
+    assert.equal(southDoor.targetScene, 'valleverde_corp');
+
+    // Puerta norte avanza al siguiente piso o a kernel_arena en el piso 5
+    const northDoor = tm.findNearbyDoor({ centerX: 11.5 * 16, centerY: 1.3 * 16 });
+    assert.ok(northDoor, `${id} debe tener puerta norte`);
+    assert.equal(northDoor.targetScene, i < 5 ? `vertedero_piso_${i + 1}` : 'kernel_arena');
+  }
+
+  // 2. HUD del Currículum (solo en Vertedero o Tienda de Rosa, con parpadeo verde)
+  const makeHudCtx = () => {
+    const ops = [];
+    return {
+      ops,
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+      save: () => {},
+      restore: () => {},
+      fillRect: (x, y, w, h) => ops.push({ op: 'fillRect', color: undefined, x, y, w, h }),
+      strokeRect: () => {},
+      fillText: (text) => ops.push({ op: 'fillText', text: String(text) })
+    };
+  };
+  const wrapHudCtx = () => {
+    const raw = makeHudCtx();
+    return new Proxy(raw, {
+      set(target, prop, val) {
+        target[prop] = val;
+        return true;
+      },
+      get(target, prop) {
+        if (prop === 'fillRect') {
+          return (x, y, w, h) => target.ops.push({ op: 'fillRect', color: target.fillStyle, x, y, w, h });
+        }
+        if (prop === 'strokeRect') {
+          return (x, y, w, h) => target.ops.push({ op: 'strokeRect', color: target.strokeStyle, x, y, w, h });
+        }
+        return target[prop];
+      }
+    });
+  };
+
+  assert.equal(UILayout.drawCurriculumHud(wrapHudCtx(), { curriculum: 7, sceneId: 'overworld' }), false);
+  assert.equal(UILayout.drawCurriculumHud(wrapHudCtx(), { curriculum: 7, sceneId: 'valleverde_corp' }), false);
+
+  const vertCtx = wrapHudCtx();
+  assert.equal(UILayout.drawCurriculumHud(vertCtx, { curriculum: 7, sceneId: 'vertedero_piso_2', flashTimer: 0 }), true);
+  assert.ok(vertCtx.ops.some((o) => o.op === 'fillText' && o.text === '📄 7'));
+
+  const flashCtx = wrapHudCtx();
+  assert.equal(UILayout.drawCurriculumHud(flashCtx, { curriculum: 8, isRosaShopOpen: true, flashTimer: 0.72 }), true);
+  assert.ok(flashCtx.ops.some((o) => o.op === 'fillText' && o.text === '📄 8'));
+  assert.ok(
+    flashCtx.ops.some((o) => o.op === 'strokeRect' && o.color === '#4ade80'),
+    'Con flashTimer activo debe parpadear en verde'
+  );
+
+  // 3. Franco el Pancho: rescate en piso 3, acompañante IA de combate y retorno seguro a Valleverde 2.0
+  let recruitedSignal = false;
+  const franco = new FrancoPancho({
+    sceneId: 'vertedero_piso_3',
+    x: 3 * 16,
+    y: 4 * 16,
+    onRecruit: () => { recruitedSignal = true; }
+  });
+  const dialogueBox = new DialogueBox();
+  dialogueBox.start(franco);
+  assert.ok(dialogueBox.lines.join(' ').replace(/\s+/g, ' ').includes('Llevo 3 meses escoltando a empleados que no existen'));
+  assert.equal(dialogueBox.choices[0].label, 'Te saco de aquí');
+  dialogueBox.visibleChars = 999;
+  dialogueBox.advance(); // Confirma 'Te saco de aquí'
+  assert.equal(recruitedSignal, true);
+  assert.equal(franco.rescued, true);
+  assert.equal(franco.isCompanion, true);
+
+  tm.loadScene('vertedero_piso_3');
+  const allyPlayer = new Player({ x: 8 * 16, y: 10 * 16 });
+  const initialFrancoX = franco.x;
+  for (let step = 0; step < 6; step++) {
+    franco.update(0.05, tm, [], false, allyPlayer, null, []);
+  }
+  assert.ok(franco.x > initialFrancoX, 'Como acompañante debe seguir hacia el jugador');
+
+  const nearbyEnemy = new Enemy({
+    id: 'vertedero_test_mob',
+    name: 'Auditor Glitch',
+    x: franco.x + 10,
+    y: franco.y,
+    sceneId: 'vertedero_piso_3',
+    maxHp: 3
+  });
+  franco.attackCooldown = 0;
+  franco.update(0.05, tm, [], false, allyPlayer, null, [nearbyEnemy]);
+  assert.equal(nearbyEnemy.hp, 2, 'Franco acompañante debe atacar enemigos cercanos');
+
+  // 4. Transición a vertedero_digital -> vertedero_piso_1 + Rogue-lite soft-reset conservando Currículums
+  const prevStorage = globalThis.localStorage;
+  const storeMap = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+    setItem: (k, v) => storeMap.set(k, String(v)),
+    removeItem: (k) => storeMap.delete(k)
+  };
+  try {
+    tm.loadScene('valleverde_corp');
+    const mob = new Enemy({ id: 'vertedero_f3_1', name: 'Mob P3', x: 64, y: 64, sceneId: 'vertedero_piso_3', maxHp: 3 });
+    mob.dead = true;
+    mob.coinsDropped = true;
+
+    const fakeGame = {
+      tilemap: tm,
+      player: new Player({ x: 20 * 16, y: 14 * 16 }),
+      camera: new Camera2D(320, 180),
+      enemies: [mob],
+      npcs: [franco],
+      droppedCoins: [{ x: 64, y: 64, sceneId: 'vertedero_piso_3', kind: 'curriculum', value: 1 }],
+      curriculum: 5,
+      curriculumFlashTimer: 0,
+      vertederoRebootTimer: 0,
+      francoRescued: true,
+      vertederoFloorOrder: [],
+      menuSystem: { showNotice: () => {} },
+      music: { currentBossTrack: null, setMode: () => {}, playDoorOpenSound: () => {}, playError: () => {} },
+      _restoreAllNPCsToOverworld: () => {},
+      _resolveStageSpawn: (door) => ({ x: door.targetX || 11.5 * 16, y: door.targetY || 15.2 * 16, facing: 'up' }),
+      _handleHouseOwnerConfrontation: () => {},
+      _saveGameToStorage: () => {},
+      _shuffleVertederoOrder: RPGGame.prototype._shuffleVertederoOrder,
+      _resetVertederoEnemiesAndDrops: RPGGame.prototype._resetVertederoEnemiesAndDrops,
+      _syncFrancoNPCState: RPGGame.prototype._syncFrancoNPCState,
+      _startVertederoRun: RPGGame.prototype._startVertederoRun,
+      _syncFrancoCompanionOnTransition: RPGGame.prototype._syncFrancoCompanionOnTransition,
+      _saveExpansionProgress: RPGGame.prototype._saveExpansionProgress,
+      _triggerVertederoSoftReset: RPGGame.prototype._triggerVertederoSoftReset,
+      _finishVertederoSoftReset: RPGGame.prototype._finishVertederoSoftReset
+    };
+
+    const stc = new SceneTransitionController(fakeGame);
+    stc.executeStageTransition({ type: 'stage', targetScene: 'vertedero_digital', targetX: 11.5 * 16, targetY: 15.2 * 16, forceDirection: 'up' });
+    assert.equal(tm.currentSceneId, 'vertedero_piso_1', 'Entrar a vertedero_digital inicia en vertedero_piso_1');
+    assert.equal(mob.dead, false, 'Al iniciar un run los enemigos del Vertedero se reinician');
+    assert.equal(franco.sceneId, 'valleverde_corp', 'Tras ser rescatado, Franco permanece a salvo en Valleverde 2.0 en futuros runs');
+    assert.equal(franco.isCompanion, false);
+
+    // Muerte en el piso 3 -> reinicio de sistema de 2s sin perder Currículums
+    tm.loadScene('vertedero_piso_3');
+    fakeGame.player.hp = 0;
+    fakeGame._triggerVertederoSoftReset();
+    assert.equal(fakeGame.vertederoRebootTimer, 2.0);
+    fakeGame._finishVertederoSoftReset();
+    assert.equal(tm.currentSceneId, 'vertedero_piso_1', 'El soft-reset devuelve al piso 1');
+    assert.ok(fakeGame.player.hp > 0, 'El soft-reset restaura la salud al máximo');
+    assert.equal(fakeGame.curriculum, 5, 'El soft-reset conserva los Currículums acumulados');
+    assert.ok(storeMap.has('el_ojete_dorado_expansion_save'), 'Debe persistir Currículums y rescate en localStorage');
+  } finally {
+    globalThis.localStorage = prevStorage;
+  }
+});
+
+test('Acto 2: El Kernel (3 fases, HUD hack, clones, firewalls, Llave) y Bar de Rosa (RosaShop)', async () => {
+  // 1. Escenas kernel_arena (12x10) y rosa_bar (10x8) y puertas en valleverde_corp
+  const tm = new Tilemap(null, 16);
+  await tm.loadExpansionScenes();
+  tm.loadScene('kernel_arena');
+  assert.equal(tm.cols, 12);
+  assert.equal(tm.rows, 10);
+
+  tm.loadScene('rosa_bar');
+  assert.equal(tm.cols, 10);
+  assert.equal(tm.rows, 8);
+  assert.equal(UILayout.shouldShowCurriculumHud('rosa_bar', false), true);
+
+  tm.loadScene('valleverde_corp');
+  const rosaEntrance = tm.findNearbyDoor({ centerX: 19.5 * 16, centerY: 2.0 * 16 });
+  assert.ok(rosaEntrance && rosaEntrance.targetScene === 'rosa_bar');
+
+  // 2. Fase 1 de El Kernel: entrada a kernel_arena oculta HUD con error_buzz y lanza Pantallazos Azules
+  const sfxLog = [];
+  const kernel = new KernelBoss({ x: 5.5 * 16, y: 3.2 * 16, sceneId: 'kernel_arena', hp: 150 });
+  const player = new Player({ x: 5.5 * 16, y: 7.5 * 16 });
+  player.hasSword = true;
+  player.hp = 5;
+  player.maxHp = 5;
+
+  const gameState = {
+    tilemap: tm,
+    player,
+    camera: new Camera2D(320, 180),
+    enemies: [kernel],
+    npcs: [],
+    curriculum: 12,
+    curriculumFlashTimer: 0,
+    kernelHackActive: false,
+    kernelHudFlicker: false,
+    bsodOverlayTimer: 0,
+    francoRescued: false,
+    dayNight: new DayNightCycle(),
+    touchControls: null,
+    menuSystem: { showNotice: () => {} },
+    music: {
+      currentBossTrack: null,
+      playBossMusic: () => {},
+      stopBossMusic: () => {},
+      setMode: () => {},
+      playDoorOpenSound: () => {},
+      playFanfare: () => {},
+      playError: () => sfxLog.push('playError'),
+      playSFX: (name) => sfxLog.push(name)
+    },
+    _restoreAllNPCsToOverworld: () => {},
+    _resolveStageSpawn: (door) => ({ x: door.targetX || 5.5 * 16, y: door.targetY || 8 * 16, facing: 'up' }),
+    _handleHouseOwnerConfrontation: () => {},
+    _saveGameToStorage: () => {},
+    _syncFrancoCompanionOnTransition: () => {},
+    _saveExpansionProgress: RPGGame.prototype._saveExpansionProgress
+  };
+
+  const stc = new SceneTransitionController(gameState);
+  stc.executeStageTransition({ type: 'stage', targetScene: 'kernel_arena', targetX: 5.5 * 16, targetY: 8 * 16, forceDirection: 'up' });
+  assert.equal(tm.currentSceneId, 'kernel_arena');
+  assert.equal(kernel.hudHackActive, true, 'En Fase 1 al entrar a kernel_arena se oculta el HUD');
+  assert.equal(gameState.kernelHackActive, true);
+  assert.ok(kernel.introQuote.includes('Identificación no reconocida'));
+  assert.ok(sfxLog.includes('error_buzz'), 'Debe reproducir error_buzz al ocultar el HUD');
+
+  // Verificar que RPGGame._renderHUD retorna sin dibujar cuando kernelHackActive es true
+  let hudFillCalls = 0;
+  const mockHudCtx = {
+    fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: 'left', textBaseline: 'top',
+    save: () => {}, restore: () => {},
+    fillRect: () => { hudFillCalls += 1; },
+    strokeRect: () => {},
+    fillText: () => {}
+  };
+  RPGGame.prototype._renderHUD.call(gameState, mockHudCtx);
+  assert.equal(hudFillCalls, 0, '_renderHUD no debe dibujar nada mientras kernelHackActive esté activo');
+
+  // Pantallazo Azul (BSOD) proyectil + overlay :( de 0.5s
+  kernel.bsodShotTimer = 0.01;
+  kernel.update(0.05, tm, player, false, gameState.music);
+  assert.ok(kernel.projectiles.some((p) => p.kind === 'bsod'), 'Debe disparar proyectiles BSOD azules');
+  assert.ok(kernel.bsodOverlayTimer > 0 && kernel.bsodOverlayTimer <= 0.5);
+  const bsodTexts = [];
+  RPGGame.prototype._renderKernelBSODOverlay.call(gameState, {
+    fillStyle: '', font: '', textAlign: 'left', textBaseline: 'middle',
+    save: () => {}, restore: () => {}, fillRect: () => {},
+    fillText: (t) => bsodTexts.push(t)
+  });
+  assert.ok(bsodTexts.includes(':('), 'El overlay de pantallazo azul debe mostrar :(');
+
+  // 3. Fase 2 (66% - 33%): 4 clones (solo 1 real), HUD vuelve parpadeando, clon falso explota
+  kernel.hp = 95;
+  kernel.hitFlashTimer = 0;
+  kernel.update(0.05, tm, player, false, gameState.music);
+  assert.equal(kernel.phase, 2);
+  assert.equal(kernel.hudHackActive, false, 'En Fase 2 se levanta el bloqueo total del HUD');
+  assert.equal(kernel.hudFlicker, true, 'En Fase 2 el HUD parpadea de forma inestable');
+  assert.equal(kernel.clones.length, 4, 'Debe dividirse en 4 clones');
+  const realClones = kernel.clones.filter((c) => c.isReal);
+  const fakeClones = kernel.clones.filter((c) => !c.isReal);
+  assert.equal(realClones.length, 1, 'Solo 1 clon es real');
+  assert.equal(fakeClones.length, 3);
+
+  // Golpear a un clon falso hace explotar ese clon e inflige daño en área
+  const fake = fakeClones[0];
+  player.invulnTimer = 0;
+  const hpBeforeFakeHit = player.hp;
+  player.x = fake.x;
+  player.y = fake.y + 8;
+  player.direction = 'up';
+  player.attackTimer = 0.1;
+  kernel.cloneHitLockTimer = 0;
+  kernel.update(0.05, tm, player, false, gameState.music);
+  assert.equal(fake.exploded, true, 'Atacar un clon falso lo hace explotar');
+  assert.ok(player.hp < hpBeforeFakeHit, 'La explosión del clon falso daña al jugador en área');
+  assert.equal(kernel.hp, 95, 'El clon falso no resta vida al Kernel real');
+
+  // Atacar al clon real sí daña al Kernel real
+  const real = realClones[0];
+  player.attackTimer = 0;
+  kernel.hitFlashTimer = 0;
+  const damaged = kernel.takeSwordHit(player, gameState.music, 10);
+  assert.equal(damaged, true);
+  assert.equal(kernel.hp, 85);
+
+  // 4. Fase 3 (33% - 0%): Torre gigante + Firewalls + muerte y Llave de Acceso al Núcleo
+  kernel.hp = 40;
+  kernel.hitFlashTimer = 0;
+  kernel.update(0.05, tm, player, false, gameState.music);
+  assert.equal(kernel.phase, 3);
+  assert.ok(kernel.width >= 36 && kernel.height >= 44, 'En Fase 3 se transforma en torre gigante');
+  kernel.firewallTimer = 0.01;
+  kernel.update(0.05, tm, player, false, gameState.music);
+  assert.ok(kernel.firewalls.length > 0, 'En Fase 3 genera firewalls');
+
+  kernel.hitFlashTimer = 0;
+  kernel.takeSwordHit(player, gameState.music, 50);
+  assert.equal(kernel.dead, true);
+  assert.equal(kernel.deathQuote, 'Esto... no... era... mi... trabajo...');
+  tm.setAlexCoreUnlocked(true);
+  assert.equal(tm.alexCoreUnlocked, true, 'Al morir el Kernel debe desbloquearse el Núcleo de Alex');
+  const northCoreDoor = tm.findNearbyDoor({ centerX: 5.5 * 16, centerY: 1.1 * 16 });
+  assert.ok(northCoreDoor && !northCoreDoor.blocked, 'La transición norte al Núcleo debe quedar desbloqueada');
+
+  // 5. Tienda de Rosa (RosaShop): compra de las 4 mejoras permanentes con Currículums y persistencia
+  const prevStorage = globalThis.localStorage;
+  const storeMap = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+    setItem: (k, v) => storeMap.set(k, String(v)),
+    removeItem: (k) => storeMap.delete(k)
+  };
+  try {
+    const rosaShop = new RosaShop(gameState);
+    assert.equal(rosaShop.upgrades.length, 4);
+
+    const baseDamage = player.getSwordDamage();
+    const baseStamina = player.effectiveMaxStamina;
+    const baseMaxHp = player.maxHp;
+
+    const r1 = rosaShop.buyUpgrade('plus_salud');       // 3 📄 -> quedan 9
+    assert.equal(r1.ok, true);
+    assert.equal(player.maxHp, baseMaxHp + 1);
+
+    const r2 = rosaShop.buyUpgrade('aumento_sueldo');   // 2 📄 -> quedan 7
+    assert.equal(r2.ok, true);
+    assert.ok(player.getSwordDamage() > baseDamage);
+
+    const r3 = rosaShop.buyUpgrade('optimizacion');     // 2 📄 -> quedan 5
+    assert.equal(r3.ok, true);
+    assert.equal(player.effectiveMaxStamina, baseStamina + 20);
+
+    const r4 = rosaShop.buyUpgrade('teletrabajo');      // 5 📄 -> quedan 0
+    assert.equal(r4.ok, true);
+    assert.equal(gameState.curriculum, 0);
+    assert.equal(player.maxDashCharges, 2, 'Teletrabajo otorga +1 Dash extra');
+
+    // Encadenar 2 dashes seguidos sin esperar el cooldown completo
+    assert.equal(player.tryDash(), true);
+    player.dashTimer = 0;
+    assert.equal(player.tryDash(), true);
+    assert.equal(player.tryDash(), false);
+
+    // Sin Currículums suficientes rechaza nueva compra
+    const failRes = rosaShop.buyUpgrade('optimizacion');
+    assert.equal(failRes.ok, false);
+    assert.ok(storeMap.has('el_ojete_dorado_expansion_save'), 'Las mejoras de Rosa deben persistir en localStorage');
+  } finally {
+    globalThis.localStorage = prevStorage;
+  }
+});
+
+test('Acto 3: ai_nucleus_core (14x12), AlexUpdateBoss (5 fases + punto débil), 3 Finales y Jefa Secreta Deuda Técnica', async () => {
+  const prevStorage = globalThis.localStorage;
+  const storeMap = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+    setItem: (k, v) => storeMap.set(k, String(v)),
+    removeItem: (k) => storeMap.delete(k)
+  };
+
+  try {
+    // 1. Escena ai_nucleus_core (14x12) y música boss_alex_final
+    const tm = new Tilemap(null, 16);
+    await tm.loadExpansionScenes();
+    tm.setAlexCoreUnlocked(true);
+    tm.loadScene('ai_nucleus_core');
+    const core = tm.scenes.ai_nucleus_core;
+    assert.ok(core, 'Escena ai_nucleus_core debe existir');
+    assert.equal(core.cols, 14);
+    assert.equal(core.rows, 12);
+    assert.ok(Array.isArray(tm._coreDataPlatforms) && tm._coreDataPlatforms.length >= 2);
+
+    const exitDoor = tm.findNearbyDoor({ centerX: 6.5 * 16, centerY: 10.7 * 16 });
+    assert.ok(exitDoor && exitDoor.targetScene === 'valleverde_corp', 'Salida sur debe volver a valleverde_corp');
+
+    const musicModes = [];
+    const transitionGame = {
+      tilemap: tm,
+      player: new Player({ x: 6.5 * 16, y: 9.8 * 16 }),
+      camera: { snapTo: () => {}, setWorldBounds: () => {} },
+      music: { setMode: (m) => musicModes.push(m) },
+      npcs: [],
+      enemies: [],
+      _resolveStageSpawn: (door) => ({ x: door.targetX || 6.5 * 16, y: door.targetY || 9.8 * 16 }),
+      _saveGameToStorage: () => {},
+      _saveProgressToLocal: () => {}
+    };
+    const stc = new SceneTransitionController(transitionGame);
+    stc.executeStageTransition({ type: 'stage_transition', targetScene: 'ai_nucleus_core', targetX: 6.5 * 16, targetY: 9.8 * 16 });
+    assert.ok(musicModes.includes('boss_alex_final'), 'Entrar al Núcleo debe activar la música boss_alex_final');
+
+    // 2. AlexUpdateBoss: 200 HP y las 5 Fases corporativas
+    const player = new Player({ x: 6.5 * 16, y: 8.0 * 16 });
+    player.hasSword = true;
+    const alex = new AlexUpdateBoss({ x: 6.2 * 16, y: 3.0 * 16 });
+    const mockSfx = { playEnemyAttack: () => {}, playHit: () => {}, playErrorBuzz: () => {}, playMetalClink: () => {} };
+    assert.equal(alex.hp, 200);
+    assert.equal(alex.phase, 1);
+
+    // Fase 1 Marketing (200 - 160): Anuncios amarillos + 2 Becarios
+    alex.adTimer = 0.01;
+    alex.internSummonTimer = 0.01;
+    alex.update(0.05, tm, player, false, mockSfx);
+    assert.ok(alex.projectiles.some(p => p.kind === 'ad' && p.color === '#facc15'), 'Fase 1 lanza Anuncios amarillos');
+    assert.equal(alex.interns.length, 2, 'Fase 1 invoca exactamente 2 Becarios');
+
+    // Fase 2 Ventas (160 - 120): Contratos rojos que rebotan + láser AoE horizontal
+    alex.hp = 155;
+    alex.contractTimer = 0.01;
+    alex.laserAoeTimer = 0.01;
+    alex.update(0.05, tm, player, false, mockSfx);
+    assert.equal(alex.phase, 2);
+    assert.ok(alex.projectiles.some(p => p.kind === 'contract' && p.bouncesLeft > 0), 'Fase 2 lanza Contratos que rebotan');
+    assert.ok(alex.lasers.some(l => l.orientation === 'horizontal'), 'Fase 2 activa ataque láser AoE');
+
+    // Fase 3 RRHH (120 - 80): Burnout (ralentiza 3s) + Despidos teledirigidos
+    alex.hp = 110;
+    alex.burnoutCooldown = 0.01;
+    alex.layoffTimer = 0.01;
+    alex.update(0.05, tm, player, false, mockSfx);
+    assert.equal(alex.phase, 3);
+    assert.equal(player.burnoutTimer, 3.0, 'Fase 3 inflige Burnout de 3 segundos');
+    assert.ok(alex.projectiles.some(p => p.kind === 'layoff' && p.homing === true), 'Fase 3 lanza Despidos teledirigidos');
+
+    // Comprobar que el Burnout reduce el desplazamiento real del jugador
+    const dummyInput = {
+      getMovementVector: () => ({ x: 1, y: 0 }),
+      isActionPressed: () => false,
+      consumeKey: () => false
+    };
+    player.x = 4 * 16;
+    player.y = 5 * 16;
+    const pxBefore = player.x;
+    player.update(0.1, dummyInput, tm);
+    const burnoutDist = player.x - pxBefore;
+    player.burnoutTimer = 0;
+    player.x = pxBefore;
+    player.update(0.1, dummyInput, tm);
+    const normalDist = player.x - pxBefore;
+    assert.ok(burnoutDist > 0 && burnoutDist < normalDist, 'Burnout debe ralentizar al jugador');
+
+    // Fase 4 Legal (80 - 40): Multas en el suelo + bordes de fuego
+    alex.hp = 70;
+    alex.fineTimer = 0.01;
+    alex.update(0.05, tm, player, false, mockSfx);
+    assert.equal(alex.phase, 4);
+    assert.ok(alex.fireBorderActive, 'Fase 4 activa barrera de fuego en los bordes');
+    assert.ok(alex.fines.length >= 1, 'Fase 4 coloca círculos Multas en el suelo');
+
+    // Fase 5 Dirección (40 - 0): Punto débil en la caja fuerte del pecho + Cierre de Servidores en cruz
+    alex.hp = 35;
+    alex.hitFlashTimer = 0;
+    alex.serverShutdownTimer = 0.01;
+    alex.update(0.05, tm, player, false, mockSfx);
+    assert.equal(alex.phase, 5);
+    assert.ok(
+      alex.lasers.some(l => l.orientation === 'vertical') && alex.lasers.some(l => l.orientation === 'horizontal'),
+      'Fase 5 ejecuta Cierre de Servidores con láseres en cruz'
+    );
+
+    const chest = alex.getChestWeakspotBox();
+    // Golpe fuera del pecho (esquina superior izquierda) debe ser bloqueado por el blindaje
+    const missRect = { x: alex.x, y: alex.y, width: 4, height: 4 };
+    assert.equal(alex.takeSwordHit(player, mockSfx, 20, missRect), false, 'Golpear fuera de la caja fuerte no daña en Fase 5');
+    assert.equal(alex.hp, 35);
+
+    // Golpe directo a la caja fuerte del pecho debe dañar y matar al jefe
+    alex.hitFlashTimer = 0;
+    assert.equal(alex.takeSwordHit(player, mockSfx, 40, chest), true, 'Golpear la caja fuerte debe dañar en Fase 5');
+    assert.equal(alex.dead, true);
+    assert.equal(alex.dialogueLine, ALEX_UPDATE_DEATH_QUOTE);
+
+    // 3. Sistema de 3 Finales + Desbloqueo de Final C + Deuda Técnica
+    const achievements = new AchievementManager();
+    const tony = new TonyRandazzo({ x: 32, y: 32 });
+    const debtBoss = new TechnicalDebtBoss({ x: 6.2 * 16, y: 2.6 * 16 });
+    let lastDialogue = null;
+    let creditsRecord = null;
+    let creditsDoneCb = null;
+
+    const fakeGame = {
+      tilemap: tm,
+      player,
+      npcs: [tony],
+      enemies: [alex, debtBoss],
+      curriculum: 10,
+      francoRescued: false,
+      tonyForgiven: false,
+      expansionEndingChosen: null,
+      totalPlayTimeSeconds: 420,
+      totalDeaths: 1,
+      totalJailVisits: 0,
+      debtGlitchTimer: 0,
+      camera: { snapTo: () => {} },
+      soundEngine: mockSfx,
+      achievementManager: achievements,
+      music: { setMode: () => {}, playVictoryTheme: () => {} },
+      dialogueBox: {
+        showMessage: (title, lines, choices) => { lastDialogue = { title, lines, choices }; },
+        close: () => {}
+      },
+      menuSystem: {
+        state: 'playing',
+        showNotice: () => {},
+        startEndingCredits: (rec, cb) => {
+          creditsRecord = rec;
+          creditsDoneCb = cb;
+        },
+        openLeaderboardScreen: () => {}
+      },
+      _computePlayerFinalTitle: () => 'Arquitecto',
+      _readExpansionStorage: () => RPGGame.prototype._readExpansionStorage.call(fakeGame),
+      _saveExpansionProgress: () => RPGGame.prototype._saveExpansionProgress.call(fakeGame),
+      _buildBaseVictoryRecord: () => RPGGame.prototype._buildBaseVictoryRecord.call(fakeGame),
+      _canChooseMergeEnding: () => RPGGame.prototype._canChooseMergeEnding.call(fakeGame),
+      shouldTriggerTechnicalDebt: (k) => RPGGame.prototype.shouldTriggerTechnicalDebt.call(fakeGame, k),
+      _openAlexUpdateEndingDialogue: () => RPGGame.prototype._openAlexUpdateEndingDialogue.call(fakeGame),
+      _playExpansionEnding: (k) => RPGGame.prototype._playExpansionEnding.call(fakeGame, k),
+      _onExpansionCreditsFinished: (k, r) => RPGGame.prototype._onExpansionCreditsFinished.call(fakeGame, k, r),
+      _triggerTechnicalDebtSecretBattle: () => RPGGame.prototype._triggerTechnicalDebtSecretBattle.call(fakeGame),
+      _openScoreSubmissionModal: (r, cb) => cb?.(),
+      _resetWorldToInitialState: () => {}
+    };
+
+    // Sin Tony perdonado ni Franco rescatado -> solo A y B
+    fakeGame._openAlexUpdateEndingDialogue();
+    assert.equal(lastDialogue.choices.length, 2, 'Sin Tony perdonado + Franco rescatado solo aparecen Final A y B');
+
+    // Al perdonar a Tony y rescatar a Franco -> se desbloquea Final C
+    tony.forgiven = true;
+    fakeGame.francoRescued = true;
+    fakeGame._openAlexUpdateEndingDialogue();
+    assert.equal(lastDialogue.choices.length, 3, 'Con Tony perdonado y Franco rescatado se desbloquea Final C');
+
+    // Probar Final A con >= 20 Currículums NO activa Deuda Técnica
+    fakeGame.curriculum = 22;
+    fakeGame._playExpansionEnding('A');
+    assert.equal(storeMap.get('expansion_ending_chosen'), 'A');
+    assert.equal(lastDialogue.lines[0], 'El futuro se borró. Pero tú recordarás lo que pasó.');
+    assert.equal(fakeGame.shouldTriggerTechnicalDebt('A'), false);
+
+    // Probar Final B cita correcta
+    fakeGame._playExpansionEnding('B');
+    assert.equal(lastDialogue.lines[0], 'No es perfecto. Pero es nuestro.');
+
+    // Probar Final C -> Créditos -> Trigger de Jefa Secreta (curriculum >= 20 y Final C)
+    fakeGame._playExpansionEnding('C');
+    assert.equal(storeMap.get('expansion_ending_chosen'), 'C');
+    assert.equal(lastDialogue.lines[0], 'Dos mundos. Un solo Ojete Dorado.');
+    lastDialogue.choices[0].onSelect(); // Lanza créditos
+    assert.ok(creditsRecord && creditsRecord.endingKey === 'C');
+    assert.equal(debtBoss.dormant, true, 'Deuda Técnica permanece latente antes de acabar los créditos');
+
+    creditsDoneCb(); // Terminan los créditos con curriculum >= 20 y Final C
+    assert.equal(debtBoss.dormant, false, 'Tras créditos con >=20 Currículums y Final C despierta La Deuda Técnica');
+    assert.equal(debtBoss.dead, false);
+    assert.equal(debtBoss.hp, 300);
+
+    // 4. Boss Rush de 4 fases de La Deuda Técnica (300 HP)
+    assert.equal(debtBoss.phase, 1); // 300 - 250 Clon Garbage Collector
+    debtBoss.hp = 230;
+    debtBoss.update(0.05, tm, player, false, mockSfx);
+    assert.equal(debtBoss.phase, 2); // 250 - 200 Clon Stack Overflow
+    debtBoss.hp = 180;
+    debtBoss.update(0.05, tm, player, false, mockSfx);
+    assert.equal(debtBoss.phase, 3); // 200 - 150 Clon Kernel
+    debtBoss.hp = 120;
+    debtBoss.eraseTimer = 0.01;
+    debtBoss.glitchCooldown = 0.01;
+    debtBoss.update(0.05, tm, player, false, mockSfx);
+    assert.equal(debtBoss.phase, 4); // 150 - 0 La Deuda Técnica
+    assert.equal(debtBoss.glitchActive, true, 'Fase 4 genera glitches visuales');
+    assert.ok(debtBoss.erasedTiles.length >= 1, 'Fase 4 borra partes de la arena');
+
+    // Derrotar a La Deuda Técnica desbloquea Trofeo Completionista y frase final
+    debtBoss.hitFlashTimer = 0;
+    debtBoss.takeSwordHit(player, mockSfx, 150);
+    assert.equal(debtBoss.dead, true);
+    assert.equal(debtBoss.dialogueLine, TECH_DEBT_DEATH_QUOTE);
+    const unlockedOk = achievements.unlock('ach_completionist');
+    assert.equal(unlockedOk, true, 'Debe desbloquear el logro ach_completionist');
+    assert.equal(achievements.isUnlocked('ach_completionist'), true);
+    const completionistAch = achievements.getAll().find(a => a.id === 'ach_completionist');
+    assert.equal(completionistAch?.title, 'Completionista', 'Derrotar a la jefa secreta desbloquea trofeo Completionista');
+  } finally {
+    globalThis.localStorage = prevStorage;
+  }
+});
+
+test('Falso Final (glitch + trofeo + openTitleScreen) y transición startExpansion desde el menú', async () => {
+  const prevStorage = globalThis.localStorage;
+  const storeMap = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+    setItem: (k, v) => storeMap.set(k, String(v)),
+    removeItem: (k) => storeMap.delete(k)
+  };
+
+  try {
+    const sfxCalls = [];
+    const musicModes = [];
+    let expansionStartedCount = 0;
+
+    const fakeMusic = {
+      setMode: (m) => musicModes.push(m),
+      playMenuSelect() {},
+      playCaughtSkipSound() {},
+      playMenuMove() {},
+      stopTitleMusic() {},
+      playTitleMusic() {},
+      playSFX: (sfx) => sfxCalls.push(sfx)
+    };
+    const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {
+      getSaveSummary: () => null,
+      onStartExpansion: () => {
+        expansionStartedCount += 1;
+      }
+    });
+
+    // 1. Antes del trofeo, la expansión aparece bloqueada con el subtexto pedido
+    menu.openTitleScreen();
+    const lockedOption = menu._getCurrentMenuItems()[2];
+    assert.equal(lockedOption.locked, true);
+    assert.equal(lockedOption.subtext, 'Completa el juego base para desbloquear');
+
+    // 2. Simular final de créditos tras derrotar a FinalBossAlex (_finishBaseVictoryCredits)
+    const tm = new Tilemap(null, 16);
+    await tm.loadExpansionScenes();
+    const player = new Player({ x: 100, y: 100 });
+    let worldResetCount = 0;
+    const fakeGame = {
+      tilemap: tm,
+      player,
+      camera: { setWorldBounds: () => {}, resetCinematic: () => {}, snapTo: () => {} },
+      music: fakeMusic,
+      soundEngine: { playSFX: (sfx) => sfxCalls.push(sfx) },
+      menuSystem: menu,
+      curriculum: 0,
+      francoRescued: false,
+      tonyForgiven: false,
+      expansionEndingChosen: null,
+      _resetWorldToInitialState: () => {
+        worldResetCount += 1;
+        tm.loadScene('overworld');
+      },
+      _syncFrancoNPCState: () => {},
+      _restoreExpansionSaveData: (d) => {
+        fakeGame.curriculum = d.curriculum || 0;
+      },
+      _saveExpansionProgress: () => RPGGame.prototype._saveExpansionProgress.call(fakeGame),
+      startExpansion: () => RPGGame.prototype.startExpansion.call(fakeGame)
+    };
+
+    RPGGame.prototype._finishBaseVictoryCredits.call(fakeGame, null);
+    assert.equal(storeMap.get('el_ojete_dorado_victory_trophy'), 'true', 'Debe guardar el trofeo en true');
+    assert.ok(sfxCalls.includes('ui_glitch'), 'Debe reproducir el SFX ui_glitch');
+    assert.equal(menu.state, 'false_ending_glitch');
+    assert.equal(menu.falseEndingText, 'SISTEMA CORRUPTO. BUSCANDO BACKUP...');
+
+    // Avanzar 3.6s -> fundido a negro progresivo y mensaje activo
+    const dummyInput = {
+      consumeKey: () => false,
+      pointerJustClicked: false
+    };
+    menu.update(3.6, dummyInput);
+    assert.equal(menu.state, 'false_ending_glitch');
+    assert.ok(menu.fadeAlpha > 0 && menu.fadeAlpha <= 1, 'Debe hacer fundido a negro hacia el final de los 4s');
+
+    // Completar los 4s -> vuelve al menú de título y resetea estado base
+    menu.update(0.6, dummyInput);
+    assert.equal(worldResetCount, 1);
+    assert.equal(menu.state, 'title');
+
+    // 3. En el menú principal actualizado, la opción ya está desbloqueada y lanza onStartExpansion()
+    const unlockedOption = menu._getCurrentMenuItems()[2];
+    assert.equal(unlockedOption.locked, false);
+    assert.equal(unlockedOption.label, 'El Resurgir de Mister Alex IA');
+    unlockedOption.action();
+    assert.equal(expansionStartedCount, 1);
+
+    // 4. Ejecutar startExpansion(): crea/carga el slot independiente, va a valleverde_corp con música y aviso
+    fakeGame.startExpansion();
+    assert.equal(tm.currentSceneId, 'valleverde_corp', 'startExpansion teletransporta a valleverde_corp');
+    assert.ok(musicModes.includes('valleverde_corp'), 'Lanza la música valleverde_corp');
+    assert.equal(menu.noticeText, '3 meses después...', 'Muestra el aviso "3 meses después..."');
+    assert.equal(menu.state, 'none');
+    assert.ok(storeMap.has('el_ojete_dorado_expansion_save_v1'), 'Guarda en el slot independiente de expansión');
+
+    // Si existe un slot previo en el_ojete_dorado_expansion_save_v1, startExpansion lo carga
+    storeMap.set('el_ojete_dorado_expansion_save_v1', JSON.stringify({ curriculum: 14, coins: 77 }));
+    fakeGame.startExpansion();
+    assert.equal(fakeGame.curriculum, 14, 'startExpansion debe restaurar los datos del slot de expansión');
+    assert.equal(player.coins, 77);
+  } finally {
+    globalThis.localStorage = prevStorage;
+  }
+});
+
+test('Hotbar visual 1-5: erradicación de KeyR en consumibles, asignación en inventario, uso, vaciado y render 16x16', () => {
+  const player = new Player({ x: 32, y: 32 });
+  assert.deepEqual(player.hotbar, [null, null, null, null, null]);
+  assert.equal(player.skills.log, false);
+
+  // R NO debe usar consumibles ni hacer nada sin la skill log
+  assert.equal(player.throwLog(null), false, 'KeyR no debe activar nada si no tiene skill log');
+
+  // Añadir consumible al inventario
+  const inv = new Inventory();
+  inv.addItem({ id: 'coffee', name: 'Café Compilado', description: 'Recupera HP', iconIndex: 2, qty: 1 });
+  inv.open();
+  inv.selectedIndex = 0;
+
+  const scaleCalls = [];
+  const fillStyles = [];
+  const strokeStyles = [];
+  const texts = [];
+  const rectCalls = [];
+  const mockCtx = {
+    save() {},
+    restore() {},
+    translate() {},
+    scale(sx, sy) { scaleCalls.push([sx, sy]); },
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    fillRect(x, y, w, h) { rectCalls.push({ x, y, w, h, fill: mockCtx.fillStyle }); fillStyles.push(mockCtx.fillStyle); },
+    strokeRect(x, y, w, h) { strokeStyles.push(mockCtx.strokeStyle); },
+    fillText(txt) { texts.push(String(txt)); },
+    measureText(txt) { return { width: String(txt).length * 4 }; },
+    createLinearGradient() { return { addColorStop() {} }; },
+    drawImage() {}
+  };
+  inv.render(mockCtx, player);
+  assert.ok(texts.includes('Asignar a Hotbar (1-5)'), 'Inventario debe mostrar "Asignar a Hotbar (1-5)" para consumibles');
+  assert.ok(inv._touchActions.some(a => a.id === 'assign_hotbar'));
+  assert.ok(inv._touchActions.some(a => a.id === 'hotbar_slot_0'));
+
+  const fakeGame = {
+    player,
+    inventory: inv,
+    enemies: [],
+    tilemap: { currentSceneId: 'overworld' },
+    touchControls: { isTouchEnabled: () => false },
+    menuSystem: { showNotice: () => {} },
+    music: { playMenuSelect: () => {}, playHealSound: () => {} },
+    _saveGameToStorage: () => {},
+    _ensurePlayerHotbar: () => RPGGame.prototype._ensurePlayerHotbar.call(fakeGame),
+    syncHotbarWithInventory: () => RPGGame.prototype.syncHotbarWithInventory.call(fakeGame),
+    assignHotbarSlot: (i, it) => RPGGame.prototype.assignHotbarSlot.call(fakeGame, i, it),
+    _getQuickSlotIndex: (k) => RPGGame.prototype._getQuickSlotIndex.call(fakeGame, k),
+    _getQuickSlotConsumable: (k) => RPGGame.prototype._getQuickSlotConsumable.call(fakeGame, k),
+    _useQuickSlotConsumable: (k) => RPGGame.prototype._useQuickSlotConsumable.call(fakeGame, k),
+    _renderHotbar: (ctx, hf, hs) => RPGGame.prototype._renderHotbar.call(fakeGame, ctx, hf, hs)
+  };
+
+  // Asignar Café al slot 1 (índice 0)
+  assert.equal(fakeGame.assignHotbarSlot(0), true);
+  assert.equal(player.hotbar[0], 'coffee');
+  assert.equal(player.hotbarFlashTimers[0], 0.2);
+
+  // KeyR nunca devuelve un consumible en _getQuickSlotConsumable
+  assert.equal(fakeGame._getQuickSlotConsumable('KeyR'), null);
+  assert.equal(fakeGame._getQuickSlotConsumable('Digit1')?.id, 'coffee');
+
+  // Renderizar Hotbar durante flash -> 5 cuadraditos 16x16, fondo rgba(15, 23, 42, 0.8), escala 1.05 y números 1-5
+  scaleCalls.length = 0;
+  texts.length = 0;
+  fillStyles.length = 0;
+  rectCalls.length = 0;
+  fakeGame._renderHotbar(mockCtx, () => '4px monospace', () => {});
+  assert.ok(scaleCalls.some(([sx, sy]) => sx === 1.05 && sy === 1.05), 'El slot pulsado escala un 5% durante 0.2s');
+  assert.ok(fillStyles.includes('rgba(15, 23, 42, 0.8)'), 'Los slots usan fondo rgba(15, 23, 42, 0.8)');
+  assert.equal(rectCalls.filter(r => r.w === 16 && r.h === 16 && r.fill === 'rgba(15, 23, 42, 0.8)').length, 5, 'Debe dibujar exactamente 5 slots de 16x16 px');
+  for (const n of ['1', '2', '3', '4', '5']) {
+    assert.ok(texts.includes(n), `Debe mostrar el número ${n} en la Hotbar`);
+  }
+
+  // Usar Digit1 cura 1 HP, consume la última unidad y vacía player.hotbar[0]
+  player.hp = 2;
+  fakeGame._useQuickSlotConsumable('Digit1');
+  assert.equal(player.hp, 3, 'Pulsar 1 consume el Café asignado y cura al jugador');
+  assert.equal(player.hotbar[0], null, 'Al llegar cantidad a 0, el slot de la Hotbar debe vaciarse');
+});
+
+test('NPCs reaccionan a golpes (queja, advertencia, reset 10s) y el 3º golpe desencadena triggerArrest a la cárcel', () => {
+  const villager = new NPC({ id: 'aldeano_test', name: 'Aldeano Paco', x: 100, y: 100, sceneId: 'overworld' });
+  const corpNpc = new NPC({ id: 'becario_rrhh', name: 'Becario Corp', x: 120, y: 100, sceneId: 'valleverde_corp' });
+  corpNpc.inCombat = true; // Incluso si hay enemigos cerca, la queja por agresión debe mostrarse
+
+  let musicMode = 'village';
+  let loadedScene = 'overworld';
+  let sfxPlayed = [];
+  let dialogTitle = '';
+  let dialogLines = [];
+
+  const mockGame = {
+    player: new Player({ x: 84, y: 100 }),
+    npcs: [villager, corpNpc],
+    isExpansionMode: false,
+    tilemap: {
+      currentSceneId: 'overworld',
+      width: 384,
+      height: 288,
+      loadScene(id) {
+        loadedScene = id;
+        this.currentSceneId = id;
+      }
+    },
+    camera: { setWorldBounds: () => {}, snapTo: () => {} },
+    music: {
+      setMode(m) { musicMode = m; },
+      playSFX(n) { sfxPlayed.push(n); }
+    },
+    dialogueBox: {
+      showMessage(title, lines) {
+        dialogTitle = title;
+        dialogLines = lines;
+      }
+    },
+    _flashScreen: () => {},
+    _shakeCamera: () => {},
+    _restoreAllNPCsToOverworld: () => {},
+    _resetAllNPCHitCounts() { RPGGame.prototype._resetAllNPCHitCounts.call(this); },
+    triggerArrest(v) { RPGGame.prototype.triggerArrest.call(this, v); },
+    _releaseFromJail(msg) { RPGGame.prototype._releaseFromJail.call(this, msg); },
+    _didPlayerAttackHitBox(b) { return RPGGame.prototype._didPlayerAttackHitBox.call(this, b); },
+    _handlePlayerAttackOnNPCs(list) { RPGGame.prototype._handlePlayerAttackOnNPCs.call(this, list); }
+  };
+
+  // Golpe 1 -> queja exacta del pool de primer golpe
+  const complaintPool = [
+    '¿Qué haces, coño?',
+    '¡Tu eres tonto!',
+    '¡Tus padres no te dieron educación!',
+    '¿Te has vuelto loco o qué?'
+  ];
+  const warningPool = [
+    '¡Que llame al Carcelero, eh!',
+    '¡Como me des otra, te vas a la trena!',
+    '¡A mí con esas, ni de coña!'
+  ];
+
+  corpNpc.onPlayerAttack(mockGame);
+  assert.equal(corpNpc.hitCount, 1);
+  assert.ok(complaintPool.includes(corpNpc.ambientBubbleText), `Queja inesperada: ${corpNpc.ambientBubbleText}`);
+  assert.equal(corpNpc.ambientBubbleKind, 'complaint');
+
+  // Golpe en el mismo swing bloqueado por cooldown -> sigue en 1
+  corpNpc.onPlayerAttack(mockGame);
+  assert.equal(corpNpc.hitCount, 1);
+
+  // Pasados 10 segundos de calma -> hitCount vuelve a 0
+  corpNpc.tickReactionTimers(10.1);
+  assert.equal(corpNpc.hitCount, 0);
+
+  // Combate mediante espada/puño en _handlePlayerAttackOnNPCs contra NPC base:
+  mockGame.player.direction = 'right';
+  mockGame.player.attackTimer = 0.2; // Puño / espada apuntando a villager (x=100,y=100)
+  mockGame._handlePlayerAttackOnNPCs([villager]);
+  assert.equal(villager.hitCount, 1);
+  assert.ok(complaintPool.includes(villager.ambientBubbleText), `Queja inesperada: ${villager.ambientBubbleText}`);
+  assert.ok(sfxPlayed.includes('hit_flesh'), 'Golpear a un NPC debe reproducir hit_flesh');
+
+  // Pasa el enfriamiento entre swings y golpeamos por 2ª vez con proyectil de tronco
+  villager.tickReactionTimers(0.4);
+  mockGame.player.attackTimer = 0;
+  mockGame.player.thrownLogs.push({ x: villager.centerX, y: villager.centerY, vx: 0, vy: 0, life: 1 });
+  mockGame._handlePlayerAttackOnNPCs([villager]);
+  assert.equal(villager.hitCount, 2);
+  assert.equal(villager.ambientBubbleKind, 'warning');
+  assert.ok(warningPool.includes(villager.ambientBubbleText), `Advertencia inesperada: ${villager.ambientBubbleText}`);
+  assert.equal(mockGame.player.thrownLogs.length, 0, 'El proyectil que impacta al NPC debe consumirse');
+
+  // 3º golpe -> arresto inmediato a jail_cell con condena de 600s y música jail
+  villager.tickReactionTimers(0.4);
+  mockGame.player.attackTimer = 0.2;
+  mockGame._handlePlayerAttackOnNPCs([villager]);
+  assert.equal(loadedScene, 'jail_cell', 'El 3º golpe debe enviar al jugador a jail_cell');
+  assert.equal(mockGame.jailRemainingSeconds, 600, 'La condena por agresión debe ser de 600 segundos');
+  assert.equal(musicMode, 'jail', 'Debe sonar la música de cárcel');
+  assert.equal(mockGame.arrestFadeAlpha, 1.0, 'Debe activar la transición fade tras el arresto');
+  assert.ok(dialogTitle.includes('CARCELERO'), 'Debe hablar el Carcelero');
+  assert.equal(dialogLines[0], '¡Se acabó la fiesta! Por agredir a un ciudadano, quedas detenido.');
+  assert.equal(villager.hitCount, 0, 'Al detener al jugador, los contadores de los NPCs se resetean a 0');
+
+  // Al salir de la cárcel los NPCs siguen pacíficos
+  mockGame._releaseFromJail(['Libre']);
+  assert.equal(mockGame.jailRemainingSeconds, 0);
+  assert.equal(loadedScene, 'overworld');
+  assert.equal(villager.hitCount, 0);
+  assert.equal(corpNpc.hitCount, 0);
+});
+
+test('Atacar a un animal invoca al Demonio Vengador (999 HP, speed 100, daño 9999 y Game Over propio)', () => {
+  const sheep = new Animal({ name: 'Oveja', species: 'sheep', x: 100, y: 100, sceneId: 'overworld' });
+  const player = new Player({ x: 84, y: 100 });
+  player.hasArmor = true;
+  player.armorPoints = 5;
+  player.direction = 'right';
+  player.attackTimer = 0.2;
+
+  const sfxLog = [];
+  const flashLog = [];
+  let maxShake = 0;
+  let arrested = false;
+
+  const mockGame = {
+    player,
+    activeDemon: null,
+    demonBannerTimer: 0,
+    tilemap: { currentSceneId: 'overworld' },
+    music: {
+      playAnimalHurtSound: (sp) => sfxLog.push(`hurt:${sp}`),
+      playSFX: (n) => sfxLog.push(n)
+    },
+    menuSystem: { showNotice: () => {} },
+    triggerArrest: () => { arrested = true; },
+    _flashScreen: (c, a, d) => flashLog.push({ c, a, d }),
+    _shakeCamera: (mag) => { maxShake = Math.max(maxShake, mag); },
+    _didPlayerAttackHitBox(b) { return RPGGame.prototype._didPlayerAttackHitBox.call(this, b); },
+    _handlePlayerAttackOnAnimals(list) { RPGGame.prototype._handlePlayerAttackOnAnimals.call(this, list); },
+    spawnAnimalDemon(a) { return RPGGame.prototype.spawnAnimalDemon.call(this, a); }
+  };
+
+  mockGame._handlePlayerAttackOnAnimals([sheep]);
+  assert.equal(arrested, false, 'Atacar a un animal NO debe llamar al Carcelero');
+  assert.ok(sfxLog.includes('hurt:sheep'), 'Debe sonar SFX de animal herido');
+  assert.ok(sfxLog.includes('boss_roar'), 'Debe rugir boss_roar al aparecer el Demonio');
+  assert.ok(maxShake >= 5, 'Debe aplicar un screen shake fuerte');
+  assert.ok(flashLog.some(f => f.c === '#dc2626'), 'Debe hacer flash rojo rápido en pantalla');
+  assert.ok(sheep.fleeTimer > 0, 'El animal debe huir despavorido');
+  assert.ok(mockGame.activeDemon instanceof DemonVengador, 'Debe instanciarse un DemonVengador');
+  assert.equal(mockGame.activeDemon.hp, 999);
+  assert.equal(mockGame.activeDemon.speed, 100);
+  assert.equal(mockGame.activeDemon.ignoresEnemies, true);
+  assert.ok(mockGame.demonBannerTimer > 0, 'Debe mostrar el banner de advertencia');
+
+  // El Demonio Vengador es inmortal aunque le golpee la espada
+  mockGame.activeDemon.takeSwordHit(player, mockGame.music, 500);
+  assert.equal(mockGame.activeDemon.hp, 999);
+  assert.equal(mockGame.activeDemon.dead, false);
+
+  // Persecución y muerte instantánea (9999 daño) incluso con armadura
+  mockGame.activeDemon.x = player.x;
+  mockGame.activeDemon.y = player.y;
+  const hitRes = mockGame.activeDemon.update(0.016, null, player, false, mockGame.music);
+  assert.equal(hitRes.fatalDemonHit, true);
+  assert.equal(player.hp, 0);
+  assert.equal(player.killedByDemon, true);
+
+  // Verificar mensaje exacto en la pantalla de Game Over
+  const texts = [];
+  const mockCtx = new Proxy({
+    save() {}, restore() {}, fillRect() {}, strokeRect() {}, beginPath() {}, arc() {}, ellipse() {}, fill() {}, stroke() {},
+    moveTo() {}, lineTo() {}, closePath() {}, roundRect() {}, translate() {}, scale() {}, rotate() {}, clip() {},
+    createRadialGradient() { return { addColorStop() {} }; },
+    createLinearGradient() { return { addColorStop() {} }; },
+    fillText(t) { texts.push(String(t)); },
+    measureText(t) { return { width: String(t).length * 4 }; }
+  }, {
+    get(target, prop) {
+      return prop in target ? target[prop] : () => {};
+    }
+  });
+  const menu = new MainMenuAndScenes(320, 180, {}, { setMode() {}, playGameOver() {}, playMenuMove() {} }, {});
+  menu.openGameOverScreen(false, 'animal_demon');
+  menu.render(mockCtx);
+  assert.ok(texts.includes(DEMON_GAME_OVER_MESSAGE), 'La pantalla de Game Over debe mostrar el juicio del Señor de las Ovejas');
+
+  // Render Canvas 2D de DemonVengador + banner de main.js sin errores
+  mockGame.activeDemon.render(mockCtx, { renderX: 0, renderY: 0 });
+  RPGGame.prototype._renderDemonBannerOverlay.call(mockGame, mockCtx);
+  assert.ok(texts.includes('¡HAS PROVOCADO AL SEÑOR DE LAS OVEJAS!'));
+});
+
+test('Expansión: Tope de Nivel 15, tabla XP, recompensas (Nv 11-15), Stamina persistente y HUD NIVEL MÁXIMO', () => {
+  assert.deepEqual(LEVEL_XP_THRESHOLDS, [
+    0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700,
+    2200, 2800, 3500, 4300, 5200
+  ]);
+
+  const p = new Player({ x: 32, y: 32 });
+  p.gainXp(1700); // Nivel 10
+  assert.equal(p.level, 10);
+  assert.equal(p.isMaxLevel, false);
+  const spBefore = p.skillPoints;
+
+  // Nivel 11 (2200 XP) -> +1 punto de habilidad
+  const r11 = p.gainXp(500);
+  assert.equal(p.level, 11);
+  assert.equal(p.skillPoints, spBefore + 1);
+  assert.equal(r11.rewards.includes('¡+1 Punto de Habilidad!'), true);
+
+  // Nivel 12 (2800 XP) -> maxHp 3 -> 4
+  const r12 = p.gainXp(600);
+  assert.equal(p.level, 12);
+  assert.equal(p.maxHp, 4);
+  assert.equal(p.hp, 4);
+  assert.equal(r12.rewards.includes('¡Corazón Máximo aumentado!'), true);
+
+  // Nivel 13 (3500 XP) -> sin bonus extra, isMaxLevel sigue false
+  p.gainXp(700);
+  assert.equal(p.level, 13);
+  assert.equal(p.isMaxLevel, false);
+
+  // Nivel 14 (4300 XP) -> maxStamina +20 (100 -> 120) y persiste tras update()
+  const r14 = p.gainXp(800);
+  assert.equal(p.level, 14);
+  assert.equal(p.maxStamina, 120);
+  assert.equal(p.stamina, 120);
+  assert.equal(r14.rewards.includes('¡Stamina Máxima aumentada!'), true);
+  p.update(0.016, new InputHandler(null), null, []);
+  assert.equal(p.maxStamina, 120, 'La stamina extra de Nivel 14 no debe resetearse en Player.update()');
+
+  // HUD en Nivel 14 NO debe decir NIVEL MÁXIMO
+  const hudTexts = [];
+  const hudCtx = new Proxy({
+    fillText(t) { hudTexts.push(String(t)); },
+    measureText(t) { return { width: String(t).length * 4 }; },
+    createLinearGradient() { return { addColorStop() {} }; }
+  }, { get: (t, k) => (k in t ? t[k] : () => {}) });
+
+  const mockHudGame = {
+    kernelHackActive: false,
+    kernelHudFlicker: false,
+    touchControls: { isTouchEnabled: () => false },
+    dayNight: { getFormattedTime: () => '12:00', timeOfDayHours: 12 },
+    tilemap: { currentSceneId: 'valleverde_corp' },
+    player: p,
+    enemies: [],
+    curriculum: 0,
+    isJailedForever: false,
+    jailRemainingSeconds: 0,
+    cloudSyncStatus: 'synced',
+    hasPendingCloudSync: false,
+    syncHotbarWithInventory: () => {},
+    _ensurePlayerHotbar: () => [null, null, null, null, null],
+    _renderHotbar: () => {}
+  };
+  RPGGame.prototype._renderHUD.call(mockHudGame, hudCtx);
+  assert.ok(hudTexts.includes('NV. 14/15'), 'HUD debe mostrar NV. 14/15 antes del nivel máximo');
+  assert.equal(hudTexts.includes('NIVEL MÁXIMO'), false, 'HUD no debe mostrar NIVEL MÁXIMO en Nv. 14');
+
+  // Nivel 15 (5200 XP) -> maxHp 4 -> 5, isMaxLevel === true, HUD muestra NIVEL MÁXIMO
+  const r15 = p.gainXp(900);
+  assert.equal(p.level, 15);
+  assert.equal(p.maxHp, 5);
+  assert.equal(p.hp, 5);
+  assert.equal(p.isMaxLevel, true);
+  assert.equal(r15.rewards.includes('¡Has alcanzado el rango de Leyenda de Valleverde!'), true);
+
+  hudTexts.length = 0;
+  RPGGame.prototype._renderHUD.call(mockHudGame, hudCtx);
+  assert.ok(hudTexts.includes('NIVEL MÁXIMO'), 'HUD debe volver a mostrar NIVEL MÁXIMO en Nv. 15');
+
+  // CloudStorage conserva Nivel 15
+  const sanitized = CloudStorage.sanitizeSaveData({ level: 15, xp: 5200 });
+  assert.equal(sanitized.level, 15);
+});
+
+test('Equipamiento Corporativo de Expansión: stats, grapa cada 3 golpes, destornillador perforante, carpeta, escudo becario, inventario y HUD', () => {
+  // 1. Diccionario EXPANSION_EQUIPMENT completo
+  const expectedIds = ['boligrafo', 'grapadora', 'destornillador', 'carpeta', 'escudo_becario'];
+  for (const id of expectedIds) {
+    assert.ok(EXPANSION_EQUIPMENT[id], `Debe existir EXPANSION_EQUIPMENT.${id}`);
+    assert.equal(getExpansionEquipment(id).id, id);
+  }
+  assert.equal(getExpansionEquipment('equip_grapadora').id, 'grapadora');
+
+  const p = new Player(100, 100);
+  p.hasSword = true;
+  p.hasDash = true;
+  p.stamina = 100;
+
+  // 2. Bolígrafo Corporativo: daño 1, cooldown 0.15s, brillo azul corporativo
+  assert.deepEqual(p.equipExpansionItem('boligrafo'), EXPANSION_EQUIPMENT.boligrafo);
+  assert.equal(p.equippedWeapon, 'boligrafo');
+  assert.equal(p.getSwordDamage(), 1);
+  p.tryAttack();
+  assert.equal(p.attackCooldown, 0.15);
+
+  // 3. Grapadora Industrial: daño 2, cooldown 0.3s, dispara grapa cada 3er golpe
+  assert.deepEqual(p.equipExpansionItem('grapadora'), EXPANSION_EQUIPMENT.grapadora);
+  assert.equal(p.equippedWeapon, 'grapadora');
+  assert.equal(p.getSwordDamage(), 2);
+  p.attackTimer = 0; p.attackCooldown = 0; p.comboStep = 0; p.energySlashes.length = 0;
+
+  p.tryAttack(); // golpe 1
+  assert.equal(p.attackCooldown, 0.3);
+  assert.equal(p.energySlashes.filter((s) => s.kind === 'staple').length, 0);
+
+  p.attackTimer = 0; p.attackCooldown = 0; p.stamina = 100;
+  p.tryAttack(); // golpe 2
+  assert.equal(p.energySlashes.filter((s) => s.kind === 'staple').length, 0);
+
+  p.attackTimer = 0; p.attackCooldown = 0; p.stamina = 100;
+  p.tryAttack(); // 3er golpe -> dispara grapa
+  assert.equal(p.attackIsFinisher, true);
+  const staples = p.energySlashes.filter((s) => s.kind === 'staple');
+  assert.equal(staples.length, 1, 'Grapadora debe disparar una grapa en el 3er golpe');
+  assert.equal(staples[0].damage, 2);
+
+  // 4. Destornillador Eléctrico: daño 3, cooldown 0.45s, ignora armadura / invulnerabilidad de jefes
+  assert.deepEqual(p.equipExpansionItem('destornillador'), EXPANSION_EQUIPMENT.destornillador);
+  assert.equal(p.getSwordDamage(), 3);
+  p.attackTimer = 0; p.attackCooldown = 0; p.stamina = 100;
+  p.tryAttack();
+  assert.equal(p.attackCooldown, 0.45);
+
+  const armoredBoss = new Boss({
+    id: 'test_armored_boss',
+    name: 'Servidor Blindado',
+    x: 112,
+    y: 100,
+    hp: 20,
+    armor: 2,
+    sceneId: 'server_room'
+  });
+  armoredBoss.invulnerable = true;
+  const hitArmor = armoredBoss.takeSwordHit(p, null);
+  assert.equal(hitArmor, true, 'Destornillador debe perforar invulnerabilidad de jefe');
+  assert.equal(armoredBoss.hp, 17, 'Destornillador debe hacer daño real completo ignorando armor=2');
+
+  const alexP5 = new AlexUpdateBoss(112, 100, 'ai_nucleus_core');
+  alexP5.hp = 60;
+  alexP5.phase = 5;
+  alexP5.invulnerable = true;
+  assert.equal(alexP5.takeSwordHit(p, null), true, 'Destornillador debe perforar armadura pectoral de Fase 5');
+  assert.equal(alexP5.hp, 57);
+
+  // 5. Escudo del Becario: +0.2s ventana de parry en tryBarrier()
+  assert.deepEqual(p.equipExpansionItem('escudo_becario'), EXPANSION_EQUIPMENT.escudo_becario);
+  assert.equal(p.equippedShield, 'escudo_becario');
+  p.barrierCooldown = 0;
+  p.tryBarrier();
+  assert.ok(Math.abs(p.parryTimer - (0.20 + 0.20)) < 1e-6, `Ventana de parry esperada 0.40s sin reflejo, fue ${p.parryTimer}`);
+  p.skills.reflejo = true;
+  p.barrierCooldown = 0;
+  p.tryBarrier();
+  assert.ok(Math.abs(p.parryTimer - (0.35 + 0.20)) < 1e-6, `Ventana de parry esperada 0.55s con reflejo, fue ${p.parryTimer}`);
+
+  // 6. Carpeta de Plástico: -0.5 daño recibido y al hacer parry ralentiza 2s al atacante
+  assert.deepEqual(p.equipExpansionItem('carpeta'), EXPANSION_EQUIPMENT.carpeta);
+  assert.equal(p.equippedShield, 'carpeta');
+  p.parryTimer = 0;
+  p.barrierActive = false;
+  p.barrierTimer = 0;
+  p.invulnTimer = 0;
+  p.hp = 5;
+  const attacker = new Enemy({ id: 'slow_test_enemy', x: 116, y: 100, speed: 60, hp: 10 });
+  p.takeHit(null, attacker, 1.5);
+  assert.ok(Math.abs(p.hp - 4.0) < 1e-6, `Carpeta debe mitigar 0.5 de daño (hp=4.0, obtenido=${p.hp})`);
+
+  // Con parry activo, Carpeta ralentiza al atacante durante 2s
+  p.invulnTimer = 0;
+  p.barrierActive = true;
+  p.barrierTimer = 0.4;
+  p.parryTimer = 0.25;
+  p.takeHit(null, attacker, 1);
+  assert.ok(Math.abs(attacker.slowTimer - 2.0) < 1e-6, 'Parry con Carpeta debe aplicar slowTimer=2.0s');
+  attacker.update(0.1, null, p);
+  assert.ok(attacker.slowTimer < 2.0 && attacker.slowTimer > 1.8);
+
+  // 7. Inventario: equipar desde UI, badge EQ y HUD junto a barra de vida
+  const inv = new Inventory();
+  inv.isOpen = true;
+  inv.addItem({ ...EXPANSION_EQUIPMENT.grapadora });
+  inv.addItem({ ...EXPANSION_EQUIPMENT.carpeta });
+  inv.selectedIndex = 0;
+  const mockGame = {
+    inventory: inv,
+    player: p,
+    music: { playMenuSelect: () => {} }
+  };
+  RPGGame.prototype._handleUseSelectedInventoryItem.call(mockGame);
+  assert.equal(p.equippedWeapon, 'grapadora', 'Usar en inventario debe equipar Grapadora');
+  inv.selectedIndex = 1;
+  RPGGame.prototype._handleUseSelectedInventoryItem.call(mockGame);
+  assert.equal(p.equippedShield, 'carpeta', 'Usar en inventario debe equipar Carpeta');
+
+  const invTexts = [];
+  const makeCtx = (textLog) => ({
+    save() {}, restore() {}, translate() {}, rotate() {}, scale() {}, setTransform() {},
+    fillRect() {}, strokeRect() {}, beginPath() {}, closePath() {},
+    moveTo() {}, lineTo() {}, quadraticCurveTo() {}, arc() {}, ellipse() {},
+    fill() {}, stroke() {}, roundRect() {}, drawImage() {},
+    createLinearGradient() { return { addColorStop() {} }; },
+    createRadialGradient() { return { addColorStop() {} }; },
+    fillText(t) { textLog.push(String(t)); },
+    measureText(t) { return { width: String(t).length * 2.5 }; }
+  });
+
+  inv.render(makeCtx(invTexts), p);
+  assert.ok(invTexts.includes('EQ'), 'Inventory.render debe mostrar badge EQ en equipo equipado');
+  assert.ok(
+    invTexts.some((t) => t.includes('Eq:') && t.includes('Grapadora') && t.includes('Carpeta')),
+    `Inventory.render debe resumir arma y escudo equipados, textos=${JSON.stringify(invTexts)}`
+  );
+
+  // Render de player con grapa sin errores
+  p.render(makeCtx([]), { getSprite() { return null; } });
+
+  // HUD junto a la barra de vida muestra el icono del arma equipada
+  const hudTexts = [];
+  const hudMockGame = {
+    tilemap: { currentSceneId: 'valleverde_corp' },
+    enemies: [],
+    player: p,
+    activeModeLabel: 'CORP',
+    worldTimer: 10,
+    isExpansionMode: true,
+    curriculum: 0,
+    curriculumFlashTimer: 0,
+    kernelHackActive: false,
+    kernelHudFlicker: false,
+    dayNight: { getFormattedTime: () => '12:00', timeOfDayHours: 12 },
+    touchControls: { isTouchEnabled: () => false },
+    input: { touchActive: false, hasActiveTouchSession: () => false },
+    activeQuestNotification: null,
+    isJailedForever: false,
+    jailRemainingSeconds: 0,
+    cloudSyncStatus: 'synced',
+    hasPendingCloudSync: false,
+    syncHotbarWithInventory: () => {},
+    _ensurePlayerHotbar: () => [null, null, null, null, null],
+    _renderHotbar: () => {}
+  };
+  RPGGame.prototype._renderHUD.call(hudMockGame, makeCtx(hudTexts));
+  assert.ok(hudTexts.includes('📎'), `HUD debe mostrar icono de arma equipada (📎), textos=${JSON.stringify(hudTexts)}`);
+});
+
+test('Catálogo Ampliado de Habilidades (Expansión v2.0 + Nivel II): compra, prerequisitos, 7 efectos y UI', () => {
+  // 1. EXPANSION_SKILLS completo (7 entradas)
+  const expectedKeys = ['ejecutivo', 'resiliencia', 'reciclaje', 'vigor_2', 'filo_2', 'reflejo_2', 'log_2'];
+  for (const k of expectedKeys) {
+    assert.ok(EXPANSION_SKILLS[k], `Debe existir EXPANSION_SKILLS.${k}`);
+  }
+  assert.equal(EXPANSION_SKILLS.ejecutivo.cost, 2);
+  assert.equal(EXPANSION_SKILLS.resiliencia.cost, 2);
+  assert.equal(EXPANSION_SKILLS.reciclaje.cost, 3);
+  assert.equal(EXPANSION_SKILLS.vigor_2.requires, 'vigor');
+
+  const p = new Player(100, 100);
+  p.hasSword = true;
+  p.hasBarrier = true;
+  p.skillPoints = 20;
+
+  // Prerequisito: sin Vigor base no se puede comprar vigor_2 y tampoco aparece en UI
+  assert.equal(p.purchaseSkill('vigor_2'), false, 'No debe permitir Vigor II sin Vigor base');
+  const cs = new CharacterStats(320, 180);
+  cs.open();
+  cs.switchTab('skills');
+  assert.equal(cs.getVisibleSkills(p).some((d) => d.key === 'vigor_2'), false, 'Vigor II oculto hasta tener Vigor');
+
+  // Comprar Vigor -> aparece Vigor II -> comprar Vigor II -> stamina 180
+  assert.equal(p.purchaseSkill('vigor'), true);
+  assert.equal(p.effectiveMaxStamina, 140);
+  assert.equal(cs.getVisibleSkills(p).some((d) => d.key === 'vigor_2'), true, 'Vigor II visible tras comprar Vigor');
+  assert.equal(p.purchaseSkill('vigor_2'), true);
+  assert.equal(p.effectiveMaxStamina, 180, 'Vigor II debe elevar stamina máxima a 180');
+  assert.equal(p.maxStamina, 180);
+
+  // 2. Ejecutivo: +15% de daño contra jefes (IñakitoBoss)
+  assert.equal(p.purchaseSkill('ejecutivo'), true);
+  const inakito = new IñakitoBoss(112, 100, 'valleverde_corp');
+  const prevHp = inakito.hp;
+  p.attackDamage = 2; // daño base espada 2.0
+  assert.ok(Math.abs(p.getSwordDamage(inakito) - 2.3) < 1e-6, `Daño esperado 2.3 con Ejecutivo, fue ${p.getSwordDamage(inakito)}`);
+  assert.equal(inakito.takeSwordHit(p, null), true);
+  assert.ok(Math.abs((prevHp - inakito.hp) - 2.3) < 1e-6, 'Ejecutivo debe infligir +15% daño real a Iñakito');
+
+  // 3. Resiliencia: -15% de daño recibido en mazmorras y en el Núcleo (no en overworld)
+  assert.equal(p.purchaseSkill('resiliencia'), true);
+  p.maxHp = 10; p.hp = 10; p.invulnTimer = 0; p.currentSceneId = 'ai_nucleus_core';
+  p.takeHit(null, { isBoss: false, sceneId: 'ai_nucleus_core' }, 2.0);
+  assert.ok(Math.abs((10 - p.hp) - 1.7) < 1e-6, `Resiliencia en Núcleo debe reducir daño 2.0 → 1.7, daño=${10 - p.hp}`);
+  p.hp = 10; p.invulnTimer = 0; p.currentSceneId = 'overworld';
+  p.takeHit(null, { isBoss: false, sceneId: 'overworld' }, 2.0);
+  assert.ok(Math.abs((10 - p.hp) - 2.0) < 1e-6, 'Resiliencia NO reduce daño en overworld');
+
+  // 4. Reciclaje: 10% probabilidad de soltar Currículum incluso fuera del Vertedero
+  assert.equal(p.purchaseSkill('reciclaje'), true);
+  p.awardKill(false, 10, () => 0.05); // < 0.10 -> drop!
+  assert.equal(p.lastKillCurriculumDrop, true, 'Reciclaje debe activar drop si rng < 0.10');
+  p.awardKill(false, 10, () => 0.25); // >= 0.10 -> sin drop
+  assert.equal(p.lastKillCurriculumDrop, false);
+
+  // 5. Filo II: finisher (3er golpe) hace 1 de daño en área (radio 24px)
+  assert.equal(p.purchaseSkill('filo'), true);
+  assert.equal(p.purchaseSkill('filo_2'), true);
+  p.stamina = 180;
+  p.attackTimer = 0; p.attackCooldown = 0; p.comboStep = 0;
+  p.tryAttack(); p.attackTimer = 0; p.attackCooldown = 0;
+  p.tryAttack(); p.attackTimer = 0; p.attackCooldown = 0;
+  p.tryAttack(); // 3er golpe -> finisher AoE
+  assert.equal(p.attackIsFinisher, true);
+  assert.ok(p.activeFinisherAoe && p.activeFinisherAoe.radius === 24);
+  const nearEnemy = new Enemy({ id: 'slime_near', x: p.x + 16, y: p.y, hp: 5 });
+  const farEnemy = new Enemy({ id: 'slime_far', x: p.x + 50, y: p.y, hp: 5 });
+  const aoeHits = p.applyFilo2AoE([nearEnemy, farEnemy]);
+  assert.equal(aoeHits, 1, 'Solo el enemigo dentro de 24px debe recibir daño AoE de Filo II');
+  assert.equal(nearEnemy.hp, 4);
+  assert.equal(farEnemy.hp, 5);
+
+  // 6. Reflejo II: parry devuelve el 50% del daño absorbido al enemigo
+  assert.equal(p.purchaseSkill('reflejo'), true);
+  assert.equal(p.purchaseSkill('reflejo_2'), true);
+  const parriedAttacker = new Enemy({ id: 'drone_reflect', x: 112, y: 100, hp: 10 });
+  p.invulnTimer = 0;
+  p.barrierActive = true;
+  p.barrierTimer = 0.5;
+  p.parryTimer = 0.2;
+  p.takeHit(null, parriedAttacker, 4.0);
+  assert.ok(Math.abs((10 - parriedAttacker.hp) - 2.0) < 1e-6, `Reflejo II debe devolver 50% (2.0), hp=${parriedAttacker.hp}`);
+
+  // 7. Log II: al impactar un tronco crea explosión radio 20px con daño en área
+  assert.equal(p.purchaseSkill('log'), true);
+  assert.equal(p.purchaseSkill('log_2'), true);
+  p.thrownLogs.push({ x: 200, y: 200, vx: 0, vy: 0, life: 1.0 });
+  const directTarget = new Enemy({ id: 'log_target', x: 192, y: 192, hp: 6 });
+  const splashTarget = new Enemy({ id: 'log_splash', x: 204, y: 192, hp: 6 });
+  directTarget.update(0.016, null, p);
+  assert.equal(p.logExplosions.length, 1, 'Impacto del log con Log II debe generar explosión');
+  assert.equal(p.logExplosions[0].radius, 20);
+  const splashHits = p.applyLogExplosionDamage([directTarget, splashTarget]);
+  assert.equal(splashHits, 1, 'La explosión de Log II debe dañar al enemigo cercano en radio 20px');
+  assert.equal(splashTarget.hp, 5);
+
+  // 8. CharacterStats UI: renderiza 7 habilidades nuevas, costes y botón gris sin puntos
+  p.skillPoints = 0;
+  const renderedTexts = [];
+  const fills = [];
+  let lastFill = '';
+  const statsCtx = {
+    save() {}, restore() {}, translate() {}, rotate() {}, scale() {},
+    beginPath() {}, closePath() {}, arc() {}, stroke() {}, fill() {}, strokeRect() {},
+    moveTo() {}, lineTo() {},
+    set fillStyle(v) { lastFill = String(v); },
+    get fillStyle() { return lastFill; },
+    fillRect() { fills.push(lastFill); },
+    createLinearGradient() { return { addColorStop() {} }; },
+    createRadialGradient() { return { addColorStop() {} }; },
+    fillText(t) { renderedTexts.push(String(t)); },
+    measureText(t) { return { width: String(t).length * 2.5 }; }
+  };
+  assert.equal(cs.getVisibleSkills(p).length, 11, 'Con todas las base compradas deben verse las 11 habilidades');
+  cs.skillCursor = 4; // Página 2 (habilidades de expansión)
+  const pNoPts = new Player(100, 100);
+  pNoPts.skills.vigor = true;
+  pNoPts.skillPoints = 0;
+  cs.render(statsCtx, pNoPts, null);
+  assert.ok(renderedTexts.some((t) => t.includes('Ejecutivo')), 'Debe mostrar Ejecutivo en pestaña Habilidades');
+  assert.ok(fills.includes('#334155'), 'Sin puntos suficientes debe pintar el botón en gris (#334155)');
+  assert.ok(renderedTexts.some((t) => t.includes('GRIS')), 'Sin puntos suficientes el botón debe indicar estado gris');
+  p.render(statsCtx, { renderX: 0, renderY: 0 });
+});
+
+test('Aislamiento base/expansión: escenas, AudioManager y ExpansionManager.init bajo demanda', async () => {
+  const prevStorage = globalThis.localStorage;
+  const prevAudio = globalThis.Audio;
+  const storeMap = new Map([['el_ojete_dorado_victory_trophy', 'true']]);
+  globalThis.localStorage = {
+    getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+    setItem: (k, v) => storeMap.set(k, String(v)),
+    removeItem: (k) => storeMap.delete(k)
+  };
+  const preloadedSrcs = [];
+  globalThis.Audio = class FakeAudio {
+    constructor() {
+      this._src = '';
+      this.loop = false;
+      this.preload = 'none';
+      this.volume = 0;
+    }
+    set src(val) {
+      this._src = val;
+      preloadedSrcs.push(val);
+    }
+    get src() { return this._src; }
+    addEventListener() {}
+    load() {}
+    play() { return Promise.resolve(); }
+    pause() {}
+  };
+
+  try {
+    // 1. Tilemap base NO construye escenas de la expansión ni pisos del Vertedero
+    const tm = new Tilemap(null, 16);
+    assert.equal(tm.expansionLoaded, false);
+    for (const id of ['valleverde_corp', 'inakito_office', 'vertedero_digital', 'kernel_arena', 'rosa_bar', 'ai_nucleus_core', 'vertedero_piso_1']) {
+      assert.equal(tm.scenes[id], undefined, `La escena de expansión ${id} no debe existir en base`);
+    }
+
+    // 2. AudioManager.preloadMusic() SOLO carga las pistas base (01..10), incluso con trofeo desbloqueado
+    for (const key of Object.keys(EXPANSION_BGM)) delete BGM_TRACKS[key];
+    const audio = new AudioManager();
+    audio.preloadMusic();
+    assert.equal(audio.expansionAudioLoaded, false);
+    for (const key of Object.keys(EXPANSION_BGM)) {
+      assert.equal(BGM_TRACKS[key], undefined, `BGM_TRACKS no debe tener ${key} tras preloadMusic()`);
+      assert.equal(audio._bgmAudio.has(key), false, `AudioManager no debe precargar ${key} en base`);
+    }
+    assert.equal(preloadedSrcs.some((s) => s.includes('11_valleverde')), false, 'No se debe precargar MP3 de expansión en base');
+
+    // 3. Arranque mediante ExpansionManager.init(game) desde MainMenuAndScenes
+    const player = new Player({ x: 32, y: 32 });
+    const inv = new Inventory();
+    const mgr = new ExpansionManager();
+    const fakeGame = {
+      tilemap: tm,
+      music: audio,
+      player,
+      inventory: inv,
+      assets: {},
+      camera: { setWorldBounds: () => {}, resetCinematic: () => {}, snapTo: () => {} },
+      dialogueBox: { close: () => {}, npcRegistry: [] },
+      characterStats: { close: () => {} },
+      questLogView: { close: () => {} },
+      questLog: { reset: () => {} },
+      dayNight: new DayNightCycle(),
+      npcs: [],
+      animals: [],
+      enemies: [],
+      worldItems: [],
+      droppedCoins: [],
+      rosaShop: null,
+      expansionEquipment: null,
+      expansionManager: mgr,
+      isExpansionMode: false,
+      gameState: 'base',
+      menuSystem: { state: 'title', fadeAlpha: 0, showNotice: () => {} },
+      _initExpansionState: () => RPGGame.prototype._initExpansionState.call(fakeGame),
+      _restoreExpansionSaveData: (d) => RPGGame.prototype._restoreExpansionSaveData.call(fakeGame, d),
+      _applySavedRosaUpgrades: (u) => RPGGame.prototype._applySavedRosaUpgrades.call(fakeGame, u),
+      _readExpansionStorage: () => RPGGame.prototype._readExpansionStorage.call(fakeGame),
+      _saveExpansionProgress: () => RPGGame.prototype._saveExpansionProgress.call(fakeGame),
+      _syncFrancoNPCState: () => RPGGame.prototype._syncFrancoNPCState.call(fakeGame),
+      _restoreAllNPCsToOverworld: () => {},
+      _createFirstStageEnemies: () => [],
+      _createWorldItems: () => [],
+      startExpansion: () => RPGGame.prototype.startExpansion.call(fakeGame),
+      _resetWorldToInitialState: () => RPGGame.prototype._resetWorldToInitialState.call(fakeGame)
+    };
+    mgr.game = fakeGame;
+
+    let menuTriggered = false;
+    const menu = new MainMenuAndScenes(320, 180, {}, {
+      playMenuSelect() {},
+      playCaughtSkipSound() {},
+      stopTitleMusic() {},
+      setMode() {}
+    }, {
+      game: fakeGame,
+      onStartExpansion: () => {
+        menuTriggered = true;
+      }
+    });
+    const expItem = menu._getCurrentMenuItems()[2];
+    assert.equal(expItem.locked, false);
+    expItem.action();
+    assert.equal(menuTriggered, true, 'El menú debe invocar el arranque de expansión cuando está desbloqueada');
+
+    await mgr.init(fakeGame);
+    assert.equal(mgr.initialized, true);
+    assert.equal(fakeGame.gameState, 'expansion');
+    assert.equal(fakeGame.isExpansionMode, true);
+    assert.equal(tm.expansionLoaded, true);
+    assert.ok(tm.scenes.valleverde_corp && tm.scenes.kernel_arena && tm.scenes.ai_nucleus_core && tm.scenes.vertedero_piso_5);
+    assert.equal(audio.expansionAudioLoaded, true);
+    for (const key of Object.keys(EXPANSION_BGM)) {
+      assert.ok(audio._bgmAudio.has(key), `AudioManager debe cargar ${key} tras ExpansionManager.init()`);
+    }
+    assert.ok(fakeGame.rosaShop, 'Debe instanciarse RosaShop al entrar a la expansión');
+    assert.ok(fakeGame.npcs.some((n) => n.name === 'Tony Randazzo'), 'Debe instanciar a TonyRandazzo');
+    assert.ok(fakeGame.npcs.some((n) => n.expansionId === 'franco_pancho'), 'Debe instanciar a FrancoPancho');
+    assert.ok(fakeGame.enemies.some((e) => e.id === 'boss_inakito'), 'Debe instanciar a IñakitoBoss');
+    assert.ok(fakeGame.enemies.some((e) => e.id === 'boss_kernel'), 'Debe instanciar a KernelBoss');
+    assert.ok(fakeGame.enemies.some((e) => e.id === 'boss_alex_update'), 'Debe instanciar a AlexUpdateBoss');
+    assert.ok(fakeGame.enemies.some((e) => e.id === 'boss_technical_debt'), 'Debe instanciar a TechnicalDebtBoss');
+    assert.ok(fakeGame.enemies.some((e) => e.id === 'vertedero_f5_3'), 'Debe instanciar enemigos del Vertedero');
+
+    // Idempotencia si se vuelve a invocar init()
+    const npcCountAfterFirst = fakeGame.npcs.length;
+    const enemyCountAfterFirst = fakeGame.enemies.length;
+    await mgr.init(fakeGame);
+    assert.equal(fakeGame.npcs.length, npcCountAfterFirst, 'Re-iniciar ExpansionManager no debe duplicar NPCs');
+    assert.equal(fakeGame.enemies.length, enemyCountAfterFirst, 'Re-iniciar ExpansionManager no debe duplicar jefes/enemigos');
+  } finally {
+    globalThis.localStorage = prevStorage;
+    globalThis.Audio = prevAudio;
+    for (const key of Object.keys(EXPANSION_BGM)) delete BGM_TRACKS[key];
+  }
 });
 
 await Promise.all(asyncQueue);

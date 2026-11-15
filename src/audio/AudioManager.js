@@ -27,13 +27,13 @@
 const AUDIO_STORAGE_KEY = 'ojete_audio_settings';
 
 /** (BLOQUE 1) BGM pregrabada. Los SFX siguen siendo Web Audio API. */
-import { EXPANSION_BGM, hasExpansionUnlocked } from '../expansion/ExpansionData.js?v=8';
+import { EXPANSION_BGM } from '../expansion/ExpansionData.js?v=8';
 
 export const BGM_MAX_VOLUME = 0.35;
 const BGM_DUCK_VOLUME = 0.1;
 const BGM_DUCK_RESTORE_MS = 400;
 
-export const BGM_TRACKS = {
+const BASE_BGM_TRACKS = {
   title: 'assets/music/01_main_theme.mp3',
   village: 'assets/music/02_valleverde_hub.mp3',
   stage1: 'assets/music/03_dungeons_ambient.mp3',
@@ -46,8 +46,10 @@ export const BGM_TRACKS = {
   victory: 'assets/music/10_credits_victory.mp3'
 };
 
+export const BGM_TRACKS = { ...BASE_BGM_TRACKS };
+
 // (REFACTOR 4) La BGM de la expansión vive en ExpansionData y solo se registra
-// si el jugador desbloqueó el trofeo o entra a la expansión.
+// y precarga cuando ExpansionManager.init() llama a loadExpansionMusic().
 export function registerExpansionMusic() {
   Object.assign(BGM_TRACKS, EXPANSION_BGM);
 }
@@ -114,6 +116,7 @@ export class AudioManager {
 
     // (BLOQUE 1/3/4) BGM pregrabada y crossfade independiente del sintetizador.
     this._bgmAudio = new Map();
+    this.expansionAudioLoaded = false;
     // (FIX 2) Diccionario reutilizable de pistas; nunca se recrea por cambio de zona.
     this.musicTracks = this._bgmAudio;
     this.currentMusic = null;
@@ -605,10 +608,9 @@ export class AudioManager {
   // BGM pregrabada (HTMLAudioElement) · crossfade y control de volumen
   // ===========================================================================
 
-  preloadMusic() {
+  _preloadTrackEntries(entries) {
     if (typeof Audio === 'undefined') return;
-    if (hasExpansionUnlocked()) registerExpansionMusic();
-    for (const [key, src] of Object.entries(BGM_TRACKS)) {
+    for (const [key, src] of entries) {
       if (this._bgmAudio.has(key)) continue;
       try {
         const audio = new Audio();
@@ -627,6 +629,18 @@ export class AudioManager {
         console.warn(`[AudioManager] Error creando la BGM ${src}:`, err?.message || err);
       }
     }
+  }
+
+  /** Precarga estrictamente las pistas base (01..10) definidas en BASE_BGM_TRACKS. */
+  preloadMusic() {
+    this._preloadTrackEntries(Object.entries(BASE_BGM_TRACKS));
+  }
+
+  /** Registra y precarga las pistas de la expansión (11..15) solo al iniciar ExpansionManager. */
+  loadExpansionMusic() {
+    registerExpansionMusic();
+    this.expansionAudioLoaded = true;
+    this._preloadTrackEntries(Object.entries(EXPANSION_BGM));
   }
 
   _resolveBgmKey(mode) {
@@ -987,9 +1001,6 @@ export class AudioManager {
     // (REFACTOR 3) Con MP3, cancelar el secuenciador chiptune.
     const bgmKey = this._resolveBgmKey(mode);
     if (bgmKey) {
-      if (EXPANSION_BGM[mode]) {
-        try { registerExpansionMusic(); } catch { /* opcional */ }
-      }
       if (this.timerId) {
         clearInterval(this.timerId);
         this.timerId = null;
@@ -1861,6 +1872,36 @@ export class AudioManager {
       startTime: now,
       duration: 0.09,
       peakGain: 0.07
+    });
+  }
+
+  /**
+   * Balido/chillido distorsionado cuando el jugador ataca a un animal del pueblo.
+   */
+  playAnimalHurtSound(species) {
+    this._ensureAudioGraph();
+    if (!this.ctx || this.isMasterMuted() || this.isSfxMuted()) {
+      this.playSFX('hit_flesh');
+      return;
+    }
+    const now = this.ctx.currentTime;
+    const baseFreq = species === 'chicken' ? 780 : (species === 'dog' ? 390 : 320);
+    // "Beee" / alarido en dos tonos descendentes distorsionados
+    this._playSfxTone({
+      freq: baseFreq,
+      endFreq: baseFreq * 0.52,
+      type: 'sawtooth',
+      startTime: now,
+      duration: 0.24,
+      peakGain: 0.14
+    });
+    this._playSfxTone({
+      freq: baseFreq * 1.18,
+      endFreq: baseFreq * 0.45,
+      type: 'square',
+      startTime: now + 0.04,
+      duration: 0.20,
+      peakGain: 0.09
     });
   }
 

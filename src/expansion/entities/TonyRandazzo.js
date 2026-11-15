@@ -29,6 +29,7 @@ export class TonyRandazzo extends NPC {
     this.spriteColor = data.spriteColor;
     this.talkSfx = data.talkSfx || null;
     this.isAngry = false;
+    this.forgiven = false;
     this.interactCount = 0;
     this.normalDialogues = [...(dialogues || data.normalDialogues)];
     this.angryDialogues = [...data.angryDialogues];
@@ -57,7 +58,27 @@ export class TonyRandazzo extends NPC {
     if (this.isAngry) {
       return {
         lines: [...this.angryDialogues],
-        choices: []
+        choices: [
+          {
+            label: 'Perdóname, hermano (Hacer las paces)',
+            onSelect: () => {
+              this.forgiven = true;
+              this.interactCount = 0;
+              this.setAngry(false);
+              if (dialogueBox && typeof dialogueBox.showMessage === 'function') {
+                dialogueBox.showMessage(this.baseName, [
+                  'Bueno, venga... pasa ná, quillo. Todo perdonao.'
+                ]);
+              }
+            }
+          },
+          {
+            label: 'Mejor me voy',
+            onSelect: () => {
+              if (dialogueBox && typeof dialogueBox.close === 'function') dialogueBox.close();
+            }
+          }
+        ]
       };
     }
 
@@ -67,12 +88,14 @@ export class TonyRandazzo extends NPC {
         {
           label: 'Tranquilo, quillo, solo pasaba',
           onSelect: () => {
+            this.forgiven = true;
             if (dialogueBox && typeof dialogueBox.close === 'function') dialogueBox.close();
           }
         },
         {
           label: 'Me caes mal',
           onSelect: () => {
+            this.forgiven = false;
             this.setAngry(true);
             if (dialogueBox && typeof dialogueBox.showMessage === 'function') {
               dialogueBox.showMessage(this.name, [...this.angryDialogues]);
@@ -90,6 +113,7 @@ export class TonyRandazzo extends NPC {
     this.jobAnimTimer += dt;
     this.promptBobTimer += dt * 4.5;
     this.smokeTimer += dt;
+    this.tickReactionTimers(dt);
 
     if (player && !this.isTalking) {
       const dist = Math.hypot(player.centerX - this.centerX, player.centerY - this.centerY);
@@ -161,5 +185,6 @@ export class TonyRandazzo extends NPC {
       ctx.fillRect(cigX + 3, cigY - 4 + bob, 2, 1);
     }
     ctx.restore();
+    this.renderAmbientBubble(ctx, camera);
   }
 }

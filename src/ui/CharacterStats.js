@@ -7,6 +7,7 @@
  */
 
 import { SKILL_DEFS } from '../core/SkillCatalog.js?v=8';
+import { EXPANSION_SKILLS } from '../expansion/ExpansionData.js?v=8';
 import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
 
 export class CharacterStats {
@@ -16,13 +17,25 @@ export class CharacterStats {
     this.isOpen = false;
     this.activeTab = 'stats'; // 'stats' | 'achievements' | 'skills'
     this.skillCursor = 0;
+    this.skillsPerPage = 4;
     this.skillMessage = '';
 
     // (FIX M3.4) Tabs y filas con zonas de toque más grandes
     this.isTouchDevice = false;
     this._skillRowRects = [];
+    this._skillPageButtons = [];
     this._tabRects = [];
     this._popStart = null;
+  }
+
+  /**
+   * Devuelve las habilidades visibles para el jugador: base + expansión,
+   * ocultando las mejoras Nivel II mientras no se posea la habilidad base.
+   */
+  getVisibleSkills(player = null) {
+    const owned = player?.skills || {};
+    const all = [...SKILL_DEFS, ...Object.values(EXPANSION_SKILLS)];
+    return all.filter((def) => !def.requires || Boolean(owned[def.requires]));
   }
 
   setTouchMode(isTouch) {
@@ -84,16 +97,20 @@ export class CharacterStats {
     this._hoverPointer = { x: input.pointerX, y: input.pointerY };
 
     if (this.activeTab === 'skills') {
+      const visibleSkills = this.getVisibleSkills(player);
+      const count = Math.max(1, visibleSkills.length);
+      if (this.skillCursor >= count) this.skillCursor = 0;
+
       if (input.consumeKey('KeyW') || input.consumeKey('ArrowUp')) {
-        this.skillCursor = (this.skillCursor + SKILL_DEFS.length - 1) % SKILL_DEFS.length;
+        this.skillCursor = (this.skillCursor + count - 1) % count;
         return true;
       }
       if (input.consumeKey('KeyS') || input.consumeKey('ArrowDown')) {
-        this.skillCursor = (this.skillCursor + 1) % SKILL_DEFS.length;
+        this.skillCursor = (this.skillCursor + 1) % count;
         return true;
       }
       if (input.consumeKey('Enter') || input.consumeKey('KeyE') || input.consumeKey('Space')) {
-        const def = SKILL_DEFS[this.skillCursor];
+        const def = visibleSkills[this.skillCursor];
         if (player && def) {
           if (player.skills[def.key]) {
             this.skillMessage = 'Ya dominas esta habilidad.';
@@ -151,12 +168,24 @@ export class CharacterStats {
         }
       }
 
-      // (FIX M3.4) Tocar una fila de habilidad: 1º selecciona, 2º compra
+      // (FIX M3.4) Botones de página y tarjetas de habilidad: 1º selecciona, 2º compra
       if (this.activeTab === 'skills') {
+        const visibleSkills = this.getVisibleSkills(player);
+        for (const btn of this._skillPageButtons) {
+          if (px >= btn.x && px <= btn.x + btn.w && py >= btn.y && py <= btn.y + btn.h) {
+            const totalPages = Math.max(1, Math.ceil(visibleSkills.length / this.skillsPerPage));
+            const curPage = Math.floor(Math.min(this.skillCursor, Math.max(0, visibleSkills.length - 1)) / this.skillsPerPage);
+            const nextPage = btn.id === 'prev'
+              ? (curPage + totalPages - 1) % totalPages
+              : (curPage + 1) % totalPages;
+            this.skillCursor = nextPage * this.skillsPerPage;
+            return true;
+          }
+        }
         for (const row of this._skillRowRects) {
           if (px >= row.x && px <= row.x + row.w && py >= row.y && py <= row.y + row.h) {
             if (this.skillCursor === row.index) {
-              const def = SKILL_DEFS[row.index];
+              const def = visibleSkills[row.index];
               if (def && player) {
                 if (player.skills[def.key]) {
                   this.skillMessage = 'Ya dominas esta habilidad.';
@@ -330,8 +359,8 @@ export class CharacterStats {
     ctx.fillStyle = UI_COLORS.gold;
     ctx.fillText(
       player && player.isMaxLevel
-        ? '★ Nivel: 10/10 · MÁXIMO'
-        : `★ Nivel: ${playerLvl}/10 (${playerXp}/${nextXp} XP)`,
+        ? '★ Nivel: 15/15 · MÁXIMO'
+        : `★ Nivel: ${playerLvl}/15 (${playerXp}/${nextXp} XP)`,
       leftRect.x + 41,
       leftRect.y + 40
     );
@@ -412,14 +441,14 @@ export class CharacterStats {
 
     const baseXp = player && typeof player.getCurrentLevelBaseXp === 'function' ? player.getCurrentLevelBaseXp() : 0;
     const xpRange = Math.max(1, nextXp - baseXp);
-    const xpProgress = playerLvl >= 10 ? xpRange : Math.max(0, Math.min(xpRange, playerXp - baseXp));
+    const xpProgress = player && player.isMaxLevel ? xpRange : Math.max(0, Math.min(xpRange, playerXp - baseXp));
     const xpPct = player && typeof player.getXpProgressPercent === 'function' ? player.getXpProgressPercent() : 0;
     if (player && player.isMaxLevel) {
-      // (FIX 2) Sin barra de XP en nivel 10: solo el rótulo dorado
+      // Sin barra de XP al alcanzar el nivel máximo (Nv. 15): solo el rótulo dorado
       ctx.font = `bold 5.5px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.gold;
       ctx.textAlign = 'center';
-      ctx.fillText('★ NIVEL MÁXIMO · Nv. 10 ★', barX + barW / 2, by + 3);
+      ctx.fillText('★ NIVEL MÁXIMO · Nv. 15 ★', barX + barW / 2, by + 3);
       ctx.textAlign = 'left';
     } else {
       UILayout.drawBar(ctx, {
@@ -502,34 +531,82 @@ export class CharacterStats {
   }
 
   /**
-   * Árbol de habilidades adquiribles con puntos de combate
+   * Árbol de habilidades adquiribles con puntos de combate (base + expansión paginado)
    */
   _renderSkillsTab(ctx, rect, player) {
+    const visibleSkills = this.getVisibleSkills(player);
+    const totalSkills = visibleSkills.length;
+    if (this.skillCursor >= totalSkills) {
+      this.skillCursor = Math.max(0, totalSkills - 1);
+    }
+    const perPage = this.skillsPerPage || 4;
+    const totalPages = Math.max(1, Math.ceil(totalSkills / perPage));
+    const currentPage = Math.floor(this.skillCursor / perPage);
+    const pageStart = currentPage * perPage;
+    const pageItems = visibleSkills.slice(pageStart, pageStart + perPage);
+    const skillPoints = player ? (player.skillPoints || 0) : 0;
+
     UILayout.drawPanel(ctx, rect, {
       bg: UI_COLORS.panelBg,
       border: UI_COLORS.borderInner,
-      headerText: `HABILIDADES · PUNTOS: ${player ? (player.skillPoints || 0) : 0}`
+      headerText: `HABILIDADES (${currentPage + 1}/${totalPages}) · PTS: ${skillPoints}`
     });
 
-    const pad = 6;
-    const gap = 4;
-    const cardW = Math.floor((rect.w - pad * 2 - gap) / 2);
-    const cardH = 30;
-    const startX = rect.x + pad;
-    const startY = rect.y + 15;
-    this._skillRowRects = [];
-    const icons = { vigor: '❤', filo: '⚔', reflejo: '✦', log: '📜' };
+    this._skillPageButtons = [];
+    if (totalPages > 1) {
+      const bw = 11;
+      const bh = 9;
+      const by = rect.y + 2;
+      const prevBtn = { id: 'prev', x: rect.x + rect.w - 27, y: by, w: bw, h: bh };
+      const nextBtn = { id: 'next', x: rect.x + rect.w - 14, y: by, w: bw, h: bh };
+      for (const b of [prevBtn, nextBtn]) {
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.95)';
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.strokeStyle = UI_COLORS.goldDim;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+        ctx.font = `bold 5px ${UI_FONT}`;
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.textAlign = 'center';
+        ctx.fillText(b.id === 'prev' ? '◀' : '▶', b.x + b.w / 2, b.y + 1.5);
+        this._skillPageButtons.push(b);
+      }
+      ctx.textAlign = 'left';
+    }
 
-    SKILL_DEFS.forEach((def, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
+    const pad = 6;
+    const gap = 3;
+    const cardW = Math.floor((rect.w - pad * 2 - gap) / 2);
+    const cardH = 29;
+    const startX = rect.x + pad;
+    const startY = rect.y + 14;
+    this._skillRowRects = [];
+    const icons = {
+      vigor: '❤',
+      filo: '⚔',
+      reflejo: '✦',
+      log: '📜',
+      ejecutivo: '💼',
+      resiliencia: '🧱',
+      reciclaje: '♻',
+      vigor_2: '❤',
+      filo_2: '⚔',
+      reflejo_2: '✦',
+      log_2: '📜'
+    };
+
+    pageItems.forEach((def, localIdx) => {
+      const i = pageStart + localIdx;
+      const col = localIdx % 2;
+      const row = Math.floor(localIdx / 2);
       const x = startX + col * (cardW + gap);
       const y = startY + row * (cardH + gap);
       const owned = Boolean(player && player.skills && player.skills[def.key]);
+      const affordable = !owned && skillPoints >= def.cost;
       const selected = i === this.skillCursor;
       const hp = this._hoverPointer;
       const hovered = !selected && hp && hp.x >= x && hp.x <= x + cardW && hp.y >= y && hp.y <= y + cardH;
-      this._skillRowRects.push({ x, y, w: cardW, h: cardH, index: i });
+      this._skillRowRects.push({ x, y, w: cardW, h: cardH, index: i, key: def.key });
 
       // Tarjeta: brillante si está desbloqueada, oscura si está bloqueada.
       const g = ctx.createLinearGradient(x, y, x + cardW, y + cardH);
@@ -552,58 +629,87 @@ export class CharacterStats {
 
       // Icono circular.
       const ix = x + 10;
-      const iy = y + 11;
+      const iy = y + 10.5;
       ctx.fillStyle = owned ? 'rgba(74, 222, 128, 0.18)' : 'rgba(100, 116, 139, 0.14)';
       ctx.beginPath();
-      ctx.arc(ix, iy, 6.5, 0, Math.PI * 2);
+      ctx.arc(ix, iy, 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = owned ? UI_COLORS.emerald : UI_COLORS.slotBorder;
       ctx.lineWidth = 1;
       ctx.stroke();
-      ctx.font = '6px monospace';
+      ctx.font = '5.5px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = owned ? UI_COLORS.gold : UI_COLORS.textDim;
-      ctx.fillText(icons[def.key] || '◆', ix, iy + 0.5);
+      ctx.fillText(def.icon || icons[def.key] || '◆', ix, iy + 0.5);
 
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
-      ctx.font = 'bold 4.7px monospace';
-      ctx.fillStyle = owned ? UI_COLORS.textPrimary : UI_COLORS.textMuted;
-      ctx.fillText(def.name, x + 19, y + 4);
+      ctx.font = 'bold 4.4px monospace';
+      ctx.fillStyle = owned ? UI_COLORS.textPrimary : (affordable ? UI_COLORS.gold : UI_COLORS.textMuted);
+      ctx.fillText(UILayout.fitText(ctx, def.name, cardW - 22), x + 19, y + 3.5);
 
-      ctx.font = '3.9px monospace';
-      ctx.fillStyle = owned ? UI_COLORS.emerald : UI_COLORS.textDim;
+      // Botón / insignia de compra: gris si no hay puntos suficientes
+      const btnW = 34;
+      const btnH = 7.5;
+      const btnX = x + cardW - btnW - 3;
+      const btnY = y + 10.5;
       if (owned) {
-        ctx.fillText('✓ ACTIVA', x + 19, y + 11);
+        ctx.fillStyle = 'rgba(21, 128, 61, 0.55)';
+        ctx.fillRect(btnX, btnY, btnW, btnH);
+        ctx.strokeStyle = UI_COLORS.emerald;
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(btnX, btnY, btnW, btnH);
+        ctx.font = 'bold 3.6px monospace';
+        ctx.fillStyle = UI_COLORS.emerald;
+        ctx.textAlign = 'center';
+        ctx.fillText('✓ ACTIVA', btnX + btnW / 2, btnY + 1.8);
       } else {
-        ctx.fillText(`🔒 Coste: ${def.cost} Puntos`, x + 19, y + 11);
+        ctx.fillStyle = affordable ? 'rgba(202, 138, 4, 0.28)' : '#334155';
+        ctx.fillRect(btnX, btnY, btnW, btnH);
+        ctx.strokeStyle = affordable ? UI_COLORS.gold : '#64748b';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(btnX, btnY, btnW, btnH);
+        ctx.font = 'bold 3.6px monospace';
+        ctx.fillStyle = affordable ? UI_COLORS.gold : '#94a3b8';
+        ctx.textAlign = 'center';
+        ctx.fillText(affordable ? `COMPRAR` : `GRIS (${def.cost}pt)`, btnX + btnW / 2, btnY + 1.8);
       }
+      ctx.textAlign = 'left';
+
+      ctx.font = '3.8px monospace';
+      ctx.fillStyle = owned ? UI_COLORS.emerald : (affordable ? UI_COLORS.textSecondary : '#64748b');
+      ctx.fillText(`Coste: ${def.cost}pt`, x + 19, y + 11.5);
+
       ctx.fillStyle = UI_COLORS.textMuted;
-      ctx.fillText(UILayout.fitText(ctx, def.desc, cardW - 24), x + 4, y + 20);
+      ctx.fillText(UILayout.fitText(ctx, def.desc, cardW - 8), x + 4, y + 20.5);
     });
 
     // Detalle completo de la habilidad seleccionada.
-    const def = SKILL_DEFS[this.skillCursor] || SKILL_DEFS[0];
+    const def = visibleSkills[this.skillCursor] || visibleSkills[0];
     if (def) {
       const owned = Boolean(player && player.skills && player.skills[def.key]);
-      const detailY = Math.min(startY + 2 * (cardH + gap) + 1, rect.y + rect.h - 32);
+      const affordable = !owned && skillPoints >= def.cost;
+      const detailY = Math.min(startY + 2 * (cardH + gap) + 1, rect.y + rect.h - 33);
       const detailH = Math.max(24, rect.y + rect.h - detailY - 2);
       const g = ctx.createLinearGradient(rect.x + pad, detailY, rect.x + pad, detailY + detailH);
       g.addColorStop(0, 'rgba(20, 30, 48, 0.95)');
       g.addColorStop(1, 'rgba(9, 15, 26, 0.95)');
       ctx.fillStyle = g;
       ctx.fillRect(rect.x + pad, detailY, rect.w - pad * 2, detailH);
-      ctx.strokeStyle = owned ? 'rgba(74, 222, 128, 0.45)' : 'rgba(229, 192, 123, 0.4)';
+      ctx.strokeStyle = owned ? 'rgba(74, 222, 128, 0.45)' : (affordable ? 'rgba(229, 192, 123, 0.55)' : '#475569');
       ctx.strokeRect(rect.x + pad + 0.5, detailY + 0.5, rect.w - pad * 2 - 1, detailH - 1);
 
       ctx.font = 'bold 4.3px monospace';
-      ctx.fillStyle = owned ? UI_COLORS.emerald : UI_COLORS.gold;
-      ctx.fillText(`${def.name} · ${owned ? 'DESBLOQUEADA' : `BLOQUEADA (${def.cost} pt)`}`, rect.x + pad + 4, detailY + 3);
+      ctx.fillStyle = owned ? UI_COLORS.emerald : (affordable ? UI_COLORS.gold : '#94a3b8');
+      const statusLabel = owned
+        ? 'DESBLOQUEADA'
+        : (affordable ? `DISPONIBLE (${def.cost} pt)` : `SIN PUNTOS (${def.cost} pt)`);
+      ctx.fillText(`${def.name} · ${statusLabel}`, rect.x + pad + 4, detailY + 3);
       ctx.font = '4px monospace';
       ctx.fillStyle = UI_COLORS.textSecondary;
       const lines = UILayout.wrapText(ctx, def.desc, rect.w - pad * 2 - 8);
-      lines.slice(0, 3).forEach((line, idx) => {
+      lines.slice(0, 2).forEach((line, idx) => {
         ctx.fillText(line, rect.x + pad + 4, detailY + 10 + idx * 6);
       });
       if (this.skillMessage) {

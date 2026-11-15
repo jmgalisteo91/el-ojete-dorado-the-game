@@ -801,5 +801,62 @@ export class UILayout {
     ctx.fillRect(x, thumbY, 2, thumbH);
     ctx.restore();
   }
+
+  /**
+   * Indica si el contador de Currículums debe mostrarse en el HUD actual.
+   * Solo visible dentro del Vertedero Digital o en la tienda de Rosa.
+   */
+  static shouldShowCurriculumHud(sceneId, isRosaShopOpen = false) {
+    if (isRosaShopOpen) return true;
+    if (typeof sceneId !== 'string' || !sceneId) return false;
+    return (
+      sceneId.startsWith('vertedero_') ||
+      sceneId === 'tienda_rosa' ||
+      sceneId === 'rosa_shop' ||
+      sceneId === 'rosa_bar'
+    );
+  }
+
+  /**
+   * Dibuja el HUD de Currículums (`📄 <cantidad>`) en la esquina superior derecha.
+   * Parpadea en verde cuando `flashTimer > 0`.
+   */
+  static drawCurriculumHud(
+    ctx,
+    {
+      curriculum = 0,
+      sceneId = '',
+      isRosaShopOpen = false,
+      flashTimer = 0,
+      isTouch = false
+    } = {}
+  ) {
+    if (!UILayout.shouldShowCurriculumHud(sceneId, isRosaShopOpen)) {
+      return false;
+    }
+
+    const amount = Math.max(0, Math.floor(Number(curriculum) || 0));
+    const blinkGreen = flashTimer > 0 && Math.floor(flashTimer * 14) % 2 === 0;
+    const boxW = isTouch ? 56 : 48;
+    const boxH = 12;
+    const boxX = LOGICAL_WIDTH - boxW - 6;
+    const boxY = 25;
+
+    ctx.save();
+    UILayout.drawShadow(ctx, boxX, boxY, boxW, boxH, 0.32);
+    ctx.fillStyle = blinkGreen ? 'rgba(20, 83, 45, 0.92)' : 'rgba(24, 12, 38, 0.88)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = blinkGreen ? '#4ade80' : 'rgba(192, 132, 252, 0.85)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
+
+    ctx.font = `${isTouch ? 7.5 : 6.5}px ${UI_FONT}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = blinkGreen ? '#86efac' : '#e9d5ff';
+    ctx.fillText(`📄 ${amount}`, boxX + boxW / 2, boxY + 6.5);
+    ctx.restore();
+    return true;
+  }
 }
 

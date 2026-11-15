@@ -82,6 +82,13 @@ export const ACHIEVEMENTS = [
     description: 'Derrota a Mister AI Alex en la Ciudadela y consagra El Ojete Dorado.',
     icon: '👑',
     category: 'LEGEND'
+  },
+  {
+    id: 'ach_completionist',
+    title: 'Completionista',
+    description: 'Derrota a La Deuda Técnica tras los créditos con 20+ Currículums y descubre la verdad del código.',
+    icon: '🏆',
+    category: 'SECRET'
   }
 ];
 

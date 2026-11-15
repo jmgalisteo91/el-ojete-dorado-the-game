@@ -2,6 +2,7 @@ import { Entity } from './Entity.js?v=8';
 import { CollisionSystem } from '../physics/CollisionSystem.js?v=8';
 import { SKILL_DEFS } from '../core/SkillCatalog.js?v=8';
 import { GameLoop } from '../core/GameLoop.js?v=8';
+import { EXPANSION_EQUIPMENT, EXPANSION_SKILLS, getExpansionEquipment } from '../expansion/ExpansionData.js?v=8';
 
 const STAMINA_COSTS = { attack: 4, dash: 18, charged: 30, log: 15 };
 
@@ -18,7 +19,12 @@ const STAMINA_COSTS = { attack: 4, dash: 18, charged: 30, log: 15 };
  * Nivel 9: 1300 XP
  * Nivel 10: 1700 XP (Nivel Máximo · Habilita el asalto al Mainframe de la Ciudadela Cuántica)
  */
-export const LEVEL_XP_THRESHOLDS = [0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700];
+export const MAX_PLAYER_LEVEL = 15;
+
+export const LEVEL_XP_THRESHOLDS = [
+  0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700, // Base (1-10)
+  2200, 2800, 3500, 4300, 5200                     // Expansión (11-15)
+];
 
 export const XP_REWARDS = { enemy: 25, boss: 300 };
 
@@ -60,6 +66,9 @@ export class Player extends Entity {
     // Sistema de Forja y Progresión de Equipo (v3.6+)
     // Espada: 1=Base madera/hierro, 2=Silicio (+50% daño y quiebra barreras de cristal), 3=Overclockeada (+100% daño y tajos de energía a salud máx)
     this.swordLevel = 1;
+    // Equipamiento corporativo (Expansión v2.0): modificadores sobre ataque, parry y mitigación
+    this.equippedWeapon = 'default';
+    this.equippedShield = null;
     // Armadura: 1=Binaria base (3 corazones blindados), 2=Blindaje Térmico (inmunidad al calor ambiental de la Forja)
     this.armorLevel = 1;
     // Núcleos de Mazmorra para la Puerta Cuántica de AI Alex
@@ -100,6 +109,17 @@ export class Player extends Entity {
     this.maxStamina = 100;
     this.stamina = 100;
     this.staminaRegenDelay = 0;
+    this.levelStaminaBonus = 0;
+
+    // Mejoras permanentes de la Tienda de Rosa (Expansión v2.0)
+    this.rosaDamageBonus = 0;
+    this.rosaStaminaBonus = 0;
+    this.extraDashCharges = 0;
+    this.dashChargesRemaining = 1;
+    this.dashRechargeTimer = 0;
+    this.burnoutTimer = 0;
+    this.hotbar = [null, null, null, null, null];
+    this.hotbarFlashTimers = [0, 0, 0, 0, 0];
 
     // Combo de espada (3 golpes), ataque tras dash y parry
     this.comboStep = 0;
@@ -112,24 +132,40 @@ export class Player extends Entity {
     this.parryFlashTimer = 0;
     this.lastParryCount = 0;
 
-    // Progresión y Niveles de Programador (Nivel 1 a 10)
+    // Progresión y Niveles de Programador (Nivel 1 a 15)
     this.level = 1;
     this.xp = 0;
     this.skillPoints = 0;
     this.killCount = 0;
-    this.skills = { vigor: false, filo: false, reflejo: false, log: false };
+    this.skills = {
+      vigor: false,
+      filo: false,
+      reflejo: false,
+      log: false,
+      ejecutivo: false,
+      resiliencia: false,
+      reciclaje: false,
+      vigor_2: false,
+      filo_2: false,
+      reflejo_2: false,
+      log_2: false
+    };
     this.thrownLogs = [];
+    this.logExplosions = [];
+    this.activeFinisherAoe = null;
     this.logCooldown = 0;
+    this.currentSceneId = 'overworld';
+    this.lastKillCurriculumDrop = false;
   }
 
-  /** (FIX 2) Nivel 10 es el máximo: no hay más XP que ganar. */
+  /** Nivel 15 es el máximo: no hay más XP que ganar. */
   get isMaxLevel() {
-    return this.level >= 10;
+    return this.level >= MAX_PLAYER_LEVEL;
   }
 
   /** Devuelve el umbral de XP necesario para ascender al siguiente nivel. */
   getNextLevelXp() {
-    if (this.level >= 10) return LEVEL_XP_THRESHOLDS[9];
+    if (this.level >= MAX_PLAYER_LEVEL) return LEVEL_XP_THRESHOLDS[MAX_PLAYER_LEVEL - 1];
     return LEVEL_XP_THRESHOLDS[this.level];
   }
 
@@ -140,7 +176,7 @@ export class Player extends Entity {
 
   /** Devuelve el porcentaje de avance (0 a 100) en el nivel actual. */
   getXpProgressPercent() {
-    if (this.level >= 10) return 100;
+    if (this.level >= MAX_PLAYER_LEVEL) return 100;
     const base = this.getCurrentLevelBaseXp();
     const target = this.getNextLevelXp();
     const range = Math.max(1, target - base);
@@ -148,30 +184,54 @@ export class Player extends Entity {
     return Math.round((progress / range) * 100);
   }
 
-  /** Concede experiencia y gestiona la subida de nivel del programador. */
+  /** Concede experiencia y gestiona la subida de nivel y recompensas del programador (hasta Nv. 15). */
   gainXp(amount) {
-    if (this.level >= 10) {
-      this.level = 10;
-      this.xp = Math.max(this.xp, LEVEL_XP_THRESHOLDS[9] || 1700);
-      return { leveledUp: false, oldLevel: 10, newLevel: 10 };
+    const maxXp = LEVEL_XP_THRESHOLDS[MAX_PLAYER_LEVEL - 1] || 5200;
+    if (this.level >= MAX_PLAYER_LEVEL) {
+      this.level = MAX_PLAYER_LEVEL;
+      this.xp = Math.max(this.xp, maxXp);
+      return { leveledUp: false, oldLevel: MAX_PLAYER_LEVEL, newLevel: MAX_PLAYER_LEVEL, rewards: [] };
     }
     const oldLevel = this.level;
     this.xp = Math.max(0, (this.xp || 0) + Math.max(0, amount));
     let leveledUp = false;
-    while (this.level < 10 && this.xp >= LEVEL_XP_THRESHOLDS[this.level]) {
+    const rewards = [];
+
+    while (this.level < MAX_PLAYER_LEVEL && this.xp >= LEVEL_XP_THRESHOLDS[this.level]) {
       this.level += 1;
+      leveledUp = true;
+
+      if (this.level === 11) {
+        this.skillPoints += 1;
+        rewards.push('¡+1 Punto de Habilidad!');
+      } else if (this.level === 12) {
+        this.maxHp += 1;
+        rewards.push('¡Corazón Máximo aumentado!');
+      } else if (this.level === 14) {
+        this.levelStaminaBonus = (this.levelStaminaBonus || 0) + 20;
+        this.maxStamina = this.effectiveMaxStamina;
+        rewards.push('¡Stamina Máxima aumentada!');
+      } else if (this.level === 15) {
+        this.maxHp += 1;
+        rewards.push('¡Has alcanzado el rango de Leyenda de Valleverde!');
+      }
+
       // Un jugador ya abatido en este mismo tick no debe resucitar por la subida de nivel
       if (this.hp > 0) {
-        this.hp = this.effectiveMaxHp;
-        this.stamina = this.effectiveMaxStamina;
+        this.hp = this.level === 12 || this.level === 15 ? this.maxHp : this.effectiveMaxHp;
+        this.stamina = this.level === 14 ? this.maxStamina : this.effectiveMaxStamina;
       }
-      leveledUp = true;
     }
-    return { leveledUp, oldLevel, newLevel: this.level };
+    return { leveledUp, oldLevel, newLevel: this.level, rewards };
+  }
+
+  get maxDashCharges() {
+    return 1 + (this.extraDashCharges || 0);
   }
 
   get effectiveMaxStamina() {
-    return this.skills.vigor ? 140 : 100;
+    const base = this.skills.vigor_2 ? 180 : (this.skills.vigor ? 140 : 100);
+    return base + (this.rosaStaminaBonus || 0) + (this.levelStaminaBonus || 0);
   }
 
   spendStamina(amount) {
@@ -181,11 +241,17 @@ export class Player extends Entity {
     return true;
   }
 
-  getSwordDamage() {
-    let dmg = !this.hasSword ? 1 : this.attackDamage;
+  getSwordDamage(target = null) {
+    const corpWeapon =
+      this.equippedWeapon && this.equippedWeapon !== 'default'
+        ? EXPANSION_EQUIPMENT[this.equippedWeapon]
+        : null;
+    let dmg = corpWeapon && corpWeapon.slot === 'weapon'
+      ? corpWeapon.baseDamage
+      : (!this.hasSword ? 1 : this.attackDamage);
 
-    // Progresión por Forja: Nivel 2 (+50%), Nivel 3 (+100%)
-    if (this.hasSword) {
+    // Progresión por Forja: Nivel 2 (+50%), Nivel 3 (+100%) sobre arma estándar
+    if (!corpWeapon && this.hasSword) {
       if (this.swordLevel === 2) {
         dmg *= 1.5;
       } else if (this.swordLevel >= 3) {
@@ -193,15 +259,54 @@ export class Player extends Entity {
       }
     }
 
+    if (this.rosaDamageBonus > 0) {
+      dmg *= 1 + this.rosaDamageBonus;
+    }
+
+    // Ejecutivo: +15% de daño contra jefes
+    if (this.skills?.ejecutivo && target && target.isBoss) {
+      dmg *= 1.15;
+    }
+
     // Si la robotización supera el 50%, la rigidez biomecánica penaliza un 30% el daño
     if (this.robotizationLevel > 50) {
       dmg *= 0.7;
     }
-    return Math.round(dmg * 10) / 10;
+    return Math.round(dmg * 100) / 100;
+  }
+
+  getEquippedWeaponInfo() {
+    if (!this.equippedWeapon || this.equippedWeapon === 'default') return null;
+    return getExpansionEquipment(this.equippedWeapon);
+  }
+
+  getEquippedShieldInfo() {
+    if (!this.equippedShield) return null;
+    return getExpansionEquipment(this.equippedShield);
+  }
+
+  /**
+   * Equipa un arma o escudo corporativo de `EXPANSION_EQUIPMENT` (por id o itemId).
+   */
+  equipExpansionItem(idOrItemId) {
+    const eq = getExpansionEquipment(idOrItemId);
+    if (!eq) return null;
+    if (eq.slot === 'weapon') {
+      this.equippedWeapon = eq.id;
+      this.attackDamage = eq.baseDamage;
+      this.hasSword = true;
+      return eq;
+    }
+    if (eq.slot === 'shield') {
+      this.equippedShield = eq.id;
+      this.hasBarrier = true;
+      return eq;
+    }
+    return null;
   }
 
   /** Concede puntos de habilidad y XP por derrotar enemigos. Devuelve los puntos ganados. */
-  awardKill(isBoss = false, xpOverride = null) {
+  awardKill(isBoss = false, xpOverride = null, rng = Math.random) {
     this.killCount += 1;
     let gained = 0;
     if (isBoss) {
@@ -210,17 +315,24 @@ export class Player extends Entity {
       gained = 1;
     }
     this.skillPoints += gained;
+    // Reciclaje: 10% de probabilidad de generar un Currículum extra al derrotar enemigos
+    this.lastKillCurriculumDrop = Boolean(this.skills?.reciclaje && rng() < 0.10);
     const xpAmount = Number.isFinite(xpOverride) ? xpOverride : (isBoss ? XP_REWARDS.boss : XP_REWARDS.enemy);
-    this.gainXp(xpAmount);
+    const xpRes = this.gainXp(xpAmount);
+    this.lastLevelRewards = xpRes.rewards || [];
     return gained;
   }
 
   purchaseSkill(key) {
-    const def = SKILL_DEFS.find((d) => d.key === key);
+    const def = SKILL_DEFS.find((d) => d.key === key) || EXPANSION_SKILLS[key];
     if (!def || this.skills[key] || this.skillPoints < def.cost) return false;
+    if (def.requires && !this.skills[def.requires]) return false;
     this.skillPoints -= def.cost;
     this.skills[key] = true;
-    if (key === 'vigor') this.stamina = this.effectiveMaxStamina;
+    if (key === 'vigor' || key === 'vigor_2') {
+      this.maxStamina = this.effectiveMaxStamina;
+      this.stamina = this.effectiveMaxStamina;
+    }
     return true;
   }
 
@@ -298,6 +410,8 @@ export class Player extends Entity {
     this.armorPoints = 0;
     this.hasSword = false;
     this.swordLevel = 1;
+    this.equippedWeapon = 'default';
+    this.equippedShield = null;
     this.armorLevel = 1;
     this.dungeonCores = { gc: false, stack: false, microwave: false };
     this.gatesUnlocked = 0;
@@ -313,6 +427,7 @@ export class Player extends Entity {
     this.barrierActive = false;
     this.barrierTimer = 0;
     this.barrierCooldown = 0;
+    this.maxHp = 3;
     this.hp = this.maxHp;
     this.coins = 25;
     this.robotizationLevel = 0;
@@ -320,6 +435,8 @@ export class Player extends Entity {
     this.invulnTimer = 0;
     this.attackTimer = 0;
     this.attackCooldown = 0;
+    this.levelStaminaBonus = 0;
+    this.maxStamina = this.effectiveMaxStamina;
     this.stamina = this.maxStamina;
     this.comboStep = 0;
     this.comboTimer = 0;
@@ -329,8 +446,23 @@ export class Player extends Entity {
     this.killCount = 0;
     this.level = 1;
     this.xp = 0;
-    this.skills = { vigor: false, filo: false, reflejo: false, log: false };
+    this.skills = {
+      vigor: false,
+      filo: false,
+      reflejo: false,
+      log: false,
+      ejecutivo: false,
+      resiliencia: false,
+      reciclaje: false,
+      vigor_2: false,
+      filo_2: false,
+      reflejo_2: false,
+      log_2: false
+    };
     this.thrownLogs = [];
+    this.logExplosions = [];
+    this.activeFinisherAoe = null;
+    this.lastKillCurriculumDrop = false;
     this.animator = this.unarmoredAnimator;
   }
 
@@ -363,7 +495,12 @@ export class Player extends Entity {
     if (this.attackCooldown > 0) return false;
     if (!this.spendStamina(STAMINA_COSTS.attack)) return false;
 
-    if (!this.hasSword) {
+    const corpWeapon =
+      this.equippedWeapon && this.equippedWeapon !== 'default'
+        ? EXPANSION_EQUIPMENT[this.equippedWeapon]
+        : null;
+
+    if (!this.hasSword && !corpWeapon) {
       // Golpe o puñetazo desarmado básico para entrenamiento inicial
       this.attackIsDashStrike = false;
       this.attackIsFinisher = false;
@@ -385,7 +522,36 @@ export class Player extends Entity {
       return true;
     }
 
-    if (this.dashStrikeTimer > 0) {
+    if (corpWeapon && corpWeapon.slot === 'weapon') {
+      // Modificadores de arma corporativa (Expansión v2.0)
+      this.hasSword = true;
+      this.attackIsDashStrike = this.dashStrikeTimer > 0;
+      if (this.dashStrikeTimer > 0) this.dashStrikeTimer = 0;
+      const step = this.comboTimer > 0 && this.comboStep < 3 ? this.comboStep + 1 : 1;
+      this.comboStep = step;
+      this.attackIsFinisher = step === 3;
+      this.attackDamage = corpWeapon.baseDamage;
+      this.attackDuration = corpWeapon.attackDuration || 0.22;
+      this.attackCooldown = corpWeapon.cooldown;
+      this.comboTimer = step === 3 ? 0 : 1.0;
+      if (step === 3) this.comboStep = 0;
+
+      // Grapadora Industrial: cada 3er golpe dispara una grapa como proyectil en energySlashes
+      if (corpWeapon.effect === 'staple_every_3' && step === 3) {
+        const vec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.direction] || [1, 0];
+        this.energySlashes.push({
+          kind: 'staple',
+          x: this.centerX,
+          y: this.centerY,
+          vx: vec[0] * 240,
+          vy: vec[1] * 240,
+          direction: this.direction,
+          damage: this.getSwordDamage(),
+          life: 0.65,
+          active: true
+        });
+      }
+    } else if (this.dashStrikeTimer > 0) {
       // Tajo tras dash: golpe de embestida de daño 2
       this.attackIsDashStrike = true;
       this.attackIsFinisher = false;
@@ -408,9 +574,22 @@ export class Player extends Entity {
     }
     this.attackTimer = this.attackDuration;
 
+    // Filo II: El ataque final del combo (finisher) genera pulso AoE de radio 24px (daño 1)
+    if (this.attackIsFinisher && this.skills?.filo_2) {
+      this.activeFinisherAoe = {
+        x: this.centerX,
+        y: this.centerY,
+        radius: 24,
+        damage: 1,
+        timer: 0.22,
+        maxTimer: 0.22,
+        hitSet: new Set()
+      };
+    }
+
     // Espada Overclockeada (Nivel 3): Si la salud está al máximo, emite un tajo de energía a distancia.
     // (FIX ESTRICTO) Doble guarda: sin espada este bloque NUNCA puede ejecutarse.
-    if (this.hasSword && this.swordLevel >= 3 && this.hp >= this.effectiveMaxHp) {
+    if (!corpWeapon && this.hasSword && this.swordLevel >= 3 && this.hp >= this.effectiveMaxHp) {
       const vec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.direction] || [1, 0];
       this.energySlashes.push({
         x: this.centerX,
@@ -431,7 +610,13 @@ export class Player extends Entity {
   }
 
   tryDash(input = null, soundEngine = null) {
-    if (!this.hasDash || this.dashCooldown > 0) return false;
+    if (!this.hasDash || this.dashTimer > 0) return false;
+    const totalCharges = this.maxDashCharges;
+    if (totalCharges <= 1) {
+      if (this.dashCooldown > 0) return false;
+    } else {
+      if (this.dashChargesRemaining <= 0) return false;
+    }
     if (!this.spendStamina(STAMINA_COSTS.dash)) return false;
     this.dashStrikeTimer = 0.55;
 
@@ -444,7 +629,13 @@ export class Player extends Entity {
     }
 
     this.dashTimer = 0.18;
-    this.dashCooldown = 0.85;
+    if (totalCharges <= 1) {
+      this.dashCooldown = 0.85;
+    } else {
+      this.dashChargesRemaining = Math.max(0, this.dashChargesRemaining - 1);
+      this.dashRechargeTimer = 0.85;
+      this.dashCooldown = this.dashChargesRemaining <= 0 ? 0.85 : 0;
+    }
     this.dashSafeX = this.x;
     this.dashSafeY = this.y;
     this.dashOverrun = 0;
@@ -476,8 +667,10 @@ export class Player extends Entity {
     this.barrierActive = true;
     this.barrierTimer = 3.0;
     this.barrierCooldown = 8.0;
-    // (FIX 3.7) Ventana de parry legible contra un windup de 0.30s
-    this.parryTimer = this.skills.reflejo ? 0.35 : 0.20;
+    // (FIX 3.7) Ventana de parry legible contra un windup de 0.30s (+0.2s con Escudo del Becario)
+    const baseParryWindow = this.skills.reflejo ? 0.35 : 0.20;
+    const shieldBonus = this.equippedShield === 'escudo_becario' ? 0.20 : 0;
+    this.parryTimer = baseParryWindow + shieldBonus;
     if (soundEngine && typeof soundEngine.playBarrier === 'function') {
       soundEngine.playBarrier();
     }
@@ -517,6 +710,48 @@ export class Player extends Entity {
     return { x: hx, y: hy, width: size, height: size };
   }
 
+  _isDungeonOrNucleusScene(sid = '') {
+    if (!sid || typeof sid !== 'string') return false;
+    return (
+      sid.startsWith('sewers') ||
+      sid.startsWith('mines') ||
+      sid.startsWith('forge') ||
+      sid.startsWith('vertedero_') ||
+      sid === 'sword_temple' ||
+      sid === 'armor_temple' ||
+      sid === 'ai_citadel' ||
+      sid === 'ai_fortress_gate' ||
+      sid === 'kernel_arena' ||
+      sid === 'ai_nucleus_core' ||
+      sid.includes('dungeon') ||
+      sid.includes('nucleus')
+    );
+  }
+
+  _computeIncomingBaseDamage(attacker = null, customDamage = null) {
+    if (customDamage !== null && customDamage !== undefined) {
+      return customDamage;
+    }
+    const sid = attacker?.sceneId || this.currentSceneId || '';
+    let dmg;
+    if (sid === 'overworld' || sid === 'first_stage') dmg = 1.0;
+    else if (sid === 'north_peaks' || sid === 'south_swamp' || sid === 'west_wastes') dmg = 1.5;
+    else if (sid === 'ai_citadel') dmg = (this.armorLevel >= 2) ? 2.0 : 2.5;
+    else if (
+      sid.startsWith('sewers') ||
+      sid.startsWith('mines') ||
+      sid.startsWith('forge') ||
+      sid === 'sword_temple' ||
+      sid === 'ai_fortress_gate'
+    ) {
+      dmg = (this.armorLevel >= 2) ? 1.5 : 2.0;
+    } else {
+      dmg = 1.0;
+    }
+    if (attacker?.isBoss) dmg = Math.max(dmg, 1.0);
+    return dmg;
+  }
+
   /**
    * Recibe un impacto de combate.
    * (FIX 3.6) El daño escala por zona en múltiplos de 0.5 corazones.
@@ -538,8 +773,20 @@ export class Player extends Entity {
         this.lastParryCount += 1;
         this.barrierCooldown = Math.min(this.barrierCooldown, 2.5);
         this.stamina = Math.min(this.effectiveMaxStamina, this.stamina + 40);
+        // Reflejo II: el parry devuelve un 50% del daño absorbido al enemigo (antes de aturdirlo)
+        if (this.skills?.reflejo_2 && attacker && typeof attacker.takeSwordHit === 'function') {
+          const absorbed = this._computeIncomingBaseDamage(attacker, customDamage);
+          const reflectedDamage = Math.round(absorbed * 0.5 * 100) / 100;
+          if (reflectedDamage > 0) {
+            attacker.takeSwordHit(this, soundEngine, reflectedDamage);
+          }
+        }
         if (attacker && typeof attacker.stun === 'function') {
           attacker.stun(1.4);
+        }
+        // Carpeta de Plástico: al hacer parry ralentiza al enemigo durante 2s
+        if (this.equippedShield === 'carpeta' && attacker && typeof attacker.applySlow === 'function') {
+          attacker.applySlow(2.0, 0.45);
         }
         if (soundEngine && typeof soundEngine.playChargedAttack === 'function') {
           soundEngine.playChargedAttack();
@@ -555,29 +802,18 @@ export class Player extends Entity {
     }
 
     // (FIX 3.6 / C.2) Daño por zona, en múltiplos de 0.5 corazones
-    let dmg;
-    if (customDamage !== null && customDamage !== undefined) {
-      dmg = customDamage;
-    } else {
-      const sid = attacker?.sceneId || '';
-      if (sid === 'overworld' || sid === 'first_stage') dmg = 1.0;
-      else if (sid === 'north_peaks' || sid === 'south_swamp' || sid === 'west_wastes') dmg = 1.5;
-      else if (sid === 'ai_citadel') dmg = (this.armorLevel >= 2) ? 2.0 : 2.5;
-      else if (
-        sid.startsWith('sewers') ||
-        sid.startsWith('mines') ||
-        sid.startsWith('forge') ||
-        sid === 'sword_temple' ||
-        sid === 'ai_fortress_gate'
-      ) {
-        dmg = (this.armorLevel >= 2) ? 1.5 : 2.0;
-      } else {
-        dmg = 1.0;
-      }
-      if (attacker?.isBoss) dmg = Math.max(dmg, 1.0);
+    let dmg = this._computeIncomingBaseDamage(attacker, customDamage);
+
+    // Resiliencia: reduce el daño recibido en mazmorras y en el Núcleo en un 15%
+    const sceneForHit = attacker?.sceneId || this.currentSceneId || '';
+    if (this.skills?.resiliencia && this._isDungeonOrNucleusScene(sceneForHit)) {
+      dmg = Math.round(dmg * 0.85 * 100) / 100;
     }
 
-    // (FIX C.1) La coraza absorbe hasta 1.0 de daño por punto; el sobrante pasa a HP.
+    // (FIX C.1) La coraza absorbe hasta 1.0 de daño por punto; Carpeta de Plástico mitiga 0.5 corazones pasivamente.
+    if (this.equippedShield === 'carpeta') {
+      dmg = Math.max(0, dmg - 0.5);
+    }
     // armorPoints sigue siendo entero: se decrementa 1 por golpe absorbido.
     if (this.hasArmor && this.armorPoints > 0) {
       const absorbed = Math.min(1.0, dmg);
@@ -627,6 +863,16 @@ export class Player extends Entity {
     if (this.invulnTimer > 0) {
       this.invulnTimer = Math.max(0, this.invulnTimer - dt);
     }
+    if (this.burnoutTimer > 0) {
+      this.burnoutTimer = Math.max(0, this.burnoutTimer - dt);
+    }
+    if (Array.isArray(this.hotbarFlashTimers)) {
+      for (let i = 0; i < this.hotbarFlashTimers.length; i++) {
+        if (this.hotbarFlashTimers[i] > 0) {
+          this.hotbarFlashTimers[i] = Math.max(0, this.hotbarFlashTimers[i] - dt);
+        }
+      }
+    }
     if (this.attackTimer > 0) {
       this.attackTimer = Math.max(0, this.attackTimer - dt);
     }
@@ -635,6 +881,16 @@ export class Player extends Entity {
     }
     if (this.dashCooldown > 0) {
       this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    }
+    if (this.maxDashCharges > 1 && this.dashChargesRemaining < this.maxDashCharges) {
+      if (this.dashRechargeTimer > 0) {
+        this.dashRechargeTimer = Math.max(0, this.dashRechargeTimer - dt);
+      }
+      if (this.dashRechargeTimer === 0) {
+        this.dashChargesRemaining = this.maxDashCharges;
+      }
+    } else if (this.maxDashCharges <= 1) {
+      this.dashChargesRemaining = this.dashCooldown > 0 ? 0 : 1;
     }
     if (this.barrierCooldown > 0) {
       this.barrierCooldown = Math.max(0, this.barrierCooldown - dt);
@@ -662,7 +918,14 @@ export class Player extends Entity {
     if (this.parryFlashTimer > 0) this.parryFlashTimer = Math.max(0, this.parryFlashTimer - dt);
     if (this.logCooldown > 0) this.logCooldown = Math.max(0, this.logCooldown - dt);
     this._updateThrownLogs(dt, tilemap);
+    this._updateLogExplosions(dt);
     this._updateEnergySlashes(dt, tilemap);
+    if (this.activeFinisherAoe) {
+      this.activeFinisherAoe.timer -= dt;
+      if (this.activeFinisherAoe.timer <= 0) {
+        this.activeFinisherAoe = null;
+      }
+    }
 
     // Actualización de la Barrera de Tipado Estricto
     if (this.barrierTimer > 0) {
@@ -784,6 +1047,9 @@ export class Player extends Entity {
       if (this.robotizationLevel > 85) {
         effectiveSpeed *= 0.88;
       }
+      if (this.burnoutTimer > 0) {
+        effectiveSpeed *= 0.52;
+      }
 
       const dx = move.x * effectiveSpeed * dt;
       const dy = move.y * effectiveSpeed * dt;
@@ -813,6 +1079,70 @@ export class Player extends Entity {
     }
   }
 
+  triggerLogExplosion(x, y, radius = 20, damage = 1, sourceEnemy = null) {
+    if (!this.skills?.log_2) return null;
+    const hitSet = new Set();
+    if (sourceEnemy) hitSet.add(sourceEnemy);
+    const exp = {
+      kind: 'log_explosion',
+      x,
+      y,
+      radius,
+      damage,
+      life: 0.28,
+      maxLife: 0.28,
+      hitSet
+    };
+    this.logExplosions.push(exp);
+    return exp;
+  }
+
+  _updateLogExplosions(dt) {
+    if (!Array.isArray(this.logExplosions)) return;
+    for (let i = this.logExplosions.length - 1; i >= 0; i--) {
+      this.logExplosions[i].life -= dt;
+      if (this.logExplosions[i].life <= 0) {
+        this.logExplosions.splice(i, 1);
+      }
+    }
+  }
+
+  applyFilo2AoE(enemies, soundEngine = null) {
+    if (!this.activeFinisherAoe || !Array.isArray(enemies)) return 0;
+    const pulse = this.activeFinisherAoe;
+    let hits = 0;
+    for (const enemy of enemies) {
+      if (!enemy || enemy.dead || pulse.hitSet.has(enemy)) continue;
+      const dist = Math.hypot((enemy.centerX ?? enemy.x) - pulse.x, (enemy.centerY ?? enemy.y) - pulse.y);
+      if (dist <= pulse.radius) {
+        pulse.hitSet.add(enemy);
+        if (typeof enemy.takeSwordHit === 'function' && enemy.takeSwordHit(this, soundEngine, pulse.damage)) {
+          hits += 1;
+        }
+      }
+    }
+    return hits;
+  }
+
+  applyLogExplosionDamage(enemies, soundEngine = null) {
+    if (!Array.isArray(this.logExplosions) || this.logExplosions.length === 0 || !Array.isArray(enemies)) return 0;
+    let hits = 0;
+    for (const exp of this.logExplosions) {
+      if (exp.life <= 0) continue;
+      for (const enemy of enemies) {
+        if (!enemy || enemy.dead || exp.hitSet.has(enemy)) continue;
+        const dist = Math.hypot((enemy.centerX ?? enemy.x) - exp.x, (enemy.centerY ?? enemy.y) - exp.y);
+        if (dist <= exp.radius) {
+          exp.hitSet.add(enemy);
+          if (typeof enemy.takeSwordHit === 'function' && enemy.takeSwordHit(this, soundEngine, exp.damage)) {
+            hits += 1;
+          }
+        }
+      }
+    }
+    return hits;
+  }
+
   _updateThrownLogs(dt, tilemap) {
     for (let i = this.thrownLogs.length - 1; i >= 0; i--) {
       const l = this.thrownLogs[i];
@@ -820,7 +1150,11 @@ export class Player extends Entity {
       l.y += l.vy * dt;
       l.life -= dt;
       const box = { x: l.x - 2, y: l.y - 2, width: 4, height: 4 };
-      if (l.life <= 0 || (tilemap && CollisionSystem.collidesWithMap(box, tilemap))) {
+      const hitWall = Boolean(tilemap && CollisionSystem.collidesWithMap(box, tilemap));
+      if (l.life <= 0 || hitWall) {
+        if (hitWall && this.skills?.log_2) {
+          this.triggerLogExplosion(l.x, l.y, 20, 1);
+        }
         this.thrownLogs.splice(i, 1);
       }
     }
@@ -900,13 +1234,69 @@ export class Player extends Entity {
       ctx.restore();
     }
 
-    // Tajos de energía proyectados por la Espada Overclockeada (Nivel 3)
-    // (FIX ESTRICTO) Solo se dibujan si el jugador tiene espada.
+    // 0b. Explosiones AoE de Log II y onda expansiva de Filo II
+    if (Array.isArray(this.logExplosions) && this.logExplosions.length > 0) {
+      ctx.save();
+      for (const exp of this.logExplosions) {
+        const pct = Math.max(0, Math.min(1, exp.life / exp.maxLife));
+        const ex = Math.round(exp.x - camera.renderX);
+        const ey = Math.round(exp.y - camera.renderY);
+        const curR = Math.max(4, exp.radius * (1 - pct * 0.45));
+        ctx.globalAlpha = pct * 0.65;
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.arc(ex, ey, curR * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(ex, ey, curR, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    if (this.activeFinisherAoe && this.activeFinisherAoe.timer > 0) {
+      ctx.save();
+      const pulse = this.activeFinisherAoe;
+      const pct = Math.max(0, Math.min(1, pulse.timer / pulse.maxTimer));
+      const fx = Math.round(pulse.x - camera.renderX);
+      const fy = Math.round(pulse.y - camera.renderY);
+      ctx.globalAlpha = pct * 0.7;
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(fx, fy, pulse.radius * (1 - pct * 0.3), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Tajos de energía y grapas proyectadas (Espada Overclockeada / Grapadora Industrial)
+    // (FIX ESTRICTO) Solo se dibujan si el jugador tiene arma/espada.
     if (this.hasSword && this.energySlashes && this.energySlashes.length > 0) {
       ctx.save();
       for (const s of this.energySlashes) {
         const sx = Math.round(s.x - camera.renderX);
         const sy = Math.round(s.y - camera.renderY);
+        if (s.kind === 'staple') {
+          // Grapa metálica en forma de U orientada según la dirección de disparo
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(sx - 4, sy - 4, 8, 8);
+          ctx.strokeStyle = '#e2e8f0';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          if (s.direction === 'right') {
+            ctx.moveTo(sx - 3, sy - 3); ctx.lineTo(sx + 2, sy - 3); ctx.lineTo(sx + 2, sy + 3); ctx.lineTo(sx - 3, sy + 3);
+          } else if (s.direction === 'left') {
+            ctx.moveTo(sx + 3, sy - 3); ctx.lineTo(sx - 2, sy - 3); ctx.lineTo(sx - 2, sy + 3); ctx.lineTo(sx + 3, sy + 3);
+          } else if (s.direction === 'down') {
+            ctx.moveTo(sx - 3, sy - 3); ctx.lineTo(sx - 3, sy + 2); ctx.lineTo(sx + 3, sy + 2); ctx.lineTo(sx + 3, sy - 3);
+          } else {
+            ctx.moveTo(sx - 3, sy + 3); ctx.lineTo(sx - 3, sy - 2); ctx.lineTo(sx + 3, sy - 2); ctx.lineTo(sx + 3, sy + 3);
+          }
+          ctx.stroke();
+          continue;
+        }
         ctx.fillStyle = '#fef08a';
         ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 1.5;
@@ -926,7 +1316,7 @@ export class Player extends Entity {
       ctx.restore();
     }
 
-    // Aura de Blindaje Térmico (Armadura Nivel 2)
+    // Aura de Blindaje Térmico (Armadura Nivel 2) y brillo de arma corporativa equipada
     if (this.hasArmor && this.armorLevel >= 2) {
       ctx.save();
       const px = Math.round(this.x - camera.renderX);
@@ -934,6 +1324,22 @@ export class Player extends Entity {
       ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
       ctx.lineWidth = 1;
       ctx.strokeRect(px + 1.5, py + 1.5, 13, 14);
+      ctx.restore();
+    }
+    const activeCorpWeapon =
+      this.equippedWeapon && this.equippedWeapon !== 'default'
+        ? EXPANSION_EQUIPMENT[this.equippedWeapon]
+        : null;
+    if (activeCorpWeapon) {
+      ctx.save();
+      const px = Math.round(this.x - camera.renderX);
+      const py = Math.round(this.y - camera.renderY);
+      ctx.strokeStyle = activeCorpWeapon.bladeColor || '#2563eb';
+      ctx.globalAlpha = 0.72;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(px + 8, py + 14, 7, 3, 0, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -1118,13 +1524,21 @@ export class Player extends Entity {
         const sweepEnd = sweepStart + progress * 1.9;
 
         ctx.save();
-        // Arco de energía según nivel de espada y robotización
+        // Arco de energía según arma corporativa equipada, nivel de espada o robotización
+        const corpWeapon =
+          this.equippedWeapon && this.equippedWeapon !== 'default'
+            ? EXPANSION_EQUIPMENT[this.equippedWeapon]
+            : null;
         const isMechanized = this.robotizationLevel > 50;
         let arcColor = 'rgba(251, 191, 36, 0.85)';
         let bladeColor = '#38bdf8';
         let edgeColor = '#ffffff';
 
-      if (isMechanized) {
+      if (corpWeapon && corpWeapon.slot === 'weapon') {
+        arcColor = corpWeapon.arcColor || arcColor;
+        bladeColor = corpWeapon.bladeColor || bladeColor;
+        edgeColor = corpWeapon.edgeColor || edgeColor;
+      } else if (isMechanized) {
         arcColor = 'rgba(148, 163, 184, 0.85)';
         bladeColor = '#64748b';
         edgeColor = '#cbd5e1';

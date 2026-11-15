@@ -93,6 +93,8 @@ export class Enemy extends Entity {
     this.stunTimer = 0;
     this.revealedTimer = 0;
     this.speedScale = 1;
+    this.slowTimer = 0;
+    this.slowFactor = 0.45;
     // (FIX 1.3) Un único pool de partículas: chispas de impacto + estallido de muerte
     this.particles = [];
     this.shots = [];
@@ -139,6 +141,12 @@ export class Enemy extends Entity {
     this.stunTimer = Math.max(this.stunTimer, seconds);
     this.windupTimer = 0; // (FIX 3.4) un aturdimiento interrumpe el ataque anunciado
     if (this.brain) this.brain.cancelAction();
+  }
+
+  /** Ralentiza temporalmente al enemigo (p. ej. parry con Carpeta de Plástico). */
+  applySlow(seconds = 2.0, factor = 0.45) {
+    this.slowTimer = Math.max(this.slowTimer || 0, seconds);
+    this.slowFactor = Math.max(0.1, Math.min(1, factor));
   }
 
   get aiState() {
@@ -282,6 +290,9 @@ export class Enemy extends Entity {
     if (this.stunTimer > 0) {
       this.stunTimer = Math.max(0, this.stunTimer - dt);
     }
+    if (this.slowTimer > 0) {
+      this.slowTimer = Math.max(0, this.slowTimer - dt);
+    }
     if (this.revealedTimer > 0) {
       this.revealedTimer = Math.max(0, this.revealedTimer - dt);
     }
@@ -314,6 +325,9 @@ export class Enemy extends Entity {
           if (log.life > 0 && Math.hypot(this.centerX - log.x, this.centerY - log.y) <= 9) {
             log.life = 0;
             this.takeLogHit(player, soundEngine);
+            if (player.skills?.log_2 && typeof player.triggerLogExplosion === 'function') {
+              player.triggerLogExplosion(log.x, log.y, 20, 1, this);
+            }
             if (this.dead) return { hitPlayer: false };
           }
         }
@@ -393,7 +407,8 @@ export class Enemy extends Entity {
       ? this.brain.update(dt, context)
       : this._patrolWithoutPlayer(dt);
 
-    const speed = this.speed * (intent.speedMul || 1) * this.speedScale;
+    const slowMul = this.slowTimer > 0 ? (this.slowFactor || 0.45) : 1;
+    const speed = this.speed * (intent.speedMul || 1) * this.speedScale * slowMul;
     if (intent.dirX !== 0 || intent.dirY !== 0) {
       if (this.brain.state !== AI_STATE.ALERT && !this.brain.isCharging) {
         if (Math.abs(intent.dirX) >= Math.abs(intent.dirY)) {
