@@ -9,6 +9,23 @@ const STAGE_TRANSITION_SCENE_IDS = new Set([
   'west_wastes'
 ]);
 
+const EXPANSION_ALLOWED_TARGET_SCENES = new Set([
+  'valleverde_corp',
+  'vertedero_digital',
+  'vertedero_piso_1',
+  'vertedero_piso_2',
+  'vertedero_piso_3',
+  'vertedero_piso_4',
+  'vertedero_piso_5',
+  'oficina_tony',
+  'inakito_office',
+  'rosa_bar',
+  'kernel_arena',
+  'ai_nucleus_core'
+]);
+
+const TEMPORAL_WALL_MESSAGE = 'Alex ha bloqueado la línea temporal.';
+
 /**
  * SceneTransitionController: aísla spawn, puertas, triggers de jefes y bordes.
  * El estado del mundo sigue viviendo en RPGGame; este controlador solo orquesta.
@@ -231,16 +248,55 @@ export class SceneTransitionController {
     }
   }
 
+  _blockBaseTransitionIfExpansionActive(door) {
+    const g = this.game;
+    if (!g || (!g.isExpansionActive && !g.isExpansionMode)) return false;
+    const targetScene = door?.targetScene;
+    if (!targetScene || EXPANSION_ALLOWED_TARGET_SCENES.has(targetScene)) {
+      return false;
+    }
+
+    g.transitionCooldown = 0.5;
+    if (g.player && typeof pushBackPlayer === 'function') {
+      pushBackPlayer(g.player, 8, g.tilemap);
+    }
+    if (g.music) {
+      if (typeof g.music.playCaughtSkipSound === 'function') {
+        g.music.playCaughtSkipSound();
+      } else if (typeof g.music.playDoorLockedSound === 'function') {
+        g.music.playDoorLockedSound();
+      }
+    }
+    g.menuSystem?.showNotice?.(TEMPORAL_WALL_MESSAGE, 3.0);
+    if (Array.isArray(g.floatingTexts) && g.player) {
+      g.floatingTexts.push({
+        text: TEMPORAL_WALL_MESSAGE,
+        x: g.player.x,
+        y: Math.max(8, g.player.y - 12),
+        life: 1.6,
+        color: '#ff9b71'
+      });
+    }
+    return true;
+  }
+
   executeStageTransition(door, options = {}) {
+    if (this._blockBaseTransitionIfExpansionActive(door)) {
+      return false;
+    }
     const g = this.game;
     if (typeof g._loadScene === 'function' && !options.immediate) {
       g._loadScene(door?.targetScene, () => this._performStageTransitionSwap(door), options);
-      return;
+      return true;
     }
     this._performStageTransitionSwap(door);
+    return true;
   }
 
   _performStageTransitionSwap(door) {
+    if (this._blockBaseTransitionIfExpansionActive(door)) {
+      return false;
+    }
     const g = this.game;
     g.transitionCooldown = 0.5;
     if (g.music) {

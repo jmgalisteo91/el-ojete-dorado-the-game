@@ -2472,4 +2472,184 @@ export async function run(test, assert) {
       else globalThis.localStorage = previousStorage;
     }
   });
+
+  test('Blindaje estanco de expansión: bloqueo de menú/entrada, muro interdimensional y slot de guardado aislado', async () => {
+    const previousStorage = globalThis.localStorage;
+    const storeMap = new Map();
+    globalThis.localStorage = {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k)
+    };
+
+    try {
+      const tm = new Tilemap(null, 16);
+      await tm.loadExpansionScenes();
+      const player = new Player({ x: 12 * 16, y: 15 * 16 });
+      const notices = [];
+      let baseNewGameCalls = 0;
+      let expansionStartCalls = 0;
+      const fakeMenu = {
+        state: 'title',
+        fadeAlpha: 0,
+        noticeText: '',
+        showNotice(txt) {
+          this.noticeText = txt;
+          notices.push(txt);
+        }
+      };
+
+      const fakeGame = {
+        tilemap: tm,
+        player,
+        enemies: [],
+        npcs: [],
+        floatingTexts: [],
+        transitionCooldown: 0,
+        isExpansionActive: false,
+        isExpansionMode: false,
+        gameState: 'playing',
+        gameOver: false,
+        curriculum: 0,
+        francoRescued: false,
+        tonyForgiven: false,
+        expansionEndingChosen: null,
+        menuSystem: fakeMenu,
+        music: {
+          playMenuSelect() {},
+          playCaughtSkipSound() {},
+          playDoorOpenSound() {},
+          stopTitleMusic() {},
+          stopBossMusic() {},
+          loadExpansionMusic() {},
+          setMode() {}
+        },
+        camera: {
+          setWorldBounds() {},
+          resetCinematic() {},
+          snapTo() {}
+        },
+        _resolveStageSpawn(door) {
+          return { x: door.targetX ?? 160, y: door.targetY ?? 120, facing: door.forceDirection || 'up' };
+        },
+        _resetWorldToInitialState() {
+          this.isExpansionActive = false;
+          this.isExpansionMode = false;
+          this.gameState = 'playing';
+          tm.loadScene('overworld');
+        },
+        _restoreAllNPCsToOverworld() {},
+        _syncFrancoNPCState() {},
+        _readExpansionStorage: () => RPGGame.prototype._readExpansionStorage.call(fakeGame),
+        _applySavedRosaUpgrades() {},
+        _restoreExpansionSaveData: (d) => RPGGame.prototype._restoreExpansionSaveData.call(fakeGame, d),
+        _saveExpansionProgress: () => RPGGame.prototype._saveExpansionProgress.call(fakeGame),
+        _loadExpansionFromSlot: () => RPGGame.prototype._loadExpansionFromSlot.call(fakeGame),
+        _saveGameToStorage: (opts) => RPGGame.prototype._saveGameToStorage.call(fakeGame, opts),
+        _loadGameFromStorage: () => RPGGame.prototype._loadGameFromStorage.call(fakeGame),
+        startExpansion: () => RPGGame.prototype.startExpansion.call(fakeGame)
+      };
+
+      const menu = new MainMenuAndScenes(320, 180, {}, fakeGame.music, {
+        game: fakeGame,
+        onNewGame: () => { baseNewGameCalls += 1; },
+        onLoadGame: () => fakeGame._loadGameFromStorage(),
+        onStartExpansion: () => {
+          expansionStartCalls += 1;
+          return fakeGame.startExpansion();
+        }
+      });
+      fakeGame.menuSystem = menu;
+
+      // 1. Sin trofeo de victoria: menú bloqueado, startExpansion() bloqueado, ExpansionManager.init() bloqueado
+      assert.equal(menu._hasVictoryTrophy(), false);
+      const lockedEntry = menu._getCurrentMenuItems()[2];
+      assert.equal(lockedEntry.locked, true, 'La expansión debe mostrarse con candado sin el trofeo');
+      lockedEntry.action();
+      assert.equal(expansionStartCalls, 0, 'Pulsar expansión bloqueada no debe arrancar');
+      assert.match(menu.noticeText, /Completa el juego base/, 'Debe indicar completar el juego base');
+      assert.equal(RPGGame.prototype.startExpansion.call(fakeGame), false, 'startExpansion() debe abortar sin trofeo');
+      assert.equal(fakeGame.isExpansionActive, false);
+
+      const blockedMgr = new ExpansionManager();
+      assert.equal(await blockedMgr.init(fakeGame), null, 'ExpansionManager.init() debe bloquearse sin trofeo');
+      assert.equal(blockedMgr.initialized, false);
+
+      // Valor distinto de 'true' tampoco desbloquea
+      storeMap.set('el_ojete_dorado_victory_trophy', 'false');
+      assert.equal(menu._hasVictoryTrophy(), false);
+      assert.equal(RPGGame.prototype.startExpansion.call(fakeGame), false);
+
+      // 2. Con trofeo === 'true', arranca la expansión en valleverde_corp
+      storeMap.set('el_ojete_dorado_victory_trophy', 'true');
+      assert.equal(menu._hasVictoryTrophy(), true);
+      const unlockedEntry = menu._getCurrentMenuItems()[2];
+      assert.equal(unlockedEntry.locked, false);
+      unlockedEntry.action();
+      assert.equal(expansionStartCalls, 1);
+      assert.equal(fakeGame.isExpansionActive, true);
+      assert.equal(tm.currentSceneId, 'valleverde_corp');
+
+      // 3. Muro interdimensional: intentar cruzar puertas hacia escenas del juego base bloquea y avisa
+      const transitions = new SceneTransitionController(fakeGame);
+      const initialY = player.y;
+      const blockedOverworld = transitions.executeStageTransition({
+        type: 'exit',
+        targetScene: 'overworld',
+        targetX: 160,
+        targetY: 160
+      });
+      assert.equal(blockedOverworld, false, 'En expansión NO se puede cruzar a overworld');
+      assert.equal(tm.currentSceneId, 'valleverde_corp', 'El jugador debe seguir en valleverde_corp');
+      assert.equal(menu.noticeText, 'Alex ha bloqueado la línea temporal.');
+      assert.ok(fakeGame.floatingTexts.some((ft) => ft.text === 'Alex ha bloqueado la línea temporal.'));
+      assert.ok(player.y !== initialY, 'Debe empujar suavemente al jugador hacia atrás');
+
+      assert.equal(transitions.executeStageTransition({ type: 'door', targetScene: 'first_stage' }), false);
+      assert.equal(transitions.executeStageTransition({ type: 'door', targetScene: 'armor_temple' }), false);
+      assert.equal(tm.currentSceneId, 'valleverde_corp');
+
+      // Puertas entre escenas de la expansión sí están permitidas
+      const allowedRosaBar = transitions.executeStageTransition({
+        type: 'door',
+        targetScene: 'rosa_bar',
+        targetX: 160,
+        targetY: 120,
+        forceDirection: 'up'
+      });
+      assert.equal(allowedRosaBar, true);
+      assert.equal(tm.currentSceneId, 'rosa_bar');
+
+      // 4. Aislamiento total de guardado/carga y Game Over en expansión
+      const baseSentinel = JSON.stringify({
+        savePayload: { player: { coins: 999 }, timeOfDayHours: 12 },
+        savedAt: 100
+      });
+      storeMap.set('el_ojete_dorado_save_v1', baseSentinel);
+      fakeGame.curriculum = 11;
+      player.coins = 42;
+      player.hp = 2;
+      assert.equal(fakeGame._saveGameToStorage(), true);
+      assert.equal(storeMap.get('el_ojete_dorado_save_v1'), baseSentinel, 'Guardar en expansión NO debe pisar el save del juego base');
+
+      // Simular muerte y recarga desde Game Over -> carga slot de expansión, nunca base ni Nueva Partida
+      fakeGame.gameOver = true;
+      fakeGame.curriculum = 0;
+      player.coins = 0;
+      player.hp = 0;
+      tm.loadScene('valleverde_corp');
+      menu.state = 'game_over';
+      const retryItem = menu._getCurrentMenuItems()[0];
+      retryItem.action();
+      assert.equal(baseNewGameCalls, 0, 'Game Over en expansión jamás debe reiniciar el juego base');
+      assert.equal(fakeGame.isExpansionActive, true);
+      assert.equal(tm.currentSceneId, 'rosa_bar', 'Debe restaurar la escena guardada en el slot de expansión');
+      assert.equal(fakeGame.curriculum, 11, 'Debe restaurar el progreso del slot de expansión');
+      assert.equal(player.coins, 42, 'Debe restaurar monedas de la expansión (no 999 del juego base)');
+      assert.equal(player.hp, 2, 'Debe restaurar vida de la expansión');
+    } finally {
+      if (typeof previousStorage === 'undefined') delete globalThis.localStorage;
+      else globalThis.localStorage = previousStorage;
+    }
+  });
 }

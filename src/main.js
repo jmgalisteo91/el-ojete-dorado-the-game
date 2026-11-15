@@ -89,6 +89,21 @@ const VIEWPORT_HEIGHT = 180;
 const BASE_RENDER_SCALE = 4; // Desktop: 1280x720 (4x sobre la base lógica 320x180)
 const EXPANSION_SAVE_KEY = 'el_ojete_dorado_expansion_save';
 const EXPANSION_SLOT_SAVE_KEY = 'el_ojete_dorado_expansion_save_v1';
+const EXPANSION_UNLOCK_KEY = 'el_ojete_dorado_victory_trophy';
+const EXPANSION_SCENE_IDS = new Set([
+  'valleverde_corp',
+  'vertedero_digital',
+  'vertedero_piso_1',
+  'vertedero_piso_2',
+  'vertedero_piso_3',
+  'vertedero_piso_4',
+  'vertedero_piso_5',
+  'oficina_tony',
+  'inakito_office',
+  'rosa_bar',
+  'kernel_arena',
+  'ai_nucleus_core'
+]);
 const VERTEDERO_BASE_ROOMS = [
   'vertedero_digital',
   'sewers_dungeon',
@@ -1167,6 +1182,10 @@ export class RPGGame {
    * @param {Function} [options.onComplete]
    */
   _saveGameToStorage(options = {}) {
+    if (this.isExpansionActive || this.isExpansionMode) {
+      this._saveExpansionProgress();
+      return true;
+    }
     try {
       const savePayload = this._buildSavePayload();
       const code = this.cloudSaveCode || getSavedCloudCode() || null;
@@ -1484,6 +1503,9 @@ export class RPGGame {
   }
 
   _loadGameFromStorage() {
+    if (this.isExpansionActive || this.isExpansionMode) {
+      return this._loadExpansionFromSlot();
+    }
     try {
       const container = getLocalSaveContainer();
       if (!container || !container.savePayload) return false;
@@ -1496,6 +1518,63 @@ export class RPGGame {
         setTimeout(() => this._syncPendingSaveToCloud(), 1200);
       }
       return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Carga exclusivamente desde el slot independiente de la expansión (`el_ojete_dorado_expansion_save_v1`).
+   * Nunca lee ni pisa el autoguardado del juego base.
+   */
+  _loadExpansionFromSlot() {
+    try {
+      if (typeof localStorage === 'undefined') return false;
+      const raw = localStorage.getItem(EXPANSION_SLOT_SAVE_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return false;
+
+      this.isExpansionActive = true;
+      this.isExpansionMode = true;
+      this.gameState = 'expansion';
+      this.gameOver = false;
+
+      this._restoreExpansionSaveData(parsed);
+
+      if (this.player) {
+        if (Number.isFinite(Number(parsed.coins))) {
+          this.player.coins = Math.max(0, Number(parsed.coins));
+        }
+        const maxHp = this.player.effectiveMaxHp || this.player.maxHp || 3;
+        const savedHp = Number(parsed.hp);
+        this.player.hp = Number.isFinite(savedHp) && savedHp > 0
+          ? Math.min(maxHp, Math.max(1, savedHp))
+          : maxHp;
+        this.player.invulnerableTimer = 0;
+        this.player.stopMovement?.();
+      }
+
+      this.expansionManager?.attachCachedEntities?.(this);
+
+      const savedSceneId = EXPANSION_SCENE_IDS.has(parsed.sceneId)
+        ? parsed.sceneId
+        : 'valleverde_corp';
+      if (this.tilemap) {
+        this.tilemap.loadScene(savedSceneId);
+        this.camera?.setWorldBounds?.(this.tilemap.width, this.tilemap.height);
+      }
+      if (this.player) {
+        this.player.x = Number.isFinite(Number(parsed.playerX)) ? Number(parsed.playerX) : 12 * 16;
+        this.player.y = Number.isFinite(Number(parsed.playerY)) ? Number(parsed.playerY) : 15 * 16;
+        this.camera?.snapTo?.(this.player);
+      }
+      this.music?.setMode?.(savedSceneId);
+      if (this.menuSystem) {
+        this.menuSystem.state = 'none';
+        this.menuSystem.fadeAlpha = 0;
+      }
+      return true;
     } catch {
       return false;
     }
@@ -2994,6 +3073,18 @@ export class RPGGame {
    * `el_ojete_dorado_expansion_save_v1` y teletransporta al jugador a `valleverde_corp`.
    */
   startExpansion() {
+    const hasTrophy = (() => {
+      try {
+        return typeof localStorage !== 'undefined' && localStorage.getItem(EXPANSION_UNLOCK_KEY) === 'true';
+      } catch {
+        return false;
+      }
+    })();
+    if (!hasTrophy) {
+      this.menuSystem?.showNotice?.('🔒 Completa el juego base para desbloquear la expansión.', 3.0);
+      return false;
+    }
+
     let savedSlot = null;
     try {
       if (typeof localStorage !== 'undefined') {

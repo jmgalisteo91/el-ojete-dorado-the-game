@@ -676,7 +676,7 @@ export class MainMenuAndScenes {
     try {
       if (typeof localStorage === 'undefined') return false;
       const val = localStorage.getItem(EXPANSION_UNLOCK_KEY);
-      return val === 'true' || (Boolean(val) && val !== 'false' && val !== 'null');
+      return val === 'true';
     } catch {
       return false;
     }
@@ -729,7 +729,7 @@ export class MainMenuAndScenes {
           action: () => {
             if (!this._hasVictoryTrophy()) {
               this.music.playCaughtSkipSound();
-              this.showNotice('Completa el juego base para desbloquear.');
+              this.showNotice('🔒 Completa el juego base para desbloquear la expansión.');
               return;
             }
             this.music.playMenuSelect();
@@ -902,9 +902,21 @@ export class MainMenuAndScenes {
           label: 'Cargar desde el último autoguardado',
           action: () => {
             this.music.playMenuSelect();
+            const isExpansion = Boolean(
+              this.callbacks.game &&
+              (this.callbacks.game.isExpansionActive || this.callbacks.game.isExpansionMode)
+            );
             const loaded = this.callbacks.onLoadGame ? this.callbacks.onLoadGame() : false;
-            if (!loaded && this.callbacks.onNewGame) {
-              this.callbacks.onNewGame();
+            if (!loaded) {
+              if (isExpansion) {
+                if (typeof this.callbacks.onStartExpansion === 'function') {
+                  this.callbacks.onStartExpansion();
+                } else {
+                  this.callbacks.game?.startExpansion?.();
+                }
+              } else if (this.callbacks.onNewGame) {
+                this.callbacks.onNewGame();
+              }
             }
             this.state = 'none';
           }

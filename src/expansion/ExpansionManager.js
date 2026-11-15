@@ -309,6 +309,18 @@ export class ExpansionManager {
     if (!target) return null;
     this.game = target;
 
+    const hasVictoryTrophy = (() => {
+      try {
+        return typeof localStorage !== 'undefined' && localStorage.getItem('el_ojete_dorado_victory_trophy') === 'true';
+      } catch {
+        return false;
+      }
+    })();
+    if (!hasVictoryTrophy) {
+      target.menuSystem?.showNotice?.('🔒 Completa el juego base para desbloquear la expansión.', 3.0);
+      return null;
+    }
+
     const mods = await this._loadModules();
 
     if (typeof target.tilemap?.loadExpansionScenes === 'function') {
