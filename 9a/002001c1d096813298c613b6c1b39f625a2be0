@@ -1,0 +1,26 @@
+src/assets/CinematicTimelines.js
+  h_e1bbc662b18209 123,125-172,300,306,316
+src/assets/VillainDialogues.js
+  h_e1bbc662b18209 96-149
+src/core/SceneTransitionController.js
+  h_e1bbc662b18209 2,450-458
+src/entities/bosses/FinalBossAlex.js
+  h_e1bbc662b18209 173,377,750-758,761-776,779,781-785,787,789-792,796,800-803,806-811,813-817,819-825,827-834,836-841,847,849-853,860-889,891-898,900-904,926-927,951-953
+src/main.js
+  h_e1bbc662b18209 801,2083-2085
+src/ui/AnimeCutsceneManager.js
+  h_e1bbc662b18209 25-26,129
+tests/suites/bosses.test.mjs
+  h_e1bbc662b18209 24-29,818-901
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9a002001c1d096813298c613b6c1b39f625a2be0",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
