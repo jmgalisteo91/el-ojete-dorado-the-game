@@ -16,6 +16,7 @@ import { CollisionSystem } from './physics/CollisionSystem.js?v=8';
 import { Player, MAX_PLAYER_LEVEL, DIVINE_BLESSINGS } from './entities/Player.js?v=8';
 import { NPC, getBromForgeChoices } from './entities/NPC.js?v=8';
 import { ExpansionManager } from './expansion/ExpansionManager.js?v=8';
+import { STARTING_EXPANSION_GEAR, EXPANSION_EQUIPMENT } from './expansion/ExpansionData.js?v=8';
 import { DemonVengador } from './expansion/entities/DemonVengador.js?v=8';
 import { Animal } from './entities/Animal.js?v=8';
 import { Enemy, setParticleScale } from './entities/Enemy.js?v=8';
@@ -3537,37 +3538,63 @@ export class RPGGame {
     this.isExpansionActive = true;
     this.isExpansionMode = true;
     this.gameState = 'expansion';
+    if (this.player) {
+      this.player.isExpansionActive = true;
+    }
 
     if (savedSlot) {
       this._restoreExpansionSaveData(savedSlot);
       if (Number.isFinite(Number(savedSlot.coins))) {
         this.player.coins = Math.max(0, Number(savedSlot.coins));
       }
+      if (this.player) {
+        this.player.isExpansionActive = true;
+        if (!this.player.equippedWeapon || this.player.equippedWeapon === 'default') {
+          this.player.equippedWeapon = STARTING_EXPANSION_GEAR.weapon;
+        }
+        if (!this.player.equippedShield) {
+          this.player.equippedShield = STARTING_EXPANSION_GEAR.shield;
+        }
+      }
     } else {
-      // Nueva partida de expansión
+      // Nueva partida de expansión: RRHH confisca todo el equipo medieval previo
       this.curriculum = 0;
       this.francoRescued = false;
       this.tonyForgiven = false;
       this.expansionEndingChosen = null;
-      this.player.hasSword = true;
-      this.player.hasArmor = true;
-      this.player.hasDash = true;
-      this.player.hp = this.player.effectiveMaxHp;
-      if (!this.player.equippedWeapon || this.player.equippedWeapon === 'default') {
-        this.player.equipExpansionItem?.('boligrafo');
+
+      if (this.inventory) {
+        this.inventory.items = [];
+        if (typeof this.inventory.selectedIndex === 'number') this.inventory.selectedIndex = 0;
       }
-      const boligrafoInfo = this.expansionEquipment?.boligrafo || {
-        id: 'boligrafo',
-        name: 'Bolígrafo Corporativo',
-        description: 'Tinta barata de RRHH. Daño 1, velocidad muy rápida (0.15s).',
-        iconIndex: 3
-      };
-      if (this.inventory && !this.inventory.items.some((it) => it && it.id === 'boligrafo')) {
+      if (this.player?.inventory && Array.isArray(this.player.inventory.items)) {
+        this.player.inventory.items = [];
+      }
+
+      this.player.hasSword = false;
+      this.player.hasArmor = false;
+      this.player.armorPoints = 0;
+      this.player.hasBrokenHeartCurse = false;
+      this.player.hasDash = true;
+      this.player.maxHp = STARTING_EXPANSION_GEAR.baseMaxHp;
+      this.player.hp = STARTING_EXPANSION_GEAR.baseHp;
+      this.player.equippedWeapon = STARTING_EXPANSION_GEAR.weapon;
+      this.player.equippedShield = STARTING_EXPANSION_GEAR.shield;
+
+      const boligrafoInfo = this.expansionEquipment?.boligrafo || EXPANSION_EQUIPMENT.boligrafo;
+      const carpetaInfo = this.expansionEquipment?.carpeta || EXPANSION_EQUIPMENT.carpeta;
+      if (this.inventory && typeof this.inventory.addItem === 'function') {
         this.inventory.addItem({
           id: boligrafoInfo.id,
           name: boligrafoInfo.name,
           description: boligrafoInfo.description,
-          iconIndex: boligrafoInfo.iconIndex
+          iconIndex: boligrafoInfo.iconIndex ?? 3
+        });
+        this.inventory.addItem({
+          id: carpetaInfo.id,
+          name: carpetaInfo.name,
+          description: carpetaInfo.description,
+          iconIndex: carpetaInfo.iconIndex ?? 4
         });
       }
       this._syncFrancoNPCState();
@@ -3592,8 +3619,16 @@ export class RPGGame {
     if (this.menuSystem) {
       this.menuSystem.state = 'none';
       this.menuSystem.fadeAlpha = 0;
+      this.menuSystem.fadeDirection = 0;
       this.menuSystem.showNotice('3 meses después...', 4.0);
     }
+    if (!savedSlot && this.dialogueBox && typeof this.dialogueBox.showMessage === 'function') {
+      this.dialogueBox.showMessage(
+        STARTING_EXPANSION_GEAR.confiscationTitle,
+        STARTING_EXPANSION_GEAR.confiscationLines
+      );
+    }
+    this.input?.clear?.();
     this._saveExpansionProgress();
   }
 

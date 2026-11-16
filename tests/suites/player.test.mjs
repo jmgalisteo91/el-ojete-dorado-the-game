@@ -12,7 +12,14 @@ import { Inventory, normalizeItemId } from '../../src/ui/Inventory.js';
 import { QuestLog } from '../../src/core/QuestLog.js';
 import { CharacterStats } from '../../src/ui/CharacterStats.js';
 import { InputHandler } from '../../src/core/InputHandler.js';
-import { EXPANSION_EQUIPMENT, EXPANSION_SKILLS, getExpansionEquipment } from '../../src/expansion/ExpansionData.js';
+import {
+  EXPANSION_EQUIPMENT,
+  EXPANSION_SKILLS,
+  STARTING_EXPANSION_GEAR,
+  EXPANSION_ACTIVE_FLAG,
+  getExpansionEquipment,
+  isPlayerInExpansion
+} from '../../src/expansion/ExpansionData.js';
 import { IñakitoBoss } from '../../src/expansion/entities/IñakitoBoss.js';
 import { HUD } from '../../src/ui/HUD.js?v=8';
 import {
@@ -1295,5 +1302,120 @@ export async function run(test, assert) {
     });
     hud.render(hudCtx);
     assert.ok(hudTexts.includes('🛡 x3'), 'HUD debe mostrar 🛡 x3 cuando el jugador lleva armadura');
+  });
+
+  test('Inicio de expansión: confisca equipo medieval, equipa boligrafo/carpeta y renderiza traje corporativo y destello azul', async () => {
+    assert.equal(STARTING_EXPANSION_GEAR.weapon, 'boligrafo');
+    assert.equal(STARTING_EXPANSION_GEAR.shield, 'carpeta');
+    assert.equal(EXPANSION_ACTIVE_FLAG, 'isExpansionActive');
+
+    const prevStorage = globalThis.localStorage;
+    const storeMap = new Map([['el_ojete_dorado_victory_trophy', 'true']]);
+    globalThis.localStorage = {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k)
+    };
+
+    try {
+      const tm = new Tilemap(null, 16);
+      await tm.loadExpansionScenes();
+      const player = new Player({ x: 32, y: 32 });
+      player.hasSword = true;
+      player.hasArmor = true;
+      player.armorPoints = 3;
+      player.maxHp = 8;
+      player.hp = 8;
+
+      const inv = new Inventory();
+      inv.items.push(
+        { id: 'dawn_sword', name: 'Espada del Alba', qty: 1 },
+        { id: 'dawn_armor', name: 'Armadura del Alba', qty: 1 },
+        { id: 'drone_scrap', name: 'Chatarra', qty: 5 }
+      );
+
+      let shownDialog = null;
+      let noticeText = '';
+      const fakeGame = {
+        tilemap: tm,
+        player,
+        inventory: inv,
+        camera: { setWorldBounds: () => {}, resetCinematic: () => {}, snapTo: () => {} },
+        music: { loadExpansionMusic: () => {}, setMode: () => {} },
+        menuSystem: {
+          state: 'title',
+          fadeAlpha: 0,
+          fadeDirection: 0,
+          showNotice: (txt) => { noticeText = txt; }
+        },
+        dialogueBox: {
+          showMessage: (title, lines) => { shownDialog = { title, lines }; }
+        },
+        _resetWorldToInitialState: () => {
+          player.unequipAllForNewGame();
+          inv.items = [{ id: 'stale_base_item', name: 'Item base residual', qty: 1 }];
+        },
+        _syncFrancoNPCState: () => {},
+        _saveExpansionProgress: () => RPGGame.prototype._saveExpansionProgress.call(fakeGame)
+      };
+      inv.game = fakeGame;
+
+      const ok = RPGGame.prototype.startExpansion.call(fakeGame);
+      assert.notEqual(ok, false);
+      assert.equal(tm.currentSceneId, 'valleverde_corp');
+
+      // 1. Confiscación del equipo anterior y estadísticas base 3/3
+      assert.equal(player.hasSword, false, 'La espada medieval debe quedar confiscada (hasSword=false)');
+      assert.equal(player.hasArmor, false, 'La armadura medieval debe quedar confiscada (hasArmor=false)');
+      assert.equal(player.armorPoints, 0);
+      assert.equal(player.hp, 3);
+      assert.equal(player.maxHp, 3);
+      assert.equal(player.equippedWeapon, 'boligrafo');
+      assert.equal(player.equippedShield, 'carpeta');
+      assert.equal(isPlayerInExpansion(player), true);
+      assert.equal(inv.items.some((it) => it && it.id === 'stale_base_item'), false, 'No deben quedar objetos base en inventario');
+      assert.equal(inv.items.some((it) => it && it.id === 'dawn_sword'), false);
+      assert.equal(inv.items.some((it) => it && it.id === 'boligrafo'), true, 'Bolígrafo inicial debe figurar en inventario');
+      assert.equal(inv.items.some((it) => it && it.id === 'carpeta'), true, 'Carpeta inicial debe figurar en inventario');
+
+      // 2. Mensajes de transición y confiscación RRHH
+      assert.equal(noticeText, '3 meses después...');
+      assert.ok(shownDialog, 'Debe mostrar diálogo de confiscación de RRHH');
+      assert.match(shownDialog.lines.join(' '), /Bienvenido a RRHH\. Tu equipo anterior ha sido confiscado\./);
+
+      // 3. Combate y visual del Bolígrafo Corporativo (sin puños ni bolas de energía)
+      player.swordLevel = 3; // aunque tuviera nivel 3 previo, no dispara ondas de energía
+      player.stamina = 100;
+      const attacked = player.tryAttack();
+      assert.equal(attacked, true);
+      assert.equal(player.hasSword, false, 'tryAttack con bolígrafo no debe reactivar hasSword');
+      assert.equal(player.attackCooldown, 0.15);
+      assert.equal(player.energySlashes.length, 0, 'Con bolígrafo no deben emitirse ondas de energía');
+      assert.ok(player.getSwordHitbox(), 'Debe generar hitbox válida al atacar con bolígrafo');
+
+      const fillStyles = [];
+      const strokeStyles = [];
+      const ctxStub = new Proxy(
+        {
+          set fillStyle(v) { fillStyles.push(v); },
+          get fillStyle() { return fillStyles[fillStyles.length - 1] || '#000'; },
+          set strokeStyle(v) { strokeStyles.push(v); },
+          get strokeStyle() { return strokeStyles[strokeStyles.length - 1] || '#000'; }
+        },
+        {
+          get: (t, k) => (k in t ? t[k] : () => {}),
+          set: (t, k, v) => { t[k] = v; return true; }
+        }
+      );
+      player.direction = 'down';
+      player.render(ctxStub, { renderX: 0, renderY: 0 });
+      assert.ok(fillStyles.includes('#334155'), 'Debe dibujar la chaqueta del traje corporativo gris/azul');
+      assert.ok(fillStyles.includes('#2563eb'), 'Debe dibujar la corbata azul corporativa');
+      assert.ok(strokeStyles.includes('#2563eb'), 'El ataque con bolígrafo debe dibujar el trazo/destello azul');
+      assert.equal(fillStyles.includes('#e8c39e'), false, 'No debe dibujar puñetazo desarmado teniendo bolígrafo');
+      assert.equal(strokeStyles.includes('rgba(253, 224, 71, 0.95)'), false, 'No debe dibujar arco dorado de espada');
+    } finally {
+      globalThis.localStorage = prevStorage;
+    }
   });
 }

@@ -216,6 +216,42 @@ export function getExpansionEquipment(idOrItemId) {
   return EXPANSION_EQUIPMENT[stripped] || null;
 }
 
+/** Flag oficial para saber si el jugador está dentro de la expansión corporativa. */
+export const EXPANSION_ACTIVE_FLAG = 'isExpansionActive';
+
+/**
+ * Equipo inicial corporativo asignado tras la confiscación en RRHH
+ * al iniciar "El Resurgir de Mister Alex IA".
+ */
+export const STARTING_EXPANSION_GEAR = {
+  weapon: 'boligrafo',
+  shield: 'carpeta',
+  baseHp: 3,
+  baseMaxHp: 3,
+  confiscationTitle: 'RRHH — Control de Acceso',
+  confiscationMessage: 'Bienvenido a RRHH. Tu equipo anterior ha sido confiscado.',
+  confiscationLines: [
+    'Bienvenido a RRHH. Tu equipo anterior ha sido confiscado.',
+    'Solo conservas un Bolígrafo Corporativo y una Carpeta de Plástico.'
+  ]
+};
+
+/**
+ * Comprueba si un jugador o estado de juego se encuentra en la expansión corporativa.
+ */
+export function isPlayerInExpansion(target) {
+  if (!target) return false;
+  if (typeof target._isExpansionActive === 'function') {
+    return Boolean(target._isExpansionActive());
+  }
+  return Boolean(
+    target[EXPANSION_ACTIVE_FLAG] ||
+    target.isExpansionMode ||
+    target.game?.[EXPANSION_ACTIVE_FLAG] ||
+    target.game?.isExpansionMode
+  );
+}
+
 /**
  * (EXPANSIÓN v2.0) Catálogo ampliado de habilidades (Niveles 11-15 y mejoras Nivel II).
  */

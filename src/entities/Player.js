@@ -91,6 +91,7 @@ export class Player extends Entity {
     // Espada: 1=Base madera/hierro, 2=Silicio (+50% daño y quiebra barreras de cristal), 3=Overclockeada (+100% daño y tajos de energía a salud máx)
     this.swordLevel = 1;
     // Equipamiento corporativo (Expansión v2.0): modificadores sobre ataque, parry y mitigación
+    this.isExpansionActive = undefined;
     this.equippedWeapon = 'default';
     this.equippedShield = null;
     // Armadura: 1=Binaria base (3 corazones blindados), 2=Blindaje Térmico (inmunidad al calor ambiental de la Forja)
@@ -462,6 +463,7 @@ export class Player extends Entity {
   }
 
   unequipAllForNewGame() {
+    this.isExpansionActive = false;
     this.hasArmor = false;
     this.armorPoints = 0;
     this.hasSword = false;
@@ -582,7 +584,7 @@ export class Player extends Entity {
 
     if (corpWeapon && corpWeapon.slot === 'weapon') {
       // Modificadores de arma corporativa (Expansión v2.0)
-      this.hasSword = true;
+      // Mantiene hasSword en false si la espada medieval fue confiscada
       this.attackIsDashStrike = this.dashStrikeTimer > 0;
       if (this.dashStrikeTimer > 0) this.dashStrikeTimer = 0;
       const step = this.comboTimer > 0 && this.comboStep < 3 ? this.comboStep + 1 : 1;
@@ -1491,6 +1493,14 @@ export class Player extends Entity {
 
     super.render(ctx, camera);
 
+    if (this._isExpansionActive()) {
+      this._renderCorporateSuitOverlay(
+        ctx,
+        Math.round(this.x - camera.renderX),
+        Math.round(this.y - camera.renderY)
+      );
+    }
+
     // 3. Efecto visual de la Armadura del Código Binario: bits flotantes (0 y 1)
     if (this.hasArmor && this.robotizationLevel > 15) {
       const now = performance.now() / 1000;
@@ -1572,9 +1582,13 @@ export class Player extends Entity {
       ctx.restore();
     }
 
-    // 6. Renderizar ataque: golpe desarmado o tajo luminoso de la Espada de la Recursividad
+    // 6. Renderizar ataque: arma corporativa, golpe desarmado o tajo de la Espada
     if (this.attackTimer > 0) {
-      if (!this.hasSword) {
+      const corpWeapon =
+        this._isExpansionActive() && this.equippedWeapon && this.equippedWeapon !== 'default'
+          ? EXPANSION_EQUIPMENT[this.equippedWeapon]
+          : null;
+      if (!this.hasSword && (!corpWeapon || corpWeapon.slot !== 'weapon')) {
         // (FIX 6) Puñetazo: puño, líneas de movimiento y estrella de impacto. Sin orbe.
         const progress = 1 - this.attackTimer / this.attackDuration;
         let baseAngle = 0;
@@ -1613,6 +1627,46 @@ export class Player extends Entity {
         ctx.fillStyle = '#b8860b';
         ctx.fillRect(Math.round(fx) - 2, Math.round(fy) - 2, 4, 1);
         ctx.restore();
+      } else if (corpWeapon && corpWeapon.id === 'boligrafo') {
+        // Bolígrafo Corporativo: punzada rápida y pequeño destello azul corporativo (sin arco ni bolas de energía)
+        const progress = 1 - this.attackTimer / Math.max(0.01, this.attackDuration);
+        let baseAngle = 0;
+        if (this.direction === 'right') baseAngle = 0;
+        else if (this.direction === 'down') baseAngle = Math.PI / 2;
+        else if (this.direction === 'left') baseAngle = Math.PI;
+        else baseAngle = -Math.PI / 2;
+
+        const thrust = 5 + Math.sin(progress * Math.PI) * 6;
+        const penStartX = cx + Math.cos(baseAngle) * 3;
+        const penStartY = cy + Math.sin(baseAngle) * 3;
+        const penTipX = cx + Math.cos(baseAngle) * (thrust + 5);
+        const penTipY = cy + Math.sin(baseAngle) * (thrust + 5);
+
+        ctx.save();
+        // Cuerpo azul del bolígrafo
+        ctx.strokeStyle = corpWeapon.bladeColor || '#2563eb';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(penStartX, penStartY);
+        ctx.lineTo(penTipX, penTipY);
+        ctx.stroke();
+
+        // Pequeño destello azul en la punta
+        const flashRadius = 2.6 - progress * 1.1;
+        ctx.fillStyle = corpWeapon.arcColor || 'rgba(59, 130, 246, 0.92)';
+        ctx.beginPath();
+        ctx.arc(penTipX, penTipY, Math.max(1.2, flashRadius), 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = corpWeapon.edgeColor || '#bfdbfe';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(penTipX - 3, penTipY);
+        ctx.lineTo(penTipX + 3, penTipY);
+        ctx.moveTo(penTipX, penTipY - 3);
+        ctx.lineTo(penTipX, penTipY + 3);
+        ctx.stroke();
+        ctx.restore();
       } else {
         const progress = 1 - this.attackTimer / this.attackDuration;
 
@@ -1627,10 +1681,6 @@ export class Player extends Entity {
 
         ctx.save();
         // Arco de energía según arma corporativa equipada, nivel de espada o robotización
-        const corpWeapon =
-          this._isExpansionActive() && this.equippedWeapon && this.equippedWeapon !== 'default'
-            ? EXPANSION_EQUIPMENT[this.equippedWeapon]
-            : null;
         const isMechanized = this.robotizationLevel > 50;
         let arcColor = 'rgba(251, 191, 36, 0.85)';
         let bladeColor = '#38bdf8';
@@ -1691,5 +1741,52 @@ export class Player extends Entity {
     }
   }
 }
+
+  /**
+   * Dibuja un traje corporativo gris/azul sobre el héroe mientras está en la expansión.
+   */
+  _renderCorporateSuitOverlay(ctx, px, py) {
+    ctx.save();
+    // Chaqueta del traje gris azulado
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(px + 4, py + 8, 8, 5);
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(px + 4, py + 8, 2, 4);
+    ctx.fillRect(px + 10, py + 8, 2, 4);
+
+    // Pantalón sastre oscuro
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(px + 5, py + 12, 6, 2);
+
+    if (this.direction === 'down') {
+      // Cuello blanco de camisa y corbata azul corporativa
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(px + 6, py + 8, 4, 2);
+      ctx.fillStyle = '#2563eb';
+      ctx.fillRect(px + 7, py + 9, 2, 3);
+      ctx.fillStyle = '#1d4ed8';
+      ctx.fillRect(px + 7, py + 11, 2, 1);
+    } else if (this.direction === 'left' || this.direction === 'right') {
+      ctx.fillStyle = '#f8fafc';
+      const collarX = this.direction === 'right' ? px + 8 : px + 6;
+      ctx.fillRect(collarX, py + 8, 2, 2);
+      ctx.fillStyle = '#2563eb';
+      ctx.fillRect(collarX, py + 10, 2, 2);
+    }
+
+    // Detalle de bolígrafo azul en bolsillo y carpeta de plástico corporativa
+    if (this.equippedWeapon === 'boligrafo' && this.direction !== 'up') {
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(px + 5, py + 9, 1, 2);
+    }
+    if (this.equippedShield === 'carpeta') {
+      ctx.fillStyle = '#0891b2';
+      const folderX = this.direction === 'left' ? px + 11 : px + 3;
+      ctx.fillRect(folderX, py + 9, 2, 4);
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(folderX, py + 9, 2, 1);
+    }
+    ctx.restore();
+  }
 }
 

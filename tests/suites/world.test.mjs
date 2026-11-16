@@ -1583,10 +1583,22 @@ export async function run(test, assert) {
       assert.equal(menu.state, 'false_ending_glitch');
       assert.ok(menu.fadeAlpha > 0 && menu.fadeAlpha <= 1, 'Debe hacer fundido a negro hacia el final de los 4s');
 
-      // Completar los 4s -> vuelve al menú de título y resetea estado base
+      // Completar los 4s -> vuelve al menú de título visible (fadeAlpha === 0) y con controles activos
       menu.update(0.6, dummyInput);
       assert.equal(worldResetCount, 1);
       assert.equal(menu.state, 'title');
+      assert.equal(menu.fadeAlpha, 0, 'openTitleScreen() debe limpiar fadeAlpha a 0 tras false_ending_glitch');
+      assert.equal(menu.fadeDirection, 0);
+
+      // El menú responde de inmediato a la navegación tras volver del falso final
+      const navInput = {
+        ...dummyInput,
+        consumeMenuDirection: () => 'down',
+        consumeKey: () => false,
+        consumeInteraction: () => false
+      };
+      menu.update(0.05, navInput);
+      assert.equal(menu.selectedIndex, 1, 'El menú de título debe responder inmediatamente al teclado tras el glitch final');
 
       // 3. En el menú principal actualizado, la opción ya está desbloqueada y lanza onStartExpansion()
       const unlockedOption = menu._getCurrentMenuItems()[2];

@@ -10,6 +10,7 @@ export class ExpansionManager {
     this.game = game;
     this.initialized = false;
     this._cachedModules = null;
+    this._initPromise = null;
   }
 
   async _loadModules() {
@@ -322,31 +323,56 @@ export class ExpansionManager {
       target.menuSystem?.showNotice?.('🔒 Completa el juego base para desbloquear la expansión.', 3.0);
       return null;
     }
-
-    const mods = await this._loadModules();
-
-    if (typeof target.tilemap?.loadExpansionScenes === 'function') {
-      await target.tilemap.loadExpansionScenes(target.vertederoFloorOrder);
+    if (this._initPromise) {
+      return this._initPromise;
     }
 
-    if (typeof target.music?.loadExpansionMusic === 'function') {
-      target.music.loadExpansionMusic();
-    }
+    this._initPromise = (async () => {
+      try {
+        const mods = await this._loadModules();
 
-    target.expansionEquipment = mods.EXPANSION_EQUIPMENT;
-    target.isExpansionActive = true;
-    target.isExpansionMode = true;
-    target.gameState = 'expansion';
-    this.initialized = true;
+        if (typeof target.tilemap?.loadExpansionScenes === 'function') {
+          await target.tilemap.loadExpansionScenes(target.vertederoFloorOrder);
+        }
 
-    if (typeof target.startExpansion === 'function') {
-      target.startExpansion();
-    }
+        if (typeof target.music?.loadExpansionMusic === 'function') {
+          target.music.loadExpansionMusic();
+        }
 
-    this.attachCachedEntities(target);
-    target.isExpansionActive = true;
-    target.isExpansionMode = true;
-    target.gameState = 'expansion';
-    return target;
+        target.expansionEquipment = mods.EXPANSION_EQUIPMENT;
+        target.isExpansionActive = true;
+        target.isExpansionMode = true;
+        target.gameState = 'expansion';
+        this.initialized = true;
+
+        if (typeof target.startExpansion === 'function') {
+          target.startExpansion();
+        }
+
+        this.attachCachedEntities(target);
+        target.isExpansionActive = true;
+        target.isExpansionMode = true;
+        target.gameState = 'expansion';
+        if (target.menuSystem) {
+          target.menuSystem.state = 'none';
+          target.menuSystem.fadeAlpha = 0;
+        }
+        return target;
+      } catch (err) {
+        console.error('[ExpansionManager] Error iniciando la expansión:', err);
+        target.isExpansionActive = false;
+        target.isExpansionMode = false;
+        target.gameState = 'base';
+        if (target.menuSystem) {
+          target.menuSystem.openTitleScreen?.();
+          target.menuSystem.showNotice?.('⚠️ No se pudo iniciar la expansión. Inténtalo de nuevo.', 3.5);
+        }
+        return null;
+      } finally {
+        this._initPromise = null;
+      }
+    })();
+
+    return this._initPromise;
   }
 }

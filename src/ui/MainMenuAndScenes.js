@@ -191,6 +191,14 @@ export class MainMenuAndScenes {
     this.state = 'title';
     this.selectedIndex = 0;
     this.noticeText = '';
+    this.fadeAlpha = 0;
+    this.fadeDirection = 0;
+    this.fadeMidpointCallback = null;
+    this.falseEndingTimer = 0;
+    this.falseEndingOnComplete = null;
+    this.endingCredits = null;
+    this.finalStatsOnClose = null;
+    this.expansionTeaserOpen = false;
     this.music.setMode('title');
   }
 
@@ -1466,6 +1474,9 @@ export class MainMenuAndScenes {
       if (this.falseEndingTimer <= 0) {
         const doneCb = this.falseEndingOnComplete;
         this.falseEndingOnComplete = null;
+        this.fadeAlpha = 0;
+        this.fadeDirection = 0;
+        input?.clear?.();
         if (doneCb) {
           doneCb();
         } else {
@@ -1720,6 +1731,9 @@ export class MainMenuAndScenes {
     // Navegación de Menús (Title, Pause, Options)
     const items = this._getCurrentMenuItems();
     if (items.length === 0) return;
+    if (this.selectedIndex < 0 || this.selectedIndex >= items.length) {
+      this.selectedIndex = 0;
+    }
 
     const dir = input.consumeMenuDirection();
     const currentItem = items[this.selectedIndex];
