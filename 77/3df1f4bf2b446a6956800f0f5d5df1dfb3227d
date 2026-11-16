@@ -1,0 +1,38 @@
+src/core/AchievementManager.js
+  h_e1bbc662b18209 92-147
+src/core/CombatManager.js
+  h_e1bbc662b18209 336-340,348-354,363,369-373,408-411,586-588
+src/core/QuestLog.js
+  h_e1bbc662b18209 8-9,203-208
+src/core/ScoreSystem.js
+  h_e1bbc662b18209 94,97,102,117,123,128,133,138
+src/entities/Player.js
+  h_e1bbc662b18209 43,46-47,160,164-165,214,216,236-240,247-268,273-276,301,303-304,308,312-315,319-326,357-360,544-547,764-765,1142-1143,1524
+src/expansion/ExpansionData.js
+  h_e1bbc662b18209 231-239,244,248-313
+src/expansion/ExpansionManager.js
+  h_e1bbc662b18209 50,124-201,231-233,310,325-333,335-338
+src/expansion/entities/RosaShop.js
+  h_e1bbc662b18209 119-120
+src/main.js
+  h_e1bbc662b18209 3488-3498,3556-3587,3589,3602-3605,3622-3625,3650-3651,3763-3804,5769-5776,5787-5788
+src/services/CloudStorage.js
+  h_e1bbc662b18209 110
+src/ui/CharacterStats.js
+  h_e1bbc662b18209 10-11,29-30,92-99,153-163,241-250,362,387-388,394,411-412,459-486,512,516,529,548,565,579,593,791-799,808-814,818,824,828-851,859,960-967
+src/ui/HUD.js
+  h_e1bbc662b18209 3,90
+tests/suites/player.test.mjs
+  h_e1bbc662b18209 20,24-25,318,321-323,385,606,609,624,631,672,675-676,679-694,696,700,702-704,1203-1204,1214,1243-1245,1355-1356,1363-1364,1378,1382-1384,1392,1398-1413,1422-1464,1472,1505-1623
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "773df1f4bf2b446a6956800f0f5d5df1dfb3227d",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
