@@ -967,11 +967,15 @@ export class CinematicDirector {
   }
 
   _drawBinaryRain(ctx, W, H) {
-    ctx.font = '4px monospace';
+    const isExpansion = this.script?.id === 'prologue_expansion';
+    ctx.font = 'bold 4.5px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    for (const drop of this.binaryRain) {
-      ctx.fillStyle = `rgba(168, 85, 247, ${drop.alpha})`;
+    for (let i = 0; i < this.binaryRain.length; i++) {
+      const drop = this.binaryRain[i];
+      ctx.fillStyle = isExpansion
+        ? (i % 3 === 0 ? `rgba(34, 211, 238, ${Math.min(0.85, drop.alpha + 0.3)})` : `rgba(34, 197, 94, ${Math.min(0.75, drop.alpha + 0.25)})`)
+        : `rgba(168, 85, 247, ${drop.alpha})`;
       ctx.fillText(drop.char, drop.x, drop.y);
     }
   }
@@ -1330,7 +1334,7 @@ export class CinematicDirector {
     ctx.imageSmoothingEnabled = false;
 
     this._drawBackground(ctx, W, H);
-    if (!this.backgroundConfig && this.particleType === 'data') {
+    if (this.particleType === 'data') {
       this._drawBinaryRain(ctx, W, H);
     }
 

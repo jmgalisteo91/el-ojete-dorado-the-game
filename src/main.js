@@ -3487,6 +3487,7 @@ export class RPGGame {
         francoRescued: Boolean(this.francoRescued),
         tonyForgiven: Boolean(this.tonyForgiven),
         alexCoreUnlocked: Boolean(this.tilemap && this.tilemap.alexCoreUnlocked),
+        introSeen: Boolean(this.expansionIntroSeen),
         endingChosen: this.expansionEndingChosen || null,
         sceneId: this.tilemap ? this.tilemap.currentSceneId : 'valleverde_corp',
         playerX: this.player ? this.player.x : 12 * 16,
@@ -3679,6 +3680,17 @@ export class RPGGame {
       this.menuSystem.fadeDirection = 0;
       this.menuSystem.showNotice('3 meses después...', 4.0);
     }
+    const hasProgressedInSave = Boolean(
+      savedSlot && (
+        savedSlot.introSeen ||
+        Number(savedSlot.curriculum) > 0 ||
+        savedSlot.francoRescued ||
+        savedSlot.alexCoreUnlocked ||
+        savedSlot.endingChosen
+      )
+    );
+    this.expansionIntroSeen = hasProgressedInSave;
+
     const showRrhhConfiscationDialog = () => {
       if (this.dialogueBox && typeof this.dialogueBox.showMessage === 'function') {
         this.dialogueBox.showMessage(
@@ -3688,8 +3700,9 @@ export class RPGGame {
       }
     };
 
-    if (!savedSlot && this.cinematicDirector && typeof this.cinematicDirector.play === 'function') {
+    if (!hasProgressedInSave && this.cinematicDirector && typeof this.cinematicDirector.play === 'function') {
       this.cinematicDirector.play(PROLOGUE_EXPANSION, () => {
+        this.expansionIntroSeen = true;
         if (this.menuSystem) {
           this.menuSystem.state = 'none';
           this.menuSystem.fadeAlpha = 0;
@@ -3704,9 +3717,11 @@ export class RPGGame {
         this.camera?.resetCinematic?.();
         this.camera?.snapTo?.(this.player);
         this.music?.setMode?.('valleverde_corp');
+        this._saveExpansionProgress();
         showRrhhConfiscationDialog();
       });
-    } else if (!savedSlot) {
+    } else if (!hasProgressedInSave) {
+      this.expansionIntroSeen = true;
       showRrhhConfiscationDialog();
     }
     this.input?.clear?.();
@@ -7245,6 +7260,8 @@ export class RPGGame {
       this.menuSystem.state === 'leaderboard' ||
       this.menuSystem.state === 'jukebox' ||
       this.menuSystem.state === 'credits' ||
+      this.menuSystem.state === 'final_stats' ||
+      this.menuSystem.state === 'false_ending_glitch' ||
       (this.menuSystem.state === 'options' && this.menuSystem.previousState === 'title') ||
       (this.menuSystem.state === 'changelog' && this.menuSystem.previousStateBeforeOptions === 'title') ||
       (this.menuSystem.state === 'controls' && this.menuSystem.previousStateBeforeControls === 'title') ||

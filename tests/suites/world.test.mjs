@@ -3751,7 +3751,11 @@ export async function run(test, assert) {
     assert.equal(PROLOGUE_EXPANSION.timeline[PROLOGUE_EXPANSION.timeline.length - 1].action, 'end');
 
     const prevStorage = globalThis.localStorage;
-    const storeMap = new Map([['el_ojete_dorado_victory_trophy', 'true']]);
+    // Simular que ya existía un guardado previo sin haber completado la intro ni progresado
+    const storeMap = new Map([
+      ['el_ojete_dorado_victory_trophy', 'true'],
+      ['el_ojete_dorado_expansion_save_v1', JSON.stringify({ curriculum: 0, coins: 25 })]
+    ]);
     globalThis.localStorage = {
       getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
       setItem: (k, v) => storeMap.set(k, String(v)),
@@ -3780,11 +3784,14 @@ export async function run(test, assert) {
         },
         _resetWorldToInitialState: () => player.unequipAllForNewGame(),
         _syncFrancoNPCState: () => {},
+        _restoreExpansionSaveData: (d) => RPGGame.prototype._restoreExpansionSaveData.call(fakeGame, d),
+        _applySavedRosaUpgrades: () => {},
+        _readExpansionStorage: () => ({}),
         _saveExpansionProgress: () => RPGGame.prototype._saveExpansionProgress.call(fakeGame)
       };
 
       RPGGame.prototype.startExpansion.call(fakeGame);
-      assert.equal(playedScript?.id, 'prologue_expansion', 'startExpansion debe lanzar la cinemática PROLOGUE_EXPANSION');
+      assert.equal(playedScript?.id, 'prologue_expansion', 'startExpansion debe lanzar PROLOGUE_EXPANSION aunque hubiera un slot sin introSeen');
       assert.deepEqual(playedScript, PROLOGUE_EXPANSION);
       assert.equal(dialogShown, null, 'El diálogo de RRHH espera a que concluya la cinemática');
 
@@ -3793,6 +3800,13 @@ export async function run(test, assert) {
       assert.equal(player.x, 12 * 16);
       assert.equal(player.y, 15 * 16);
       assert.ok(dialogShown && dialogShown.t.includes('RRHH'), 'Al terminar la cinemática aparece el diálogo inicial de RRHH en Valleverde 2.0');
+      const savedAfter = JSON.parse(storeMap.get('el_ojete_dorado_expansion_save_v1'));
+      assert.equal(savedAfter.introSeen, true, 'Debe persistir introSeen=true al terminar la cinemática');
+
+      // Al reanudar una vez vista la intro ya no vuelve a reproducirla
+      playedScript = null;
+      RPGGame.prototype.startExpansion.call(fakeGame);
+      assert.equal(playedScript, null, 'Con introSeen=true, reanudar entra directo sin repetir la intro');
     } finally {
       globalThis.localStorage = prevStorage;
     }
