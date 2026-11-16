@@ -1,6 +1,7 @@
 import { pushBackPlayer } from './DoorGatekeeper.js?v=8';
 import { SCENE_AI_ALEX_PREBATTLE, SCENE_ALEX_FINAL } from '../ui/AnimeCutsceneManager.js?v=8';
 import { registerExpansionMusic } from '../audio/AudioManager.js?v=8';
+import { BASE_BOSS_FLEE_TAUNTS } from '../data/EnemyData.js?v=8';
 
 const STAGE_TRANSITION_SCENE_IDS = new Set([
   'first_stage',
@@ -293,11 +294,36 @@ export class SceneTransitionController {
     return true;
   }
 
+  _findFleeingBoss(prevSceneId, nextSceneId) {
+    const g = this.game;
+    if (!g || !prevSceneId || !nextSceneId || prevSceneId === nextSceneId || g.bossRushActive) {
+      return null;
+    }
+    const enemies = Array.isArray(g.enemies) ? g.enemies : [];
+    const boss = enemies.find(
+      (e) => e && e.isBoss && !e.dead && !e.dormant && e.sceneId === prevSceneId
+    );
+    if (!boss) return null;
+    if (
+      boss.id === 'boss_stack_overflow' &&
+      (!g.player?.hasSword || Boolean(g.tilemap?.minesPuzzle?.solved) !== true)
+    ) {
+      return null;
+    }
+    const taunts = {
+      ...BASE_BOSS_FLEE_TAUNTS,
+      ...(g.expansionBossFleeTaunts || {})
+    };
+    const taunt = taunts[boss.id] || boss.fleeTaunt || null;
+    return taunt ? { boss, taunt } : null;
+  }
+
   _performStageTransitionSwap(door) {
     if (this._blockBaseTransitionIfExpansionActive(door)) {
       return false;
     }
     const g = this.game;
+    const prevSceneId = g.tilemap?.currentSceneId;
     g.transitionCooldown = 0.5;
     if (g.music) {
       if (door.targetScene === 'condemned_realms' || g.tilemap.currentSceneId === 'condemned_realms') {
@@ -346,6 +372,8 @@ export class SceneTransitionController {
       }
       activeDoor = { ...activeDoor, targetScene: 'vertedero_piso_1' };
     }
+
+    const fleeingBossInfo = this._findFleeingBoss(prevSceneId, activeDoor.targetScene);
 
     g.tilemap.loadScene(activeDoor.targetScene);
     // (FIX 3) Sincronizar la puerta norte de la arena con el estado real del Núcleo
@@ -479,6 +507,20 @@ export class SceneTransitionController {
       typeof g.maybeStartDungeonIntroPan === 'function'
     ) {
       g.maybeStartDungeonIntroPan(activeDoor.targetScene);
+    }
+
+    if (
+      fleeingBossInfo &&
+      g.dialogueBox &&
+      !g.dialogueBox.active &&
+      !(g.animeCutscenes && g.animeCutscenes.isActive) &&
+      !(g.cinematicDirector && g.cinematicDirector.isActive)
+    ) {
+      g.dialogueBox.showMessage(
+        fleeingBossInfo.boss.name || 'Jefe',
+        [fleeingBossInfo.taunt]
+      );
+      g.dialogueBox.scheduleAutoClose?.(3.0);
     }
   }
 }

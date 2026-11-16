@@ -29,6 +29,7 @@ export class DialogueBox {
     this.visibleChars = 0;
     this.openAnim = 1;
     this.lastBlipCharIndex = -1;
+    this.autoCloseTimer = 0;
     this.lastMenuBounds = null;
     this.baseCharSpeed = 40;
     this.charSpeed = 40;
@@ -43,7 +44,13 @@ export class DialogueBox {
     this.caughtSkippingCount = 0;
     this.caughtBannerTimer = 0;
     this.timeSinceLineCompleted = 0;
+    this.autoCloseTimer = 0;
     this.lastMenuBounds = null;
+  }
+
+  /** Programa el autocierre del diálogo actual tras `seconds` segundos. */
+  scheduleAutoClose(seconds = 3.0) {
+    this.autoCloseTimer = Math.max(0.1, Number(seconds) || 0);
   }
 
   setBaseCharSpeed(speed) {
@@ -182,7 +189,9 @@ export class DialogueBox {
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.autoCloseTimer = 0;
     this.lastMenuBounds = null;
+    this.autoCloseTimer = 0;
     this.blinkTimer = 0;
   }
 
@@ -209,7 +218,9 @@ export class DialogueBox {
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.autoCloseTimer = 0;
     this.lastMenuBounds = null;
+    this.autoCloseTimer = 0;
     this.blinkTimer = 0;
   }
 
@@ -327,6 +338,7 @@ export class DialogueBox {
     this.selectedChoiceIndex = 0;
     this.visibleChars = 0;
     this.lastBlipCharIndex = -1;
+    this.autoCloseTimer = 0;
     this.lastMenuBounds = null;
 
     const cb = this.onClose;
@@ -338,6 +350,15 @@ export class DialogueBox {
 
   update(dt) {
     if (!this.active) return;
+
+    if (this.autoCloseTimer > 0) {
+      this.autoCloseTimer -= dt;
+      if (this.autoCloseTimer <= 0) {
+        this.autoCloseTimer = 0;
+        this.close();
+        return;
+      }
+    }
 
     if (this.caughtBannerTimer > 0) {
       this.caughtBannerTimer = Math.max(0, this.caughtBannerTimer - dt);

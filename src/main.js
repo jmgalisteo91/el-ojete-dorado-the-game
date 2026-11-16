@@ -89,6 +89,16 @@ const VIEWPORT_HEIGHT = 180;
 const BASE_RENDER_SCALE = 4; // Desktop: 1280x720 (4x sobre la base lógica 320x180)
 const EXPANSION_SAVE_KEY = 'el_ojete_dorado_expansion_save';
 const EXPANSION_SLOT_SAVE_KEY = 'el_ojete_dorado_expansion_save_v1';
+const SCRAP_HINT_STORAGE_KEY = 'el_ojete_has_seen_scrap_hint';
+
+function readScrapHintFlag() {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem(SCRAP_HINT_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
 const EXPANSION_UNLOCK_KEY = 'el_ojete_dorado_victory_trophy';
 const EXPANSION_SCENE_IDS = new Set([
   'valleverde_corp',
@@ -467,6 +477,7 @@ export class RPGGame {
     this._npcsSchedulePending = false;
     // (FIX NPC.8) Brom solo regala una hogaza de pan por partida
     this.bromBreadGift = false;
+    this.hasSeenScrapHint = readScrapHintFlag();
 
     // Control de eventos y debouncing de los Puzles en los Templos Binarios
     this.activeArmorSwitchTile = null;
@@ -772,6 +783,10 @@ export class RPGGame {
 
     // (FIX NPC.8) El regalo de pan vuelve a estar disponible en una partida nueva
     this.bromBreadGift = false;
+    this.hasSeenScrapHint = readScrapHintFlag();
+    if (this.player) {
+      this.player.hasSeenScrapHint = this.hasSeenScrapHint;
+    }
 
     // (FIX NPC.1) Los animales vuelven a su sitio: antes conservaban posición y estado
     // de la partida anterior al empezar una nueva.
@@ -1244,6 +1259,46 @@ export class RPGGame {
     this.sceneTransitions.checkBossIntroTriggers();
   }
 
+  _handleScrapItemPickup(item = null) {
+    const sCount = this.inventory?.getItemCount?.('drone_scrap') || 0;
+    if (this.questLog) {
+      this.questLog.advanceStep(
+        'quest_side_fractal_temper',
+        `Has conseguido ${sCount}/2 restos de chatarra de drones. Llévaselos al Herrero Brom.`
+      );
+    }
+    const alreadySeen = Boolean(
+      this.hasSeenScrapHint ||
+      this.player?.hasSeenScrapHint ||
+      readScrapHintFlag()
+    );
+    if (!alreadySeen) {
+      this.hasSeenScrapHint = true;
+      if (this.player) this.player.hasSeenScrapHint = true;
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(SCRAP_HINT_STORAGE_KEY, 'true');
+        }
+      } catch {}
+      this._saveGameToStorage?.();
+      this.dialogueBox?.showMessage?.('⚙️ Chatarra de Dron Recogida', [
+        'Has recuperado fragmentos de aleación fractal y circuitos de un dron de AI Alex.',
+        `Llévaselos al Herrero Brom para forjar el templado de tu espada. (Llevas: ${sCount}/2)`
+      ]);
+      return;
+    }
+    this._saveGameToStorage?.();
+    if (typeof this.spawnFloatingText === 'function') {
+      this.spawnFloatingText({
+        text: '+1 Chatarra',
+        x: this.player?.centerX ?? item?.x ?? 0,
+        y: Math.max(8, (this.player?.y ?? item?.y ?? 16) - 6),
+        life: 1.0,
+        color: '#93c5fd'
+      });
+    }
+  }
+
   _buildSavePayload() {
     return {
       version: 2,
@@ -1336,6 +1391,7 @@ export class RPGGame {
       housePermissions: { ...this.housePermissions },
       // (FIX NPC.8) Evita farmear pan (y dinero) recargando la partida
       bromBreadGift: Boolean(this.bromBreadGift),
+      hasSeenScrapHint: Boolean(this.hasSeenScrapHint),
       inventoryItems: this.inventory.items.map((it) => ({ ...it })),
       bossCutscenesSeen: { ...this.bossCutscenesSeen },
       prebattleAlexCutscenePlayed: Boolean(this.prebattleAlexCutscenePlayed),
@@ -1825,6 +1881,10 @@ export class RPGGame {
       this.isJailedForever = false;
       this.player.hasBrokenHeartCurse = Boolean(data.hasBrokenHeartCurse);
       this.bromBreadGift = Boolean(data.bromBreadGift);
+      this.hasSeenScrapHint = Boolean(data.hasSeenScrapHint || readScrapHintFlag());
+      if (this.player) {
+        this.player.hasSeenScrapHint = this.hasSeenScrapHint;
+      }
 
       // Carga y sincronización del Puzle 1 (Templo de la Armadura)
       if (data.armorPuzzle && this.tilemap?.armorPuzzle) {
@@ -4984,18 +5044,7 @@ export class RPGGame {
         }
 
         if (invId === 'drone_scrap') {
-          const sCount = this.inventory.getItemCount('drone_scrap');
-          if (this.questLog) {
-            this.questLog.advanceStep(
-              'quest_side_fractal_temper',
-              `Has conseguido ${sCount}/2 restos de chatarra de drones. Llévaselos al Herrero Brom.`
-            );
-          }
-          this._saveGameToStorage();
-          this.dialogueBox.showMessage('⚙️ Chatarra de Dron Recogida', [
-            'Has recuperado fragmentos de aleación fractal y circuitos de un dron de AI Alex.',
-            `Llévaselos al Herrero Brom para forjar el templado de tu espada. (Llevas: ${sCount}/2)`
-          ]);
+          this._handleScrapItemPickup(item);
           return;
         }
 

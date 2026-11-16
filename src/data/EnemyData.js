@@ -557,6 +557,14 @@ export const BOSS_RUSH_QUEUE = [
   'FinalBossAlex'
 ];
 
+export const BASE_BOSS_FLEE_TAUNTS = {
+  boss_garbage_collector: '¡Huye, cobarde! ¡Tu código está lleno de fugas de memoria!',
+  boss_stack_overflow: 'Me voy a quedar aquí recursivamente... y tú te vas a pudrir.',
+  boss_prototype_microwave: '¡Ding! ¡Tu valentía ha terminado! ¡Vuelve cuando estés más caliente!',
+  boss_final_ai_alex: 'Vete, vete. Total, el próximo trimestre te despido igual.',
+  boss_final_alex: 'Vete, vete. Total, el próximo trimestre te despido igual.'
+};
+
 export const ENEMY_SPAWNS = {
   firstStage: FIRST_STAGE_ENEMY_SPAWNS,
   dungeonRooms: DUNGEON_ROOM_ENEMY_SPAWNS,

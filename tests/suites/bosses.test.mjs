@@ -17,7 +17,8 @@ import { AlexUpdateBoss, ALEX_UPDATE_DEATH_QUOTE } from '../../src/expansion/ent
 import { TechnicalDebtBoss, TECH_DEBT_DEATH_QUOTE } from '../../src/expansion/entities/TechnicalDebtBoss.js';
 import { AchievementManager } from '../../src/core/AchievementManager.js';
 import { MainMenuAndScenes } from '../../src/ui/MainMenuAndScenes.js';
-import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY } from '../../src/expansion/ExpansionData.js';
+import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY, EXPANSION_BOSS_FLEE_TAUNTS } from '../../src/expansion/ExpansionData.js';
+import { DialogueBox } from '../../src/ui/DialogueBox.js';
 import { TonyRandazzo } from '../../src/expansion/entities/TonyRandazzo.js';
 import { FrancoPancho } from '../../src/expansion/entities/FrancoPancho.js';
 import { IñakitoBoss } from '../../src/expansion/entities/IñakitoBoss.js';
@@ -898,5 +899,99 @@ export async function run(test, assert) {
     assert.ok(fillTexts.includes('00:03'), 'Fase 1 debe mostrar el contador del Microondas Cuántico');
     assert.ok(fillTexts.includes('00:00'), 'Fase 3 debe mostrar el núcleo 00:00 del Gran Ojal');
     assert.equal(fillTexts.includes('ALEX'), false, 'No debe dibujar la caja fuerte corporativa ALEX');
+  });
+
+  test('UX y Humor: burla de jefe al huir por la puerta (3s) y aviso único de chatarra con persistencia', async () => {
+    const prevStorage = globalThis.localStorage;
+    const storeMap = new Map();
+    globalThis.localStorage = {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k)
+    };
+
+    try {
+      // 1. Entrar en sewers_dungeon y huir estando Garbage Collector vivo
+      const tm = new Tilemap(null, 16);
+      await tm.loadExpansionScenes();
+      tm.loadScene('sewers_dungeon');
+      const gcBoss = new GarbageCollectorBoss({ x: 11.2 * 16, y: 8 * 16, sceneId: 'sewers_dungeon' });
+      const inakitoBoss = new IñakitoBoss({ x: 9.2 * 16, y: 6.5 * 16, sceneId: 'inakito_office' });
+      const dlgBox = new DialogueBox(320, 180, null);
+
+      const gameStub = {
+        tilemap: tm,
+        player: new Player({ x: 11.5 * 16, y: 15 * 16 }),
+        camera: { snapTo: () => {}, setWorldBounds: () => {} },
+        music: { setMode: () => {}, stopBossMusic: () => {}, playDoorOpenSound: () => {} },
+        npcs: [],
+        enemies: [gcBoss, inakitoBoss],
+        bossCutscenesSeen: { boss_garbage_collector: true },
+        dialogueBox: dlgBox,
+        expansionBossFleeTaunts: EXPANSION_BOSS_FLEE_TAUNTS,
+        _resolveStageSpawn: () => ({ x: 11.5 * 16, y: 2 * 16, facing: 'down' }),
+        _saveGameToStorage: () => {},
+        _restoreAllNPCsToOverworld: () => {}
+      };
+      const stc = new SceneTransitionController(gameStub);
+      stc.executeStageTransition({ type: 'exit', targetScene: 'sewers_puzzle' }, { immediate: true });
+
+      assert.equal(dlgBox.active, true, 'Al huir de Garbage Collector debe mostrarse su burla');
+      assert.equal(dlgBox.speakerName, gcBoss.name);
+      assert.equal(dlgBox.lines.join(' ').replace(/\n+/g, ' '), '¡Huye, cobarde! ¡Tu código está lleno de fugas de memoria!');
+      assert.equal(dlgBox.autoCloseTimer, 3.0);
+
+      // Tras 3s se cierra automáticamente sin bloquear al jugador
+      dlgBox.update(3.1);
+      assert.equal(dlgBox.active, false);
+
+      // En expansión: huir de Iñakito muestra su frase de EXPANSION_BOSS_FLEE_TAUNTS
+      gameStub.isExpansionActive = true;
+      gameStub.isExpansionMode = true;
+      tm.loadScene('inakito_office');
+      stc.executeStageTransition({ type: 'exit', targetScene: 'valleverde_corp' }, { immediate: true });
+      assert.equal(dlgBox.active, true);
+      assert.equal(dlgBox.speakerName, inakitoBoss.name);
+      assert.equal(dlgBox.lines.join(' ').replace(/\n+/g, ' '), EXPANSION_BOSS_FLEE_TAUNTS.boss_inakito);
+      dlgBox.close();
+
+      // 2. Filtro de tutorial de chatarra (drone_scrap): 1ª vez diálogo; 2ª vez + tras recarga solo floatingText
+      const scrapDlgs = [];
+      const floats = [];
+      const scrapGame = {
+        player: new Player({ x: 64, y: 64 }),
+        inventory: { getItemCount: () => 1 },
+        questLog: null,
+        hasSeenScrapHint: false,
+        dialogueBox: { showMessage: (title, lines) => scrapDlgs.push({ title, lines }) },
+        spawnFloatingText: (ft) => floats.push(ft),
+        _saveGameToStorage: () => {}
+      };
+
+      RPGGame.prototype._handleScrapItemPickup.call(scrapGame, { x: 64, y: 64 });
+      assert.equal(scrapGame.hasSeenScrapHint, true);
+      assert.equal(storeMap.get('el_ojete_has_seen_scrap_hint'), 'true');
+      assert.equal(scrapDlgs.length, 1, 'La 1ª chatarra debe mostrar el aviso del herrero');
+      assert.equal(floats.length, 0);
+
+      // 2ª chatarra en la misma sesión
+      RPGGame.prototype._handleScrapItemPickup.call(scrapGame, { x: 80, y: 64 });
+      assert.equal(scrapDlgs.length, 1, 'La 2ª chatarra NO debe repetir el diálogo largo');
+      assert.equal(floats.length, 1);
+      assert.equal(floats[0].text, '+1 Chatarra');
+
+      // Simular nueva instancia tras recargar página con localStorage conservado
+      const reloadedStub = {
+        ...scrapGame,
+        hasSeenScrapHint: false,
+        player: new Player({ x: 96, y: 64 })
+      };
+      RPGGame.prototype._handleScrapItemPickup.call(reloadedStub, { x: 96, y: 64 });
+      assert.equal(scrapDlgs.length, 1, 'Al recargar con localStorage guardado tampoco repite el diálogo');
+      assert.equal(floats.length, 2);
+      assert.equal(floats[1].text, '+1 Chatarra');
+    } finally {
+      globalThis.localStorage = prevStorage;
+    }
   });
 }

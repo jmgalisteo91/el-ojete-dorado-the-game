@@ -277,3 +277,12 @@ export const EXPANSION_SKILLS = {
 
 export const EXPANSION_SKILLS_KEYS = Object.keys(EXPANSION_SKILLS);
 export const EXPANSION_EQUIPMENT_KEYS = Object.keys(EXPANSION_EQUIPMENT);
+
+/**
+ * Frases de burla de los jefes cuando el jugador huye de su arena.
+ */
+export const EXPANSION_BOSS_FLEE_TAUNTS = {
+  boss_inakito: '¡El jefe dice que no me compares con los cobardes como tú!',
+  boss_kernel: 'Acceso denegado a tu orgullo. Siguiente proceso.',
+  boss_alex_update: '¿Ya pides la baja? No pasa nada, te descuento la huida de la nómina.'
+};

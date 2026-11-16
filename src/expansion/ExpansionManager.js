@@ -45,6 +45,7 @@ export class ExpansionManager {
     this._cachedModules = {
       EXPANSION_NPCS: dataMod.EXPANSION_NPCS,
       EXPANSION_EQUIPMENT: dataMod.EXPANSION_EQUIPMENT,
+      EXPANSION_BOSS_FLEE_TAUNTS: dataMod.EXPANSION_BOSS_FLEE_TAUNTS,
       TonyRandazzo: tonyMod.TonyRandazzo,
       FrancoPancho: francoMod.FrancoPancho,
       RosaShop: rosaShopMod.RosaShop,
@@ -253,6 +254,7 @@ export class ExpansionManager {
     if (!game || !this._cachedModules) return false;
     const mods = this._cachedModules;
     game.expansionEquipment = mods.EXPANSION_EQUIPMENT;
+    game.expansionBossFleeTaunts = mods.EXPANSION_BOSS_FLEE_TAUNTS;
     game.expansionAmbientConfig = {
       barks: [
         '¡Mi nivel de felicidad es del 98%!',
