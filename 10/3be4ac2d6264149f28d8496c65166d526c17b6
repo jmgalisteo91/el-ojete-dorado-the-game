@@ -1,0 +1,26 @@
+src/entities/Player.js
+  h_e1bbc662b18209 94,466,587,1496-1503,1585,1587-1591,1630-1669,1744-1790
+src/expansion/ExpansionData.js
+  h_e1bbc662b18209 219-254
+src/expansion/ExpansionManager.js
+  h_e1bbc662b18209 13,326-328,330-332,334-336,338-340,342-346,348-374,376
+src/main.js
+  h_e1bbc662b18209 19,3541-3543,3550-3558,3560,3565-3577,3579-3586,3591-3597,3622,3625-3631
+src/ui/MainMenuAndScenes.js
+  h_e1bbc662b18209 194-201,1477-1479,1734-1736
+tests/suites/player.test.mjs
+  h_e1bbc662b18209 15-22,1306-1420
+tests/suites/world.test.mjs
+  h_e1bbc662b18209 1586,1590-1601
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "103be4ac2d6264149f28d8496c65166d526c17b6",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
