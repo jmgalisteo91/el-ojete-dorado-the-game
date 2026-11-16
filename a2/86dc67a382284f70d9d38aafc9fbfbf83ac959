@@ -1,0 +1,28 @@
+src/core/CombatManager.js
+  h_e1bbc662b18209 248-266
+src/core/InputHandler.js
+  h_e1bbc662b18209 8-20,22,27-29,67,78-80,330-331,334,354,364-425
+src/data/DialogueData.js
+  h_e1bbc662b18209 438-443,745-764
+src/data/EnemyData.js
+  h_e1bbc662b18209 553-559
+src/entities/NPC.js
+  h_e1bbc662b18209 35-37,76-77,587-596
+src/main.js
+  h_e1bbc662b18209 204-205,212,361,364-375,493-494,852-1009,3128,6484,6541-6553
+src/ui/MainMenuAndScenes.js
+  h_e1bbc662b18209 19-25,52,54-57,311-330,717-756,842-886,928,954-962,965-969,971-980,982-983,1187-1192,1431-1461,1681,1703,1705,1713,1796-1806,3093-3194
+tests/suites/world.test.mjs
+  h_e1bbc662b18209 30-33,569,3098-3304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "a286dc67a382284f70d9d38aafc9fbfbf83ac959",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
