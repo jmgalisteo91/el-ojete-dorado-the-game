@@ -333,12 +333,24 @@ export class CombatManager {
       if (g.tilemap && typeof g.tilemap.setInakitoOfficeGate === 'function') {
         g.tilemap.setInakitoOfficeGate(true);
       }
+      if (g.achievementManager) g.achievementManager.unlock('ach_exp_inakito');
+      if (g.questLog) {
+        g.questLog.completeQuest('exp_quest_inakito', '¡Iñakito 2.0 despedido! Llave del Vertedero y Escudo del Becario obtenidos.');
+        g.questLog.advanceStep('exp_quest_franco', 'Usa el ascensor sur de Valleverde 2.0 para entrar al Vertedero Digital y rescatar a Franco el Pancho.');
+      }
       g._grantBossLoot([
         {
           id: 'key_vertedero',
           name: 'Llave de Acceso al Vertedero',
           description: 'Tarjeta corporativa confiscada a Iñakito 2.0. Abre el ascensor al Vertedero Digital.',
           iconIndex: ITEM_ICONS.BRIDGE_PASS,
+          qty: 1
+        },
+        {
+          id: 'escudo_becario',
+          name: 'Escudo del Becario',
+          description: 'Parry reforzado: amplía la ventana de parry en +0.2s adicionales.',
+          iconIndex: ITEM_ICONS.ARMOR || ITEM_ICONS.BRIDGE_PASS,
           qty: 1
         }
       ]);
@@ -348,12 +360,17 @@ export class CombatManager {
         ]);
       }
       if (g.menuSystem) {
-        g.menuSystem.showNotice('🔑 ¡Has obtenido la [Llave de Acceso al Vertedero]! Barrera norte abierta.', 4.0);
+        g.menuSystem.showNotice('🔑 ¡[Llave del Vertedero] y 🛡️ [Escudo del Becario] obtenidos!', 4.0);
       }
     } else if (enemy.id === 'boss_kernel') {
       g.kernelHackActive = false;
       g.kernelHudFlicker = false;
       g.bsodOverlayTimer = 0;
+      if (g.achievementManager) g.achievementManager.unlock('ach_exp_kernel');
+      if (g.questLog) {
+        g.questLog.completeQuest('exp_quest_kernel', '¡El Kernel purgado! Credenciales raíz del Núcleo obtenidas.');
+        g.questLog.advanceStep('exp_quest_alex', 'Entra al Núcleo Cuántico de Datos para enfrentarte a Mister Alex IA (Update Universal).');
+      }
       if (g.tilemap && typeof g.tilemap.setAlexCoreUnlocked === 'function') {
         g.tilemap.setAlexCoreUnlocked(true);
       }
@@ -388,6 +405,10 @@ export class CombatManager {
         g.menuSystem.showNotice('🔑 ¡Has obtenido la [Llave de Acceso al Núcleo]! Paso al Núcleo desbloqueado.', 4.5);
       }
     } else if (enemy.id === 'boss_alex_update') {
+      if (g.achievementManager) g.achievementManager.unlock('ach_exp_alex_v2');
+      if (g.questLog) {
+        g.questLog.completeQuest('exp_quest_alex', '¡Update Universal detenido! Mister Alex IA ha caído en el Núcleo Cuántico.');
+      }
       g._openAlexUpdateEndingDialogue();
     } else if (enemy.id === 'boss_technical_debt') {
       g.debtGlitchTimer = 0;
@@ -562,6 +583,9 @@ export class CombatManager {
         const prevLevel = g.player.level;
         const gained = g.player.awardKill(Boolean(enemy.isBoss), enemy.xpReward);
         if (g.player.level > prevLevel) {
+          if ((g.isExpansionActive || g.isExpansionMode) && g.player.level >= 20 && g.achievementManager) {
+            g.achievementManager.unlock('ach_exp_level20');
+          }
           if (g.music && typeof g.music.playFanfare === 'function') {
             g.music.playFanfare();
           }

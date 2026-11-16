@@ -89,6 +89,62 @@ export const ACHIEVEMENTS = [
     description: 'Derrota a La Deuda Técnica tras los créditos con 20+ Currículums y descubre la verdad del código.',
     icon: '🏆',
     category: 'SECRET'
+  },
+  {
+    id: 'ach_exp_rrhh',
+    title: 'Bienvenida de RRHH',
+    description: 'Entra en Valleverde 2.0 tras la confiscación de equipo por el departamento de RRHH.',
+    icon: '🪪',
+    category: 'EXPANSION'
+  },
+  {
+    id: 'ach_exp_inakito',
+    title: 'Becario Despedido',
+    description: 'Derrota a Iñakito 2.0 en la Oficina Central y consigue el acceso al Vertedero Digital.',
+    icon: '☕',
+    category: 'EXPANSION'
+  },
+  {
+    id: 'ach_exp_franco',
+    title: 'Músculo Sindical',
+    description: 'Rescata a Franco el Pancho de las profundidades del Vertedero Digital.',
+    icon: '🤝',
+    category: 'EXPANSION'
+  },
+  {
+    id: 'ach_exp_kernel',
+    title: 'Pantallazo Azul',
+    description: 'Supera la auditoría de El Kernel y obtén la Llave de Acceso al Núcleo.',
+    icon: '💻',
+    category: 'EXPANSION'
+  },
+  {
+    id: 'ach_exp_rosa',
+    title: 'Cliente VIP en B',
+    description: 'Adquiere tu primera mejora permanente en el Bar Corporativo de Rosa.',
+    icon: '🍺',
+    category: 'EXPANSION'
+  },
+  {
+    id: 'ach_exp_gear',
+    title: 'Armamento de Oficina',
+    description: 'Consigue herramientas corporativas avanzadas (Grapadora o Destornillador) con Tío Manoplo.',
+    icon: '🪛',
+    category: 'EXPANSION'
+  },
+  {
+    id: 'ach_exp_level20',
+    title: 'Senioridad Absoluta',
+    description: 'Alcanza el Nivel 20 máximo en Valleverde 2.0 como CTO Legendario.',
+    icon: '🚀',
+    category: 'EXPANSION'
+  },
+  {
+    id: 'ach_exp_alex_v2',
+    title: 'Update Desinstalado',
+    description: 'Derrota a Mister Alex IA (Update Universal) en el Núcleo Cuántico de Valleverde 2.0.',
+    icon: '⚡',
+    category: 'EXPANSION'
   }
 ];
 

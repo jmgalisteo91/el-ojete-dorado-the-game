@@ -1,5 +1,6 @@
 import { UILayout, hudFontSize } from './UILayout.js?v=8';
 import { SpeechBubble } from './SpeechBubble.js?v=8';
+import { MAX_PLAYER_LEVEL } from '../entities/Player.js?v=8';
 
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 180;
@@ -86,7 +87,7 @@ export class HUD {
       const xpPct = Math.max(0, Math.min(1, (g.player.getXpProgressPercent?.() || 0) / 100));
       ctx.font = hudFont(4.2, true);
       ctx.fillStyle = '#fef08a';
-      ctx.fillText(`NV. ${g.player.level}/15`, lvlX + lvlW / 2, lvlY + 4.4);
+      ctx.fillText(`NV. ${g.player.level}/${MAX_PLAYER_LEVEL}`, lvlX + lvlW / 2, lvlY + 4.4);
 
       const xpBarX = lvlX + 3;
       const xpBarY = lvlY + 8.5;

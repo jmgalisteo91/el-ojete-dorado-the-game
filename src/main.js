@@ -3485,6 +3485,17 @@ export class RPGGame {
         playerY: this.player ? this.player.y : 15 * 16,
         coins: this.player ? (this.player.coins || 0) : 0,
         hp: this.player ? this.player.hp : 3,
+        maxHp: this.player ? this.player.maxHp : 3,
+        level: this.player ? Math.max(10, this.player.level || 10) : 10,
+        xp: this.player ? Math.max(1700, this.player.xp || 1700) : 1700,
+        skillPoints: this.player ? (this.player.skillPoints || 0) : 0,
+        levelStaminaBonus: this.player ? (this.player.levelStaminaBonus || 0) : 0,
+        levelDamageBonus: this.player ? (this.player.levelDamageBonus || 0) : 0,
+        skills: this.player ? { ...this.player.skills } : null,
+        equippedWeapon: this.player ? (this.player.equippedWeapon || 'boligrafo') : 'boligrafo',
+        equippedShield: this.player ? (this.player.equippedShield || 'carpeta') : 'carpeta',
+        inventoryItems: this.inventory ? this.inventory.items.map((it) => ({ ...it })) : null,
+        questLogData: this.questLog && typeof this.questLog.serialize === 'function' ? this.questLog.serialize() : null,
         rosaUpgrades: {
           maxHp: this.player ? this.player.maxHp : 3,
           damageBonus: this.player ? (this.player.rosaDamageBonus || 0) : 0,
@@ -3542,7 +3553,40 @@ export class RPGGame {
       this.player.isExpansionActive = true;
     }
 
+    // Sustituir diario medieval por las misiones propias de Valleverde 2.0
+    if (this.questLog && typeof this.questLog.loadExpansionQuests === 'function') {
+      this.questLog.loadExpansionQuests();
+    }
+
+    const applyExpansionVeteranKit = (p) => {
+      if (!p) return;
+      p.isExpansionActive = true;
+      p.hasSword = false;
+      p.hasArmor = false;
+      p.armorPoints = 0;
+      p.hasBrokenHeartCurse = false;
+
+      // Habilidades principales del juego base ya dominadas tras vencer a AI Alex
+      p.hasDash = Boolean(STARTING_EXPANSION_GEAR.startingAbilities?.hasDash ?? true);
+      p.hasChargedAttack = Boolean(STARTING_EXPANSION_GEAR.startingAbilities?.hasChargedAttack ?? true);
+      p.hasBarrier = Boolean(STARTING_EXPANSION_GEAR.startingAbilities?.hasBarrier ?? true);
+      if (p.skills && Array.isArray(STARTING_EXPANSION_GEAR.startingBaseSkills)) {
+        for (const sk of STARTING_EXPANSION_GEAR.startingBaseSkills) {
+          p.skills[sk] = true;
+        }
+      }
+
+      // Arranca en Nivel 10 (1700 XP) rumbo al Nivel 20
+      const baseLvl = STARTING_EXPANSION_GEAR.startingLevel ?? 10;
+      const baseXp = STARTING_EXPANSION_GEAR.startingXp ?? 1700;
+      if ((p.level || 1) < baseLvl) p.level = baseLvl;
+      if ((p.xp || 0) < baseXp) p.xp = baseXp;
+      p.maxStamina = p.effectiveMaxStamina;
+      p.stamina = p.maxStamina;
+    };
+
     if (savedSlot) {
+      applyExpansionVeteranKit(this.player);
       this._restoreExpansionSaveData(savedSlot);
       if (Number.isFinite(Number(savedSlot.coins))) {
         this.player.coins = Math.max(0, Number(savedSlot.coins));
@@ -3554,6 +3598,10 @@ export class RPGGame {
         }
         if (!this.player.equippedShield) {
           this.player.equippedShield = STARTING_EXPANSION_GEAR.shield;
+        }
+        this.player.syncProgressionStatsForLevel?.();
+        if (this.player.level >= MAX_PLAYER_LEVEL) {
+          this.achievementManager?.unlock?.('ach_exp_level20', true);
         }
       }
     } else {
@@ -3571,11 +3619,10 @@ export class RPGGame {
         this.player.inventory.items = [];
       }
 
-      this.player.hasSword = false;
-      this.player.hasArmor = false;
-      this.player.armorPoints = 0;
-      this.player.hasBrokenHeartCurse = false;
-      this.player.hasDash = true;
+      applyExpansionVeteranKit(this.player);
+      this.player.skillPoints = STARTING_EXPANSION_GEAR.startingSkillPoints ?? 2;
+      this.player.levelStaminaBonus = 0;
+      this.player.levelDamageBonus = 0;
       this.player.maxHp = STARTING_EXPANSION_GEAR.baseMaxHp;
       this.player.hp = STARTING_EXPANSION_GEAR.baseHp;
       this.player.equippedWeapon = STARTING_EXPANSION_GEAR.weapon;
@@ -3599,6 +3646,8 @@ export class RPGGame {
       }
       this._syncFrancoNPCState();
     }
+
+    this.achievementManager?.unlock?.('ach_exp_rrhh');
 
     this.expansionManager?.attachCachedEntities?.(this);
 
@@ -3711,6 +3760,48 @@ export class RPGGame {
       this.tilemap.setAlexCoreUnlocked(true);
     }
     this._applySavedRosaUpgrades(data.rosaUpgrades || saved.rosaUpgrades);
+    if (this.player) {
+      if (Number.isFinite(Number(data.level))) {
+        this.player.level = Math.max(10, Math.min(MAX_PLAYER_LEVEL, Math.floor(Number(data.level))));
+      }
+      if (Number.isFinite(Number(data.xp))) {
+        this.player.xp = Math.max(1700, Math.floor(Number(data.xp)));
+      }
+      if (Number.isFinite(Number(data.skillPoints))) {
+        this.player.skillPoints = Math.max(0, Math.floor(Number(data.skillPoints)));
+      }
+      if (Number.isFinite(Number(data.levelStaminaBonus))) {
+        this.player.levelStaminaBonus = Math.max(0, Math.floor(Number(data.levelStaminaBonus)));
+      }
+      if (Number.isFinite(Number(data.levelDamageBonus))) {
+        this.player.levelDamageBonus = Math.max(0, Number(data.levelDamageBonus));
+      }
+      if (data.skills && typeof data.skills === 'object' && this.player.skills) {
+        for (const [k, v] of Object.entries(data.skills)) {
+          if (k in this.player.skills && v) this.player.skills[k] = true;
+        }
+      }
+      if (typeof data.equippedWeapon === 'string' && data.equippedWeapon && data.equippedWeapon !== 'default') {
+        this.player.equippedWeapon = data.equippedWeapon;
+      }
+      if (typeof data.equippedShield === 'string' && data.equippedShield) {
+        this.player.equippedShield = data.equippedShield;
+      }
+      this.player.syncProgressionStatsForLevel?.();
+      if (Number.isFinite(Number(data.maxHp)) && Number(data.maxHp) > this.player.maxHp) {
+        this.player.maxHp = Math.floor(Number(data.maxHp));
+      }
+      if (Number.isFinite(Number(data.hp)) && Number(data.hp) > 0) {
+        this.player.hp = Math.min(this.player.effectiveMaxHp, Number(data.hp));
+      }
+      this.player.stamina = this.player.effectiveMaxStamina;
+    }
+    if (Array.isArray(data.inventoryItems) && this.inventory && typeof this.inventory.setItems === 'function') {
+      this.inventory.setItems(data.inventoryItems);
+    }
+    if (Array.isArray(data.questLogData) && this.questLog && typeof this.questLog.deserialize === 'function') {
+      this.questLog.deserialize(data.questLogData);
+    }
     this.tonyForgiven = Boolean(data.tonyForgiven || saved.tonyForgiven);
     this.expansionEndingChosen = data.endingChosen || saved.endingChosen || null;
     this.vertederoRebootTimer = 0;
@@ -5675,6 +5766,14 @@ export class RPGGame {
   }
 
   _computePlayerFinalTitle() {
+    if (this.isExpansionActive || this.isExpansionMode) {
+      const lvl = this.player?.level || 10;
+      const d = this.totalDeaths || 0;
+      if (lvl >= MAX_PLAYER_LEVEL && d === 0) return 'CTO Legendario de Valleverde 2.0';
+      if (lvl >= 17) return 'Principal Software Architect Rebelde';
+      if (lvl >= 14) return 'Staff Engineer Veterano';
+      return 'Senior Tech Lead Superviviente del Update';
+    }
     const hasAll = Boolean(this.player.hasDash && this.player.hasChargedAttack && this.player.hasBarrier);
     const j = this.totalJailVisits || 0;
     if (hasAll && j === 0) return 'Senior Lead Architect del Gran Ojal';
@@ -5685,7 +5784,8 @@ export class RPGGame {
   }
 
   _buildBaseVictoryRecord() {
-    const scoreResult = calculateGameScore(this.totalPlayTimeSeconds, this.totalDeaths);
+    const isExp = Boolean(this.isExpansionActive || this.isExpansionMode);
+    const scoreResult = calculateGameScore(this.totalPlayTimeSeconds, this.totalDeaths, isExp);
     return {
       playTimeSeconds: Math.round(this.totalPlayTimeSeconds || 0),
       playTimeFormatted: scoreResult.timeFormatted,

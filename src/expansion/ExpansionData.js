@@ -228,13 +228,88 @@ export const STARTING_EXPANSION_GEAR = {
   shield: 'carpeta',
   baseHp: 3,
   baseMaxHp: 3,
+  startingLevel: 10,
+  startingXp: 1700,
+  startingSkillPoints: 2,
+  startingAbilities: {
+    hasDash: true,
+    hasChargedAttack: true,
+    hasBarrier: true
+  },
+  startingBaseSkills: ['vigor', 'filo', 'reflejo', 'log'],
   confiscationTitle: 'RRHH — Control de Acceso',
   confiscationMessage: 'Bienvenido a RRHH. Tu equipo anterior ha sido confiscado.',
   confiscationLines: [
     'Bienvenido a RRHH. Tu equipo anterior ha sido confiscado.',
-    'Solo conservas un Bolígrafo Corporativo y una Carpeta de Plástico.'
+    'Conservas tu experiencia de veterano (Nivel 10 y habilidades), pero solo portas un Bolígrafo y una Carpeta.'
   ]
 };
+
+/** Recompensas de XP escaladas para los jefes de la expansión (Niveles 10-20). */
+export const EXPANSION_XP_REWARDS = {
+  boss_inakito: 500,
+  boss_kernel: 850,
+  boss_alex_update: 1200,
+  boss_technical_debt: 1800
+};
+
+/** Diario de misiones exclusivo de "El Resurgir de Mister Alex IA" (Valleverde 2.0). */
+export const EXPANSION_QUESTS = [
+  {
+    id: 'exp_quest_inakito',
+    title: 'Auditoría en Oficina Central',
+    category: 'MAIN',
+    status: 'ACTIVE',
+    description: 'Iñakito 2.0 controla el acceso norte al Vertedero Digital desde su despacho en Valleverde 2.0.',
+    currentStep: 'Entra en la Oficina Central al norte de Valleverde 2.0 y derrota a Iñakito 2.0 para obtener la Llave del Vertedero y el Escudo del Becario.',
+    reward: 'Llave del Vertedero + Escudo del Becario + 500 XP'
+  },
+  {
+    id: 'exp_quest_franco',
+    title: 'Rescate en el Vertedero Digital',
+    category: 'MAIN',
+    status: 'ACTIVE',
+    description: 'Franco el Pancho, el músculo de Tony Randazzo, quedó atrapado en las profundidades del Vertedero Digital (Piso 3).',
+    currentStep: 'Desciende por el ascensor corporativo, recorre los pisos del Vertedero y rescata a Franco el Pancho mientras recoges Currículums.',
+    reward: 'Aliado Franco rescatado + 3 Currículums'
+  },
+  {
+    id: 'exp_quest_kernel',
+    title: 'Acceso Root: El Kernel',
+    category: 'MAIN',
+    status: 'ACTIVE',
+    description: 'Al fondo del Vertedero Digital aguarda El Kernel custodiando las credenciales raíz del Núcleo Cuántico.',
+    currentStep: 'Atraviesa el Vertedero hasta la Sala de Servidores y derrota a El Kernel para conseguir la Llave de Acceso al Núcleo.',
+    reward: 'Llave de Acceso al Núcleo + 850 XP'
+  },
+  {
+    id: 'exp_quest_alex',
+    title: 'El Update Universal',
+    category: 'MAIN',
+    status: 'ACTIVE',
+    description: 'Mister Alex IA intenta sobrescribir Valleverde 2.0 desde el Núcleo Cuántico. Necesitarás buen equipo corporativo para perforar su fase final.',
+    currentStep: 'Accede al Núcleo de Datos, derrota a Mister Alex IA (v2.0) y decide junto a Tony Randazzo el destino del servidor.',
+    reward: 'Final de la Expansión + 1200 XP'
+  },
+  {
+    id: 'exp_quest_manoplo_gear',
+    title: 'Armamento de Oficina',
+    category: 'SIDE',
+    status: 'ACTIVE',
+    description: 'Tío Manoplo fabrica herramientas improvisadas en su taller de Valleverde 2.0 capaces de sustituir el equipo confiscado.',
+    currentStep: 'Habla con Tío Manoplo en Valleverde 2.0 para adquirir la Grapadora Industrial y el Destornillador del Destino (ignora la armadura de Alex).',
+    reward: 'Armamento Corporativo Avanzado'
+  },
+  {
+    id: 'exp_quest_rosa_upgrades',
+    title: 'Soborno en B (Bar de Rosa)',
+    category: 'SIDE',
+    status: 'ACTIVE',
+    description: 'Rosa acepta los Currículums del Vertedero Digital en su bar corporativo a cambio de mejoras permanentes.',
+    currentStep: 'Visita el Bar Corporativo de Rosa y canjea Currículums por mejoras de Salud, Sueldo, Optimización o Teletrabajo.',
+    reward: 'Mejoras Permanentes + Logro VIP'
+  }
+];
 
 /**
  * Comprueba si un jugador o estado de juego se encuentra en la expansión corporativa.

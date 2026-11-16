@@ -5,6 +5,8 @@
  * notifica cambios en pantalla y serializa el estado para persistencia en localStorage.
  */
 
+import { EXPANSION_QUESTS } from '../expansion/ExpansionData.js?v=8';
+
 export const INITIAL_QUESTS = [
   {
     id: 'quest_main_bridge',
@@ -198,8 +200,12 @@ export class QuestLog {
     }
   }
 
-  reset() {
-    this.quests = INITIAL_QUESTS.map((q) => ({ ...q }));
+  reset(isExpansion = false) {
+    this.quests = (isExpansion ? EXPANSION_QUESTS : INITIAL_QUESTS).map((q) => ({ ...q }));
+  }
+
+  loadExpansionQuests() {
+    this.quests = EXPANSION_QUESTS.map((q) => ({ ...q }));
   }
 }
 

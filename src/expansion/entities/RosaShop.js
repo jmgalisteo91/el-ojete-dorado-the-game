@@ -116,6 +116,8 @@ export class RosaShop {
     this.game.curriculum = available - item.cost;
     this.game.curriculumFlashTimer = 0.7;
     item.apply(this.game.player);
+    this.game.achievementManager?.unlock?.('ach_exp_rosa');
+    this.game.questLog?.completeQuest?.('exp_quest_rosa_upgrades', `¡Mejora [${item.name}] adquirida en el Bar de Rosa!`);
 
     if (typeof this.game._saveExpansionProgress === 'function') {
       this.game._saveExpansionProgress();

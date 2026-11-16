@@ -40,11 +40,11 @@ export const DIVINE_BLESSINGS = {
  * Nivel 9: 1300 XP
  * Nivel 10: 1700 XP (Nivel Máximo · Habilita el asalto al Mainframe de la Ciudadela Cuántica)
  */
-export const MAX_PLAYER_LEVEL = 15;
+export const MAX_PLAYER_LEVEL = 20;
 
 export const LEVEL_XP_THRESHOLDS = [
-  0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700, // Base (1-10)
-  2200, 2800, 3500, 4300, 5200                     // Expansión (11-15)
+  0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700,           // Base (1-10)
+  2200, 2800, 3500, 4300, 5200, 6200, 7300, 8500, 9800, 11200 // Expansión (11-20)
 ];
 
 export const XP_REWARDS = { enemy: 25, boss: 300 };
@@ -157,10 +157,12 @@ export class Player extends Entity {
     this.parryFlashTimer = 0;
     this.lastParryCount = 0;
 
-    // Progresión y Niveles de Programador (Nivel 1 a 15)
+    // Progresión y Niveles de Programador (Nivel 1 a 20)
     this.level = 1;
     this.xp = 0;
     this.skillPoints = 0;
+    this.levelStaminaBonus = 0;
+    this.levelDamageBonus = 0;
     this.killCount = 0;
     this.skills = {
       vigor: false,
@@ -209,9 +211,9 @@ export class Player extends Entity {
     return Math.round((progress / range) * 100);
   }
 
-  /** Concede experiencia y gestiona la subida de nivel y recompensas del programador (hasta Nv. 15). */
+  /** Concede experiencia y gestiona la subida de nivel y recompensas del programador (hasta Nv. 20). */
   gainXp(amount) {
-    const maxXp = LEVEL_XP_THRESHOLDS[MAX_PLAYER_LEVEL - 1] || 5200;
+    const maxXp = LEVEL_XP_THRESHOLDS[MAX_PLAYER_LEVEL - 1] || 11200;
     if (this.level >= MAX_PLAYER_LEVEL) {
       this.level = MAX_PLAYER_LEVEL;
       this.xp = Math.max(this.xp, maxXp);
@@ -231,20 +233,47 @@ export class Player extends Entity {
         rewards.push('¡+1 Punto de Habilidad!');
       } else if (this.level === 12) {
         this.maxHp += 1;
-        rewards.push('¡Corazón Máximo aumentado!');
+        this.skillPoints += 1;
+        rewards.push('¡Corazón Máximo aumentado!', '¡+1 Punto de Habilidad!');
+      } else if (this.level === 13) {
+        this.skillPoints += 1;
+        rewards.push('¡+1 Punto de Habilidad!');
       } else if (this.level === 14) {
         this.levelStaminaBonus = (this.levelStaminaBonus || 0) + 20;
         this.maxStamina = this.effectiveMaxStamina;
         rewards.push('¡Stamina Máxima aumentada!');
       } else if (this.level === 15) {
         this.maxHp += 1;
-        rewards.push('¡Has alcanzado el rango de Leyenda de Valleverde!');
+        this.skillPoints += 1;
+        rewards.push('¡Rango Senior consolidado (+1 Corazón y +1 PH)!');
+      } else if (this.level === 16) {
+        this.skillPoints += 1;
+        this.levelDamageBonus = Math.round(((this.levelDamageBonus || 0) + 0.10) * 100) / 100;
+        rewards.push('¡+10% Daño Corporativo y +1 Punto de Habilidad!');
+      } else if (this.level === 17) {
+        this.skillPoints += 1;
+        rewards.push('¡+1 Punto de Habilidad!');
+      } else if (this.level === 18) {
+        this.levelStaminaBonus = (this.levelStaminaBonus || 0) + 20;
+        this.maxStamina = this.effectiveMaxStamina;
+        this.skillPoints += 1;
+        rewards.push('¡Stamina Máxima +20 y +1 Punto de Habilidad!');
+      } else if (this.level === 19) {
+        this.skillPoints += 2;
+        rewards.push('¡+2 Puntos de Habilidad!');
+      } else if (this.level === 20) {
+        this.maxHp += 1;
+        this.skillPoints += 2;
+        this.levelDamageBonus = Math.round(((this.levelDamageBonus || 0) + 0.15) * 100) / 100;
+        rewards.push('¡CTO Legendario! Nivel 20 máximo alcanzado.');
       }
 
       // Un jugador ya abatido en este mismo tick no debe resucitar por la subida de nivel
       if (this.hp > 0) {
-        this.hp = this.level === 12 || this.level === 15 ? this.maxHp : this.effectiveMaxHp;
-        this.stamina = this.level === 14 ? this.maxStamina : this.effectiveMaxStamina;
+        const gainedHp = this.level === 12 || this.level === 15 || this.level === 20;
+        const gainedStamina = this.level === 14 || this.level === 18;
+        this.hp = gainedHp ? this.maxHp : this.effectiveMaxHp;
+        this.stamina = gainedStamina ? this.maxStamina : this.effectiveMaxStamina;
       }
     }
     return { leveledUp, oldLevel, newLevel: this.level, rewards };
@@ -269,17 +298,30 @@ export class Player extends Entity {
     return true;
   }
 
-  /** Sincroniza maxHp y bonus de stamina de niveles 12/14/15 tras cargar una partida. */
+  /** Sincroniza maxHp, stamina extra y daño por nivel (12..20) tras cargar partida. */
   syncProgressionStatsForLevel() {
-    const minLevelHp = 3 + (this.level >= 12 ? 1 : 0) + (this.level >= 15 ? 1 : 0);
+    const baseExpHp = this._isExpansionActive() ? 3 : 3;
+    const minLevelHp = baseExpHp + (this.level >= 12 ? 1 : 0) + (this.level >= 15 ? 1 : 0) + (this.level >= 20 ? 1 : 0);
     if ((this.maxHp || 3) < minLevelHp) {
       this.maxHp = minLevelHp;
     }
-    const minLevelStamina = this.level >= 14 ? 20 : 0;
+    const minLevelStamina = (this.level >= 14 ? 20 : 0) + (this.level >= 18 ? 20 : 0);
     if ((this.levelStaminaBonus || 0) < minLevelStamina) {
       this.levelStaminaBonus = minLevelStamina;
     }
+    const minLevelDmg = (this.level >= 16 ? 0.10 : 0) + (this.level >= 20 ? 0.15 : 0);
+    if ((this.levelDamageBonus || 0) < minLevelDmg) {
+      this.levelDamageBonus = Math.round(minLevelDmg * 100) / 100;
+    }
     this.maxStamina = this.effectiveMaxStamina;
+  }
+
+  _getEquippedCorpWeapon() {
+    if (!this._isExpansionActive() || !this.equippedWeapon || this.equippedWeapon === 'default') {
+      return null;
+    }
+    const eq = EXPANSION_EQUIPMENT[this.equippedWeapon];
+    return eq && eq.slot === 'weapon' ? eq : null;
   }
 
   _isExpansionActive() {
@@ -310,6 +352,10 @@ export class Player extends Entity {
 
     if (expansionActive && this.rosaDamageBonus > 0) {
       dmg *= 1 + this.rosaDamageBonus;
+    }
+
+    if ((this.levelDamageBonus || 0) > 0) {
+      dmg *= 1 + this.levelDamageBonus;
     }
 
     // Ejecutivo: +15% de daño contra jefes
@@ -348,7 +394,6 @@ export class Player extends Entity {
     if (eq.slot === 'weapon') {
       this.equippedWeapon = eq.id;
       this.attackDamage = eq.baseDamage;
-      this.hasSword = true;
       return eq;
     }
     if (eq.slot === 'shield') {
@@ -496,6 +541,10 @@ export class Player extends Entity {
     this.attackTimer = 0;
     this.attackCooldown = 0;
     this.levelStaminaBonus = 0;
+    this.levelDamageBonus = 0;
+    this.rosaDamageBonus = 0;
+    this.rosaStaminaBonus = 0;
+    this.extraDashCharges = 0;
     this.maxStamina = this.effectiveMaxStamina;
     this.stamina = this.maxStamina;
     this.comboStep = 0;
@@ -712,7 +761,8 @@ export class Player extends Entity {
   }
 
   tryChargedAttack(soundEngine = null) {
-    if (!this.hasSword || !this.hasChargedAttack || this.attackCooldown > 0) return false;
+    const hasWeapon = this.hasSword || Boolean(this._getEquippedCorpWeapon());
+    if (!hasWeapon || !this.hasChargedAttack || this.attackCooldown > 0) return false;
     if (!this.spendStamina(STAMINA_COSTS.charged)) return false;
     this.spinAttackTimer = 0.35;
     this.attackCooldown = 0.45;
@@ -1089,7 +1139,8 @@ export class Player extends Entity {
     }
 
     // Carga del Corte en Cascada (mantener botón de ataque 1s)
-    if (this.hasChargedAttack && this.hasSword && input && typeof input.isAttackHeld === 'function') {
+    const hasChargedWeapon = this.hasSword || Boolean(this._getEquippedCorpWeapon());
+    if (this.hasChargedAttack && hasChargedWeapon && input && typeof input.isAttackHeld === 'function') {
       if (input.isAttackHeld()) {
         this.chargeTimer += dt;
       } else if (this.chargeTimer >= 1.0) {
@@ -1470,8 +1521,7 @@ export class Player extends Entity {
     const cy = this.centerY - camera.renderY;
 
     // 2. Aura de concentración de energía al cargar el Corte en Cascada
-    // (FIX ESTRICTO) Sin espada no se muestra aura dorada/cian.
-    if (this.hasSword && this.chargeTimer > 0) {
+    if ((this.hasSword || Boolean(this._getEquippedCorpWeapon())) && this.chargeTimer > 0) {
       ctx.save();
       const isReady = this.chargeTimer >= 1.0;
       const now = performance.now() / 1000;

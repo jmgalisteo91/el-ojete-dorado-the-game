@@ -47,6 +47,7 @@ export class ExpansionManager {
       EXPANSION_NPCS: dataMod.EXPANSION_NPCS,
       EXPANSION_EQUIPMENT: dataMod.EXPANSION_EQUIPMENT,
       EXPANSION_BOSS_FLEE_TAUNTS: dataMod.EXPANSION_BOSS_FLEE_TAUNTS,
+      EXPANSION_XP_REWARDS: dataMod.EXPANSION_XP_REWARDS,
       TonyRandazzo: tonyMod.TonyRandazzo,
       FrancoPancho: francoMod.FrancoPancho,
       RosaShop: rosaShopMod.RosaShop,
@@ -120,6 +121,84 @@ export class ExpansionManager {
     });
     manoplo.expansionId = manoploData.id;
     manoplo.spriteColor = manoploData.spriteColor;
+    manoplo.resolveDialogues = (dialogueBox) => {
+      const player = game?.player;
+      const inv = game?.inventory;
+      const eq = mods.EXPANSION_EQUIPMENT;
+      const craftTool = (eqKey, byteCost, currCost = 0) => {
+        const spec = eq[eqKey];
+        if (!spec || !player) return;
+        const alreadyOwned = inv?.items?.some((it) => it && (it.id === spec.id || it.id === spec.itemId));
+        if (alreadyOwned || player.equippedWeapon === spec.id || player.equippedShield === spec.id) {
+          player.equipExpansionItem?.(spec.id);
+          game.menuSystem?.showNotice?.(`🧰 Ya tienes [${spec.name}]. ¡Re-equipado!`, 2.6);
+          dialogueBox?.close?.();
+          return;
+        }
+        if ((player.coins || 0) < byteCost) {
+          dialogueBox?.showMessage?.('Tío Manoplo · Taller', [
+            `Necesitas ${byteCost} Bytes para forjar [${spec.name}] (tienes ${player.coins || 0}).`
+          ]);
+          return;
+        }
+        if (currCost > 0 && (game.curriculum || 0) < currCost) {
+          dialogueBox?.showMessage?.('Tío Manoplo · Taller', [
+            `Necesitas ${currCost} Currículums 📄 además de ${byteCost} Bytes para [${spec.name}] (tienes ${game.curriculum || 0} 📄).`
+          ]);
+          return;
+        }
+        player.coins -= byteCost;
+        if (currCost > 0) game.curriculum = Math.max(0, (game.curriculum || 0) - currCost);
+        inv?.addItem?.({
+          id: spec.id,
+          name: spec.name,
+          description: spec.description,
+          iconIndex: spec.iconIndex ?? (spec.slot === 'shield' ? 4 : 3)
+        });
+        player.equipExpansionItem?.(spec.id);
+        if (eqKey === 'grapadora' || eqKey === 'destornillador') {
+          game.achievementManager?.unlock?.('ach_exp_gear');
+        }
+        if (eqKey === 'destornillador') {
+          game.questLog?.completeQuest?.('exp_quest_manoplo_gear', '¡Destornillador del Destino fabricado! Listo para perforar la armadura de Mister Alex IA.');
+        } else {
+          game.questLog?.advanceStep?.('exp_quest_manoplo_gear', `Has conseguido [${spec.name}]. Vuelve a por el Destornillador del Destino (100 Bytes + 2 📄).`);
+        }
+        game.music?.playMenuSelect?.();
+        game._saveExpansionProgress?.();
+        dialogueBox?.close?.();
+        game.menuSystem?.showNotice?.(`🔧 ¡Tío Manoplo te ha equipado [${spec.name}]!`, 3.2);
+      };
+
+      const hasGrapadora = Boolean(inv?.items?.some((it) => it && (it.id === 'grapadora' || it.id === 'equip_grapadora')));
+      const hasDestorn = Boolean(inv?.items?.some((it) => it && (it.id === 'destornillador' || it.id === 'equip_destornillador')));
+      const hasEscudo = Boolean(inv?.items?.some((it) => it && (it.id === 'escudo_becario' || it.id === 'equip_escudo_becario')));
+
+      return {
+        lines: [
+          'Cinta aislante, acero de oficina y mala leche. Si RRHH te quitó la espada, aquí te apaño equipo de verdad.',
+          'Puedes cambiar tus armas y escudos cuando quieras desde el Inventario [I].'
+        ],
+        choices: [
+          {
+            label: hasGrapadora ? '📎 Grapadora Industrial (Ya equipada/en mochila)' : '📎 Fabricar Grapadora Industrial (60 Bytes)',
+            onSelect: () => craftTool('grapadora', 60, 0)
+          },
+          {
+            label: hasDestorn ? '🪛 Destornillador del Destino (Ya en mochila)' : '🪛 Destornillador del Destino (100 Bytes + 2 📄)',
+            onSelect: () => craftTool('destornillador', 100, 2)
+          },
+          {
+            label: hasEscudo ? '🛡️ Escudo del Becario (Ya en mochila)' : '🛡️ Escudo del Becario (50 Bytes)',
+            onSelect: () => craftTool('escudo_becario', 50, 0)
+          },
+          {
+            label: 'Volver',
+            onSelect: () => dialogueBox?.close?.()
+          }
+        ]
+      };
+    };
 
     const ciudadano = new NPC({
       name: 'Ciudadano Corporativo',
@@ -149,6 +228,9 @@ export class ExpansionManager {
       sceneId: game.francoRescued ? 'valleverde_corp' : 'vertedero_piso_3',
       onRecruit: () => {
         game.francoRescued = true;
+        game.achievementManager?.unlock?.('ach_exp_franco');
+        game.questLog?.completeQuest?.('exp_quest_franco', '¡Franco el Pancho rescatado del Vertedero Digital!');
+        game.questLog?.advanceStep?.('exp_quest_kernel', 'Llega al fondo del Vertedero (Piso 5 → Sala de Servidores) y derrota a El Kernel.');
         game._saveExpansionProgress?.();
         game._saveGameToStorage?.();
         game.menuSystem?.showNotice?.('🤝 Franco el Pancho se une a ti hasta salir del Vertedero.', 2.6);
@@ -225,7 +307,7 @@ export class ExpansionManager {
           speed: 52 + floor * 3,
           maxHp: 2 + Math.floor((floor + idx) / 2),
           aggroRange: 135,
-          xpReward: 25 + floor * 10,
+          xpReward: 75 + floor * 35,
           archetype: spot.archetype,
           respawnOnEnter: false,
           animator: new SpriteAnimator(sheet, spot.sprite, 16, 16, 0.12),
@@ -240,12 +322,20 @@ export class ExpansionManager {
   }
 
   _buildExpansionEnemies(game, mods) {
-    const { IñakitoBoss, KernelBoss, AlexUpdateBoss, TechnicalDebtBoss } = mods;
+    const { IñakitoBoss, KernelBoss, AlexUpdateBoss, TechnicalDebtBoss, EXPANSION_XP_REWARDS } = mods;
+    const inakito = new IñakitoBoss({ x: 9.2 * 16, y: 6.5 * 16, sceneId: 'inakito_office', hp: 100 });
+    inakito.xpReward = EXPANSION_XP_REWARDS?.boss_inakito ?? 500;
+    const kernel = new KernelBoss({ x: 9.2 * 16, y: 6.2 * 16, sceneId: 'kernel_arena', hp: 150 });
+    kernel.xpReward = EXPANSION_XP_REWARDS?.boss_kernel ?? 850;
+    const alex = new AlexUpdateBoss({ x: 11 * 16, y: 7.5 * 16, sceneId: 'ai_nucleus_core', hp: 200 });
+    alex.xpReward = EXPANSION_XP_REWARDS?.boss_alex_update ?? 1200;
+    const debt = new TechnicalDebtBoss({ x: 11 * 16, y: 7.5 * 16, sceneId: 'ai_nucleus_core', hp: 300 });
+    debt.xpReward = EXPANSION_XP_REWARDS?.boss_technical_debt ?? 1800;
     return [
-      new IñakitoBoss({ x: 9.2 * 16, y: 6.5 * 16, sceneId: 'inakito_office', hp: 100 }),
-      new KernelBoss({ x: 9.2 * 16, y: 6.2 * 16, sceneId: 'kernel_arena', hp: 150 }),
-      new AlexUpdateBoss({ x: 11 * 16, y: 7.5 * 16, sceneId: 'ai_nucleus_core', hp: 200 }),
-      new TechnicalDebtBoss({ x: 11 * 16, y: 7.5 * 16, sceneId: 'ai_nucleus_core', hp: 300 }),
+      inakito,
+      kernel,
+      alex,
+      debt,
       ...this._buildVertederoFloorEnemies(game, mods)
     ];
   }

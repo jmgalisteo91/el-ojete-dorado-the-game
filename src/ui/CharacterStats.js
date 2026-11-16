@@ -7,7 +7,8 @@
  */
 
 import { SKILL_DEFS } from '../core/SkillCatalog.js?v=8';
-import { EXPANSION_SKILLS } from '../expansion/ExpansionData.js?v=8';
+import { MAX_PLAYER_LEVEL } from '../entities/Player.js?v=8';
+import { EXPANSION_EQUIPMENT, EXPANSION_SKILLS } from '../expansion/ExpansionData.js?v=8';
 import { UILayout, UI_COLORS, UI_FONT } from './UILayout.js?v=8';
 
 export class CharacterStats {
@@ -25,6 +26,8 @@ export class CharacterStats {
     this.isTouchDevice = false;
     this._skillRowRects = [];
     this._skillPageButtons = [];
+    this._achPageButtons = [];
+    this.achievementPage = 0;
     this._tabRects = [];
     this._popStart = null;
   }
@@ -86,6 +89,14 @@ export class CharacterStats {
    */
   getDevTitle(player) {
     if (!player) return 'Junior Dev';
+    if (this._isExpansionActive(player)) {
+      const lvl = player.level || 10;
+      if (lvl >= MAX_PLAYER_LEVEL) return 'CTO Legendario de Valleverde 2.0';
+      if (lvl >= 17) return 'Principal Software Architect';
+      if (lvl >= 14) return 'Staff Engineer Rebelde';
+      if (lvl >= 12) return 'Senior Tech Lead Veterano';
+      return 'Senior Dev (Confiscado en RRHH)';
+    }
     if (player.hasRelic && player.hasSword) {
       return 'Lead Architect del Gran Ojal';
     }
@@ -135,6 +146,17 @@ export class CharacterStats {
             this.skillMessage = `Necesitas ${def.cost} punto(s) de habilidad.`;
           }
         }
+        return true;
+      }
+    }
+
+    if (this.activeTab === 'achievements') {
+      if (input.consumeKey('KeyW') || input.consumeKey('ArrowUp')) {
+        this.achievementPage = Math.max(0, (this.achievementPage || 0) - 1);
+        return true;
+      }
+      if (input.consumeKey('KeyS') || input.consumeKey('ArrowDown')) {
+        this.achievementPage = (this.achievementPage || 0) + 1;
         return true;
       }
     }
@@ -213,6 +235,16 @@ export class CharacterStats {
             } else {
               this.skillCursor = row.index;
             }
+            return true;
+          }
+        }
+      } else if (this.activeTab === 'achievements') {
+        for (const btn of this._achPageButtons) {
+          if (px >= btn.x && px <= btn.x + btn.w && py >= btn.y && py <= btn.y + btn.h) {
+            const totalPages = Math.max(1, btn.totalPages || 1);
+            this.achievementPage = btn.id === 'prev'
+              ? (this.achievementPage + totalPages - 1) % totalPages
+              : (this.achievementPage + 1) % totalPages;
             return true;
           }
         }
@@ -327,7 +359,7 @@ export class CharacterStats {
     } else if (this.activeTab === 'skills') {
       this._renderSkillsTab(ctx, bodyRect, player);
     } else {
-      this._renderAchievementsTab(ctx, bodyRect, achievementManager);
+      this._renderAchievementsTab(ctx, bodyRect, achievementManager, player);
     }
 
     ctx.restore();
@@ -352,12 +384,14 @@ export class CharacterStats {
       headerText: 'MÉTRICAS DE SISTEMA'
     });
 
+    const expansionActive = this._isExpansionActive(player);
+
     // 1. Retrato pixel art del Dev + Identidad
     this._drawDevPortrait(ctx, leftRect.x + 5, leftRect.y + 15, player, t);
 
     ctx.font = `bold 5px ${UI_FONT}`;
     ctx.fillStyle = UI_COLORS.gold;
-    ctx.fillText('DEV PROGRAMADOR', leftRect.x + 41, leftRect.y + 16);
+    ctx.fillText(expansionActive ? 'VETERANO VALLEVERDE' : 'DEV PROGRAMADOR', leftRect.x + 41, leftRect.y + 16);
 
     ctx.font = `4.2px ${UI_FONT}`;
     ctx.fillStyle = UI_COLORS.cyan;
@@ -374,8 +408,8 @@ export class CharacterStats {
     ctx.fillStyle = UI_COLORS.gold;
     ctx.fillText(
       player && player.isMaxLevel
-        ? '★ Nivel: 15/15 · MÁXIMO'
-        : `★ Nivel: ${playerLvl}/15 (${playerXp}/${nextXp} XP)`,
+        ? `★ Nivel: ${MAX_PLAYER_LEVEL}/${MAX_PLAYER_LEVEL} · MÁXIMO`
+        : `★ Nivel: ${playerLvl}/${MAX_PLAYER_LEVEL} (${playerXp}/${nextXp} XP)`,
       leftRect.x + 41,
       leftRect.y + 40
     );
@@ -422,18 +456,34 @@ export class CharacterStats {
     const hasArmor = Boolean(player && player.hasArmor);
     const armorPts = player ? (player.armorPoints ?? 0) : 0;
     const maxArmorPts = player ? (player.maxArmorPoints || 3) : 3;
-    UILayout.drawBar(ctx, {
-      x: barX,
-      y: by,
-      w: barW,
-      h: 5,
-      value: hasArmor ? armorPts : 0,
-      max: maxArmorPts,
-      color: UI_COLORS.cyan,
-      gradient: ['#0ea5e9', '#67e8f9'],
-      label: 'BLINDAJE BINARIO',
-      valueText: hasArmor ? `${armorPts}/${maxArmorPts} 🛡️` : 'SIN CORAZA'
-    });
+    const corpShield = expansionActive && player?.equippedShield ? EXPANSION_EQUIPMENT[player.equippedShield] : null;
+    if (expansionActive) {
+      UILayout.drawBar(ctx, {
+        x: barX,
+        y: by,
+        w: barW,
+        h: 5,
+        value: corpShield ? 1 : (hasArmor ? armorPts : 0),
+        max: corpShield ? 1 : maxArmorPts,
+        color: UI_COLORS.cyan,
+        gradient: ['#0ea5e9', '#67e8f9'],
+        label: 'DEFENSA CORPORATIVA',
+        valueText: corpShield ? corpShield.badgeLabel : (hasArmor ? `${armorPts}/${maxArmorPts} 🛡️` : 'SIN ESCUDO')
+      });
+    } else {
+      UILayout.drawBar(ctx, {
+        x: barX,
+        y: by,
+        w: barW,
+        h: 5,
+        value: hasArmor ? armorPts : 0,
+        max: maxArmorPts,
+        color: UI_COLORS.cyan,
+        gradient: ['#0ea5e9', '#67e8f9'],
+        label: 'BLINDAJE BINARIO',
+        valueText: hasArmor ? `${armorPts}/${maxArmorPts} 🛡️` : 'SIN CORAZA'
+      });
+    }
     by += barSpacing;
 
     const robotVal = player ? Math.round(player.robotizationLevel || 0) : 0;
@@ -459,11 +509,11 @@ export class CharacterStats {
     const xpProgress = player && player.isMaxLevel ? xpRange : Math.max(0, Math.min(xpRange, playerXp - baseXp));
     const xpPct = player && typeof player.getXpProgressPercent === 'function' ? player.getXpProgressPercent() : 0;
     if (player && player.isMaxLevel) {
-      // Sin barra de XP al alcanzar el nivel máximo (Nv. 15): solo el rótulo dorado
+      // Sin barra de XP al alcanzar el nivel máximo (Nv. 20): solo el rótulo dorado
       ctx.font = `bold 5.5px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.gold;
       ctx.textAlign = 'center';
-      ctx.fillText('★ NIVEL MÁXIMO · Nv. 15 ★', barX + barW / 2, by + 3);
+      ctx.fillText(`★ NIVEL MÁXIMO · Nv. ${MAX_PLAYER_LEVEL} ★`, barX + barW / 2, by + 3);
       ctx.textAlign = 'left';
     } else {
       UILayout.drawBar(ctx, {
@@ -476,7 +526,7 @@ export class CharacterStats {
         color: UI_COLORS.gold,
         gradient: ['#f59e0b', '#fde047'],
         insideText: `Nv. ${playerLvl}`,
-        label: 'EXP. PROGRAMADOR',
+        label: expansionActive ? 'EXP. VETERANO' : 'EXP. PROGRAMADOR',
         valueText: `${xpPct}%`
       });
     }
@@ -495,7 +545,7 @@ export class CharacterStats {
     UILayout.drawPanel(ctx, rightRect, {
       bg: UI_COLORS.panelBgAlt,
       border: UI_COLORS.borderInner,
-      headerText: 'MÓDULOS DE COMBATE ACTIVOS'
+      headerText: expansionActive ? 'DOMINIO DE VETERANO' : 'MÓDULOS DE COMBATE ACTIVOS'
     });
 
     const cardX = rightRect.x + 4;
@@ -512,7 +562,7 @@ export class CharacterStats {
       '[Shift]',
       Boolean(player && player.hasDash),
       'Impulso con 0.2s de invulnerabilidad.',
-      'Devorador de Memoria',
+      expansionActive ? 'Maestría de Veterano (Base)' : 'Devorador de Memoria',
       UI_COLORS.emerald
     );
 
@@ -526,7 +576,7 @@ export class CharacterStats {
       '[Espacio 1s]',
       Boolean(player && player.hasChargedAttack),
       'Tajo circular 360° de daño triple.',
-      'Coloso de la Pila Infinita',
+      expansionActive ? 'Maestría de Veterano (Base)' : 'Coloso de la Pila Infinita',
       UI_COLORS.cyan
     );
 
@@ -540,7 +590,7 @@ export class CharacterStats {
       '[Q]',
       Boolean(player && player.hasBarrier),
       'Campo que absorbe proyectiles 3s.',
-      'Ciber-Horno Termonuclear',
+      expansionActive ? 'Maestría de Veterano (Base)' : 'Ciber-Horno Termonuclear',
       UI_COLORS.gold
     );
   }
@@ -738,8 +788,15 @@ export class CharacterStats {
   /**
    * Pestaña de Trofeos y Logros
    */
-  _renderAchievementsTab(ctx, rect, achievementManager) {
-    const list = achievementManager ? achievementManager.getAll() : [];
+  _renderAchievementsTab(ctx, rect, achievementManager, player = null) {
+    const rawList = achievementManager ? achievementManager.getAll() : [];
+    const expansionActive = this._isExpansionActive(player);
+    const list = expansionActive
+      ? [
+          ...rawList.filter((a) => a.category === 'EXPANSION' || a.id === 'ach_completionist'),
+          ...rawList.filter((a) => a.category !== 'EXPANSION' && a.id !== 'ach_completionist')
+        ]
+      : rawList;
     const unlockedCount = achievementManager ? achievementManager.getUnlockedCount() : 0;
     const totalCount = achievementManager ? achievementManager.getTotalCount() : Math.max(1, list.length);
 
@@ -748,22 +805,50 @@ export class CharacterStats {
       border: UI_COLORS.borderInner
     });
 
+    const cols = 4;
+    const rows = 3;
+    const pageSize = cols * rows;
+    const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    if (this.achievementPage >= totalPages) this.achievementPage = 0;
+    const pageItems = list.slice(this.achievementPage * pageSize, (this.achievementPage + 1) * pageSize);
+
     UILayout.drawBar(ctx, {
       x: rect.x + 6,
       y: rect.y + 4,
-      w: rect.w - 12,
+      w: totalPages > 1 ? rect.w - 42 : rect.w - 12,
       h: 4,
       value: unlockedCount,
       max: Math.max(1, totalCount),
       color: UI_COLORS.gold,
       gradient: ['#f59e0b', '#fde047'],
-      label: 'PROGRESO DE TROFEOS',
+      label: totalPages > 1 ? `TROFEOS (Pág ${this.achievementPage + 1}/${totalPages})` : 'PROGRESO DE TROFEOS',
       valueText: `${unlockedCount}/${totalCount}`
     });
 
-    // (BLOQUE 4.D) Cuadrícula de medallas 4×3.
-    const cols = 4;
-    const rows = 3;
+    this._achPageButtons = [];
+    if (totalPages > 1) {
+      const bw = 12;
+      const bh = 9;
+      const by = rect.y + 3;
+      const prevBtn = { id: 'prev', x: rect.x + rect.w - 31, y: by, w: bw, h: bh, totalPages };
+      const nextBtn = { id: 'next', x: rect.x + rect.w - 17, y: by, w: bw, h: bh, totalPages };
+      for (const b of [prevBtn, nextBtn]) {
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.95)';
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.strokeStyle = UI_COLORS.goldDim;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+        ctx.font = 'bold 5px monospace';
+        ctx.fillStyle = UI_COLORS.gold;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(b.id === 'prev' ? '<' : '>', b.x + b.w / 2, b.y + b.h / 2 + 0.5);
+        this._achPageButtons.push(b);
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+    }
+
     const gapX = 4;
     const gapY = 3;
     const cellW = Math.floor((rect.w - 12 - gapX * (cols - 1)) / cols);
@@ -771,7 +856,7 @@ export class CharacterStats {
     const startX = rect.x + 6;
     const startY = rect.y + 15;
 
-    list.slice(0, cols * rows).forEach((ach, index) => {
+    pageItems.forEach((ach, index) => {
       const col = index % cols;
       const row = Math.floor(index / cols);
       const x = startX + col * (cellW + gapX);
@@ -872,6 +957,14 @@ export class CharacterStats {
       ctx.fillRect(px + 5, py + 20, 20, 9);
       ctx.fillStyle = '#38bdf8';
       ctx.fillRect(px + 9, py + 22, 12, 3);
+    } else if (this._isExpansionActive(player)) {
+      // Traje corporativo gris azulado con cuello blanco y corbata azul
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(px + 5, py + 20, 20, 9);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(px + 12, py + 20, 6, 3);
+      ctx.fillStyle = '#2563eb';
+      ctx.fillRect(px + 14, py + 22, 2, 7);
     } else {
       ctx.fillStyle = '#334155';
       ctx.fillRect(px + 5, py + 20, 20, 9);

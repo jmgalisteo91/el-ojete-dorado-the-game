@@ -91,13 +91,15 @@ export function formatPlayTime(seconds = 0) {
  * Calcula la puntuación numérica y asigna el rango de S a C
  * Acepta argumentos posicionales (playTimeSeconds, deaths) o un objeto ({ playTimeSeconds, deaths })
  */
-export function calculateGameScore(arg1 = 0, arg2 = 0) {
+export function calculateGameScore(arg1 = 0, arg2 = 0, arg3 = false) {
   let playTimeSeconds = 0;
   let deaths = 0;
+  let isExpansion = Boolean(arg3);
 
   if (typeof arg1 === 'object' && arg1 !== null) {
     playTimeSeconds = arg1.playTimeSeconds ?? arg1.time ?? 0;
     deaths = arg1.deaths ?? arg1.totalDeaths ?? 0;
+    if (arg1.isExpansion !== undefined) isExpansion = Boolean(arg1.isExpansion);
   } else {
     playTimeSeconds = typeof arg1 === 'number' ? arg1 : 0;
     deaths = typeof arg2 === 'number' ? arg2 : 0;
@@ -112,28 +114,28 @@ export function calculateGameScore(arg1 = 0, arg2 = 0) {
   const finalScore = Math.max(0, baseScore - timePenalty - deathPenalty);
 
   let rank = 'C';
-  let title = 'Junior Superviviente del Despido';
+  let title = isExpansion ? 'Senior Dev Incombustible' : 'Junior Superviviente del Despido';
   let color = '#f87171'; // Coral / Rojo suave
 
   // Rango S: <= 12 minutos (720s) y 0 muertes (Score >= 85.000)
   if (t <= 720 && m === 0) {
     rank = 'S';
-    title = 'Arquitecto Supremo del Gran Ojal';
+    title = isExpansion ? 'CTO Legendario de Valleverde 2.0' : 'Arquitecto Supremo del Gran Ojal';
     color = '#fde047'; // Oro brillante
   } else if (finalScore >= 65000 && m <= 2 && t <= 1200) {
     // Rango A: >= 65k, <= 2 muertes, <= 20 min
     rank = 'A';
-    title = 'Senior Lead de Valleverde';
+    title = isExpansion ? 'Principal Architect Rebelde' : 'Senior Lead de Valleverde';
     color = '#38bdf8'; // Cyan
   } else if (finalScore >= 40000 && m <= 6 && t <= 2100) {
     // Rango B: >= 40k, <= 6 muertes, <= 35 min
     rank = 'B';
-    title = 'Programador Competente';
+    title = isExpansion ? 'Staff Engineer Veterano' : 'Programador Competente';
     color = '#4ade80'; // Verde
   } else {
     // Rango C
     rank = 'C';
-    title = 'Junior Superviviente del Despido';
+    title = isExpansion ? 'Senior Dev Incombustible' : 'Junior Superviviente del Despido';
     color = '#f87171';
   }
 

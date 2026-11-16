@@ -17,9 +17,12 @@ import {
   EXPANSION_SKILLS,
   STARTING_EXPANSION_GEAR,
   EXPANSION_ACTIVE_FLAG,
+  EXPANSION_QUESTS,
   getExpansionEquipment,
   isPlayerInExpansion
 } from '../../src/expansion/ExpansionData.js';
+import { AchievementManager } from '../../src/core/AchievementManager.js';
+import { calculateGameScore } from '../../src/core/ScoreSystem.js';
 import { IñakitoBoss } from '../../src/expansion/entities/IñakitoBoss.js';
 import { HUD } from '../../src/ui/HUD.js?v=8';
 import {
@@ -312,12 +315,12 @@ export async function run(test, assert) {
     p.gainXp(170); // 50 + 170 = 220 XP (alcanza Nivel 4)
     assert.equal(p.level, 4, 'Alcanza Nivel 4 a 220 XP');
 
-    // Alcanzar Nivel 10 (1700 XP) y tope de Nivel 15 (5200 XP)
+    // Alcanzar Nivel 10 (1700 XP) y tope de Nivel 20 (11200 XP)
     p.gainXp(1480); // 220 + 1480 = 1700 XP
     assert.equal(p.level, 10);
-    assert.equal(p.isMaxLevel, false, 'En Nivel 10 aún no se alcanza el nuevo tope 15');
-    p.gainXp(4000);
-    assert.equal(p.level, 15, 'El nivel máximo ampliado debe ser 15');
+    assert.equal(p.isMaxLevel, false, 'En Nivel 10 aún no se alcanza el tope 20');
+    p.gainXp(10000);
+    assert.equal(p.level, 20, 'El nivel máximo ampliado debe ser 20');
     assert.equal(p.isMaxLevel, true);
     assert.equal(p.getXpProgressPercent(), 100);
 
@@ -379,7 +382,7 @@ export async function run(test, assert) {
     assert.equal(cleanSave.xp, 820);
 
     const clampedSave = CloudStorage.sanitizeSaveData({ level: 50, xp: -100 });
-    assert.equal(clampedSave.level, 15);
+    assert.equal(clampedSave.level, 20);
     assert.equal(clampedSave.xp, 0);
   });
 
@@ -600,10 +603,10 @@ export async function run(test, assert) {
     assert.equal(player.hotbar[0], null, 'Al llegar cantidad a 0, el slot de la Hotbar debe vaciarse');
   });
 
-  test('Expansión: Tope de Nivel 15, tabla XP, recompensas (Nv 11-15), Stamina persistente y HUD NIVEL MÁXIMO', () => {
+  test('Expansión: Tope de Nivel 20, tabla XP, recompensas (Nv 11-20), Stamina persistente y HUD NIVEL MÁXIMO', () => {
     assert.deepEqual(LEVEL_XP_THRESHOLDS, [
       0, 50, 120, 220, 350, 520, 720, 980, 1300, 1700,
-      2200, 2800, 3500, 4300, 5200
+      2200, 2800, 3500, 4300, 5200, 6200, 7300, 8500, 9800, 11200
     ]);
 
     const p = new Player({ x: 32, y: 32 });
@@ -618,14 +621,14 @@ export async function run(test, assert) {
     assert.equal(p.skillPoints, spBefore + 1);
     assert.equal(r11.rewards.includes('¡+1 Punto de Habilidad!'), true);
 
-    // Nivel 12 (2800 XP) -> maxHp 3 -> 4
+    // Nivel 12 (2800 XP) -> maxHp 3 -> 4 y +1 PH
     const r12 = p.gainXp(600);
     assert.equal(p.level, 12);
     assert.equal(p.maxHp, 4);
     assert.equal(p.hp, 4);
     assert.equal(r12.rewards.includes('¡Corazón Máximo aumentado!'), true);
 
-    // Nivel 13 (3500 XP) -> sin bonus extra, isMaxLevel sigue false
+    // Nivel 13 (3500 XP) -> +1 PH, isMaxLevel sigue false
     p.gainXp(700);
     assert.equal(p.level, 13);
     assert.equal(p.isMaxLevel, false);
@@ -666,24 +669,39 @@ export async function run(test, assert) {
     };
     const mockHud = new HUD(mockHudGame);
     mockHud.render(hudCtx);
-    assert.ok(hudTexts.includes('NV. 14/15'), 'HUD debe mostrar NV. 14/15 antes del nivel máximo');
+    assert.ok(hudTexts.includes('NV. 14/20'), 'HUD debe mostrar NV. 14/20 antes del nivel máximo');
     assert.equal(hudTexts.includes('NIVEL MÁXIMO'), false, 'HUD no debe mostrar NIVEL MÁXIMO en Nv. 14');
 
-    // Nivel 15 (5200 XP) -> maxHp 4 -> 5, isMaxLevel === true, HUD muestra NIVEL MÁXIMO
-    const r15 = p.gainXp(900);
+    // Nivel 15..19 -> escala corazones, daño (+10% en 16) y stamina (+20 en 18)
+    const r15 = p.gainXp(900); // 5200
     assert.equal(p.level, 15);
     assert.equal(p.maxHp, 5);
-    assert.equal(p.hp, 5);
+    assert.equal(p.isMaxLevel, false);
+    assert.equal(r15.rewards.includes('¡Rango Senior consolidado (+1 Corazón y +1 PH)!'), true);
+
+    p.gainXp(1000); // 6200 -> Nv 16 (+10% daño)
+    assert.equal(p.level, 16);
+    assert.equal(p.levelDamageBonus, 0.1);
+
+    p.gainXp(2300); // 8500 -> Nv 18 (+20 stamina -> 140)
+    assert.equal(p.level, 18);
+    assert.equal(p.maxStamina, 140);
+
+    // Nivel 20 (11200 XP) -> maxHp 5 -> 6, isMaxLevel === true, HUD muestra NIVEL MÁXIMO
+    const r20 = p.gainXp(2700);
+    assert.equal(p.level, 20);
+    assert.equal(p.maxHp, 6);
+    assert.equal(p.hp, 6);
     assert.equal(p.isMaxLevel, true);
-    assert.equal(r15.rewards.includes('¡Has alcanzado el rango de Leyenda de Valleverde!'), true);
+    assert.equal(r20.rewards.includes('¡CTO Legendario! Nivel 20 máximo alcanzado.'), true);
 
     hudTexts.length = 0;
     mockHud.render(hudCtx);
-    assert.ok(hudTexts.includes('NIVEL MÁXIMO'), 'HUD debe volver a mostrar NIVEL MÁXIMO en Nv. 15');
+    assert.ok(hudTexts.includes('NIVEL MÁXIMO'), 'HUD debe volver a mostrar NIVEL MÁXIMO en Nv. 20');
 
-    // CloudStorage conserva Nivel 15
-    const sanitized = CloudStorage.sanitizeSaveData({ level: 15, xp: 5200 });
-    assert.equal(sanitized.level, 15);
+    // CloudStorage conserva Nivel 20
+    const sanitized = CloudStorage.sanitizeSaveData({ level: 20, xp: 11200 });
+    assert.equal(sanitized.level, 20);
   });
 
   test('Equipamiento Corporativo de Expansión: stats, grapa cada 3 golpes, destornillador perforante, carpeta, escudo becario, inventario y HUD', () => {
@@ -1182,8 +1200,8 @@ export async function run(test, assert) {
     assert.equal(fakeGame.jailerAnger, 0);
     assert.equal(player.robotizationLevel, 0);
 
-    // 5. Persistencia de Nivel 14/15 y Pacto en CloudStorage + _loadGameData (sin cap de Nv. 10)
-    player.gainXp(3000); // > 5200 XP -> Nv. 15
+    // 5. Persistencia de Nivel 20 y Pacto en CloudStorage + _loadGameData (sin cap de Nv. 10)
+    player.gainXp(12000); // >= 11200 XP -> Nv. 20
     assert.equal(player.level, MAX_PLAYER_LEVEL);
     const saved = CloudStorage.sanitizeSaveData({
       level: player.level,
@@ -1193,7 +1211,7 @@ export async function run(test, assert) {
       divineBlessing: player.divineBlessing,
       divineTranscendenceClaimed: player.divineTranscendenceClaimed
     });
-    assert.equal(saved.level, 15);
+    assert.equal(saved.level, 20);
     assert.equal(saved.divineBlessing, 'swift');
     assert.equal(saved.divineTranscendenceClaimed, true);
 
@@ -1222,9 +1240,9 @@ export async function run(test, assert) {
       _syncMinesBossArenaGate: () => {}
     };
     assert.equal(RPGGame.prototype._loadGameData.call(loadGameStub, saved), true);
-    assert.equal(restoredPlayer.level, 15, 'Cargar partida en juego base debe conservar el Nivel 15');
-    assert.equal(restoredPlayer.maxHp, 5);
-    assert.equal(restoredPlayer.levelStaminaBonus, 20);
+    assert.equal(restoredPlayer.level, 20, 'Cargar partida en juego base debe conservar el Nivel 20');
+    assert.equal(restoredPlayer.maxHp, 6);
+    assert.equal(restoredPlayer.levelStaminaBonus, 40);
     assert.equal(restoredPlayer.divineBlessing, 'swift');
     assert.equal(restoredPlayer.divineTranscendenceClaimed, true);
   });
@@ -1334,12 +1352,16 @@ export async function run(test, assert) {
         { id: 'drone_scrap', name: 'Chatarra', qty: 5 }
       );
 
+      const questLog = new QuestLog();
+      const achievementManager = new AchievementManager();
       let shownDialog = null;
       let noticeText = '';
       const fakeGame = {
         tilemap: tm,
         player,
         inventory: inv,
+        questLog,
+        achievementManager,
         camera: { setWorldBounds: () => {}, resetCinematic: () => {}, snapTo: () => {} },
         music: { loadExpansionMusic: () => {}, setMode: () => {} },
         menuSystem: {
@@ -1353,10 +1375,13 @@ export async function run(test, assert) {
         },
         _resetWorldToInitialState: () => {
           player.unequipAllForNewGame();
+          questLog.reset();
           inv.items = [{ id: 'stale_base_item', name: 'Item base residual', qty: 1 }];
         },
         _syncFrancoNPCState: () => {},
-        _saveExpansionProgress: () => RPGGame.prototype._saveExpansionProgress.call(fakeGame)
+        _saveExpansionProgress: () => RPGGame.prototype._saveExpansionProgress.call(fakeGame),
+        _restoreExpansionSaveData: (d) => RPGGame.prototype._restoreExpansionSaveData.call(fakeGame, d),
+        _applySavedRosaUpgrades: () => {}
       };
       inv.game = fakeGame;
 
@@ -1364,12 +1389,28 @@ export async function run(test, assert) {
       assert.notEqual(ok, false);
       assert.equal(tm.currentSceneId, 'valleverde_corp');
 
-      // 1. Confiscación del equipo anterior y estadísticas base 3/3
+      // 1. Confiscación de equipo medieval + Nivel 10 + Habilidades principales base desbloqueadas
       assert.equal(player.hasSword, false, 'La espada medieval debe quedar confiscada (hasSword=false)');
       assert.equal(player.hasArmor, false, 'La armadura medieval debe quedar confiscada (hasArmor=false)');
       assert.equal(player.armorPoints, 0);
       assert.equal(player.hp, 3);
       assert.equal(player.maxHp, 3);
+      assert.equal(player.level, 10, 'La expansión debe comenzar en Nivel 10 tras vencer a AI Alex');
+      assert.equal(player.xp, 1700, 'La expansión debe comenzar con 1700 XP base del Nivel 10');
+      assert.equal(player.skillPoints, 2, 'Debe empezar con 2 PH de veterano');
+      assert.equal(player.hasDash, true, 'Dash Asíncrono desbloqueado en la expansión');
+      assert.equal(player.hasChargedAttack, true, 'Corte en Cascada desbloqueado en la expansión');
+      assert.equal(player.hasBarrier, true, 'Escudo TypeScript desbloqueado en la expansión');
+      assert.deepEqual(
+        { vigor: player.skills.vigor, filo: player.skills.filo, reflejo: player.skills.reflejo, log: player.skills.log },
+        { vigor: true, filo: true, reflejo: true, log: true },
+        'Las 4 habilidades del árbol base deben venir desbloqueadas'
+      );
+      assert.equal(player.maxStamina, 140, 'Vigor base activo debe dar 140 de stamina inicial');
+      assert.equal(player.tryChargedAttack(), true, 'Corte en Cascada debe poder ejecutarse con arma corporativa aunque hasSword=false');
+      player.attackCooldown = 0;
+      player.spinAttackTimer = 0;
+
       assert.equal(player.equippedWeapon, 'boligrafo');
       assert.equal(player.equippedShield, 'carpeta');
       assert.equal(isPlayerInExpansion(player), true);
@@ -1378,6 +1419,49 @@ export async function run(test, assert) {
       assert.equal(inv.items.some((it) => it && it.id === 'boligrafo'), true, 'Bolígrafo inicial debe figurar en inventario');
       assert.equal(inv.items.some((it) => it && it.id === 'carpeta'), true, 'Carpeta inicial debe figurar en inventario');
 
+      // Diario exclusivo de expansión y logro inicial de RRHH
+      assert.equal(questLog.getAllQuests().length, EXPANSION_QUESTS.length);
+      assert.ok(questLog.getQuest('exp_quest_inakito'), 'QuestLog en expansión debe mostrar misiones de Valleverde 2.0');
+      assert.equal(questLog.getQuest('quest_main_bridge'), undefined, 'No deben mostrarse misiones de Valleverde base en expansión');
+      assert.equal(achievementManager.isUnlocked('ach_exp_rrhh'), true, 'Debe desbloquear el logro inicial Bienvenida de RRHH');
+
+      // Títulos de veterano (sin "Junior") y Ficha paginada de logros
+      const stats = new CharacterStats(320, 180, fakeGame);
+      const rankTitle = stats.getDevTitle(player);
+      assert.equal(/Junior/i.test(rankTitle), false, `El rango en expansión no puede ser Junior: ${rankTitle}`);
+      assert.match(rankTitle, /Senior/i);
+      player.gainXp(10000); // -> Nivel 20
+      assert.equal(player.level, 20);
+      assert.equal(stats.getDevTitle(player), 'CTO Legendario de Valleverde 2.0');
+      assert.equal(RPGGame.prototype._computePlayerFinalTitle.call({ ...fakeGame, totalDeaths: 0 }), 'CTO Legendario de Valleverde 2.0');
+      assert.equal(calculateGameScore({ playTimeSeconds: 3000, deaths: 10, isExpansion: true }).title, 'Senior Dev Incombustible');
+
+      const achList = achievementManager.getAll();
+      assert.ok(achList.filter((a) => a.category === 'EXPANSION').length >= 8, 'Debe haber al menos 8 logros de expansión');
+      const achTexts = [];
+      const achCtx = new Proxy(
+        {
+          fillText(t) { achTexts.push(String(t)); },
+          measureText(t) { return { width: String(t).length * 4 }; },
+          createLinearGradient() { return { addColorStop() {} }; },
+          createRadialGradient() { return { addColorStop() {} }; }
+        },
+        { get: (t, k) => (k in t ? t[k] : () => {}) }
+      );
+      stats.open();
+      stats.switchTab('achievements');
+      stats.render(achCtx, player, achievementManager);
+      assert.ok(achTexts.some((t) => /Bienvenida/.test(t)), 'En expansión la página 1 de logros muestra los trofeos de expansión');
+      assert.ok(achTexts.some((t) => /Pág 1\/2/.test(t)), 'Debe indicar paginación de logros');
+      assert.ok(stats._achPageButtons.length >= 2, 'Debe renderizar botones de paginación para >12 logros');
+
+      // Persistencia de nivel/skills/equipo en slot de expansión
+      RPGGame.prototype._saveExpansionProgress.call(fakeGame);
+      const rawSaved = JSON.parse(storeMap.get('el_ojete_dorado_expansion_save_v1'));
+      assert.equal(rawSaved.level, 20);
+      assert.equal(rawSaved.equippedWeapon, 'boligrafo');
+      assert.ok(Array.isArray(rawSaved.questLogData) && rawSaved.questLogData.length === EXPANSION_QUESTS.length);
+
       // 2. Mensajes de transición y confiscación RRHH
       assert.equal(noticeText, '3 meses después...');
       assert.ok(shownDialog, 'Debe mostrar diálogo de confiscación de RRHH');
@@ -1385,7 +1469,7 @@ export async function run(test, assert) {
 
       // 3. Combate y visual del Bolígrafo Corporativo (sin puños ni bolas de energía)
       player.swordLevel = 3; // aunque tuviera nivel 3 previo, no dispara ondas de energía
-      player.stamina = 100;
+      player.stamina = 140;
       const attacked = player.tryAttack();
       assert.equal(attacked, true);
       assert.equal(player.hasSword, false, 'tryAttack con bolígrafo no debe reactivar hasSword');
@@ -1414,6 +1498,125 @@ export async function run(test, assert) {
       assert.ok(strokeStyles.includes('#2563eb'), 'El ataque con bolígrafo debe dibujar el trazo/destello azul');
       assert.equal(fillStyles.includes('#e8c39e'), false, 'No debe dibujar puñetazo desarmado teniendo bolígrafo');
       assert.equal(strokeStyles.includes('rgba(253, 224, 71, 0.95)'), false, 'No debe dibujar arco dorado de espada');
+    } finally {
+      globalThis.localStorage = prevStorage;
+    }
+  });
+
+  test('Expansión: Taller de Tío Manoplo, logros de jefes/Rosa/Nivel 20 y recompensas XP de expansión', async () => {
+    const { ExpansionManager } = await import('../../src/expansion/ExpansionManager.js');
+    const { RosaShop } = await import('../../src/expansion/entities/RosaShop.js');
+    const { CombatManager } = await import('../../src/core/CombatManager.js');
+
+    const prevStorage = globalThis.localStorage;
+    const storeMap = new Map([['el_ojete_dorado_victory_trophy', 'true']]);
+    globalThis.localStorage = {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k)
+    };
+
+    try {
+      const p = new Player({ x: 32, y: 32 });
+      p.isExpansionActive = true;
+      p.level = 10;
+      p.xp = 1700;
+      p.coins = 300;
+      const inv = new Inventory();
+      const questLog = new QuestLog();
+      questLog.loadExpansionQuests();
+      const ach = new AchievementManager();
+      const tm = new Tilemap(null, 16);
+      await tm.loadExpansionScenes();
+
+      const fakeGame = {
+        isExpansionActive: true,
+        isExpansionMode: true,
+        player: p,
+        inventory: inv,
+        questLog,
+        achievementManager: ach,
+        tilemap: tm,
+        enemies: [],
+        npcs: [],
+        worldItems: [],
+        droppedCoins: [],
+        curriculum: 5,
+        menuSystem: { showNotice: () => {} },
+        dialogueBox: { active: false, close: () => {}, showMessage: () => {} },
+        music: { playMenuSelect: () => {}, playFanfare: () => {}, playError: () => {} },
+        _getDifficultyScale: () => 1,
+        _getActiveSceneEntities: () => ({ enemies: fakeGame.enemies, npcs: fakeGame.npcs, animals: [] }),
+        _grantBossLoot: (items) => { for (const it of items) inv.addItem(it); },
+        _saveExpansionProgress: () => {},
+        _saveGameToStorage: () => {},
+        _shakeCamera: () => {},
+        _openAlexUpdateEndingDialogue: () => {},
+        handlePlayerDeath: () => {}
+      };
+      inv.game = fakeGame;
+      p.game = fakeGame;
+
+      const mgr = new ExpansionManager(fakeGame);
+      const mods = await mgr._loadModules();
+      fakeGame.npcs = mgr._buildExpansionNPCs(fakeGame, mods);
+      fakeGame.enemies = mgr._buildExpansionEnemies(fakeGame, mods);
+
+      // 1. Verificar XP escalada en jefes y enemigos de expansión
+      const inakito = fakeGame.enemies.find((e) => e.id === 'boss_inakito');
+      const kernel = fakeGame.enemies.find((e) => e.id === 'boss_kernel');
+      const alex = fakeGame.enemies.find((e) => e.id === 'boss_alex_update');
+      const mobF5 = fakeGame.enemies.find((e) => e.id === 'vertedero_f5_1');
+      assert.equal(inakito.xpReward, 500);
+      assert.equal(kernel.xpReward, 850);
+      assert.equal(alex.xpReward, 1200);
+      assert.equal(mobF5.xpReward, 250);
+
+      // 2. Taller de Tío Manoplo fabrica Grapadora + Destornillador y desbloquea ach_exp_gear sin activar hasSword
+      const manoplo = fakeGame.npcs.find((n) => n.expansionId === 'tio_manoplo');
+      assert.ok(manoplo && typeof manoplo.resolveDialogues === 'function');
+      const dlg1 = manoplo.resolveDialogues(fakeGame.dialogueBox);
+      dlg1.choices.find((c) => /Grapadora/.test(c.label)).onSelect();
+      assert.equal(p.equippedWeapon, 'grapadora');
+      assert.equal(p.hasSword, false, 'Equipar Grapadora en expansión no debe reactivar hasSword medieval');
+      assert.equal(ach.isUnlocked('ach_exp_gear'), true);
+
+      const dlg2 = manoplo.resolveDialogues(fakeGame.dialogueBox);
+      dlg2.choices.find((c) => /Destornillador/.test(c.label)).onSelect();
+      assert.equal(p.equippedWeapon, 'destornillador');
+      assert.equal(questLog.isQuestCompleted('exp_quest_manoplo_gear'), true);
+
+      // 3. RosaShop desbloquea ach_exp_rosa y completa exp_quest_rosa_upgrades
+      const rosaShop = new RosaShop(fakeGame);
+      assert.equal(rosaShop.buyUpgrade('aumento_sueldo').ok, true);
+      assert.equal(ach.isUnlocked('ach_exp_rosa'), true);
+      assert.equal(questLog.isQuestCompleted('exp_quest_rosa_upgrades'), true);
+
+      // 4. Derrotar a Iñakito 2.0 suelta Escudo del Becario, desbloquea ach_exp_inakito y completa exp_quest_inakito
+      const combat = new CombatManager(fakeGame);
+      combat._handleBossDefeat(inakito);
+      assert.equal(ach.isUnlocked('ach_exp_inakito'), true);
+      assert.equal(inv.hasItem('escudo_becario'), true, 'Iñakito debe entregar el Escudo del Becario');
+      assert.equal(questLog.isQuestCompleted('exp_quest_inakito'), true);
+
+      // 5. Derrotar a Kernel y Alex 2.0 desbloquea sus logros y completa sus misiones
+      combat._handleBossDefeat(kernel);
+      assert.equal(ach.isUnlocked('ach_exp_kernel'), true);
+      assert.equal(questLog.isQuestCompleted('exp_quest_kernel'), true);
+      combat._handleBossDefeat(alex);
+      assert.equal(ach.isUnlocked('ach_exp_alex_v2'), true);
+      assert.equal(questLog.isQuestCompleted('exp_quest_alex'), true);
+
+      // 6. Al subir a Nivel 20 en combate se desbloquea ach_exp_level20
+      p.xp = 11000;
+      p.level = 19;
+      mobF5.dead = true;
+      mobF5.xpGranted = false;
+      mobF5.questCompletedTriggered = true;
+      fakeGame.enemies = [mobF5];
+      combat.update(0.016);
+      assert.equal(p.level, 20);
+      assert.equal(ach.isUnlocked('ach_exp_level20'), true);
     } finally {
       globalThis.localStorage = prevStorage;
     }

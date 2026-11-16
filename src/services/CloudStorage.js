@@ -107,7 +107,7 @@ export class CloudStorage {
       : (playerHasArmor ? 1 : 1);
 
     const level = Number.isFinite(Number(src.level))
-      ? Math.max(1, Math.min(15, Math.floor(Number(src.level))))
+      ? Math.max(1, Math.min(20, Math.floor(Number(src.level))))
       : 1;
     const xp = Number.isFinite(Number(src.xp))
       ? Math.max(0, Math.floor(Number(src.xp)))
