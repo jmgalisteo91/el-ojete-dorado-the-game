@@ -834,6 +834,51 @@ export function getBromForgeChoices(game) {
     });
   }
 
+  if (player.hasArmor) {
+    const currentArmorPoints = Math.max(0, Math.min(3, Math.floor(Number(player.armorPoints ?? 0))));
+    const repairScrapCount = inventory ? inventory.getItemCount('drone_scrap') : 0;
+    const isFullArmor = currentArmorPoints >= 3;
+    choices.push({
+      label: isFullArmor
+        ? '🛡️ Reparar Armadura · Tu armadura está en perfecto estado'
+        : `🛡️ Reparar Armadura (🛡️ x${currentArmorPoints}/3 → x3) [20 Bytes o 2 Chatarra]`,
+      onSelect: () => {
+        if (isFullArmor) {
+          dialogueBox.showMessage('Herrero Brom · Forjador', [
+            'Tu armadura está en perfecto estado (🛡️ x3). No le falta ni un remache binario.'
+          ], getBromForgeChoices(game));
+          return;
+        }
+        if (player.coins >= 20) {
+          player.coins -= 20;
+          player.armorPoints = 3;
+          game.music?.playFanfare?.();
+          game._saveGameToStorage?.();
+          dialogueBox.showMessage('Herrero Brom · Forjador', [
+            '¡CLANG! ¡CLANG! (Brom martillea placas de silicio nuevo sobre tu coraza).',
+            'Tu armadura ha sido restaurada al máximo (🛡️ x3) por 20 Bytes.'
+          ], getBromForgeChoices(game));
+          return;
+        }
+        if (repairScrapCount >= 2 && inventory) {
+          inventory.consumeItem('drone_scrap', 2);
+          player.armorPoints = 3;
+          game.music?.playFanfare?.();
+          game._saveGameToStorage?.();
+          dialogueBox.showMessage('Herrero Brom · Forjador', [
+            '¡CLANG! He fundido 2 Restos de Chatarra en la fragua.',
+            'Tu armadura vuelve a estar al máximo (🛡️ x3).'
+          ], getBromForgeChoices(game));
+          return;
+        }
+        dialogueBox.showMessage('Herrero Brom · Forjador', [
+          'Para reparar tu armadura necesito 20 Bytes o 2 Restos de Chatarra.',
+          `Actualmente llevas: [🪙 ${player.coins}/20 Bytes] y [⚙️ ${repairScrapCount}/2 Chatarra].`
+        ], getBromForgeChoices(game));
+      }
+    });
+  }
+
   // ==================== 3. ENCARGO FRACTAL Y COMERCIO ====================
   const isFractalDone = game.questLog
     ? (typeof game.questLog.isQuestCompleted === 'function'

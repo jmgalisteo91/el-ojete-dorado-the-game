@@ -254,10 +254,29 @@ export class HUD {
       }
     }
 
+    const showArmorBadge = Boolean(g.player.hasArmor);
+    const armorBadgeW = showArmorBadge ? 22 : 0;
+    const armorBadgeOffset = showArmorBadge ? armorBadgeW + 3 : 0;
+    if (showArmorBadge) {
+      const armorPts = Math.max(0, Math.min(3, Math.floor(Number(g.player.armorPoints ?? 0))));
+      const armorBadgeX = heartsX + heartsW + 3 + wepBadgeOffset;
+      const armorBadgeY = heartsY;
+      ctx.fillStyle = 'rgba(10, 14, 24, 0.78)';
+      ctx.fillRect(armorBadgeX, armorBadgeY, armorBadgeW, heartsH);
+      ctx.strokeStyle = armorPts > 0 ? '#38bdf8' : 'rgba(148, 163, 184, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(armorBadgeX + 0.5, armorBadgeY + 0.5, armorBadgeW - 1, heartsH - 1);
+
+      ctx.font = hudFont(4.4, true);
+      ctx.fillStyle = armorPts > 0 ? '#7dd3fc' : '#94a3b8';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🛡 x${armorPts}`, armorBadgeX + armorBadgeW / 2, armorBadgeY + 6.2);
+    }
+
     const showRobotBadge = !isTouchHud && g.player.robotizationLevel > 50;
     if (showRobotBadge) {
       const robVal = Math.round(g.player.robotizationLevel);
-      const robBadgeX = heartsX + heartsW + 3 + wepBadgeOffset;
+      const robBadgeX = heartsX + heartsW + 3 + wepBadgeOffset + armorBadgeOffset;
       const robBadgeY = heartsY;
       const robBadgeW = 28;
       const robBadgeH = heartsH;

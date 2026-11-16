@@ -1221,4 +1221,79 @@ export async function run(test, assert) {
     assert.equal(restoredPlayer.divineBlessing, 'swift');
     assert.equal(restoredPlayer.divineTranscendenceClaimed, true);
   });
+
+  test('Forja de Brom: opción Reparar Armadura (20 Bytes o 2 Chatarra) e indicador HUD xN', () => {
+    const p = new Player({ x: 32, y: 32 });
+    const inv = new Inventory(null);
+    const messages = [];
+    const forgeGame = {
+      player: p,
+      inventory: inv,
+      dialogueBox: { showMessage: (title, lines) => messages.push({ title, lines }) },
+      music: { playFanfare: () => {} },
+      _saveGameToStorage: () => {}
+    };
+
+    // 1. Sin armadura NO aparece "Reparar Armadura"
+    p.hasArmor = false;
+    assert.equal(
+      getBromForgeChoices(forgeGame).some((c) => /Reparar Armadura/i.test(c.label)),
+      false,
+      'Sin armadura no debe mostrarse Reparar Armadura'
+    );
+
+    // 2. Con armadura dañada (armorPoints = 1) aparece y repara con 20 Bytes
+    p.equipArmor();
+    p.armorPoints = 1;
+    p.coins = 25;
+    const repairChoice1 = getBromForgeChoices(forgeGame).find((c) => /Reparar Armadura/i.test(c.label));
+    assert.ok(repairChoice1);
+    repairChoice1.onSelect();
+    assert.equal(p.coins, 5);
+    assert.equal(p.armorPoints, 3);
+
+    // 3. Con armadura al máximo (3/3) muestra "Tu armadura está en perfecto estado"
+    const fullChoice = getBromForgeChoices(forgeGame).find((c) => /Reparar Armadura/i.test(c.label));
+    assert.ok(fullChoice);
+    assert.match(fullChoice.label, /Tu armadura está en perfecto estado/i);
+
+    // 4. Con < 20 Bytes pero 2 de Chatarra, repara consumiendo 2 de Chatarra
+    p.armorPoints = 0;
+    inv.addItem({ id: 'drone_scrap', name: 'Chatarra', description: '', iconIndex: 10, qty: 2 });
+    const repairChoice2 = getBromForgeChoices(forgeGame).find((c) => /Reparar Armadura/i.test(c.label));
+    assert.ok(repairChoice2);
+    repairChoice2.onSelect();
+    assert.equal(p.armorPoints, 3);
+    assert.equal(inv.getItemCount('drone_scrap'), 0);
+
+    // 5. HUD muestra el contador de puntos de armadura (🛡 x3)
+    const hudTexts = [];
+    const hudCtx = new Proxy(
+      {
+        fillText(t) { hudTexts.push(String(t)); },
+        measureText(t) { return { width: String(t).length * 4 }; },
+        createLinearGradient() { return { addColorStop() {} }; }
+      },
+      { get: (t, k) => (k in t ? t[k] : () => {}) }
+    );
+    const hud = new HUD({
+      kernelHackActive: false,
+      kernelHudFlicker: false,
+      touchControls: { isTouchEnabled: () => false },
+      dayNight: { getFormattedTime: () => '12:00', timeOfDayHours: 12 },
+      tilemap: { currentSceneId: 'overworld' },
+      player: p,
+      enemies: [],
+      curriculum: 0,
+      isJailedForever: false,
+      jailRemainingSeconds: 0,
+      cloudSyncStatus: 'synced',
+      hasPendingCloudSync: false,
+      syncHotbarWithInventory: () => {},
+      _ensurePlayerHotbar: () => [null, null, null, null, null],
+      _renderHotbar: () => {}
+    });
+    hud.render(hudCtx);
+    assert.ok(hudTexts.includes('🛡 x3'), 'HUD debe mostrar 🛡 x3 cuando el jugador lleva armadura');
+  });
 }
