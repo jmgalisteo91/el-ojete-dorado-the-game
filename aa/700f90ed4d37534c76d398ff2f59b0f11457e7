@@ -1,0 +1,20 @@
+src/assets/CinematicTimelines.js
+  h_e1bbc662b18209 305-357,360
+src/main.js
+  h_e1bbc662b18209 68,3682-3710
+src/ui/CinematicDirector.js
+  h_e1bbc662b18209 16,18,181
+tests/suites/world.test.mjs
+  h_e1bbc662b18209 3745-3799
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "aa700f90ed4d37534c76d398ff2f59b0f11457e7",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
