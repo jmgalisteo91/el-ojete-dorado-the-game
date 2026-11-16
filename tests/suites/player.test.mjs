@@ -1,5 +1,5 @@
 import { Enemy } from '../../src/entities/Enemy.js';
-import { Player, LEVEL_XP_THRESHOLDS } from '../../src/entities/Player.js';
+import { Player, LEVEL_XP_THRESHOLDS, MAX_PLAYER_LEVEL, DIVINE_BLESSINGS } from '../../src/entities/Player.js';
 import { getDoorBlock, ZONE_LEVEL_REQUIREMENTS } from '../../src/core/DoorGatekeeper.js';
 import { Boss } from '../../src/entities/bosses/Boss.js';
 import { RPGGame } from '../../src/main.js';
@@ -1093,5 +1093,132 @@ export async function run(test, assert) {
     // Al pasar el resto de 0.8s, los textos desaparecen
     fakeGame._updateFloatingTexts(0.5);
     assert.equal(fakeGame.floatingTexts.length, 0, 'Al agotarse los 0.8s deben eliminarse los textos flotantes');
+  });
+
+  test('Juego base Nv. 10-15 y Altar del Dios Supremo: Trascendencia, Ofrendas XP, 3 Pactos Cósmicos y Juicio', () => {
+    const player = new Player({ x: 64, y: 64 });
+    player.hasSword = true;
+    player.coins = 60;
+    player.robotizationLevel = 45;
+    player.gainXp(1700); // Llega al Nivel 10
+    assert.equal(player.level, 10);
+
+    const fakeGame = {
+      player,
+      jailerAnger: 3,
+      jailerAngerCount: 3,
+      totalJailVisits: 2,
+      sheepAttacks: 1,
+      music: { playFanfare: () => {}, playMenuSelect: () => {} },
+      menuSystem: { showNotice: () => {} },
+      dialogueBox: { showMessage: () => {}, close: () => {} },
+      inventory: { statusMessage: '' },
+      _saveGameToStorage: () => {},
+      _grantSupremeGodBlessing: (id) => RPGGame.prototype._grantSupremeGodBlessing.call(fakeGame, id),
+      _grantSupremeGodXp: (xp, opts) => RPGGame.prototype._grantSupremeGodXp.call(fakeGame, xp, opts),
+      _performSupremeGodJudgement: () => RPGGame.prototype._performSupremeGodJudgement.call(fakeGame),
+      _buildSupremeGodDialogues: () => RPGGame.prototype._buildSupremeGodDialogues.call(fakeGame)
+    };
+
+    // 1. Rito de Trascendencia: rompe el techo de Nv. 10 (+500 XP -> Nv. 11 y +1 PH) una sola vez
+    const dlgInitial = fakeGame._buildSupremeGodDialogues();
+    assert.ok(dlgInitial.choices.some((c) => /Trascendencia/i.test(c.label)));
+    const spBefore = player.skillPoints;
+    const tRes = fakeGame._grantSupremeGodXp(500, { skillPointsBonus: 1, markTranscendence: true });
+    assert.equal(tRes.ok, true);
+    assert.equal(player.level, 11);
+    assert.equal(player.skillPoints, spBefore + 2);
+    assert.equal(player.divineTranscendenceClaimed, true);
+
+    const dlgAfter = fakeGame._buildSupremeGodDialogues();
+    assert.equal(dlgAfter.choices.some((c) => /Trascendencia/i.test(c.label)), false);
+
+    // 2. Ofrenda de Sabiduría Cósmica: 25 Bytes -> +350 XP hasta alcanzar Nv. 12+
+    const failNoBytes = fakeGame._grantSupremeGodXp(350, { byteCost: 100 });
+    assert.equal(failNoBytes.ok, false);
+    assert.equal(failNoBytes.reason, 'insufficient_bytes');
+
+    const offerRes = fakeGame._grantSupremeGodXp(600, { byteCost: 25 });
+    assert.equal(offerRes.ok, true);
+    assert.equal(player.coins, 35);
+    assert.equal(player.level, 12);
+    assert.equal(player.maxHp, 4);
+
+    // 3. 3 Pactos Cósmicos del Dios Supremo con impacto mecánico real
+    assert.equal(Object.keys(DIVINE_BLESSINGS).length, 3);
+
+    // a) Filo de Luz Binaria: +25% daño
+    const baseDmg = player.getSwordDamage();
+    fakeGame._grantSupremeGodBlessing('blade');
+    assert.equal(player.divineBlessing, 'blade');
+    assert.ok(player.getSwordDamage() > baseDmg);
+
+    // b) Égida Inmutable: -20% daño recibido y limpia robotización en -30
+    fakeGame._grantSupremeGodBlessing('aegis');
+    assert.equal(player.divineBlessing, 'aegis');
+    assert.equal(player.robotizationLevel, 15);
+    player.hp = 4;
+    player.invulnTimer = 0;
+    player.takeHit(null, null, 2);
+    assert.equal(player.hp, 2.4, 'Égida Inmutable debe reducir 2 de daño a 1.6');
+
+    // c) Paso Astral: -25% coste de stamina y +12% velocidad
+    fakeGame._grantSupremeGodBlessing('swift');
+    player.stamina = 100;
+    assert.equal(player.spendStamina(20), true);
+    assert.equal(player.stamina, 85, 'Paso Astral debe reducir un coste de 20 a 15');
+
+    // 4. Juicio de Expediente: absuelve ira del Carcelero y limpia robotización restante
+    const verdict = fakeGame._performSupremeGodJudgement();
+    assert.equal(verdict.length, 2);
+    assert.equal(fakeGame.jailerAngerCount, 0);
+    assert.equal(fakeGame.jailerAnger, 0);
+    assert.equal(player.robotizationLevel, 0);
+
+    // 5. Persistencia de Nivel 14/15 y Pacto en CloudStorage + _loadGameData (sin cap de Nv. 10)
+    player.gainXp(3000); // > 5200 XP -> Nv. 15
+    assert.equal(player.level, MAX_PLAYER_LEVEL);
+    const saved = CloudStorage.sanitizeSaveData({
+      level: player.level,
+      xp: player.xp,
+      maxHp: player.maxHp,
+      levelStaminaBonus: player.levelStaminaBonus,
+      divineBlessing: player.divineBlessing,
+      divineTranscendenceClaimed: player.divineTranscendenceClaimed
+    });
+    assert.equal(saved.level, 15);
+    assert.equal(saved.divineBlessing, 'swift');
+    assert.equal(saved.divineTranscendenceClaimed, true);
+
+    const restoredPlayer = new Player({ x: 0, y: 0 });
+    const tm = new Tilemap(null, 16);
+    const loadGameStub = {
+      isExpansionMode: false,
+      isExpansionActive: false,
+      tilemap: tm,
+      player: restoredPlayer,
+      dayNight: { timeOfDayHours: 8.5 },
+      camera: { setWorldBounds: () => {}, snapTo: () => {} },
+      inventory: new Inventory(null),
+      music: { setMode: () => {} },
+      npcs: [],
+      animals: [],
+      enemies: [],
+      worldItems: [],
+      housePermissions: {},
+      bossCutscenesSeen: {},
+      _resetWorldToInitialState: () => {
+        restoredPlayer.unequipAllForNewGame();
+      },
+      _syncGatesUnlocked: () => {},
+      _syncAchievementsWithProgress: () => {},
+      _syncMinesBossArenaGate: () => {}
+    };
+    assert.equal(RPGGame.prototype._loadGameData.call(loadGameStub, saved), true);
+    assert.equal(restoredPlayer.level, 15, 'Cargar partida en juego base debe conservar el Nivel 15');
+    assert.equal(restoredPlayer.maxHp, 5);
+    assert.equal(restoredPlayer.levelStaminaBonus, 20);
+    assert.equal(restoredPlayer.divineBlessing, 'swift');
+    assert.equal(restoredPlayer.divineTranscendenceClaimed, true);
   });
 }

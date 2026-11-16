@@ -371,11 +371,14 @@ export const SUPREME_GOD_DIALOGUES = {
     'AI Alex planea corromper esta dimensión con su microondas cuántico. Mantén tu rectitud para poder doblegarlo.»'
   ],
   blessedIntroLines: [
-    '«Bienvenido a los Reinos Condenados, mortal. Tu corazón late íntegro y sin fracturas en tu pecho.',
-    'Si alguna vez la justicia carcelaria castiga tus desplantes con la Maldición del Corazón Roto (💔), acude a este altar y serás juzgado.»'
+    '«Bienvenido a mi Altar Cósmico en los Reinos Condenados, mortal. Tu corazón late íntegro, pero el código del mundo guarda dones aún mayores.»',
+    '«Aquí puedes consagrar una Bendición Cósmica permanente para el combate, ofrecer Bytes por Sabiduría para superar el Nivel 10 o someterte al Juicio de tus pecados.»'
   ],
   blessingLines: [
     '«Que el código libre de fugas de memoria y la recursividad sin fin guíen tus pasos en la batalla contra AI Alex.»'
+  ],
+  pactIntroLines: [
+    '«Elige qué aspecto del Compilador Sagrado quieres grabar en tu espíritu. Solo puedes portar un Pacto Cósmico a la vez, y puedes cambiarlo siempre que regreses a este altar.»'
   ]
 };
 

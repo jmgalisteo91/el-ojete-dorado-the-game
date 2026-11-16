@@ -6,6 +6,27 @@ import { EXPANSION_EQUIPMENT, EXPANSION_SKILLS, EXPANSION_SKILLS_KEYS, getExpans
 
 const STAMINA_COSTS = { attack: 4, dash: 18, charged: 30, log: 15 };
 
+export const DIVINE_BLESSINGS = {
+  blade: {
+    id: 'blade',
+    name: 'Filo de Luz Binaria',
+    icon: '🔥',
+    summary: '+25% de daño con espada y golpes sagrados.'
+  },
+  aegis: {
+    id: 'aegis',
+    name: 'Égida Inmutable',
+    icon: '🛡️',
+    summary: '-20% de daño recibido y limpieza de robotización.'
+  },
+  swift: {
+    id: 'swift',
+    name: 'Paso Astral',
+    icon: '⚡',
+    summary: '+12% de velocidad de movimiento y -25% coste de Stamina.'
+  }
+};
+
 /**
  * Umbrales acumulados de Experiencia (XP) para subir de Nivel (1 al 10).
  * Nivel 1: Inicio (0 XP)
@@ -52,6 +73,8 @@ export class Player extends Entity {
     this.maxHp = 3;
     this.hp = 3;
     this.hasBrokenHeartCurse = false;
+    this.divineBlessing = null;
+    this.divineTranscendenceClaimed = false;
     this.hasArmor = false;
     this.armorPoints = 0; // Hasta 3 impactos absorbidos por la Armadura Binaria
     this.hasSword = false;
@@ -236,10 +259,26 @@ export class Player extends Entity {
   }
 
   spendStamina(amount) {
-    if (this.stamina < amount) return false;
-    this.stamina -= amount;
+    const cost = this.divineBlessing === 'swift'
+      ? Math.max(1, Math.round(amount * 0.75))
+      : amount;
+    if (this.stamina < cost) return false;
+    this.stamina -= cost;
     this.staminaRegenDelay = 0.3;
     return true;
+  }
+
+  /** Sincroniza maxHp y bonus de stamina de niveles 12/14/15 tras cargar una partida. */
+  syncProgressionStatsForLevel() {
+    const minLevelHp = 3 + (this.level >= 12 ? 1 : 0) + (this.level >= 15 ? 1 : 0);
+    if ((this.maxHp || 3) < minLevelHp) {
+      this.maxHp = minLevelHp;
+    }
+    const minLevelStamina = this.level >= 14 ? 20 : 0;
+    if ((this.levelStaminaBonus || 0) < minLevelStamina) {
+      this.levelStaminaBonus = minLevelStamina;
+    }
+    this.maxStamina = this.effectiveMaxStamina;
   }
 
   _isExpansionActive() {
@@ -280,6 +319,10 @@ export class Player extends Entity {
     // Si la robotización supera el 50%, la rigidez biomecánica penaliza un 30% el daño
     if (this.robotizationLevel > 50) {
       dmg *= 0.7;
+    }
+    // Bendición cósmica del Dios Supremo: Filo de Luz Binaria (+25% daño)
+    if (this.divineBlessing === 'blade') {
+      dmg *= 1.25;
     }
     return Math.round(dmg * 100) / 100;
   }
@@ -430,6 +473,8 @@ export class Player extends Entity {
     this.gatesUnlocked = 0;
     this.energySlashes = [];
     this.hasBrokenHeartCurse = false;
+    this.divineBlessing = null;
+    this.divineTranscendenceClaimed = false;
     this.hasDash = false;
     this.hasChargedAttack = false;
     this.hasBarrier = false;
@@ -828,6 +873,9 @@ export class Player extends Entity {
     }
 
     // (FIX C.1) La coraza absorbe hasta 1.0 de daño por punto; Carpeta de Plástico mitiga 0.5 corazones pasivamente.
+    if (this.divineBlessing === 'aegis') {
+      dmg = Math.round(dmg * 0.8 * 100) / 100;
+    }
     if (this._isExpansionActive() && this.equippedShield === 'carpeta') {
       dmg = Math.max(0, dmg - 0.5);
     }
@@ -1095,6 +1143,9 @@ export class Player extends Entity {
 
       // Si está altamente robotizado (>85%), los circuitos se ponen rígidos
       let effectiveSpeed = this.speed;
+      if (this.divineBlessing === 'swift') {
+        effectiveSpeed *= 1.12;
+      }
       if (this.robotizationLevel > 85) {
         effectiveSpeed *= 0.88;
       }

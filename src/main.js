@@ -13,7 +13,7 @@ import {
 import { SpriteAnimator } from './graphics/Animator.js?v=8';
 import { Tilemap } from './world/Tilemap.js?v=8';
 import { CollisionSystem } from './physics/CollisionSystem.js?v=8';
-import { Player } from './entities/Player.js?v=8';
+import { Player, MAX_PLAYER_LEVEL, DIVINE_BLESSINGS } from './entities/Player.js?v=8';
 import { NPC, getBromForgeChoices } from './entities/NPC.js?v=8';
 import { ExpansionManager } from './expansion/ExpansionManager.js?v=8';
 import { DemonVengador } from './expansion/entities/DemonVengador.js?v=8';
@@ -1264,6 +1264,10 @@ export class RPGGame {
       armorLevel: this.player.armorLevel || 1,
       level: this.player.level || 1,
       xp: this.player.xp || 0,
+      maxHp: this.player.maxHp || 3,
+      levelStaminaBonus: this.player.levelStaminaBonus || 0,
+      divineBlessing: this.player.divineBlessing || null,
+      divineTranscendenceClaimed: Boolean(this.player.divineTranscendenceClaimed),
       dungeonCores: {
         gc: !!(this.player.dungeonCores && this.player.dungeonCores.gc),
         stack: !!(this.player.dungeonCores && this.player.dungeonCores.stack),
@@ -1915,8 +1919,19 @@ export class RPGGame {
       );
       this.player.swordLevel = Math.max(1, Math.min(3, Number(data.swordLevel) || 1));
       this.player.armorLevel = Math.max(1, Math.min(2, Number(data.armorLevel) || 1));
-      this.player.level = Math.max(1, Math.min(10, Math.floor(Number(data.level) || 1)));
+      this.player.level = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(Number(data.level) || 1)));
       this.player.xp = Math.max(0, Math.floor(Number(data.xp) || 0));
+      if (Number.isFinite(Number(data.maxHp)) && Number(data.maxHp) >= 3) {
+        this.player.maxHp = Math.floor(Number(data.maxHp));
+      }
+      this.player.levelStaminaBonus = Number.isFinite(Number(data.levelStaminaBonus))
+        ? Math.max(0, Math.floor(Number(data.levelStaminaBonus)))
+        : 0;
+      this.player.divineBlessing = ['blade', 'aegis', 'swift'].includes(data.divineBlessing)
+        ? data.divineBlessing
+        : null;
+      this.player.divineTranscendenceClaimed = Boolean(data.divineTranscendenceClaimed);
+      this.player.syncProgressionStatsForLevel?.();
       if (data.dungeonCores && typeof data.dungeonCores === 'object') {
         this.player.dungeonCores = {
           gc: Boolean(data.dungeonCores.gc),
@@ -3076,73 +3091,232 @@ export class RPGGame {
           choices: sageStage1Choices
         };
       }),
-      makeNPC('supreme_god', () => {
-        const dlg = VILLAGE_DIALOGUES.supremeGod;
-        if (this.player.hasBrokenHeartCurse) {
-          return {
-            lines: dlg.cursedLines,
-            choices: [
-              {
-                label: '✨ Suplicar redención («¡Dios Supremo, purifica mi corazón roto!»)',
-                onSelect: () => {
-                  this.dialogueBox.close();
-                  this.animeCutscenes.playCutscene(SCENE_DEUS_PURIFICATION, () => {
-                    this.player.purifyBrokenHeartCurse();
-                    this.jailerAngerCount = 0;
-                    if (this.questLog) {
-                      this.questLog.completeQuest('quest_condemned_pointer', '¡Maldición purificada y expediente penal absuelto por el Dios Supremo!');
-                    }
-                    if (this.music && typeof this.music.playFanfare === 'function') {
-                      this.music.playFanfare();
-                    }
-                    this._saveGameToStorage();
-                    this.dialogueBox.showMessage(
-                      dlg.purificationSpeaker,
-                      dlg.purifiedLines,
-                      () => {
-                        this.inventory.statusMessage = dlg.purifiedNotice;
-                      }
-                    );
-                  });
-                }
-              },
-              {
-                label: 'Preguntar por la naturaleza de los Reinos Condenados',
-                onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.loreLines)
-              },
-              {
-                label: 'Aún no estoy listo para la expiación',
-                onSelect: () => this.dialogueBox.close()
-              }
-            ]
-          };
-        }
-
-        return {
-          lines: dlg.blessedIntroLines,
-          choices: [
-            {
-              label: 'Pedir la bendición cósmica',
-              onSelect: () => {
-                if (this.music && typeof this.music.playMenuSelect === 'function') {
-                  this.music.playMenuSelect();
-                }
-                this.dialogueBox.showMessage(dlg.speaker, dlg.blessingLines);
-              }
-            },
-            {
-              label: 'Despedirse reverentemente',
-              onSelect: () => this.dialogueBox.close()
-            }
-          ]
-        };
-      }),
+      makeNPC('supreme_god', () => this._buildSupremeGodDialogues()),
       makeNPC('boreas', makeGatekeeperDialogues('boreas', 4)),
       makeNPC('vulcano', makeGatekeeperDialogues('vulcano', 3)),
       makeNPC('vael', makeGatekeeperDialogues('vael', 8)),
       makeNPC('tester_qa'),
     // Los NPCs de la expansión se crean bajo demanda en ExpansionManager.init(game)
     ];
+  }
+
+  _grantSupremeGodBlessing(blessingId) {
+    const def = DIVINE_BLESSINGS[blessingId];
+    if (!def || !this.player) return null;
+    this.player.divineBlessing = def.id;
+    if (def.id === 'aegis') {
+      this.player.robotizationLevel = Math.max(0, (this.player.robotizationLevel || 0) - 30);
+    }
+    this.player.hp = this.player.effectiveMaxHp;
+    this.player.stamina = this.player.effectiveMaxStamina;
+    this.music?.playFanfare?.();
+    this._saveGameToStorage?.();
+    this.menuSystem?.showNotice?.(`${def.icon} Pacto Consagrado: ${def.name}`, 3.5);
+    return def;
+  }
+
+  _grantSupremeGodXp(xpAmount, { byteCost = 0, skillPointsBonus = 0, markTranscendence = false } = {}) {
+    if (!this.player) return { ok: false, reason: 'no_player' };
+    if (this.player.isMaxLevel && skillPointsBonus <= 0) {
+      return { ok: false, reason: 'max_level' };
+    }
+    if (byteCost > 0 && (this.player.coins || 0) < byteCost) {
+      return { ok: false, reason: 'insufficient_bytes' };
+    }
+    if (byteCost > 0) {
+      this.player.coins -= byteCost;
+    }
+    if (markTranscendence) {
+      this.player.divineTranscendenceClaimed = true;
+    }
+    if (skillPointsBonus > 0) {
+      this.player.skillPoints = (this.player.skillPoints || 0) + skillPointsBonus;
+    }
+    const res = this.player.gainXp(xpAmount);
+    this.player.hp = this.player.effectiveMaxHp;
+    this.player.stamina = this.player.effectiveMaxStamina;
+    if (res.leveledUp || skillPointsBonus > 0) {
+      this.music?.playFanfare?.();
+    } else {
+      this.music?.playMenuSelect?.();
+    }
+    this._saveGameToStorage?.();
+    return { ok: true, ...res };
+  }
+
+  _performSupremeGodJudgement() {
+    const p = this.player;
+    if (!p) return [];
+    const hadAnger = (this.jailerAngerCount || 0) > 0 || (this.jailerAnger || 0) > 0;
+    const prevVisits = this.totalJailVisits || 0;
+    const sheepHits = this.sheepAttacks || 0;
+    this.jailerAnger = 0;
+    this.jailerAngerCount = 0;
+    p.robotizationLevel = Math.max(0, (p.robotizationLevel || 0) - 25);
+    p.hp = p.effectiveMaxHp;
+    p.stamina = p.effectiveMaxStamina;
+    this.music?.playMenuSelect?.();
+    this._saveGameToStorage?.();
+    return [
+      `«Registro del Compilador: Nivel ${p.level}/${MAX_PLAYER_LEVEL} · Bajas ${p.killCount || 0} · Visitas al calabozo: ${prevVisits} · Ovejas golpeadas: ${sheepHits}.»`,
+      hadAnger
+        ? '«Tu expediente con el Carcelero ardía en ira, pero mi veredicto borra toda reincidencia (Ira carcelaria ➔ 0) y sanea tus circuitos.»'
+        : sheepHits > 0
+          ? '«El llanto de las ovejas de Valleverde resuena en el éter... Mas te absuelvo y restauro tu energía vital al 100%.»'
+          : '«Tu código camina con honor y disciplina. He restaurado tu salud, energía y pureza binaria al 100%.»'
+    ];
+  }
+
+  _buildSupremeGodDialogues() {
+    const dlg = VILLAGE_DIALOGUES.supremeGod;
+    const p = this.player;
+    const activeBlessing = p?.divineBlessing ? DIVINE_BLESSINGS[p.divineBlessing] : null;
+    const statusHeader = activeBlessing
+      ? `«Pacto activo: ${activeBlessing.icon} [${activeBlessing.name}] (${activeBlessing.summary}) · Nivel ${p.level}/${MAX_PLAYER_LEVEL}.»`
+      : `«Aún no portas ningún Pacto Cósmico. Nivel actual: ${p.level}/${MAX_PLAYER_LEVEL}.»`;
+
+    const buildPactChoices = () => [
+      ...Object.values(DIVINE_BLESSINGS).map((def) => ({
+        label: `${def.icon} ${def.name}${p.divineBlessing === def.id ? ' [ACTIVA]' : ''} — ${def.summary}`,
+        onSelect: () => {
+          this._grantSupremeGodBlessing(def.id);
+          this.dialogueBox.showMessage(
+            dlg.purificationSpeaker,
+            [
+              `«Que el sello de ${def.icon} [${def.name}] arda en tu código.»`,
+              `Efecto permanente hasta que elijas otro pacto: ${def.summary}`,
+              'Tu salud y stamina han sido restauradas al 100%.'
+            ]
+          );
+        }
+      })),
+      {
+        label: 'Volver al Altar',
+        onSelect: () => {
+          const root = this._buildSupremeGodDialogues();
+          this.dialogueBox.showMessage(dlg.speaker, root.lines, root.choices);
+        }
+      }
+    ];
+
+    const sharedChoices = [
+      ...(p && p.level >= 10 && !p.divineTranscendenceClaimed
+        ? [{
+            label: '🌟 Rito de Trascendencia (Romper límite Nv. 10 → +500 XP y +1 PH)',
+            onSelect: () => {
+              const res = this._grantSupremeGodXp(500, {
+                skillPointsBonus: 1,
+                markTranscendence: true
+              });
+              if (!res.ok) return;
+              this.menuSystem?.showNotice?.(`🌟 ¡Trascendencia! Nivel ${p.level}/${MAX_PLAYER_LEVEL} (+1 PH)`, 4.0);
+              this.dialogueBox.showMessage(
+                dlg.purificationSpeaker,
+                [
+                  'El cielo de los Reinos Condenados se abre en código dorado sobre tu cabeza.',
+                  `«Los límites mortales del Nivel 10 se quiebran ante ti. Recibes +500 XP y +1 Punto de Habilidad (Nivel ${p.level}/${MAX_PLAYER_LEVEL}).»`,
+                  ...(res.rewards || [])
+                ]
+              );
+            }
+          }]
+        : []),
+      ...(!p?.isMaxLevel
+        ? [{
+            label: `🪙 Ofrecer 25 Bytes por Sabiduría Cósmica (+350 XP) [Tienes: ${p?.coins || 0}]`,
+            onSelect: () => {
+              const res = this._grantSupremeGodXp(350, { byteCost: 25 });
+              if (!res.ok && res.reason === 'insufficient_bytes') {
+                this.dialogueBox.showMessage(dlg.speaker, [
+                  `«El altar exige 25 Bytes para condensar la Sabiduría Cósmica, y solo portas ${p?.coins || 0}.»`
+                ]);
+                return;
+              }
+              if (!res.ok) {
+                this.dialogueBox.showMessage(dlg.speaker, [
+                  `«Ya has alcanzado el máximo esplendor (Nivel ${MAX_PLAYER_LEVEL}/${MAX_PLAYER_LEVEL}).»`
+                ]);
+                return;
+              }
+              this.menuSystem?.showNotice?.(`✨ +350 XP Cósmica · Nivel ${p.level}/${MAX_PLAYER_LEVEL}`, 3.5);
+              this.dialogueBox.showMessage(dlg.purificationSpeaker, [
+                res.leveledUp
+                  ? `¡Ascensión completada! Has subido al Nivel ${res.newLevel}/${MAX_PLAYER_LEVEL}.`
+                  : `Has absorbido +350 XP cósmica (Nivel ${p.level}/${MAX_PLAYER_LEVEL}).`,
+                ...(res.rewards || [])
+              ]);
+            }
+          }]
+        : []),
+      {
+        label: activeBlessing
+          ? `🔱 Cambiar Pacto Cósmico (Actual: ${activeBlessing.name})`
+          : '🔱 Consagrar una Bendición Cósmica (3 Pactos)',
+        onSelect: () => {
+          this.dialogueBox.showMessage(dlg.speaker, dlg.pactIntroLines, buildPactChoices());
+        }
+      },
+      {
+        label: '⚖️ Someterse al Juicio de Expediente y Absolución',
+        onSelect: () => {
+          const verdict = this._performSupremeGodJudgement();
+          this.dialogueBox.showMessage(dlg.speaker, verdict);
+        }
+      },
+      {
+        label: 'Preguntar por la naturaleza de los Reinos Condenados',
+        onSelect: () => this.dialogueBox.showMessage(dlg.speaker, dlg.loreLines)
+      }
+    ];
+
+    if (p?.hasBrokenHeartCurse) {
+      return {
+        lines: [...dlg.cursedLines, statusHeader],
+        choices: [
+          {
+            label: '✨ Suplicar redención («¡Dios Supremo, purifica mi corazón roto!»)',
+            onSelect: () => {
+              this.dialogueBox.close();
+              this.animeCutscenes.playCutscene(SCENE_DEUS_PURIFICATION, () => {
+                this.player.purifyBrokenHeartCurse();
+                this.jailerAngerCount = 0;
+                this.jailerAnger = 0;
+                if (this.questLog) {
+                  this.questLog.completeQuest('quest_condemned_pointer', '¡Maldición purificada y expediente penal absuelto por el Dios Supremo!');
+                }
+                if (this.music && typeof this.music.playFanfare === 'function') {
+                  this.music.playFanfare();
+                }
+                this._saveGameToStorage();
+                this.dialogueBox.showMessage(
+                  dlg.purificationSpeaker,
+                  dlg.purifiedLines,
+                  () => {
+                    this.inventory.statusMessage = dlg.purifiedNotice;
+                  }
+                );
+              });
+            }
+          },
+          ...sharedChoices,
+          {
+            label: 'Aún no estoy listo para la expiación',
+            onSelect: () => this.dialogueBox.close()
+          }
+        ]
+      };
+    }
+
+    return {
+      lines: [...dlg.blessedIntroLines, statusHeader],
+      choices: [
+        ...sharedChoices,
+        {
+          label: 'Despedirse reverentemente',
+          onSelect: () => this.dialogueBox.close()
+        }
+      ]
+    };
   }
 
   _createRegionalPatrols(sheet) {
