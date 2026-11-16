@@ -1,0 +1,16 @@
+src/ui/MainMenuAndScenes.js
+  h_e1bbc662b18209 839,851-854,859,876,880,909,928,958,974-975,978-980,984-985,988,993,1000,1008,1015,1885-1900,1902-1912,2923-2925,2928-2934,2936-2940,2949-2950,2952-2954,2957,2961-2967,2969-2978,2980-2981,2984,2986,2989-2991,2996-2997,2999-3002
+tests/suites/world.test.mjs
+  h_e1bbc662b18209 3594-3650
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "5e9ee6c1c7b903fa037b5698b659dab83c2c660a",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
