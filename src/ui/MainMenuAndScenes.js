@@ -5,6 +5,7 @@ import { GAME_FONT_UI, drawRoundedRect } from './SpeechBubble.js?v=8';
 import { getLocalLeaderboard, fetchGlobalLeaderboard } from '../core/ScoreSystem.js?v=8';
 import { LeaderboardView } from './LeaderboardView.js?v=8';
 import { UILayout, GAME_VERSION } from './UILayout.js?v=8';
+import { JUKEBOX_TRACKS } from '../audio/AudioManager.js?v=8';
 
 const EXPANSION_UNLOCK_KEY = 'el_ojete_dorado_victory_trophy';
 const EXPANSION_MENU_INFO = {
@@ -125,6 +126,16 @@ export class MainMenuAndScenes {
 
     // Gestor de Cinemáticas Anime Retro (Novela Visual)
     this.animeCutscenes = null;
+
+    // Estado del Jukebox (Banda Sonora)
+    this.jukeboxIndex = 0;
+    this.jukeboxScroll = 0;
+    this.jukeboxVisibleRows = 7;
+    this.jukeboxActiveTrackId = null;
+    this.jukeboxPaused = false;
+    this.vinylAngle = 0;
+    this._jukeboxRowHitboxes = [];
+    this._jukeboxCloseBtnBounds = null;
   }
 
   setAnimeCutsceneManager(animeManager) {
@@ -326,6 +337,71 @@ export class MainMenuAndScenes {
       0,
       Math.min(this.changelogMaxScroll, (this.changelogScroll || 0) + delta)
     );
+  }
+
+  _isJukeboxTrackPlaying() {
+    if (!this.jukeboxActiveTrackId || this.jukeboxPaused) return false;
+    if (this.music && typeof this.music.isJukeboxPlaying === 'function') {
+      return this.music.isJukeboxPlaying();
+    }
+    return true;
+  }
+
+  openJukeboxScreen() {
+    this._modalPopStart = this.animTime;
+    this.state = 'jukebox';
+    this.jukeboxIndex = 0;
+    this.jukeboxScroll = 0;
+    this.vinylAngle = 0;
+    this.jukeboxPaused = false;
+    const firstTrack = JUKEBOX_TRACKS[0];
+    this.jukeboxActiveTrackId = firstTrack ? firstTrack.id : null;
+    if (this.music) {
+      if (typeof this.music.playMenuSelect === 'function') this.music.playMenuSelect();
+      if (firstTrack && typeof this.music.playJukeboxTrack === 'function') {
+        this.music.playJukeboxTrack(firstTrack.id, 300);
+      }
+    }
+  }
+
+  closeJukeboxScreen() {
+    this.jukeboxActiveTrackId = null;
+    this.jukeboxPaused = false;
+    if (this.music) {
+      if (typeof this.music.stopJukeboxTrack === 'function') {
+        this.music.stopJukeboxTrack(true, 300);
+      } else if (typeof this.music.setMode === 'function') {
+        this.music.setMode('title', 300);
+      }
+      if (typeof this.music.playMenuMove === 'function') this.music.playMenuMove();
+    }
+    this.state = 'title';
+    const items = this._getCurrentMenuItems();
+    const idx = items.findIndex((it) => String(it.label).includes('Banda Sonora'));
+    this.selectedIndex = idx >= 0 ? idx : 0;
+  }
+
+  _playOrToggleJukeboxTrack(index = this.jukeboxIndex) {
+    const track = JUKEBOX_TRACKS[index];
+    if (!track) return;
+    if (this.jukeboxActiveTrackId === track.id) {
+      if (this.music && typeof this.music.toggleJukeboxPause === 'function') {
+        const playingNow = this.music.toggleJukeboxPause();
+        this.jukeboxPaused = !playingNow;
+      } else {
+        this.jukeboxPaused = !this.jukeboxPaused;
+      }
+      if (typeof this.music?.playMenuMove === 'function') this.music.playMenuMove();
+      return;
+    }
+
+    this.jukeboxActiveTrackId = track.id;
+    this.jukeboxPaused = false;
+    if (this.music && typeof this.music.playJukeboxTrack === 'function') {
+      this.music.playJukeboxTrack(track.id, 300);
+    } else if (this.music && typeof this.music.setMode === 'function') {
+      this.music.setMode(track.mode, 300);
+    }
   }
 
   openLeaderboardScreen(returnState = 'title') {
@@ -899,6 +975,12 @@ export class MainMenuAndScenes {
             if (this.callbacks.onOpenCloudLoad) {
               this.callbacks.onOpenCloudLoad();
             }
+          }
+        },
+        {
+          label: '🎵 Banda Sonora',
+          action: () => {
+            this.openJukeboxScreen();
           }
         },
         {
@@ -1535,6 +1617,91 @@ export class MainMenuAndScenes {
       return;
     }
 
+    if (this.state === 'jukebox') {
+      if (this._isJukeboxTrackPlaying()) {
+        this.vinylAngle = (this.vinylAngle + dt * 2.4) % (Math.PI * 2);
+      }
+
+      const total = JUKEBOX_TRACKS.length;
+      const visible = this.jukeboxVisibleRows || 7;
+      const syncScroll = () => {
+        if (this.jukeboxIndex < this.jukeboxScroll) {
+          this.jukeboxScroll = this.jukeboxIndex;
+        } else if (this.jukeboxIndex >= this.jukeboxScroll + visible) {
+          this.jukeboxScroll = this.jukeboxIndex - visible + 1;
+        }
+        const maxScroll = Math.max(0, total - visible);
+        this.jukeboxScroll = Math.max(0, Math.min(maxScroll, this.jukeboxScroll));
+      };
+
+      const dir = input.consumeMenuDirection();
+      if (dir === 'up') {
+        this.jukeboxIndex = (this.jukeboxIndex + total - 1) % total;
+        syncScroll();
+        this.music?.playMenuMove?.();
+      } else if (dir === 'down') {
+        this.jukeboxIndex = (this.jukeboxIndex + 1) % total;
+        syncScroll();
+        this.music?.playMenuMove?.();
+      } else if (dir === 'left' || dir === 'right') {
+        const step = dir === 'right' ? 0.1 : -0.1;
+        if (this.music && typeof this.music.getMusicVolume === 'function' && typeof this.music.setMusicVolume === 'function') {
+          const next = Math.max(0, Math.min(1, Math.round((this.music.getMusicVolume() + step) * 10) / 10));
+          this.music.setMusicVolume(next);
+          this.music.playMenuMove?.();
+        }
+      }
+
+      const wheel = typeof input.consumeWheelDelta === 'function' ? input.consumeWheelDelta() : 0;
+      if (wheel !== 0) {
+        const maxScroll = Math.max(0, total - visible);
+        this.jukeboxScroll = Math.max(0, Math.min(maxScroll, this.jukeboxScroll + (wheel > 0 ? 1 : -1)));
+      }
+
+      // Hover ratón sobre la lista de canciones
+      if (input.pointerX >= 0 && input.pointerY >= 0 && Array.isArray(this._jukeboxRowHitboxes)) {
+        for (const row of this._jukeboxRowHitboxes) {
+          if (
+            input.pointerX >= row.x &&
+            input.pointerX <= row.x + row.w &&
+            input.pointerY >= row.y &&
+            input.pointerY <= row.y + row.h
+          ) {
+            this.jukeboxIndex = row.index;
+            break;
+          }
+        }
+      }
+
+      const click = input.consumePointerClick();
+      if (click) {
+        const cb = this._jukeboxCloseBtnBounds;
+        if (cb && click.x >= cb.x && click.x <= cb.x + cb.w && click.y >= cb.y && click.y <= cb.y + cb.h) {
+          this.closeJukeboxScreen();
+          return;
+        }
+        if (Array.isArray(this._jukeboxRowHitboxes)) {
+          for (const row of this._jukeboxRowHitboxes) {
+            if (click.x >= row.x && click.x <= row.x + row.w && click.y >= row.y && click.y <= row.y + row.h) {
+              this.jukeboxIndex = row.index;
+              this._playOrToggleJukeboxTrack(row.index);
+              return;
+            }
+          }
+        }
+      }
+
+      if (input.consumeKey('Escape')) {
+        this.closeJukeboxScreen();
+        return;
+      }
+
+      if (input.consumeInteraction({ includeSpace: true })) {
+        this._playOrToggleJukeboxTrack(this.jukeboxIndex);
+      }
+      return;
+    }
+
     // Navegación de Menús (Title, Pause, Options)
     const items = this._getCurrentMenuItems();
     if (items.length === 0) return;
@@ -1655,8 +1822,8 @@ export class MainMenuAndScenes {
   }
 
   _getModalCloseButtonBounds(isPauseModal = true) {
-    const winW = isPauseModal ? 240 : 216;
-    const winH = isPauseModal ? 150 : 128;
+    const winW = isPauseModal ? 264 : 224;
+    const winH = isPauseModal ? 154 : 132;
     const winX = Math.round((this.viewportWidth - winW) / 2);
     const winY = Math.round((this.viewportHeight - winH) / 2);
     return {
@@ -1677,15 +1844,15 @@ export class MainMenuAndScenes {
       this.state === 'pause_sound';
 
     if (isPauseModal) {
-      const boxW = 208;
-      const gap = count >= 10 ? 1 : (count > 6 ? 2 : 3);
-      const itemH = count > 6 ? Math.max(10, Math.floor((120 - (count - 1) * gap) / count)) : 17;
+      const boxW = 240;
+      const gap = count >= 10 ? 1.5 : (count > 6 ? 2 : 4);
+      const availH = 114;
+      const itemH = count > 6 ? Math.max(9.5, Math.floor((availH - (count - 1) * gap) / count)) : 17;
       const totalH = count * itemH + (count - 1) * gap;
-      const winH = 150;
+      const winH = 154;
       const winY = Math.round((this.viewportHeight - winH) / 2);
       const startX = Math.round((this.viewportWidth - boxW) / 2);
-      // Centrado verticalmente dentro de la ventana modal de 150px
-      const startY = winY + 23 + Math.max(0, Math.round((winH - 29 - totalH) / 2));
+      const startY = winY + 22 + Math.max(0, Math.round((availH - totalH) / 2));
 
       const boxes = [];
       for (let i = 0; i < count; i++) {
@@ -1699,24 +1866,54 @@ export class MainMenuAndScenes {
       return boxes;
     }
 
-    const boxW = isTitle ? 168 : isGameOver ? 204 : 184;
-    const itemH = isTitle ? (count >= 9 ? 8 : 9) : isGameOver ? 15 : (count > 5 ? 13 : 15);
-    const startX = Math.round((this.viewportWidth - boxW) / 2);
-    let startY = isTitle ? (count > 8 ? 70 : 80) : isGameOver ? (count > 2 ? 96 : 108) : 56;
-
     if (isTitle) {
-      // (EXPANSIÓN) La fila del teaser necesita altura extra para el subtexto.
+      // Menú de Título cómodo: 2 columnas holgadas cuando hay >= 7 opciones (evita filas aplastadas de 8 px)
+      if (count >= 7) {
+        const split = Math.ceil(count / 2);
+        const colW = 128;
+        const leftX = 28;
+        const rightX = 164;
+        const baseY = 64;
+        const rowGap = 2;
+        const stdH = 14;
+        const subH = 20;
+        const boxes = [];
+        let ly = baseY;
+        for (let i = 0; i < split; i++) {
+          const hasSub = Boolean(items && items[i] && items[i].subtext);
+          const h = hasSub ? subH : stdH;
+          boxes.push({ x: leftX, y: ly, w: colW, h });
+          ly += h + rowGap;
+        }
+        let ry = baseY;
+        for (let i = split; i < count; i++) {
+          const hasSub = Boolean(items && items[i] && items[i].subtext);
+          const h = hasSub ? subH : stdH;
+          boxes.push({ x: rightX, y: ry, w: colW, h });
+          ry += h + rowGap;
+        }
+        return boxes;
+      }
+
+      const boxW = 176;
+      const itemH = 13;
+      const startX = Math.round((this.viewportWidth - boxW) / 2);
       const boxes = [];
-      let y = startY;
+      let y = 74;
       for (let i = 0; i < count; i++) {
         const hasSub = Boolean(items && items[i] && items[i].subtext);
-        const h = hasSub ? (count >= 9 ? 18 : 20) : itemH;
+        const h = hasSub ? 22 : itemH;
         boxes.push({ x: startX, y, w: boxW, h });
-        y += h + (hasSub ? 2 : 0);
+        y += h + 2;
       }
       return boxes;
     }
-    if (!isTitle && !isGameOver && count > 5) {
+
+    const boxW = isGameOver ? 204 : 188;
+    const itemH = isGameOver ? 15 : (count > 5 ? 13 : 15);
+    const startX = Math.round((this.viewportWidth - boxW) / 2);
+    let startY = isGameOver ? (count > 2 ? 96 : 108) : 56;
+    if (!isGameOver && count > 5) {
       const totalH = count * itemH;
       const winH = Math.min(160, totalH + 46);
       const winY = Math.round((this.viewportHeight - winH) / 2);
@@ -1738,7 +1935,12 @@ export class MainMenuAndScenes {
   render(ctx) {
     if (this.state === 'none') {
       if (this.noticeTimer > 0 && this.noticeText) {
-        this._renderToastNotice(ctx, this.noticeText, 26);
+        const g = this.callbacks?.game;
+        const curScene = g?.tilemap?.currentSceneId;
+        const hasActiveBoss = Boolean(
+          g?.enemies?.some((e) => e && e.isBoss && e.sceneId === curScene && (e.activeCombat || e.dead) && (!e.dead || e.defeatBannerTimer > 0))
+        );
+        this._renderToastNotice(ctx, this.noticeText, hasActiveBoss ? 32 : 18);
       }
       if (this.fadeAlpha > 0) {
         ctx.save();
@@ -1804,6 +2006,12 @@ export class MainMenuAndScenes {
       return;
     }
 
+    if (this.state === 'jukebox') {
+      this._renderTitleBackdropPixelArt(ctx);
+      this._renderJukeboxScreen(ctx);
+      return;
+    }
+
     if (this.state === 'leaderboard') {
       if (this.previousStateBeforeLeaderboard === 'title') {
         this._renderTitleBackdropPixelArt(ctx);
@@ -1848,7 +2056,7 @@ export class MainMenuAndScenes {
     }
 
     if (this.noticeTimer > 0 && this.noticeText) {
-      this._renderToastNotice(ctx, this.noticeText);
+      this._renderToastNotice(ctx, this.noticeText, 12);
     }
 
     if (this.fadeAlpha > 0) {
@@ -2481,22 +2689,22 @@ export class MainMenuAndScenes {
     titleGrad.addColorStop(1, '#ff8c00');
     const flicker = 0.88 + 0.12 * (0.5 + 0.5 * Math.sin(t * 0.5));
     ctx.globalAlpha = flicker;
-    ctx.font = `bold 15px ${GAME_FONT_UI}`;
+    ctx.font = `bold 14px ${GAME_FONT_UI}`;
     ctx.fillStyle = '#05030a';
-    ctx.fillText('EL OJETE DORADO', cx + 2, 9);
+    ctx.fillText('EL OJETE DORADO', cx + 2, 7);
     ctx.fillStyle = titleGrad;
-    ctx.fillText('EL OJETE DORADO', cx, 7);
+    ctx.fillText('EL OJETE DORADO', cx, 5);
     ctx.globalAlpha = 1;
 
-    ctx.font = `600 6px ${GAME_FONT_UI}`;
+    ctx.font = `600 5.5px ${GAME_FONT_UI}`;
     ctx.fillStyle = '#05030a';
-    ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx + 1, 28);
+    ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx + 1, 24);
     ctx.fillStyle = '#7ae582';
-    ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx, 27);
+    ctx.fillText('~ LA LEYENDA DE VALLEVERDE ~', cx, 23);
 
     // 2. Artefacto central flotante.
     const ax = cx;
-    const ay = 50 + Math.sin(t * 2) * 5;
+    const ay = 44 + Math.sin(t * 2) * 3;
     const pulse = 0.5 + 0.5 * Math.sin(t * 3);
 
     // Halo radial dorado (lo realza el bloom).
@@ -2707,18 +2915,22 @@ export class MainMenuAndScenes {
 
   _renderTitleMenu(ctx, items, hitboxes) {
     const t = this.animTime;
-    const panelX = 70;
-    const panelY = 74;
-    const panelW = 180;
-    const lastBox = hitboxes[hitboxes.length - 1];
-    const panelH = Math.max(72, (lastBox ? lastBox.y + lastBox.h : panelY + 72) - panelY + 8);
+    const minX = hitboxes.length ? Math.min(...hitboxes.map((b) => b.x)) : 70;
+    const maxX = hitboxes.length ? Math.max(...hitboxes.map((b) => b.x + b.w)) : 250;
+    const minY = hitboxes.length ? Math.min(...hitboxes.map((b) => b.y)) : 70;
+    const maxY = hitboxes.length ? Math.max(...hitboxes.map((b) => b.y + b.h)) : 146;
+    const panelX = minX - 8;
+    const panelY = minY - 6;
+    const panelW = (maxX - minX) + 16;
+    const panelH = Math.max(68, (maxY - minY) + 12);
+    const isTwoCol = items.length >= 7;
 
     // (DIRECTRIZ UI) Panel glass con sombra, borde dorado 2 px y brillo interior.
     ctx.save();
     UILayout.drawShadow(ctx, panelX, panelY, panelW, panelH, 0.4);
     const glass = ctx.createLinearGradient(0, panelY, 0, panelY + panelH);
-    glass.addColorStop(0, 'rgba(15, 23, 42, 0.9)');
-    glass.addColorStop(1, 'rgba(8, 13, 24, 0.9)');
+    glass.addColorStop(0, 'rgba(15, 23, 42, 0.90)');
+    glass.addColorStop(1, 'rgba(8, 13, 24, 0.90)');
     ctx.fillStyle = glass;
     ctx.fillRect(panelX, panelY, panelW, panelH);
     ctx.strokeStyle = '#e5c07b';
@@ -2728,7 +2940,12 @@ export class MainMenuAndScenes {
     ctx.lineWidth = 1;
     ctx.strokeRect(panelX + 4.5, panelY + 4.5, panelW - 9, panelH - 9);
 
-    ctx.font = `600 6.5px ${GAME_FONT_UI}`;
+    if (isTwoCol) {
+      ctx.fillStyle = 'rgba(229, 192, 123, 0.22)';
+      ctx.fillRect(Math.round(this.viewportWidth / 2), panelY + 7, 1, panelH - 14);
+    }
+
+    ctx.font = `600 ${isTwoCol ? '5.6' : '6.5'}px ${GAME_FONT_UI}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 
@@ -2739,27 +2956,35 @@ export class MainMenuAndScenes {
       const pointerY = this._lastPointerY;
       const isHover = pointerX >= b.x && pointerX <= b.x + b.w && pointerY >= b.y && pointerY <= b.y + b.h;
       const hasSubtext = Boolean(item.subtext);
-      const cx = b.x + 20;
+      const cx = b.x + 17;
       const sink = (isHover && this._lastPointerDown) ? 1 : 0;
       const cy = (hasSubtext ? b.y + 7 : b.y + b.h / 2) + sink;
-      const scale = selected ? 1.1 : (isHover ? 1.05 : 1);
-      const label = UILayout.fitText(ctx, item.label, b.w - 28);
+      const scale = selected ? 1.04 : (isHover ? 1.02 : 1);
+      const label = UILayout.fitText(ctx, item.label, b.w - 22);
       const locked = Boolean(item.locked);
 
       if (selected || isHover) {
         const row = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0);
-        row.addColorStop(0, `rgba(253, 224, 71, ${selected ? 0.2 : 0.09})`);
+        row.addColorStop(0, `rgba(253, 224, 71, ${selected ? 0.22 : 0.09})`);
         row.addColorStop(1, 'rgba(253, 224, 71, 0)');
         ctx.fillStyle = row;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        if (selected) {
+          ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+        }
+      } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
         ctx.fillRect(b.x, b.y, b.w, b.h);
       }
 
       UILayout.drawIcon(
         ctx,
         locked ? 'lock' : this._menuIcon(item.label),
-        b.x + 10,
+        b.x + 9,
         b.y + b.h / 2,
-        9,
+        8,
         locked ? '#64748b' : (selected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8'))
       );
 
@@ -2781,29 +3006,27 @@ export class MainMenuAndScenes {
 
       if (hasSubtext) {
         ctx.save();
-        ctx.font = '3.1px monospace';
+        ctx.font = '3.5px monospace';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = locked ? '#475569' : (selected ? '#fde68a' : '#cbd5e1');
-        const subLines = UILayout.wrapText(ctx, item.subtext, b.w - 30).slice(0, 2);
+        const subLines = UILayout.wrapText(ctx, item.subtext, b.w - 22).slice(0, 2);
         subLines.forEach((line, li) => {
-          ctx.fillText(UILayout.fitText(ctx, line, b.w - 30), b.x + 20, b.y + 12 + sink + li * 4);
+          ctx.fillText(UILayout.fitText(ctx, line, b.w - 22), b.x + 17, b.y + 13 + sink + li * 4.5);
         });
         ctx.restore();
       }
 
       // Puntero dorado animado a la izquierda de la opción seleccionada.
       if (selected) {
-        const pointerX = b.x - 10 + Math.sin(t * 5) * 2;
+        const ptrX = b.x - 5 + Math.sin(t * 5) * 1.5;
         ctx.fillStyle = '#ffd700';
         ctx.beginPath();
-        ctx.moveTo(pointerX, cy - 3);
-        ctx.lineTo(pointerX + 5, cy);
-        ctx.lineTo(pointerX, cy + 3);
+        ctx.moveTo(ptrX, cy - 2.5);
+        ctx.lineTo(ptrX + 4, cy);
+        ctx.lineTo(ptrX, cy + 2.5);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = '#fff3b0';
-        ctx.fillRect(pointerX + 1, cy - 1, 1, 1);
       }
     });
 
@@ -2817,9 +3040,8 @@ export class MainMenuAndScenes {
       this.state === 'options' ||
       this.state === 'pause_sound';
 
-    // Dimensiones estrictas de 240x150 px para los paneles de pausa y ajustes
-    const winW = isPauseModal ? 240 : 216;
-    const winH = isPauseModal ? 150 : (items.length > 5 ? Math.min(160, items.length * 13 + 46) : 128);
+    const winW = isPauseModal ? 264 : 224;
+    const winH = isPauseModal ? 154 : (items.length > 5 ? Math.min(162, items.length * 13 + 48) : 132);
     const winX = Math.round((this.viewportWidth - winW) / 2);
     const winY = Math.round((this.viewportHeight - winH) / 2);
 
@@ -2835,7 +3057,7 @@ export class MainMenuAndScenes {
     ctx.translate(-pivotX, -pivotY);
 
     // Glassmorphism azul noche + borde dorado 2 px.
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
     ctx.fillRect(winX, winY, winW, winH);
     ctx.strokeStyle = '#e5c07b';
     ctx.lineWidth = 2;
@@ -2844,11 +3066,11 @@ export class MainMenuAndScenes {
     ctx.lineWidth = 1;
     ctx.strokeRect(winX + 4.5, winY + 4.5, winW - 9, winH - 9);
 
-    ctx.font = 'bold 8px monospace';
+    ctx.font = 'bold 7.2px monospace';
     ctx.fillStyle = '#ffd885';
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(title, Math.round(this.viewportWidth / 2), winY + 8);
+    ctx.fillText(UILayout.fitText(ctx, title, winW - 76), winX + 10, winY + 7);
 
     // Botón superior derecho interactivo [✕ Volver]
     const closeBtn = this._getModalCloseButtonBounds(isPauseModal);
@@ -2857,7 +3079,7 @@ export class MainMenuAndScenes {
     const isHoverClose = mx >= closeBtn.x && mx <= closeBtn.x + closeBtn.w && my >= closeBtn.y && my <= closeBtn.y + closeBtn.h;
 
     ctx.save();
-    ctx.font = 'bold 5.5px monospace';
+    ctx.font = 'bold 5.2px monospace';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
     if (isHoverClose) {
@@ -2877,33 +3099,35 @@ export class MainMenuAndScenes {
 
     this._renderMenuList(ctx, items, false);
 
-    // Si NO es un modal de pausa ni opciones, renderizar la ayuda de pie de página
-    if (!isPauseModal) {
-      ctx.font = '5.5px monospace';
-      ctx.fillStyle = '#9aa5b8';
-      ctx.textAlign = 'center';
-      ctx.fillText(
-        '[W/S] Mover · [E / Enter / Clic] Seleccionar · [Esc] Volver',
-        Math.round(this.viewportWidth / 2),
-        winY + winH - 10
-      );
-    }
+    ctx.font = '4.8px monospace';
+    ctx.fillStyle = '#9aa5b8';
+    ctx.textAlign = 'center';
+    const hasAdjust = items.some((it) => typeof it.onAdjust === 'function');
+    ctx.fillText(
+      hasAdjust
+        ? '[W/S] Navegar · [◄/►] Ajustar · [E/Clic] Activar · [Esc] Volver'
+        : '[W/S] Navegar · [E / Enter / Clic] Seleccionar · [Esc] Volver',
+      Math.round(this.viewportWidth / 2),
+      winY + winH - 10
+    );
     ctx.restore();
   }
 
   _renderToastNotice(ctx, text, ty = 84) {
     ctx.save();
-    ctx.font = `600 6.5px ${GAME_FONT_UI}`;
-    const tw = Math.ceil(ctx.measureText(text).width) + 16;
-    const th = 14;
+    ctx.font = `600 5.6px ${GAME_FONT_UI}`;
+    const maxW = this.viewportWidth - 20;
+    const shownText = UILayout.fitText(ctx, text, maxW - 14);
+    const tw = Math.min(maxW, Math.ceil(ctx.measureText(shownText).width) + 14);
+    const th = 12;
     const tx = Math.round((this.viewportWidth - tw) / 2);
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-    drawRoundedRect(ctx, tx + 1, ty + 1.5, tw, th, 4);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    drawRoundedRect(ctx, tx + 1, ty + 1, tw, th, 3);
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(18, 22, 36, 0.95)';
-    drawRoundedRect(ctx, tx, ty, tw, th, 4);
+    ctx.fillStyle = 'rgba(14, 20, 34, 0.90)';
+    drawRoundedRect(ctx, tx, ty, tw, th, 3);
     ctx.fill();
     ctx.strokeStyle = '#7ae582';
     ctx.lineWidth = 1;
@@ -2912,7 +3136,7 @@ export class MainMenuAndScenes {
     ctx.fillStyle = '#7ae582';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, Math.round(this.viewportWidth / 2), ty + th / 2);
+    ctx.fillText(shownText, Math.round(this.viewportWidth / 2), ty + th / 2);
     ctx.restore();
   }
 
@@ -3189,6 +3413,261 @@ export class MainMenuAndScenes {
     ctx.font = 'bold 5.5px monospace';
     ctx.fillStyle = '#93c5fd';
     ctx.fillText('[↑/↓ o Rueda] Desplazar · [Esc / Enter / Clic] Volver', Math.round(W / 2), cardY + cardH - 13);
+    ctx.restore();
+  }
+
+  /**
+   * Dibuja un disco de vinilo en estilo pixel art con surcos gris oscuro,
+   * etiqueta central roja/dorada y agujero negro central rotando según `angle`.
+   */
+  _renderPixelVinyl(ctx, cx, cy, radius = 34, angle = 0, isPlaying = false) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+
+    // Disco negro principal
+    ctx.fillStyle = '#090b10';
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Surcos concéntricos gris oscuro
+    for (const rFrac of [0.88, 0.76, 0.64, 0.52]) {
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * rFrac, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Marcas de brillo pixel art que hacen claramente visible la rotación del vinilo
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.24)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, radius * 0.9, -0.55, -0.15);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, radius * 0.9, Math.PI - 0.55, Math.PI - 0.15);
+    ctx.closePath();
+    ctx.fill();
+
+    // Etiqueta central roja / dorada
+    const labelR = Math.max(9, Math.round(radius * 0.34));
+    ctx.fillStyle = '#b91c1c';
+    ctx.beginPath();
+    ctx.arc(0, 0, labelR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Detalle dorado sobre la etiqueta para apreciar aún mejor el giro
+    ctx.fillStyle = '#fde047';
+    ctx.fillRect(-labelR + 3, -1, 4, 2);
+
+    // Agujero negro central
+    ctx.fillStyle = '#05070d';
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // Brazo fonocaptor estático (posado si suena, levantado si está en pausa)
+    ctx.save();
+    ctx.translate(cx + radius - 2, cy - radius + 4);
+    ctx.rotate(isPlaying ? 0.32 : -0.18);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(-1.5, -1.5, 4, 4);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillRect(-0.5, 2, 1.5, radius * 0.72);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(-1.5, radius * 0.72, 3, 4);
+    ctx.restore();
+  }
+
+  /**
+   * Pantalla de Banda Sonora (Jukebox) con vinilo giratorio a la izquierda
+   * y lista scrolleable de pistas a la derecha.
+   */
+  _renderJukeboxScreen(ctx) {
+    const W = this.viewportWidth;
+    const H = this.viewportHeight;
+    const cardW = 300;
+    const cardH = 162;
+    const cardX = Math.round((W - cardW) / 2);
+    const cardY = Math.round((H - cardH) / 2);
+    const isPlaying = this._isJukeboxTrackPlaying();
+    const activeTrack = JUKEBOX_TRACKS.find((t) => t.id === this.jukeboxActiveTrackId) || null;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(4, 7, 15, 0.76)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Contenedor Glassmorphism con marco dorado
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+    drawRoundedRect(ctx, cardX, cardY, cardW, cardH, 6, true, false);
+    if (typeof ctx.createLinearGradient === 'function') {
+      const sheen = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
+      sheen.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
+      sheen.addColorStop(0.4, 'rgba(56, 189, 248, 0.04)');
+      sheen.addColorStop(1, 'rgba(10, 15, 28, 0.14)');
+      ctx.fillStyle = sheen;
+      drawRoundedRect(ctx, cardX + 1, cardY + 1, cardW - 2, cardH - 2, 5, true, false);
+    }
+    ctx.strokeStyle = '#e5c07b';
+    ctx.lineWidth = 2;
+    drawRoundedRect(ctx, cardX + 1, cardY + 1, cardW - 2, cardH - 2, 6, false, true);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
+    ctx.lineWidth = 1;
+    drawRoundedRect(ctx, cardX + 3.5, cardY + 3.5, cardW - 7, cardH - 7, 4, false, true);
+
+    // Cabecera + indicador volumen + botón volver
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold 7.5px monospace';
+    ctx.fillStyle = '#ffd700';
+    ctx.fillText('🎵 BANDA SONORA · JUKEBOX', cardX + 9, cardY + 7);
+
+    const musicVol = this.music && typeof this.music.getMusicVolume === 'function'
+      ? Math.round(this.music.getMusicVolume() * 100)
+      : 80;
+    ctx.font = 'bold 5px monospace';
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText(`🔊 ${musicVol}%`, cardX + cardW - 92, cardY + 8);
+
+    const closeBtn = { x: cardX + cardW - 58, y: cardY + 6, w: 50, h: 11 };
+    this._jukeboxCloseBtnBounds = closeBtn;
+    const mx = this._lastPointerX ?? -1;
+    const my = this._lastPointerY ?? -1;
+    const hoverClose = mx >= closeBtn.x && mx <= closeBtn.x + closeBtn.w && my >= closeBtn.y && my <= closeBtn.y + closeBtn.h;
+    ctx.fillStyle = hoverClose ? '#ffd885' : '#192136';
+    ctx.fillRect(closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h);
+    ctx.strokeStyle = hoverClose ? '#ffd885' : '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(closeBtn.x + 0.5, closeBtn.y + 0.5, closeBtn.w - 1, closeBtn.h - 1);
+    ctx.fillStyle = hoverClose ? '#121624' : '#cbd5e1';
+    ctx.textAlign = 'center';
+    ctx.fillText('✕ Volver [Esc]', closeBtn.x + closeBtn.w / 2, closeBtn.y + 3);
+
+    // Panel Izquierdo: Vinilo Pixel Art
+    const vinylPanel = { x: cardX + 8, y: cardY + 22, w: 102, h: 118 };
+    ctx.fillStyle = 'rgba(8, 12, 24, 0.72)';
+    ctx.fillRect(vinylPanel.x, vinylPanel.y, vinylPanel.w, vinylPanel.h);
+    ctx.strokeStyle = '#23304a';
+    ctx.strokeRect(vinylPanel.x + 0.5, vinylPanel.y + 0.5, vinylPanel.w - 1, vinylPanel.h - 1);
+
+    const vinylCx = vinylPanel.x + Math.round(vinylPanel.w / 2);
+    const vinylCy = vinylPanel.y + 48;
+    this._renderPixelVinyl(ctx, vinylCx, vinylCy, 34, this.vinylAngle, isPlaying);
+
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 4.8px monospace';
+    ctx.fillStyle = isPlaying ? '#ffd700' : '#94a3b8';
+    ctx.fillText(
+      activeTrack ? (isPlaying ? '▶ REPRODUCIENDO' : '⏸ EN PAUSA') : '⏹ DETENIDO',
+      vinylCx,
+      vinylPanel.y + 92
+    );
+    ctx.font = '5px monospace';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText(
+      UILayout.fitText(ctx, activeTrack ? activeTrack.label : 'Selecciona un tema', vinylPanel.w - 8),
+      vinylCx,
+      vinylPanel.y + 102
+    );
+
+    // Panel Derecho: Lista Scrolleable de Canciones
+    const listPanel = { x: cardX + 116, y: cardY + 22, w: 176, h: 118 };
+    ctx.fillStyle = 'rgba(8, 12, 24, 0.72)';
+    ctx.fillRect(listPanel.x, listPanel.y, listPanel.w, listPanel.h);
+    ctx.strokeStyle = '#23304a';
+    ctx.strokeRect(listPanel.x + 0.5, listPanel.y + 0.5, listPanel.w - 1, listPanel.h - 1);
+
+    const visible = this.jukeboxVisibleRows || 7;
+    const rowH = 15;
+    const rowPadY = 1;
+    const startY = listPanel.y + 4;
+    const rowW = listPanel.w - 14;
+    this._jukeboxRowHitboxes = [];
+
+    for (let i = 0; i < visible; i++) {
+      const idx = this.jukeboxScroll + i;
+      const track = JUKEBOX_TRACKS[idx];
+      if (!track) break;
+      const ry = startY + i * (rowH + rowPadY);
+      const rx = listPanel.x + 4;
+      this._jukeboxRowHitboxes.push({ x: rx, y: ry, w: rowW, h: rowH, index: idx });
+
+      const isSelected = idx === this.jukeboxIndex;
+      const isActive = track.id === this.jukeboxActiveTrackId;
+      const isHover = mx >= rx && mx <= rx + rowW && my >= ry && my <= ry + rowH;
+
+      if (isActive || isSelected || isHover) {
+        ctx.fillStyle = isActive
+          ? 'rgba(250, 204, 21, 0.22)'
+          : (isSelected ? 'rgba(56, 189, 248, 0.16)' : 'rgba(255, 255, 255, 0.06)');
+        ctx.fillRect(rx, ry, rowW, rowH);
+      } else {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
+        ctx.fillRect(rx, ry, rowW, rowH);
+      }
+
+      ctx.strokeStyle = isSelected ? '#38bdf8' : (isActive ? '#ffd700' : 'rgba(51, 65, 85, 0.45)');
+      ctx.lineWidth = 1;
+      ctx.strokeRect(rx + 0.5, ry + 0.5, rowW - 1, rowH - 1);
+
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const midY = ry + rowH / 2;
+
+      if (isActive) {
+        ctx.font = 'bold 5.5px monospace';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText(this.jukeboxPaused ? '⏸' : '▶', rx + 4, midY);
+      } else if (isSelected) {
+        ctx.font = 'bold 5px monospace';
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillText('▸', rx + 4, midY);
+      }
+
+      ctx.font = `${isActive || isSelected ? 'bold ' : ''}5.2px monospace`;
+      ctx.fillStyle = isActive ? '#ffd700' : (isSelected ? '#f8fafc' : '#cbd5e1');
+      ctx.fillText(UILayout.fitText(ctx, track.label, rowW - 18), rx + 13, midY);
+    }
+
+    // Barra de scroll
+    const trackX = listPanel.x + listPanel.w - 7;
+    const trackY = startY;
+    const trackH = visible * (rowH + rowPadY) - rowPadY;
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.22)';
+    ctx.fillRect(trackX, trackY, 3, trackH);
+    const maxScroll = Math.max(0, JUKEBOX_TRACKS.length - visible);
+    const thumbH = Math.max(18, Math.round(trackH * (visible / JUKEBOX_TRACKS.length)));
+    const thumbY = maxScroll > 0
+      ? trackY + Math.round((this.jukeboxScroll / maxScroll) * (trackH - thumbH))
+      : trackY;
+    ctx.fillStyle = '#ffd700';
+    ctx.fillRect(trackX, thumbY, 3, thumbH);
+
+    // Panel de Control Inferior
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 5px monospace';
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillText(
+      '[↑/↓] Seleccionar · [Enter] Reproducir/Pausar · [◄/►] Vol · [Esc] Volver',
+      Math.round(W / 2),
+      cardY + cardH - 10
+    );
+
     ctx.restore();
   }
 

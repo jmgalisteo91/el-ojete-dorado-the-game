@@ -6850,8 +6850,10 @@ export class RPGGame {
       this.menuSystem.state === 'game_over' ||
       this.menuSystem.state === 'world_map' ||
       this.menuSystem.state === 'leaderboard' ||
+      this.menuSystem.state === 'jukebox' ||
       this.menuSystem.state === 'credits' ||
       (this.menuSystem.state === 'options' && this.menuSystem.previousState === 'title') ||
+      (this.menuSystem.state === 'changelog' && this.menuSystem.previousStateBeforeOptions === 'title') ||
       (this.menuSystem.state === 'controls' && this.menuSystem.previousStateBeforeControls === 'title') ||
       (this.menuSystem.state === 'confirm_exit' && this.menuSystem.previousStateBeforeExit === 'title')
     ) {

@@ -604,10 +604,12 @@ export class UILayout {
         cursorX += tw + 2;
       }
     } else if (subtitle) {
-      ctx.font = `5.5px ${UI_FONT}`;
+      const maxHeaderRight = m.x + m.w - (closeLabel ? 64 : 10);
+      ctx.font = `5px ${UI_FONT}`;
       ctx.fillStyle = UI_COLORS.textDim;
       ctx.textAlign = 'left';
-      ctx.fillText(subtitle, cursorX, headY);
+      const avail = Math.max(24, maxHeaderRight - cursorX);
+      ctx.fillText(UILayout.fitText(ctx, subtitle, avail), cursorX, headY);
     }
 
     if (closeLabel) {
@@ -837,24 +839,23 @@ export class UILayout {
 
     const amount = Math.max(0, Math.floor(Number(curriculum) || 0));
     const blinkGreen = flashTimer > 0 && Math.floor(flashTimer * 14) % 2 === 0;
-    const boxW = isTouch ? 56 : 48;
-    const boxH = 12;
-    const boxX = LOGICAL_WIDTH - boxW - 6;
-    const boxY = 25;
+    const boxW = isTouch ? 50 : 42;
+    const boxH = 10;
+    const boxX = LOGICAL_WIDTH - boxW - 4;
+    const boxY = 17;
 
     ctx.save();
-    UILayout.drawShadow(ctx, boxX, boxY, boxW, boxH, 0.32);
-    ctx.fillStyle = blinkGreen ? 'rgba(20, 83, 45, 0.92)' : 'rgba(24, 12, 38, 0.88)';
+    ctx.fillStyle = blinkGreen ? 'rgba(20, 83, 45, 0.90)' : 'rgba(24, 12, 38, 0.80)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
-    ctx.strokeStyle = blinkGreen ? '#4ade80' : 'rgba(192, 132, 252, 0.85)';
+    ctx.strokeStyle = blinkGreen ? '#4ade80' : 'rgba(192, 132, 252, 0.80)';
     ctx.lineWidth = 1;
     ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
 
-    ctx.font = `${isTouch ? 7.5 : 6.5}px ${UI_FONT}`;
+    ctx.font = `${isTouch ? 6.8 : 5.4}px ${UI_FONT}`;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
     ctx.fillStyle = blinkGreen ? '#86efac' : '#e9d5ff';
-    ctx.fillText(`📄 ${amount}`, boxX + boxW / 2, boxY + 6.5);
+    ctx.fillText(`📄 ${amount}`, boxX + boxW / 2, boxY + 5.5);
     ctx.restore();
     return true;
   }

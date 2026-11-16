@@ -26,7 +26,7 @@ import { RosaShop } from '../../src/expansion/entities/RosaShop.js';
 import { AlexUpdateBoss } from '../../src/expansion/entities/AlexUpdateBoss.js';
 import { TechnicalDebtBoss } from '../../src/expansion/entities/TechnicalDebtBoss.js';
 import { LeaderboardView } from '../../src/ui/LeaderboardView.js';
-import { AudioManager, BGM_TRACKS } from '../../src/audio/AudioManager.js?v=8';
+import { AudioManager, BGM_TRACKS, JUKEBOX_TRACKS } from '../../src/audio/AudioManager.js?v=8';
 import { MainMenuAndScenes, FAKE_CHANGELOG_NOTES } from '../../src/ui/MainMenuAndScenes.js';
 import { InputHandler, KONAMI_SEQUENCE } from '../../src/core/InputHandler.js';
 import { TESTER_QA_DIALOGUES, VILLAGE_NPC_PROFILES } from '../../src/data/DialogueData.js';
@@ -2783,6 +2783,7 @@ export async function run(test, assert) {
       // Al avanzar un frame, las hojas bajan y oscilan
       const sampleY0 = pfx.particles[0].y;
       pfx.particles[0].y = 100;
+      pfx.particles[0].life = 2.0;
       pfx.update(0.05, { sceneId: 'overworld' });
       assert.ok(pfx.particles[0].y > 100, 'Las hojas verdes deben caer hacia abajo');
 
@@ -3403,5 +3404,191 @@ export async function run(test, assert) {
     assert.equal(tm._coreDataPlatforms.length, 1, 'ai_nucleus_core debe tener una única plataforma abierta');
     assert.equal(tm._coreDataPlatforms[0].w, 22);
     assert.equal(tm._coreDataPlatforms[0].h, 16);
+  });
+
+  test('HUD compacto y pantallas cómodas: barra de jefe superior, hotbar discreta abajo y menús sin apelotonar', () => {
+    const rects = [];
+    const texts = [];
+    let tx = 0;
+    let ty = 0;
+    const tStack = [];
+    const mockCtx = {
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      font: '',
+      textAlign: 'left',
+      textBaseline: 'middle',
+      save() { tStack.push([tx, ty]); },
+      restore() { const prev = tStack.pop(); if (prev) { tx = prev[0]; ty = prev[1]; } },
+      translate(dx, dy) { tx += dx; ty += dy; },
+      scale() {},
+      beginPath() {},
+      closePath() {},
+      moveTo() {},
+      lineTo() {},
+      arc() {},
+      arcTo() {},
+      quadraticCurveTo() {},
+      fill() {},
+      stroke() {},
+      createLinearGradient() { return { addColorStop() {} }; },
+      createRadialGradient() { return { addColorStop() {} }; },
+      measureText(txt) { return { width: String(txt).length * 3.1 }; },
+      fillRect(x, y, w, h) { rects.push({ x: x + tx, y: y + ty, w, h }); },
+      strokeRect(x, y, w, h) { rects.push({ x: x + tx, y: y + ty, w, h, stroke: true }); },
+      fillText(txt, x, y) { texts.push({ txt: String(txt), x: x + tx, y: y + ty }); }
+    };
+
+    const player = new Player({ x: 160, y: 90 });
+    player.maxHp = 5;
+    player.hp = 4;
+    player.hasSword = true;
+    player.coins = 109;
+    player.level = 10;
+
+    const boss = new StackOverflowBoss({ x: 144, y: 96, sceneId: 'mines_boss_arena' });
+    boss.activeCombat = true;
+    boss.statusText = '🌀 ¡EXCEPCIONES EN ZIGZAG INFINITO DE PRUEBA!';
+
+    const fakeGame = {
+      player,
+      enemies: [boss],
+      tilemap: { currentSceneId: 'mines_boss_arena' },
+      dayNight: { timeOfDayHours: 18.7, getFormattedTime: () => '18:43' },
+      syncHotbarWithInventory() {},
+      _ensurePlayerHotbar: () => [null, null, null, null, null],
+      floatingTexts: []
+    };
+
+    const hud = new HUD(fakeGame);
+    hud.render(mockCtx);
+
+    // 1. La barra del jefe debe estar en la franja superior (y <= 30), dejando libre todo el tercio inferior
+    const bossBg = rects.find((r) => !r.stroke && r.w >= 190 && r.h <= 14);
+    assert.ok(bossBg, 'Debe existir la barra compacta de jefe');
+    assert.ok(bossBg.y >= 15 && bossBg.y + bossBg.h <= 32, `La barra de jefe (${bossBg.y}..${bossBg.y + bossBg.h}) debe ir arriba sin invadir la arena`);
+
+    // Ningún panel inferior del combate de jefe debe situarse entre y=32 e y=162 (espacio central/inferior 100% libre)
+    const intrusivePanels = rects.filter((r) => r.w > 40 && r.y >= 32 && r.y < 162);
+    assert.equal(intrusivePanels.length, 0, `No debe haber paneles intrusivos en y=32..162 (encontrados: ${JSON.stringify(intrusivePanels)})`);
+
+    // 2. La hotbar va discreta abajo (16x16 en y>=162 sin barra de jefe encima)
+    const hotbarSlots = rects.filter((r) => !r.stroke && r.w === 16 && r.h === 16);
+    assert.equal(hotbarSlots.length, 5, 'La hotbar debe dibujar sus 5 slots de 16x16');
+    assert.ok(hotbarSlots.every((s) => s.y >= 162), 'La hotbar debe quedar pegada al borde inferior (y >= 162)');
+
+    // 3. Menú de Título con todas las opciones en 2 columnas holgadas dentro de 66..168
+    const fakeMusic = {
+      setMode() {}, playMenuSelect() {}, playMenuMove() {}, playCaughtSkipSound() {}, stopTitleMusic() {}
+    };
+    const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {
+      game: { isDevMode: true, expansionBossDefeated: true, enemies: [], inventory: new Set() },
+      hasSave: () => true
+    });
+    menu.isDevMode = true;
+    menu.openTitleScreen();
+    const titleItems = menu._getCurrentMenuItems();
+    const titleBoxes = menu._getMenuHitboxes(titleItems.length, titleItems);
+    assert.ok(titleItems.length >= 7);
+    assert.ok(titleBoxes.some((b) => b.x > 140), 'El menú de título con muchas opciones debe distribuirse en 2 columnas');
+    assert.ok(titleBoxes.every((b) => b.y >= 64 && b.y + b.h <= 168 && b.h >= 14), 'Todos los botones del menú deben ser holgados (h >= 14) y caber antes del pie de página');
+
+    // 4. Menú de Opciones: todas las filas caben por encima del pie de página sin pisarlo
+    menu.openOptionsScreen('title');
+    const optItems = menu._getCurrentMenuItems();
+    const optBoxes = menu._getMenuHitboxes(optItems.length, optItems);
+    const maxOptBottom = Math.max(...optBoxes.map((b) => b.y + b.h));
+    assert.ok(maxOptBottom <= 154, `Las opciones (bottom=${maxOptBottom}) no deben pisar el pie de página`);
+
+    // 5. Aviso toast durante gameplay no se dibuja en mitad de la pantalla sobre el jugador
+    menu.state = 'none';
+    menu.showNotice('Aviso largo de prueba que no debe tapar al jugador ni salirse por los lados', 2.0);
+    menu.callbacks.game = fakeGame;
+    texts.length = 0;
+    menu.render(mockCtx);
+    const noticeDrawn = texts.find((t) => t.txt.includes('Aviso largo'));
+    assert.ok(noticeDrawn, 'Debe renderizar el aviso toast');
+    assert.ok(noticeDrawn.y <= 45, `El toast en gameplay (y=${noticeDrawn.y}) debe quedar en la parte superior y no encima del personaje`);
+  });
+
+  test('Banda Sonora (Jukebox): opción en menú, vinilo giratorio, 15 pistas con crossfade y retorno a título', () => {
+    // 1. Verificar catálogo de las 15 pistas exactas sin contaminar BGM_TRACKS base
+    assert.equal(JUKEBOX_TRACKS.length, 15, 'El Jukebox debe tener exactamente 15 canciones');
+    assert.equal(JUKEBOX_TRACKS[0].id, '01_main_theme');
+    assert.equal(JUKEBOX_TRACKS[14].id, '15_boss_alex_final');
+
+    const audio = new AudioManager();
+    const input = new InputHandler();
+    const menu = new MainMenuAndScenes(320, 180, {}, audio, {});
+    menu.openTitleScreen();
+
+    // 2. Opción "🎵 Banda Sonora" presente en el menú principal
+    const titleItems = menu._getCurrentMenuItems();
+    const jukeboxItem = titleItems.find((it) => it.label === '🎵 Banda Sonora');
+    assert.ok(jukeboxItem, 'Debe existir la opción "🎵 Banda Sonora" en el menú de título');
+    jukeboxItem.action();
+
+    assert.equal(menu.state, 'jukebox', 'Al seleccionar Banda Sonora debe entrar al estado jukebox');
+    assert.equal(audio.isJukeboxPlaying(), true, 'Al abrir Banda Sonora debe sonar el tema inicial en el AudioManager');
+    assert.equal(menu.jukeboxActiveTrackId, '01_main_theme');
+
+    // 3. Vinilo gira mientras suena la música
+    const angle0 = menu.vinylAngle;
+    menu.update(0.25, input);
+    assert.ok(menu.vinylAngle > angle0, 'El vinilo debe girar cuando hay una canción sonando');
+
+    // Renderizar Jukebox y verificar rotate() + textos + indicador ▶
+    const rotateCalls = [];
+    const drawnTexts = [];
+    const mockCtx = {
+      fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: 'left', textBaseline: 'top',
+      globalAlpha: 1,
+      save() {}, restore() {}, translate() {}, scale() {},
+      rotate(a) { rotateCalls.push(a); },
+      beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, arc() {}, arcTo() {}, rect() {}, quadraticCurveTo() {},
+      fill() {}, stroke() {}, fillRect() {}, strokeRect() {},
+      createLinearGradient() { return { addColorStop() {} }; },
+      createRadialGradient() { return { addColorStop() {} }; },
+      measureText(t) { return { width: String(t).length * 3 }; },
+      fillText(t) { drawnTexts.push(String(t)); }
+    };
+    menu.render(mockCtx);
+    assert.ok(rotateCalls.some((a) => Math.abs(a - menu.vinylAngle) < 0.001), 'El render debe rotar el vinilo con ctx.rotate(vinylAngle)');
+    assert.ok(drawnTexts.includes('▶'), 'La canción activa debe mostrar el icono ▶');
+    assert.ok(drawnTexts.some((t) => t.includes('01. Tema Principal')));
+
+    // 4. Pausar con Enter detiene el giro del vinilo
+    const press = (code) => {
+      input._onKeyDown({ code, key: code, preventDefault() {} });
+      menu.update(0.05, input);
+      input._onKeyUp({ code });
+    };
+
+    press('Enter');
+    assert.equal(audio.jukeboxPaused, true, 'Pulsar Enter sobre la pista activa debe pausarla');
+    const pausedAngle = menu.vinylAngle;
+    menu.update(0.25, input);
+    assert.equal(menu.vinylAngle, pausedAngle, 'Con la música en pausa, el vinilo NO debe girar');
+
+    // 5. Navegar por la lista y cambiar de pista con Enter (crossfade 0.3s) y volumen con Left/Right
+    press('ArrowDown');
+    assert.equal(menu.jukeboxIndex, 1);
+
+    press('Enter');
+    assert.equal(audio.jukeboxTrackId, '02_valleverde_hub', 'Debe reproducir la pista seleccionada al pulsar Enter');
+    assert.equal(audio.isJukeboxPlaying(), true);
+
+    const volBefore = audio.getMusicVolume();
+    press('ArrowLeft');
+    assert.ok(audio.getMusicVolume() < volBefore, 'Flecha izquierda debe bajar el volumen de música');
+    press('ArrowRight');
+    assert.equal(audio.getMusicVolume(), volBefore, 'Flecha derecha debe subir el volumen de música');
+
+    // 6. Pulsar [Esc] detiene el Jukebox y vuelve a activar la música 'title'
+    press('Escape');
+    assert.equal(menu.state, 'title', 'Pulsar Esc debe regresar al menú de título');
+    assert.equal(audio.jukeboxActive, false, 'Debe detener el estado Jukebox');
+    assert.equal(audio.mode, 'title', 'Debe restaurar setMode("title") para la música del menú');
   });
 }

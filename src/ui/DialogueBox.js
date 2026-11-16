@@ -425,17 +425,17 @@ export class DialogueBox {
     const portraitNPC = this.portraitNPC || this._findPortraitNPC(this.speakerName);
     const hasPortrait = Boolean(portraitNPC && portraitNPC.animator && portraitNPC.animator.spriteSheet);
     const boxX = 12;
-    const boxH = hasPortrait ? (isTouch ? 64 : 56) : (isTouch ? 54 : 48);
+    const boxH = hasPortrait ? (isTouch ? 60 : 48) : (isTouch ? 50 : 42);
     const appear = Math.min(1, this.openAnim ?? 1);
     const ease = 1 - Math.pow(1 - appear, 3);
     const enter = (1 - ease) * 6;
-    const boxY = this.viewportHeight - boxH - 8 + enter;
+    const boxY = this.viewportHeight - boxH - 5 + enter;
     const boxW = this.viewportWidth - 24;
-    const portraitSize = Math.min(44, boxH - 10);
-    const textX = boxX + (hasPortrait ? portraitSize + 12 : 9);
-    const textW = boxW - (hasPortrait ? portraitSize + 20 : 20);
-    const textFont = isTouch ? 'bold 12px monospace' : '8px monospace';
-    const lineHeight = isTouch ? 16 : 11;
+    const portraitSize = Math.min(38, boxH - 10);
+    const textX = boxX + (hasPortrait ? portraitSize + 11 : 9);
+    const textW = boxW - (hasPortrait ? portraitSize + 19 : 20);
+    const textFont = isTouch ? 'bold 12px monospace' : '7.5px monospace';
+    const lineHeight = isTouch ? 15 : 10;
     const maxVisibleLines = isTouch ? 2 : 3;
 
     ctx.save();

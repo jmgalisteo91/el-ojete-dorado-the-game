@@ -290,7 +290,7 @@ export async function run(test, assert) {
       const menu = new MainMenuAndScenes(320, 180, {}, fakeMusic, { getSaveSummary: () => null });
       menu.state = 'title';
       let items = menu._getCurrentMenuItems();
-      assert.equal(items.length, 8, 'El título debe incluir la opción de expansión');
+      assert.equal(items.length, 9, 'El título debe incluir la opción de expansión y Banda Sonora');
       const lockedItem = items[2];
       assert.equal(lockedItem.label, EXPANSION_INFO.title);
       assert.ok(lockedItem.subtext.includes('Completa el juego base para desbloquear'));

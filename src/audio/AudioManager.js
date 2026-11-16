@@ -48,6 +48,27 @@ const BASE_BGM_TRACKS = {
 
 export const BGM_TRACKS = { ...BASE_BGM_TRACKS };
 
+/** Catálogo oficial de la Banda Sonora (Jukebox): aislado de BGM_TRACKS base/expansión. */
+export const JUKEBOX_TRACKS = [
+  { id: '01_main_theme', number: '01', title: 'Tema Principal', label: '01. Tema Principal', mode: 'title', src: BASE_BGM_TRACKS.title },
+  { id: '02_valleverde_hub', number: '02', title: 'Valleverde', label: '02. Valleverde', mode: 'village', src: BASE_BGM_TRACKS.village },
+  { id: '03_dungeons_ambient', number: '03', title: 'Mazmorras', label: '03. Mazmorras', mode: 'stage1', src: BASE_BGM_TRACKS.stage1 },
+  { id: '04_the_forge', number: '04', title: 'La Forja', label: '04. La Forja', mode: 'forge', src: BASE_BGM_TRACKS.forge },
+  { id: '05_normal_battle', number: '05', title: 'Combate Normal', label: '05. Combate Normal', mode: 'combat', src: BASE_BGM_TRACKS.combat },
+  { id: '06_miniboss_battle', number: '06', title: 'Jefes Menores', label: '06. Jefes Menores', mode: 'boss', src: BASE_BGM_TRACKS.boss },
+  { id: '07_final_boss_alex', number: '07', title: 'Alex IA', label: '07. Alex IA', mode: 'boss_final', src: BASE_BGM_TRACKS.boss_final },
+  { id: '08_jail_cell', number: '08', title: 'La Cárcel', label: '08. La Cárcel', mode: 'jail', src: BASE_BGM_TRACKS.jail },
+  { id: '09_game_over', number: '09', title: 'Game Over', label: '09. Game Over', mode: 'game_over', src: BASE_BGM_TRACKS.game_over },
+  { id: '10_credits_victory', number: '10', title: 'Créditos', label: '10. Créditos', mode: 'victory', src: BASE_BGM_TRACKS.victory },
+  { id: '11_valleverde_corp', number: '11', title: 'Valleverde 2.0', label: '11. Valleverde 2.0', mode: 'valleverde_corp', src: EXPANSION_BGM.valleverde_corp },
+  { id: '12_oficina_central', number: '12', title: 'Oficina Central', label: '12. Oficina Central', mode: 'oficina_central', src: EXPANSION_BGM.oficina_central },
+  { id: '13_vertedero_digital', number: '13', title: 'Vertedero', label: '13. Vertedero', mode: 'vertedero', src: EXPANSION_BGM.vertedero },
+  { id: '14_boss_iñakito', number: '14', title: 'Iñakito', label: '14. Iñakito', mode: 'boss_iñakito', src: EXPANSION_BGM.boss_iñakito },
+  { id: '15_boss_alex_final', number: '15', title: 'Alex 2.0', label: '15. Alex 2.0', mode: 'boss_alex_final', src: EXPANSION_BGM.boss_alex_final }
+];
+
+const JUKEBOX_TRACK_BY_ID = Object.fromEntries(JUKEBOX_TRACKS.map((t) => [t.id, t]));
+
 // (REFACTOR 4) La BGM de la expansión vive en ExpansionData y solo se registra
 // y precarga cuando ExpansionManager.init() llama a loadExpansionMusic().
 export function registerExpansionMusic() {
@@ -137,6 +158,10 @@ export class AudioManager {
     this._bgmDuckRestoreStart = 0;
     this._bgmDuckRestoreFrom = 0;
     this._bgmDuckRestoreMs = BGM_DUCK_RESTORE_MS;
+
+    this.jukeboxActive = false;
+    this.jukeboxTrackId = null;
+    this.jukeboxPaused = false;
 
     // Carga de configuración inicial guardada
     this.settings = this._loadSettings();
@@ -659,23 +684,36 @@ export class AudioManager {
 
   _resolveBgmKey(mode) {
     if (!mode || mode === 'none' || mode === 'silent') return null;
+    if (typeof mode === 'string' && mode.startsWith('jukebox:')) {
+      const id = mode.slice('jukebox:'.length);
+      return JUKEBOX_TRACK_BY_ID[id] ? mode : null;
+    }
     if (BGM_TRACKS[mode]) return mode;
     return BGM_MODE_ALIASES[mode] || null;
   }
 
+  _getBgmSrcForKey(key) {
+    if (!key) return null;
+    if (typeof key === 'string' && key.startsWith('jukebox:')) {
+      return JUKEBOX_TRACK_BY_ID[key.slice('jukebox:'.length)]?.src || null;
+    }
+    return BGM_TRACKS[key] || null;
+  }
+
   _getBgmAudio(key) {
-    if (!key || !BGM_TRACKS[key]) return null;
+    const src = this._getBgmSrcForKey(key);
+    if (!src) return null;
     let audio = this._bgmAudio.get(key) || null;
     if (!audio) {
       if (typeof Audio === 'undefined') return null;
       try {
         audio = new Audio();
-        audio.src = BGM_TRACKS[key];
+        audio.src = src;
         audio.loop = true;
         audio.preload = 'auto';
         audio.volume = 0;
         audio.addEventListener('error', () => {
-          console.warn(`[AudioManager] No se pudo cargar la BGM: ${BGM_TRACKS[key]}`);
+          console.warn(`[AudioManager] No se pudo cargar la BGM: ${src}`);
         });
         this._bgmAudio.set(key, audio);
       } catch (err) {
@@ -1071,6 +1109,92 @@ export class AudioManager {
 
   playVictoryTheme(fadeMs = 500) {
     this.setMode('victory', fadeMs);
+  }
+
+  // ===========================================================================
+  // Jukebox / Banda Sonora aislada (con crossfade rápido de 0.3 s)
+  // ===========================================================================
+
+  playJukeboxTrack(trackId, fadeMs = 300) {
+    const track =
+      JUKEBOX_TRACK_BY_ID[trackId] ||
+      JUKEBOX_TRACKS.find((t) => t.mode === trackId) ||
+      null;
+    if (!track) return null;
+
+    if (this.timerId) {
+      clearInterval(this.timerId);
+      this.timerId = null;
+    }
+
+    const jukeboxKey = `jukebox:${track.id}`;
+    const sameTrackPaused = this.jukeboxActive && this.jukeboxTrackId === track.id && this.jukeboxPaused;
+    this.jukeboxActive = true;
+    this.jukeboxTrackId = track.id;
+    this.jukeboxPaused = false;
+    this.mode = jukeboxKey;
+    this._bgmPendingKey = jukeboxKey;
+
+    if (sameTrackPaused && this._bgmCurrentAudio) {
+      try {
+        this._bgmCurrentAudio.volume = this._bgmEffectiveVolume();
+        const p = this._bgmCurrentAudio.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch((err) => this._warnBgmPlayFailure(err));
+        }
+      } catch { /* noop */ }
+      return track;
+    }
+
+    const audio = this._getBgmAudio(jukeboxKey);
+    if (audio) {
+      this._startBgm(jukeboxKey, fadeMs);
+    } else {
+      this._clearBgmFade(true);
+      if (this._bgmCurrentAudio && typeof this._bgmCurrentAudio.pause === 'function') {
+        try {
+          this._bgmCurrentAudio.pause();
+          this._bgmCurrentAudio.currentTime = 0;
+        } catch { /* noop */ }
+      }
+      this._bgmCurrentKey = jukeboxKey;
+    }
+    return track;
+  }
+
+  toggleJukeboxPause() {
+    if (!this.jukeboxActive || !this.jukeboxTrackId) return false;
+    this.jukeboxPaused = !this.jukeboxPaused;
+    const audio = this._bgmCurrentAudio;
+    if (audio) {
+      try {
+        if (this.jukeboxPaused) {
+          audio.pause();
+        } else {
+          audio.volume = this._bgmEffectiveVolume();
+          const p = audio.play();
+          if (p && typeof p.catch === 'function') {
+            p.catch((err) => this._warnBgmPlayFailure(err));
+          }
+        }
+      } catch { /* noop */ }
+    }
+    return !this.jukeboxPaused;
+  }
+
+  stopJukeboxTrack(restoreTitle = true, fadeMs = 300) {
+    this.jukeboxActive = false;
+    this.jukeboxTrackId = null;
+    this.jukeboxPaused = false;
+    if (restoreTitle) {
+      this.setMode('title', fadeMs);
+    } else {
+      this._stopBgm(fadeMs);
+    }
+  }
+
+  isJukeboxPlaying() {
+    return Boolean(this.jukeboxActive && this.jukeboxTrackId && !this.jukeboxPaused);
   }
 
   // ===========================================================================
