@@ -836,6 +836,7 @@ export class MainMenuAndScenes {
       const items = [
         {
           label: 'Nueva Partida',
+          column: 'left',
           action: () => {
             this.music.playMenuSelect();
             if (typeof this.music.stopTitleMusic === 'function') {
@@ -847,12 +848,15 @@ export class MainMenuAndScenes {
           }
         },
         {
-          label: saveInfo ? `Cargar Partida (${saveInfo})` : 'Cargar Partida',
+          label: 'Cargar Partida',
+          column: 'left',
+          subtext: saveInfo || 'No hay partidas guardadas',
+          renderSubtext: true,
           disabled: !saveInfo,
           action: () => {
             if (!saveInfo) {
               this.music.playCaughtSkipSound();
-              this.showNotice('No hay ninguna partida guardada todavía.');
+              this.showNotice('No hay partidas guardadas.');
               return;
             }
             this.music.playMenuSelect();
@@ -869,9 +873,11 @@ export class MainMenuAndScenes {
         },
         {
           label: EXPANSION_MENU_INFO.title,
+          column: 'left',
           subtext: this._hasVictoryTrophy()
             ? EXPANSION_MENU_INFO.teaser
             : 'Completa el juego base para desbloquear',
+          renderSubtext: false,
           expansion: true,
           locked: !this._hasVictoryTrophy(),
           action: () => {
@@ -900,6 +906,7 @@ export class MainMenuAndScenes {
       if (this._hasVictoryTrophy()) {
         items.push({
           label: 'Nueva Partida +',
+          column: 'left',
           action: () => {
             this.music.playMenuSelect();
             if (typeof this.music.stopTitleMusic === 'function') {
@@ -918,6 +925,7 @@ export class MainMenuAndScenes {
       if (this.isDevMode || this.callbacks?.game?.isDevMode) {
         items.push({
           label: 'Modo Dios (Debug)',
+          column: 'right',
           devMode: true,
           action: () => {
             this.music.playMenuSelect();
@@ -947,6 +955,7 @@ export class MainMenuAndScenes {
       if (this._isBossRushUnlocked()) {
         items.push({
           label: 'Modo Arcade (Boss Rush)',
+          column: 'right',
           action: () => {
             this.music.playMenuSelect();
             if (typeof this.music.stopTitleMusic === 'function') {
@@ -962,14 +971,8 @@ export class MainMenuAndScenes {
       }
       items.push(
         {
-          label: '🏆 Salón de la Fama',
-          action: () => {
-            this.music.playMenuSelect();
-            this.openLeaderboardScreen('title');
-          }
-        },
-        {
-          label: '☁ Cargar de la Nube',
+          label: 'Cargar de la Nube',
+          column: 'left',
           action: () => {
             this.music.playMenuSelect();
             if (this.callbacks.onOpenCloudLoad) {
@@ -978,13 +981,23 @@ export class MainMenuAndScenes {
           }
         },
         {
+          label: 'Salón de la Fama',
+          column: 'left',
+          action: () => {
+            this.music.playMenuSelect();
+            this.openLeaderboardScreen('title');
+          }
+        },
+        {
           label: '🎵 Banda Sonora',
+          column: 'right',
           action: () => {
             this.openJukeboxScreen();
           }
         },
         {
           label: 'Controles',
+          column: 'right',
           action: () => {
             this.music.playMenuSelect();
             this.openControlsScreen('title');
@@ -992,12 +1005,14 @@ export class MainMenuAndScenes {
         },
         {
           label: 'Opciones',
+          column: 'right',
           action: () => {
             this.openOptionsScreen('title');
           }
         },
         {
           label: 'Salir',
+          column: 'right',
           action: () => {
             this.triggerExitGame();
           }
@@ -1867,44 +1882,34 @@ export class MainMenuAndScenes {
     }
 
     if (isTitle) {
-      // Menú de Título cómodo: 2 columnas holgadas cuando hay >= 7 opciones (evita filas aplastadas de 8 px)
-      if (count >= 7) {
-        const split = Math.ceil(count / 2);
-        const colW = 128;
-        const leftX = 28;
-        const rightX = 164;
-        const baseY = 64;
-        const rowGap = 2;
-        const stdH = 14;
-        const subH = 20;
-        const boxes = [];
-        let ly = baseY;
-        for (let i = 0; i < split; i++) {
-          const hasSub = Boolean(items && items[i] && items[i].subtext);
-          const h = hasSub ? subH : stdH;
-          boxes.push({ x: leftX, y: ly, w: colW, h });
-          ly += h + rowGap;
-        }
-        let ry = baseY;
-        for (let i = split; i < count; i++) {
-          const hasSub = Boolean(items && items[i] && items[i].subtext);
-          const h = hasSub ? subH : stdH;
-          boxes.push({ x: rightX, y: ry, w: colW, h });
-          ry += h + rowGap;
-        }
-        return boxes;
-      }
+      const list = Array.isArray(items) ? items : [];
+      const leftX = 36;
+      const leftW = 122;
+      const rightX = 178;
+      const rightW = 96;
+      const baseY = 64;
+      const leftItemsCount = list.filter((it) => it?.column !== 'right').length || Math.ceil(count / 2);
+      const rightItemsCount = count - leftItemsCount;
+      const stdH = 14;
+      const subH = 19;
+      const leftGap = leftItemsCount > 5 ? 2 : 3.5;
+      const rightGap = rightItemsCount > 5 ? 2 : 5;
 
-      const boxW = 176;
-      const itemH = 13;
-      const startX = Math.round((this.viewportWidth - boxW) / 2);
-      const boxes = [];
-      let y = 74;
+      const boxes = new Array(count);
+      let ly = baseY;
+      let ry = rightItemsCount > 4 ? baseY : baseY + 6;
       for (let i = 0; i < count; i++) {
-        const hasSub = Boolean(items && items[i] && items[i].subtext);
-        const h = hasSub ? 22 : itemH;
-        boxes.push({ x: startX, y, w: boxW, h });
-        y += h + 2;
+        const item = list[i];
+        const isRight = item ? item.column === 'right' : i >= leftItemsCount;
+        const hasSub = Boolean(item && item.renderSubtext);
+        const h = isRight ? 14 : (hasSub ? subH : stdH);
+        if (isRight) {
+          boxes[i] = { x: rightX, y: ry, w: rightW, h, align: 'right' };
+          ry += h + rightGap;
+        } else {
+          boxes[i] = { x: leftX, y: ly, w: leftW, h, align: 'left' };
+          ly += h + leftGap;
+        }
       }
       return boxes;
     }
@@ -2915,38 +2920,24 @@ export class MainMenuAndScenes {
 
   _renderTitleMenu(ctx, items, hitboxes) {
     const t = this.animTime;
-    const minX = hitboxes.length ? Math.min(...hitboxes.map((b) => b.x)) : 70;
-    const maxX = hitboxes.length ? Math.max(...hitboxes.map((b) => b.x + b.w)) : 250;
-    const minY = hitboxes.length ? Math.min(...hitboxes.map((b) => b.y)) : 70;
-    const maxY = hitboxes.length ? Math.max(...hitboxes.map((b) => b.y + b.h)) : 146;
-    const panelX = minX - 8;
-    const panelY = minY - 6;
-    const panelW = (maxX - minX) + 16;
-    const panelH = Math.max(68, (maxY - minY) + 12);
-    const isTwoCol = items.length >= 7;
+    const minY = hitboxes.length ? Math.min(...hitboxes.map((b) => b.y)) : 66;
+    const maxY = hitboxes.length ? Math.max(...hitboxes.map((b) => b.y + b.h)) : 162;
 
-    // (DIRECTRIZ UI) Panel glass con sombra, borde dorado 2 px y brillo interior.
     ctx.save();
-    UILayout.drawShadow(ctx, panelX, panelY, panelW, panelH, 0.4);
-    const glass = ctx.createLinearGradient(0, panelY, 0, panelY + panelH);
-    glass.addColorStop(0, 'rgba(15, 23, 42, 0.90)');
-    glass.addColorStop(1, 'rgba(8, 13, 24, 0.90)');
-    ctx.fillStyle = glass;
-    ctx.fillRect(panelX, panelY, panelW, panelH);
-    ctx.strokeStyle = '#e5c07b';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(panelX + 1, panelY + 1, panelW - 2, panelH - 2);
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(panelX + 4.5, panelY + 4.5, panelW - 9, panelH - 9);
 
-    if (isTwoCol) {
-      ctx.fillStyle = 'rgba(229, 192, 123, 0.22)';
-      ctx.fillRect(Math.round(this.viewportWidth / 2), panelY + 7, 1, panelH - 14);
-    }
+    // Sutil degradado oscuro sin caja dorada gigante para mantener el paisaje legible.
+    const scrim = ctx.createLinearGradient(0, minY - 12, 0, this.viewportHeight);
+    scrim.addColorStop(0, 'rgba(0, 0, 0, 0.12)');
+    scrim.addColorStop(0.25, 'rgba(0, 0, 0, 0.40)');
+    scrim.addColorStop(1, 'rgba(0, 0, 0, 0.52)');
+    ctx.fillStyle = scrim;
+    ctx.fillRect(0, minY - 12, this.viewportWidth, this.viewportHeight - (minY - 12));
 
-    ctx.font = `600 ${isTwoCol ? '5.6' : '6.5'}px ${GAME_FONT_UI}`;
-    ctx.textAlign = 'left';
+    // Línea vertical sutil separando Juego (izquierda) y Sistema/Extras (derecha).
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+    ctx.fillRect(166, minY + 2, 1, Math.max(48, maxY - minY - 8));
+
+    ctx.font = `600 6px ${GAME_FONT_UI}`;
     ctx.textBaseline = 'middle';
 
     items.forEach((item, idx) => {
@@ -2955,78 +2946,60 @@ export class MainMenuAndScenes {
       const pointerX = this._lastPointerX;
       const pointerY = this._lastPointerY;
       const isHover = pointerX >= b.x && pointerX <= b.x + b.w && pointerY >= b.y && pointerY <= b.y + b.h;
-      const hasSubtext = Boolean(item.subtext);
-      const cx = b.x + 17;
-      const sink = (isHover && this._lastPointerDown) ? 1 : 0;
-      const cy = (hasSubtext ? b.y + 7 : b.y + b.h / 2) + sink;
-      const scale = selected ? 1.04 : (isHover ? 1.02 : 1);
-      const label = UILayout.fitText(ctx, item.label, b.w - 22);
+      const isRight = b.align === 'right' || item.column === 'right';
+      const showSub = Boolean(item.renderSubtext && item.subtext);
       const locked = Boolean(item.locked);
+      const disabled = Boolean(item.disabled);
+      const sink = (isHover && this._lastPointerDown) ? 1 : 0;
+      const cy = (showSub ? b.y + 6.5 : b.y + b.h / 2) + sink;
 
       if (selected || isHover) {
-        const row = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0);
-        row.addColorStop(0, `rgba(253, 224, 71, ${selected ? 0.22 : 0.09})`);
-        row.addColorStop(1, 'rgba(253, 224, 71, 0)');
-        ctx.fillStyle = row;
-        ctx.fillRect(b.x, b.y, b.w, b.h);
-        if (selected) {
-          ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
-        }
-      } else {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+        ctx.fillStyle = `rgba(255, 255, 255, ${selected ? 0.2 : 0.1})`;
         ctx.fillRect(b.x, b.y, b.w, b.h);
       }
 
-      UILayout.drawIcon(
-        ctx,
-        locked ? 'lock' : this._menuIcon(item.label),
-        b.x + 9,
-        b.y + b.h / 2,
-        8,
-        locked ? '#64748b' : (selected ? '#ffd700' : (isHover ? '#ffd885' : '#94a3b8'))
-      );
+      const textColor = (disabled || locked)
+        ? '#64748b'
+        : (selected ? '#ffd700' : (isHover ? '#fde68a' : '#ffffff'));
+      const maxTextW = locked ? b.w - 22 : b.w - 14;
+      const label = UILayout.fitText(ctx, item.label, maxTextW);
+      const textW = ctx.measureText(label).width;
+      const textX = isRight ? (b.x + b.w - 4) : (b.x + 12);
 
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.scale(scale, scale);
-      ctx.textAlign = 'left';
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-      ctx.fillText(label, 1, 1);
-      if (item.disabled || locked) {
+      ctx.textAlign = isRight ? 'right' : 'left';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillText(label, textX + 1, cy + 1);
+      ctx.fillStyle = textColor;
+      ctx.fillText(label, textX, cy);
+
+      if (locked) {
+        const lockX = isRight ? (textX - textW - 9) : (textX + textW + 4);
+        ctx.font = '5.5px monospace';
+        ctx.textAlign = 'left';
         ctx.fillStyle = '#64748b';
-      } else if (item.expansion) {
-        ctx.fillStyle = selected ? '#ffd700' : (isHover ? '#fde68a' : '#fbbf24');
-      } else {
-        ctx.fillStyle = selected ? '#ffd700' : (isHover ? '#ffd885' : '#f8fafc');
+        ctx.fillText('🔒', lockX, cy);
+        ctx.font = `600 6px ${GAME_FONT_UI}`;
       }
-      ctx.fillText(label, 0, 0);
-      ctx.restore();
 
-      if (hasSubtext) {
+      if (showSub) {
         ctx.save();
-        ctx.font = '3.5px monospace';
+        ctx.font = '4px monospace';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = locked ? '#475569' : (selected ? '#fde68a' : '#cbd5e1');
-        const subLines = UILayout.wrapText(ctx, item.subtext, b.w - 22).slice(0, 2);
-        subLines.forEach((line, li) => {
-          ctx.fillText(UILayout.fitText(ctx, line, b.w - 22), b.x + 17, b.y + 13 + sink + li * 4.5);
-        });
+        ctx.fillStyle = disabled ? '#64748b' : (selected ? '#fde68a' : '#cbd5e1');
+        const subText = UILayout.fitText(ctx, item.subtext, b.w - 14);
+        ctx.fillText(subText, b.x + 12, b.y + 13.5 + sink);
         ctx.restore();
       }
 
-      // Puntero dorado animado a la izquierda de la opción seleccionada.
       if (selected) {
-        const ptrX = b.x - 5 + Math.sin(t * 5) * 1.5;
+        const pulse = Math.sin(t * 5) * 1.2;
+        const ptrX = isRight ? (textX - textW - (locked ? 17 : 8) + pulse) : (b.x + 4 + pulse);
         ctx.fillStyle = '#ffd700';
-        ctx.beginPath();
-        ctx.moveTo(ptrX, cy - 2.5);
-        ctx.lineTo(ptrX + 4, cy);
-        ctx.lineTo(ptrX, cy + 2.5);
-        ctx.closePath();
-        ctx.fill();
+        ctx.font = 'bold 5.5px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('►', ptrX, cy);
+        ctx.font = `600 6px ${GAME_FONT_UI}`;
       }
     });
 

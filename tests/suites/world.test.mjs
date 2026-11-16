@@ -3591,4 +3591,61 @@ export async function run(test, assert) {
     assert.equal(audio.jukeboxActive, false, 'Debe detener el estado Jukebox');
     assert.equal(audio.mode, 'title', 'Debe restaurar setMode("title") para la música del menú');
   });
+
+  test('Menú de Título minimalista en 2 columnas: sin caja dorada gigante, Cargar Partida limpio y candado en línea única', () => {
+    const fakeMusic = { setMode() {}, playMenuSelect() {}, playMenuMove() {}, playCaughtSkipSound() {} };
+    const noSaveMenu = new MainMenuAndScenes(320, 180, {}, fakeMusic, { getSaveSummary: () => null });
+    noSaveMenu.openTitleScreen();
+
+    const noSaveItems = noSaveMenu._getCurrentMenuItems();
+    const loadNoSave = noSaveItems[1];
+    assert.equal(loadNoSave.label, 'Cargar Partida');
+    assert.equal(loadNoSave.subtext, 'No hay partidas guardadas');
+    assert.equal(loadNoSave.disabled, true);
+    assert.equal(noSaveItems[2].renderSubtext, false);
+
+    const withSaveMenu = new MainMenuAndScenes(320, 180, {}, fakeMusic, {
+      getSaveSummary: () => 'Valleverde · 15 obj · 0:45h'
+    });
+    withSaveMenu.openTitleScreen();
+    const items = withSaveMenu._getCurrentMenuItems();
+    assert.equal(items[1].label, 'Cargar Partida');
+    assert.equal(items[1].subtext, 'Valleverde · 15 obj · 0:45h');
+    assert.equal(items[1].disabled, false);
+
+    const leftLabels = items.filter((it) => it.column === 'left').map((it) => it.label);
+    const rightLabels = items.filter((it) => it.column === 'right').map((it) => it.label);
+    assert.deepEqual(leftLabels, [
+      'Nueva Partida',
+      'Cargar Partida',
+      'El Resurgir de Mister Alex IA',
+      'Cargar de la Nube',
+      'Salón de la Fama'
+    ]);
+    assert.deepEqual(rightLabels, [
+      '🎵 Banda Sonora',
+      'Controles',
+      'Opciones',
+      'Salir'
+    ]);
+
+    const strokeRects = [];
+    const texts = [];
+    const mockCtx = new Proxy(
+      {
+        fillText: (t, x, y) => texts.push({ t: String(t), x, y }),
+        strokeRect: (x, y, w, h) => strokeRects.push({ x, y, w, h }),
+        measureText: (t) => ({ width: String(t).length * 4 }),
+        createLinearGradient: () => ({ addColorStop() {} }),
+        createRadialGradient: () => ({ addColorStop() {} })
+      },
+      { get: (o, k) => (k in o ? o[k] : () => {}), set: (o, k, v) => { o[k] = v; return true; } }
+    );
+    const hitboxes = withSaveMenu._getMenuHitboxes(items.length, items);
+    withSaveMenu._renderTitleMenu(mockCtx, items, hitboxes);
+    assert.equal(strokeRects.length, 0, 'El nuevo menú de título no debe dibujar la caja dorada gigante');
+    assert.ok(texts.some((t) => t.t === '►'), 'Debe dibujar el indicador ► en la opción seleccionada');
+    assert.ok(texts.some((t) => t.t === '🔒'), 'Debe dibujar el candado junto a la expansión bloqueada');
+    assert.ok(texts.some((t) => t.t.includes('Valleverde · 15 obj')), 'Debe mostrar el resumen del save debajo de Cargar Partida');
+  });
 }
