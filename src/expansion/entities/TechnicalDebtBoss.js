@@ -34,7 +34,7 @@ function rectsOverlap(a, b) {
 }
 
 export class TechnicalDebtBoss extends Boss {
-  constructor({ x = 6.2 * 16, y = 2.6 * 16, sceneId = 'ai_nucleus_core', hp = 300 } = {}) {
+  constructor({ x = 11 * 16, y = 7.5 * 16, sceneId = 'ai_nucleus_core', hp = 300 } = {}) {
     super({
       id: 'boss_technical_debt',
       name: 'La Deuda Técnica',
@@ -149,6 +149,10 @@ export class TechnicalDebtBoss extends Boss {
   }
 
   update(dt, tilemap, player, paused, soundEngine) {
+    if (tilemap) {
+      if (tilemap.cols) this.arenaCols = tilemap.cols;
+      if (tilemap.rows) this.arenaRows = tilemap.rows;
+    }
     if (this.dormant) return;
     if (paused) return;
     if (this.dead) {
@@ -270,8 +274,8 @@ export class TechnicalDebtBoss extends Boss {
 
   eraseArenaPatch(tilemap, player) {
     const ts = tilemap?.tileSize || 16;
-    const cols = tilemap?.cols || 14;
-    const rows = tilemap?.rows || 12;
+    const cols = tilemap?.cols || this.arenaCols || 24;
+    const rows = tilemap?.rows || this.arenaRows || 18;
     const col = Math.max(2, Math.min(cols - 3, Math.round(player.centerX / ts)));
     const row = Math.max(2, Math.min(rows - 3, Math.round(player.centerY / ts)));
     this.erasedTiles.push({
@@ -358,13 +362,15 @@ export class TechnicalDebtBoss extends Boss {
     }
 
     // 2. Láseres de Fase 3
+    const arenaCols = this.arenaCols || 24;
+    const arenaRows = this.arenaRows || 18;
     for (const l of this.lasers) {
       ctx.save();
       ctx.fillStyle = l.telegraphTimer > 0 ? 'rgba(34, 197, 94, 0.35)' : l.color;
       if (l.orientation === 'horizontal') {
-        ctx.fillRect(ox, Math.round(l.pos - 5 + oy), 14 * ts, 10);
+        ctx.fillRect(ox, Math.round(l.pos - 5 + oy), arenaCols * ts, 10);
       } else {
-        ctx.fillRect(Math.round(l.pos - 5 + ox), oy, 10, 12 * ts);
+        ctx.fillRect(Math.round(l.pos - 5 + ox), oy, 10, arenaRows * ts);
       }
       ctx.restore();
     }

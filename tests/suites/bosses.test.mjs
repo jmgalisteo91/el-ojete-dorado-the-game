@@ -353,16 +353,16 @@ export async function run(test, assert) {
     assert.equal(boss.dead, true);
     assert.equal(boss.deathQuote, '¿Esto significa que no me van a renovar?');
 
-    // Arena inakito_office (12x10): barrera norte bloqueada hasta vencer a Iñakito
+    // Arena inakito_office (20x15): barrera norte bloqueada hasta vencer a Iñakito
     const tmArena = new Tilemap(null, 16);
     await tmArena.loadExpansionScenes();
     tmArena.loadScene('inakito_office');
-    assert.equal(tmArena.scenes.inakito_office.cols, 12);
-    assert.equal(tmArena.scenes.inakito_office.rows, 10);
-    const lockedNorth = tmArena.findNearbyDoor({ centerX: 5.5 * 16, centerY: 1.2 * 16 });
+    assert.equal(tmArena.scenes.inakito_office.cols, 20);
+    assert.equal(tmArena.scenes.inakito_office.rows, 15);
+    const lockedNorth = tmArena.findNearbyDoor({ centerX: 10 * 16, centerY: 1.2 * 16 });
     assert.ok(lockedNorth && lockedNorth.blocked === true, 'Salida norte debe iniciar bloqueada');
     tmArena.setInakitoOfficeGate(true);
-    const openNorth = tmArena.findNearbyDoor({ centerX: 5.5 * 16, centerY: 1.2 * 16 });
+    const openNorth = tmArena.findNearbyDoor({ centerX: 10 * 16, centerY: 1.2 * 16 });
     assert.ok(openNorth && openNorth.blocked === false, 'Salida norte debe abrirse tras derrotar a Iñakito');
 
     const noop = () => {};
@@ -377,12 +377,12 @@ export async function run(test, assert) {
   });
 
   test('Acto 2: El Kernel (3 fases, HUD hack, clones, firewalls, Llave) y Bar de Rosa (RosaShop)', async () => {
-    // 1. Escenas kernel_arena (12x10) y rosa_bar (10x8) y puertas en valleverde_corp
+    // 1. Escenas kernel_arena (20x15) y rosa_bar (10x8) y puertas en valleverde_corp
     const tm = new Tilemap(null, 16);
     await tm.loadExpansionScenes();
     tm.loadScene('kernel_arena');
-    assert.equal(tm.cols, 12);
-    assert.equal(tm.rows, 10);
+    assert.equal(tm.cols, 20);
+    assert.equal(tm.rows, 15);
 
     tm.loadScene('rosa_bar');
     assert.equal(tm.cols, 10);
@@ -521,7 +521,7 @@ export async function run(test, assert) {
     assert.equal(kernel.deathQuote, 'Esto... no... era... mi... trabajo...');
     tm.setAlexCoreUnlocked(true);
     assert.equal(tm.alexCoreUnlocked, true, 'Al morir el Kernel debe desbloquearse el Núcleo de Alex');
-    const northCoreDoor = tm.findNearbyDoor({ centerX: 5.5 * 16, centerY: 1.1 * 16 });
+    const northCoreDoor = tm.findNearbyDoor({ centerX: 10 * 16, centerY: 1.2 * 16 });
     assert.ok(northCoreDoor && !northCoreDoor.blocked, 'La transición norte al Núcleo debe quedar desbloqueada');
 
     // 5. Tienda de Rosa (RosaShop): compra de las 4 mejoras permanentes con Currículums y persistencia
@@ -572,7 +572,7 @@ export async function run(test, assert) {
     }
   });
 
-  test('Acto 3: ai_nucleus_core (14x12), AlexUpdateBoss (5 fases + punto débil), 3 Finales y Jefa Secreta Deuda Técnica', async () => {
+  test('Acto 3: ai_nucleus_core (24x18), AlexUpdateBoss (5 fases + punto débil), 3 Finales y Jefa Secreta Deuda Técnica', async () => {
     const prevStorage = globalThis.localStorage;
     const storeMap = new Map();
     globalThis.localStorage = {
@@ -582,18 +582,18 @@ export async function run(test, assert) {
     };
 
     try {
-      // 1. Escena ai_nucleus_core (14x12) y música boss_alex_final
+      // 1. Escena ai_nucleus_core (24x18 abierto) y música boss_alex_final
       const tm = new Tilemap(null, 16);
       await tm.loadExpansionScenes();
       tm.setAlexCoreUnlocked(true);
       tm.loadScene('ai_nucleus_core');
       const core = tm.scenes.ai_nucleus_core;
       assert.ok(core, 'Escena ai_nucleus_core debe existir');
-      assert.equal(core.cols, 14);
-      assert.equal(core.rows, 12);
-      assert.ok(Array.isArray(tm._coreDataPlatforms) && tm._coreDataPlatforms.length >= 2);
+      assert.equal(core.cols, 24);
+      assert.equal(core.rows, 18);
+      assert.ok(Array.isArray(tm._coreDataPlatforms) && tm._coreDataPlatforms.length === 1);
 
-      const exitDoor = tm.findNearbyDoor({ centerX: 6.5 * 16, centerY: 10.7 * 16 });
+      const exitDoor = tm.findNearbyDoor({ centerX: 12 * 16, centerY: 16.8 * 16 });
       assert.ok(exitDoor && exitDoor.targetScene === 'valleverde_corp', 'Salida sur debe volver a valleverde_corp');
 
       const musicModes = [];

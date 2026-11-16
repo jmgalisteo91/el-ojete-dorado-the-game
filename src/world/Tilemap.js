@@ -659,7 +659,7 @@ export class Tilemap {
   setMinesBossArenaGate(open) {
     const scene = this.scenes.mines_boss_arena;
     if (!scene || !scene.layers) return false;
-    for (const c of [5, 6]) {
+    for (const c of [9, 10]) {
       scene.layers.collision[0][c] = open ? 0 : 1;
       scene.layers.decoration[0][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.PORTAL_GATE_CLOSED;
     }
@@ -671,7 +671,7 @@ export class Tilemap {
     this.inakitoOfficeGateOpen = Boolean(open);
     const scene = this.scenes.inakito_office;
     if (!scene || !scene.layers) return false;
-    for (const c of [5, 6]) {
+    for (const c of [9, 10]) {
       scene.layers.collision[0][c] = open ? 0 : 1;
       scene.layers.decoration[0][c] = open ? TILES.PORTAL_GATE_OPEN : TILES.CRYSTAL_BARRIER;
       scene.layers.collision[1][c] = 0;
@@ -1149,8 +1149,8 @@ export class Tilemap {
           label: 'Cruzar el Portal a la Arena del Stack Overflow',
           worldX: northDoorX,
           worldY: northDoorY,
-          spawnX: 5.5 * this.tileSize,
-          spawnY: 5 * this.tileSize
+          spawnX: 9.5 * this.tileSize,
+          spawnY: 12.5 * this.tileSize
         };
       }
     }
@@ -1206,7 +1206,7 @@ export class Tilemap {
 
     // (FIX 3) Salida norte de la arena: solo con el Núcleo del Stack
     if (this.currentSceneId === 'mines_boss_arena') {
-      const gateX = 5.5 * this.tileSize;
+      const gateX = 10 * this.tileSize;
       const gateY = 1.5 * this.tileSize;
       if (
         player?.dungeonCores?.stack &&
@@ -1366,8 +1366,8 @@ export class Tilemap {
             : 'Núcleo de Alex IA (Bloqueado)',
           worldX: coreX,
           worldY: coreY,
-          spawnX: 6.5 * this.tileSize,
-          spawnY: 9.8 * this.tileSize,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: 14.5 * this.tileSize,
           spawnMode: 'fixed',
           entryFacing: 'up',
           blocked: !this.alexCoreUnlocked || !this.scenes.ai_nucleus_core,
@@ -1427,8 +1427,8 @@ export class Tilemap {
           label: 'Cubículo de Iñakito 2.0 (Jefe)',
           worldX: inakitoDoorX,
           worldY: inakitoDoorY,
-          spawnX: 5.5 * this.tileSize,
-          spawnY: 8 * this.tileSize,
+          spawnX: 9.5 * this.tileSize,
+          spawnY: 13 * this.tileSize,
           spawnMode: 'fixed',
           entryFacing: 'up'
         };
@@ -1468,9 +1468,12 @@ export class Tilemap {
         };
       }
     } else if (this.currentSceneId === 'inakito_office') {
+      const cols = this.scenes.inakito_office?.cols || 20;
+      const rows = this.scenes.inakito_office?.rows || 15;
+      const centerDoorX = Math.floor(cols / 2) * this.tileSize;
       // Puerta SUR: regreso a Valleverde 2.0
-      const southX = 5.5 * this.tileSize;
-      const southY = 9.0 * this.tileSize;
+      const southX = centerDoorX;
+      const southY = (rows - 1) * this.tileSize;
       if (Math.hypot(player.centerX - southX, player.centerY - southY) <= 22) {
         return {
           type: 'stage_transition',
@@ -1486,7 +1489,7 @@ export class Tilemap {
       }
 
       // Puerta NORTE: barrera de cristal / cinta de peligro (desbloqueada al derrotar a Iñakito 2.0)
-      const northX = 5.5 * this.tileSize;
+      const northX = centerDoorX;
       const northY = 1.0 * this.tileSize;
       if (Math.hypot(player.centerX - northX, player.centerY - northY) <= 22) {
         return {
@@ -1543,16 +1546,19 @@ export class Tilemap {
             : `Subir al Piso ${floorNum + 1}/5 del Vertedero`,
           worldX: northX,
           worldY: northY,
-          spawnX: (isLastFloor ? 5.5 : 11.5) * this.tileSize,
-          spawnY: (isLastFloor ? 8.2 : 15.2) * this.tileSize,
+          spawnX: (isLastFloor ? 9.5 : 11.5) * this.tileSize,
+          spawnY: (isLastFloor ? 13.0 : 15.2) * this.tileSize,
           spawnMode: 'fixed',
           entryFacing: 'up'
         };
       }
     } else if (this.currentSceneId === 'kernel_arena') {
-      const northX = 5.5 * this.tileSize;
-      const northY = 1.1 * this.tileSize;
-      if (Math.hypot(player.centerX - northX, player.centerY - northY) <= 22) {
+      const cols = this.scenes.kernel_arena?.cols || 20;
+      const rows = this.scenes.kernel_arena?.rows || 15;
+      const centerDoorX = Math.floor(cols / 2) * this.tileSize;
+      const northX = centerDoorX;
+      const northY = 1.2 * this.tileSize;
+      if (Math.hypot(player.centerX - northX, player.centerY - northY) <= 24) {
         const hasCoreScene = Boolean(this.scenes.ai_nucleus_core);
         return {
           type: 'stage_transition',
@@ -1562,8 +1568,8 @@ export class Tilemap {
             : 'Portal al Núcleo (Bloqueado)',
           worldX: northX,
           worldY: northY,
-          spawnX: hasCoreScene ? 6.5 * this.tileSize : 11.5 * this.tileSize,
-          spawnY: (hasCoreScene ? 9.8 : 2.8) * this.tileSize,
+          spawnX: 11.5 * this.tileSize,
+          spawnY: (hasCoreScene ? 14.5 : 2.8) * this.tileSize,
           spawnMode: 'fixed',
           entryFacing: hasCoreScene ? 'up' : 'down',
           blocked: !this.alexCoreUnlocked,
@@ -1575,8 +1581,8 @@ export class Tilemap {
         };
       }
 
-      const southX = 5.5 * this.tileSize;
-      const southY = 9.0 * this.tileSize;
+      const southX = centerDoorX;
+      const southY = (rows - 1) * this.tileSize;
       if (Math.hypot(player.centerX - southX, player.centerY - southY) <= 22) {
         return {
           type: 'exit',
@@ -1607,9 +1613,11 @@ export class Tilemap {
         };
       }
     } else if (this.currentSceneId === 'ai_nucleus_core') {
-      const southX = 6.5 * this.tileSize;
-      const southY = 10.7 * this.tileSize;
-      if (Math.hypot(player.centerX - southX, player.centerY - southY) <= 22) {
+      const cols = this.scenes.ai_nucleus_core?.cols || 24;
+      const rows = this.scenes.ai_nucleus_core?.rows || 18;
+      const southX = Math.floor(cols / 2) * this.tileSize;
+      const southY = (rows - 1.2) * this.tileSize;
+      if (Math.hypot(player.centerX - southX, player.centerY - southY) <= 24) {
         return {
           type: 'exit',
           targetScene: 'valleverde_corp',
@@ -2262,6 +2270,16 @@ export class Tilemap {
       }
     }
 
+    const bossArenaIds = new Set([
+      'sewers_dungeon',
+      'mines_boss_arena',
+      'ai_fortress_gate',
+      'ai_citadel',
+      'inakito_office',
+      'kernel_arena',
+      'ai_nucleus_core'
+    ]);
+    const isBossArena = bossArenaIds.has(sceneId);
     const validCells = [];
     const midCol = Math.floor(scene.cols / 2);
     const midRow = Math.floor(scene.rows / 2);
@@ -2270,6 +2288,8 @@ export class Tilemap {
         if (collision && collision[r] && collision[r][c] !== 0) continue;
         if (decoration && decoration[r] && decoration[r][c] !== -1 && decoration[r][c] !== undefined) continue;
         if (Math.abs(c - midCol) <= 1 && Math.abs(r - midRow) <= 1) continue;
+        // En arenas de jefes: las decoraciones van estrictamente pegadas a las paredes (centro 100% libre)
+        if (isBossArena && c > 2 && c < scene.cols - 3 && r > 2 && r < scene.rows - 3) continue;
         validCells.push([c, r]);
       }
     }

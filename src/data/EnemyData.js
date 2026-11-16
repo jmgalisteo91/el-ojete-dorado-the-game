@@ -544,10 +544,10 @@ export const FIRST_STAGE_ENEMY_SPAWNS = [
 ];
 
 export const BOSS_SPAWNS = [
-  { bossType: 'GarbageCollectorBoss', x: 11.5 * 16, y: 7 * 16, sceneId: 'sewers_dungeon' },
-  { bossType: 'StackOverflowBoss', x: 6 * 16, y: 2.5 * 16, sceneId: 'mines_boss_arena' },
-  { bossType: 'PrototypeMicrowaveBoss', x: 11.5 * 16, y: 6.5 * 16, sceneId: 'ai_fortress_gate' },
-  { bossType: 'FinalBossAlex', x: 11.5 * 16, y: 6.5 * 16, sceneId: 'ai_citadel' }
+  { bossType: 'GarbageCollectorBoss', x: 11.2 * 16, y: 8 * 16, sceneId: 'sewers_dungeon' },
+  { bossType: 'StackOverflowBoss', x: 9.2 * 16, y: 6.5 * 16, sceneId: 'mines_boss_arena' },
+  { bossType: 'PrototypeMicrowaveBoss', x: 11 * 16, y: 8 * 16, sceneId: 'ai_fortress_gate' },
+  { bossType: 'FinalBossAlex', x: 11 * 16, y: 7.5 * 16, sceneId: 'ai_citadel' }
 ];
 
 export const BOSS_RUSH_QUEUE = [

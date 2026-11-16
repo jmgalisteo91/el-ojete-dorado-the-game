@@ -20,7 +20,7 @@ const PHASE_NAMES = {
 };
 
 export class IñakitoBoss extends Boss {
-  constructor({ x = 6 * 16, y = 4 * 16, sceneId = 'inakito_office', hp = 100 } = {}) {
+  constructor({ x = 9.2 * 16, y = 6.5 * 16, sceneId = 'inakito_office', hp = 100 } = {}) {
     super({
       id: 'boss_inakito',
       name: 'Iñakito 2.0',
@@ -218,10 +218,12 @@ export class IñakitoBoss extends Boss {
   }
 
   _spawnCoffeeRain(player) {
-    const tx = player ? (player.centerX ?? player.x) + (Math.random() - 0.5) * 34 : 96;
-    const ty = player ? (player.centerY ?? player.y) + (Math.random() - 0.5) * 28 : 80;
-    const clampedX = Math.max(24, Math.min(168, tx));
-    const clampedY = Math.max(24, Math.min(136, ty));
+    const arenaW = this.arenaTilemap?.width || (this.arenaTilemap?.cols || 20) * 16;
+    const arenaH = this.arenaTilemap?.height || (this.arenaTilemap?.rows || 15) * 16;
+    const tx = player ? (player.centerX ?? player.x) + (Math.random() - 0.5) * 44 : arenaW / 2;
+    const ty = player ? (player.centerY ?? player.y) + (Math.random() - 0.5) * 36 : arenaH / 2;
+    const clampedX = Math.max(24, Math.min(Math.max(48, arenaW - 24), tx));
+    const clampedY = Math.max(24, Math.min(Math.max(48, arenaH - 24), ty));
     this.coffeeRain.push({
       targetX: clampedX,
       targetY: clampedY,
@@ -379,6 +381,7 @@ export class IñakitoBoss extends Boss {
 
   update(dt, tilemap, player = null, paused = false, soundEngine = null, ai = null) {
     this._lastSoundEngine = soundEngine;
+    if (tilemap) this.arenaTilemap = tilemap;
     if (paused) return { hitPlayer: false };
 
     this.floatTimer += dt;

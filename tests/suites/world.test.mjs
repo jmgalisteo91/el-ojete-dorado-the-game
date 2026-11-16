@@ -30,7 +30,7 @@ import { AudioManager, BGM_TRACKS } from '../../src/audio/AudioManager.js?v=8';
 import { MainMenuAndScenes, FAKE_CHANGELOG_NOTES } from '../../src/ui/MainMenuAndScenes.js';
 import { InputHandler, KONAMI_SEQUENCE } from '../../src/core/InputHandler.js';
 import { TESTER_QA_DIALOGUES, VILLAGE_NPC_PROFILES } from '../../src/data/DialogueData.js';
-import { BOSS_RUSH_QUEUE } from '../../src/data/EnemyData.js';
+import { BOSS_RUSH_QUEUE, BOSS_SPAWNS } from '../../src/data/EnemyData.js';
 import { SCENE_AI_ALEX_WARNING, SCENE_ENDING_VICTORY } from '../../src/assets/VillainDialogues.js';
 import { Inventory } from '../../src/ui/Inventory.js';
 import { QuestLog } from '../../src/core/QuestLog.js';
@@ -400,12 +400,12 @@ export async function run(test, assert) {
     assert.ok(tm.scenes.mines_puzzle, 'Debe existir mines_puzzle');
     assert.ok(tm.scenes.sword_temple, 'Debe existir sword_temple');
 
-    // (FIX 3) Arena dedicada del Stack Overflow, 12x8 y con la puerta norte sellada
+    // (FIX 3) Arena dedicada del Stack Overflow, ampliada a 20x15 y con la puerta norte sellada
     assert.ok(tm.scenes.mines_boss_arena, 'Debe existir mines_boss_arena');
-    assert.equal(tm.scenes.mines_boss_arena.cols, 12);
-    assert.equal(tm.scenes.mines_boss_arena.rows, 8);
-    assert.equal(tm.scenes.mines_boss_arena.layers.decoration[0][5], TILES.PORTAL_GATE_CLOSED);
-    assert.equal(tm.scenes.mines_boss_arena.layers.collision[0][5], 1);
+    assert.equal(tm.scenes.mines_boss_arena.cols, 20);
+    assert.equal(tm.scenes.mines_boss_arena.rows, 15);
+    assert.equal(tm.scenes.mines_boss_arena.layers.decoration[0][9], TILES.PORTAL_GATE_CLOSED);
+    assert.equal(tm.scenes.mines_boss_arena.layers.collision[0][9], 1);
 
     // (FIX 4) La barrera de mines_puzzle debe verse (cristal) además de colisionar
     assert.equal(tm.scenes.mines_puzzle.layers.decoration[3][5], TILES.CRYSTAL_BARRIER);
@@ -444,16 +444,16 @@ export async function run(test, assert) {
     assert.equal(toArena && toArena.targetScene, 'mines_boss_arena');
     tm.loadScene('mines_boss_arena');
     const lockedNorth = tm.findNearbyDoor({
-      centerX: 5.5 * 16, centerY: 1.5 * 16, dungeonCores: { stack: false }
+      centerX: 10 * 16, centerY: 1.5 * 16, dungeonCores: { stack: false }
     });
     assert.equal(lockedNorth, null, 'La salida norte debe estar sellada sin el Núcleo');
     const southExit = tm.findNearbyDoor({
-      centerX: 5.5 * 16, centerY: 7 * 16, dungeonCores: { stack: false }
+      centerX: 10 * 16, centerY: 14 * 16, dungeonCores: { stack: false }
     });
     assert.equal(southExit && southExit.targetScene, 'mines_puzzle');
     tm.setMinesBossArenaGate(true);
     const openNorth = tm.findNearbyDoor({
-      centerX: 5.5 * 16, centerY: 1.5 * 16, dungeonCores: { stack: true }
+      centerX: 10 * 16, centerY: 1.5 * 16, dungeonCores: { stack: true }
     });
     assert.equal(openNorth && openNorth.targetScene, 'first_stage');
     tm.loadScene('overworld');
@@ -3301,5 +3301,107 @@ export async function run(test, assert) {
       if (savedFlag !== null) localStorage.setItem('el_ojete_expansion_boss_killed', savedFlag);
       else localStorage.removeItem('el_ojete_expansion_boss_killed');
     }
+  });
+
+  test('Arenas de jefes ampliadas (base y expansión): >=20x15 / 24x18, centro libre, 2 dashes, cámara y spawns', async () => {
+    const tm = new Tilemap(null, 16);
+    installExpansionScenes(tm);
+
+    const arenaSpecs = [
+      { id: 'sewers_dungeon', minCols: 20, minRows: 15, doubleWallSide: true, spawnRef: BOSS_SPAWNS.find((b) => b.sceneId === 'sewers_dungeon') },
+      { id: 'mines_boss_arena', minCols: 20, minRows: 15, spawnRef: BOSS_SPAWNS.find((b) => b.sceneId === 'mines_boss_arena') },
+      { id: 'ai_fortress_gate', minCols: 20, minRows: 15, doubleWallSide: true, spawnRef: BOSS_SPAWNS.find((b) => b.sceneId === 'ai_fortress_gate') },
+      { id: 'ai_citadel', minCols: 24, minRows: 18, doubleWallSide: true, spawnRef: BOSS_SPAWNS.find((b) => b.sceneId === 'ai_citadel') },
+      { id: 'inakito_office', minCols: 20, minRows: 15, bossCtor: IñakitoBoss },
+      { id: 'kernel_arena', minCols: 20, minRows: 15, topWallRows: 2, bossCtor: KernelBoss },
+      { id: 'ai_nucleus_core', minCols: 24, minRows: 18, bossCtor: AlexUpdateBoss }
+    ];
+
+    const cam = new Camera2D(320, 180, tm.width, tm.height);
+    const fakeGame = {
+      tilemap: tm,
+      camera: cam,
+      player: { stopMovement() {} }
+    };
+
+    for (const spec of arenaSpecs) {
+      tm.loadScene(spec.id);
+      const scene = tm.scenes[spec.id];
+      assert.ok(scene, `Debe existir la arena ${spec.id}`);
+      assert.ok(scene.cols >= spec.minCols, `${spec.id} debe tener al menos ${spec.minCols} cols (tiene ${scene.cols})`);
+      assert.ok(scene.rows >= spec.minRows, `${spec.id} debe tener al menos ${spec.minRows} rows (tiene ${scene.rows})`);
+
+      // 1. Bordes exteriores con colisión (salvo puertas/portales), y suelo interior totalmente transitable
+      const coll = scene.layers.collision;
+      const minC = spec.doubleWallSide ? 2 : 1;
+      const maxC = scene.cols - 1 - (spec.doubleWallSide ? 2 : 1);
+      const minR = (spec.doubleWallSide || spec.topWallRows === 2) ? 2 : 1;
+      const maxR = scene.rows - 2;
+      assert.equal(coll[0][2], 1, `${spec.id}: pared norte debe tener colisión`);
+      assert.equal(coll[scene.rows - 1][2], 1, `${spec.id}: pared sur debe tener colisión`);
+      assert.equal(coll[Math.floor(scene.rows / 2)][0], 1, `${spec.id}: pared oeste debe tener colisión`);
+      assert.equal(coll[Math.floor(scene.rows / 2)][scene.cols - 1], 1, `${spec.id}: pared este debe tener colisión`);
+
+      for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+          assert.equal(coll[r][c], 0, `${spec.id}: el interior (${c},${r}) debe estar 100% libre de obstáculos sólidos`);
+        }
+      }
+
+      // 2. Espacio de sobra para hacer 2 dashes seguidos (~76 px) en horizontal y vertical sin chocar
+      const testPlayer = new Player({ x: Math.floor(scene.cols / 2) * 16 - 8, y: Math.floor(scene.rows / 2) * 16 - 8 });
+      const twoDashDistance = 210 * 0.18 * 2; // ~75.6 px
+      assert.equal(
+        CollisionSystem.collidesWithMap(
+          testPlayer.getBoundingBoxAt(testPlayer.x - twoDashDistance, testPlayer.y),
+          tm
+        ),
+        false,
+        `${spec.id}: debe caber doble dash hacia la izquierda desde el centro`
+      );
+      assert.equal(
+        CollisionSystem.collidesWithMap(
+          testPlayer.getBoundingBoxAt(testPlayer.x + twoDashDistance, testPlayer.y),
+          tm
+        ),
+        false,
+        `${spec.id}: debe caber doble dash hacia la derecha desde el centro`
+      );
+      assert.equal(
+        CollisionSystem.collidesWithMap(
+          testPlayer.getBoundingBoxAt(testPlayer.x, testPlayer.y - twoDashDistance * 0.8),
+          tm
+        ),
+        false,
+        `${spec.id}: amplio margen de dash vertical superior desde el centro`
+      );
+
+      // 3. El jefe aparece centrado en la arena (no pegado a una esquina) y sin colisionar
+      const bossPos = spec.spawnRef || new spec.bossCtor();
+      assert.ok(
+        bossPos.x >= scene.cols * 16 * 0.3 && bossPos.x <= scene.cols * 16 * 0.7,
+        `${spec.id}: spawnX del jefe (${bossPos.x}) debe estar centrado`
+      );
+      assert.ok(
+        bossPos.y >= scene.rows * 16 * 0.25 && bossPos.y <= scene.rows * 16 * 0.65,
+        `${spec.id}: spawnY del jefe (${bossPos.y}) debe estar centrado`
+      );
+
+      // 4. Camera2D actualiza sus límites al cargar la escena vía RPGGame._loadScene
+      RPGGame.prototype._loadScene.call(fakeGame, spec.id, null, { immediate: true });
+      assert.equal(cam.worldWidth, scene.cols * 16, `${spec.id}: Camera2D worldWidth actualizado`);
+      assert.equal(cam.worldHeight, scene.rows * 16, `${spec.id}: Camera2D worldHeight actualizado`);
+    }
+
+    // 5. Checks específicos: inakito_office sin mesas ni obstáculos en el centro y ai_nucleus_core sin plataformas fragmentadas
+    const inakitoDeco = tm.scenes.inakito_office.layers.decoration;
+    for (let r = 2; r < tm.scenes.inakito_office.rows - 2; r++) {
+      for (let c = 2; c < tm.scenes.inakito_office.cols - 2; c++) {
+        assert.equal(inakitoDeco[r][c], -1, `inakito_office (${c},${r}) debe estar limpio en el centro`);
+      }
+    }
+    assert.equal(tm._coreDataPlatforms.length, 1, 'ai_nucleus_core debe tener una única plataforma abierta');
+    assert.equal(tm._coreDataPlatforms[0].w, 22);
+    assert.equal(tm._coreDataPlatforms[0].h, 16);
   });
 }

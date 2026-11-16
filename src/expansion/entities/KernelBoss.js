@@ -26,7 +26,7 @@ const PHASE_NAMES = {
 };
 
 export class KernelBoss extends Boss {
-  constructor({ x = 5.5 * 16, y = 3.2 * 16, sceneId = 'kernel_arena', hp = 150 } = {}) {
+  constructor({ x = 9.2 * 16, y = 6.2 * 16, sceneId = 'kernel_arena', hp = 150 } = {}) {
     super({
       id: 'boss_kernel',
       name: 'El Kernel',
@@ -156,11 +156,13 @@ export class KernelBoss extends Boss {
    * Divide al Kernel en 4 clones donde exactamente 1 es real (con aura verde).
    */
   spawnClones(realIndex = 0) {
+    const cols = this.arenaCols || 20;
+    const rows = this.arenaRows || 15;
     const slots = [
-      { x: 2.5 * 16, y: 2.5 * 16 },
-      { x: 8.5 * 16, y: 2.5 * 16 },
-      { x: 2.5 * 16, y: 6.2 * 16 },
-      { x: 8.5 * 16, y: 6.2 * 16 }
+      { x: 4.0 * 16, y: 4.0 * 16 },
+      { x: (cols - 5.0) * 16, y: 4.0 * 16 },
+      { x: 4.0 * 16, y: (rows - 5.0) * 16 },
+      { x: (cols - 5.0) * 16, y: (rows - 5.0) * 16 }
     ];
     const safeReal = ((realIndex % 4) + 4) % 4;
     this.clones = slots.map((pos, idx) => ({
@@ -186,11 +188,12 @@ export class KernelBoss extends Boss {
     this.hudHackTimer = 0;
     this.hudHackActive = false;
     this.hudFlicker = false;
-    // Torre gigante de terminales centrada arriba en la arena 12x10 (192x160)
+    // Torre gigante de terminales centrada en la arena (20x15 -> 320x240)
+    const arenaCols = this.arenaCols || 20;
     this.width = 36;
     this.height = 44;
-    this.x = 6 * 16 - 18;
-    this.y = 2.1 * 16;
+    this.x = (arenaCols * 16) / 2 - 18;
+    this.y = 3.0 * 16;
     this.boundingBox = { offsetX: 4, offsetY: 8, width: 28, height: 32 };
     this.firewallTimer = 0.8;
     this.introQuote = 'ACCESO DENEGADO. ACTIVANDO FIREWALLS.';
@@ -304,10 +307,10 @@ export class KernelBoss extends Boss {
 
   _spawnFirewall(player) {
     this.firewallToggle = (this.firewallToggle + 1) % 3;
-    const arenaW = 12 * 16;
-    const arenaH = 10 * 16;
+    const arenaW = (this.arenaCols || 20) * 16;
+    const arenaH = (this.arenaRows || 15) * 16;
     const px = player ? Math.max(24, Math.min(arenaW - 24, player.centerX ?? player.x)) : arenaW / 2;
-    const py = player ? Math.max(28, Math.min(arenaH - 24, player.centerY ?? player.y)) : arenaH / 2;
+    const py = player ? Math.max(32, Math.min(arenaH - 24, player.centerY ?? player.y)) : arenaH / 2;
 
     if (this.firewallToggle === 0) {
       this.firewalls.push({ axis: 'h', pos: py, thickness: 10, warnTimer: 0.7, activeTimer: 0.65 });
@@ -353,6 +356,10 @@ export class KernelBoss extends Boss {
   }
 
   update(dt, tilemap, player = null, paused = false, soundEngine = null, ai = null) {
+    if (tilemap) {
+      if (tilemap.cols) this.arenaCols = tilemap.cols;
+      if (tilemap.rows) this.arenaRows = tilemap.rows;
+    }
     if (paused) return { hitPlayer: false };
 
     this.animTimer += dt;
@@ -491,6 +498,8 @@ export class KernelBoss extends Boss {
     const t = this.animTimer;
 
     // Firewalls de Fase 3 (láseres horizontales y verticales)
+    const arenaW = (this.arenaCols || 20) * 16;
+    const arenaH = (this.arenaRows || 15) * 16;
     for (const fw of this.firewalls) {
       ctx.save();
       if (fw.warnTimer > 0) {
@@ -501,24 +510,24 @@ export class KernelBoss extends Boss {
         ctx.beginPath();
         if (fw.axis === 'h') {
           const y = Math.round(fw.pos - camY);
-          ctx.moveTo(0, y);
-          ctx.lineTo(12 * 16, y);
+          ctx.moveTo(-camX, y);
+          ctx.lineTo(arenaW - camX, y);
         } else {
           const x = Math.round(fw.pos - camX);
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, 10 * 16);
+          ctx.moveTo(x, -camY);
+          ctx.lineTo(x, arenaH - camY);
         }
         ctx.stroke();
       } else {
         ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
         if (fw.axis === 'h') {
-          ctx.fillRect(0, Math.round(fw.pos - fw.thickness / 2 - camY), 12 * 16, fw.thickness);
+          ctx.fillRect(-camX, Math.round(fw.pos - fw.thickness / 2 - camY), arenaW, fw.thickness);
           ctx.fillStyle = '#fef2f2';
-          ctx.fillRect(0, Math.round(fw.pos - 1 - camY), 12 * 16, 2);
+          ctx.fillRect(-camX, Math.round(fw.pos - 1 - camY), arenaW, 2);
         } else {
-          ctx.fillRect(Math.round(fw.pos - fw.thickness / 2 - camX), 0, fw.thickness, 10 * 16);
+          ctx.fillRect(Math.round(fw.pos - fw.thickness / 2 - camX), -camY, fw.thickness, arenaH);
           ctx.fillStyle = '#fef2f2';
-          ctx.fillRect(Math.round(fw.pos - 1 - camX), 0, 2, 10 * 16);
+          ctx.fillRect(Math.round(fw.pos - 1 - camX), -camY, 2, arenaH);
         }
       }
       ctx.restore();

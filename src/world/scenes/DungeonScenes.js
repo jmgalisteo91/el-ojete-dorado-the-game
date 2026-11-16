@@ -747,19 +747,13 @@ function buildSewersDungeonScene(tilemap) {
 
   applyRoomBorderWalls(setDeco, cols, rows, TILES.SEWER_PIPE_WALL);
 
-  fillRect(ground, 4, 4, 16, 10, TILES.STONE_PATH);
-  fillRect(ground, 2, 7, 2, 4, TILES.WATER_1);
-  fillRect(ground, 20, 7, 2, 4, TILES.WATER_1);
-
-  setDeco(5, 5, TILES.SEWER_PIPE_WALL, true);
-  setDeco(18, 5, TILES.SEWER_PIPE_WALL, true);
-  setDeco(5, 12, TILES.SEWER_PIPE_WALL, true);
-  setDeco(18, 12, TILES.SEWER_PIPE_WALL, true);
+  // Amplio suelo central y laterales 100% despejados para esquivar embestidas y charcos de ácido
+  fillRect(ground, 2, 2, 20, 14, TILES.STONE_PATH);
 
   lightSources.push(
-    { x: 5.5 * 16, y: 5.5 * 16, radius: 48, intensity: 0.85, color: '#10b981' },
-    { x: 18.5 * 16, y: 5.5 * 16, radius: 48, intensity: 0.85, color: '#10b981' },
-    { x: 11.5 * 16, y: 9.5 * 16, radius: 64, intensity: 0.95, color: '#34d399' }
+    { x: 2.5 * 16, y: 2.5 * 16, radius: 52, intensity: 0.85, color: '#10b981' },
+    { x: 21.5 * 16, y: 2.5 * 16, radius: 52, intensity: 0.85, color: '#10b981' },
+    { x: 11.5 * 16, y: 9.0 * 16, radius: 72, intensity: 0.95, color: '#34d399' }
   );
 
   setDeco(11, rows - 1, -1, false);
@@ -879,8 +873,8 @@ function buildMinesPuzzleScene(tilemap) {
 }
 
 function buildMinesBossArenaScene(tilemap) {
-  const cols = 12;
-  const rows = 8;
+  const cols = 20;
+  const rows = 15;
   const { ground, decoration, collision, setDeco } = createSceneHelpers(tilemap, cols, rows, TILES.MINE_CRYSTAL_FLOOR);
   const lightSources = [];
 
@@ -893,20 +887,22 @@ function buildMinesBossArenaScene(tilemap) {
     setDeco(cols - 1, r, TILES.MINE_CRYSTAL_WALL, true);
   }
 
-  setDeco(2, 0, TILES.LAMPPOST, true);
-  setDeco(9, 0, TILES.LAMPPOST, true);
+  // Faroles pegados a la pared norte; centro y las 4 esquinas interiores 100% libres
+  setDeco(4, 0, TILES.LAMPPOST, true);
+  setDeco(15, 0, TILES.LAMPPOST, true);
   lightSources.push(
-    { x: 2.5 * 16, y: 1.5 * 16, radius: 56, intensity: 0.95, color: '#f59e0b' },
-    { x: 9.5 * 16, y: 1.5 * 16, radius: 56, intensity: 0.95, color: '#f59e0b' }
+    { x: 4.5 * 16, y: 1.5 * 16, radius: 64, intensity: 0.95, color: '#f59e0b' },
+    { x: 15.5 * 16, y: 1.5 * 16, radius: 64, intensity: 0.95, color: '#f59e0b' },
+    { x: 10.0 * 16, y: 7.5 * 16, radius: 80, intensity: 0.75, color: '#38bdf8' }
   );
 
-  setDeco(5, rows - 1, TILES.PORTAL_GATE_OPEN, false);
-  setDeco(6, rows - 1, TILES.PORTAL_GATE_OPEN, false);
-  collision[rows - 1][5] = 0;
-  collision[rows - 1][6] = 0;
+  setDeco(9, rows - 1, TILES.PORTAL_GATE_OPEN, false);
+  setDeco(10, rows - 1, TILES.PORTAL_GATE_OPEN, false);
+  collision[rows - 1][9] = 0;
+  collision[rows - 1][10] = 0;
 
-  setDeco(5, 0, TILES.PORTAL_GATE_CLOSED, true);
-  setDeco(6, 0, TILES.PORTAL_GATE_CLOSED, true);
+  setDeco(9, 0, TILES.PORTAL_GATE_CLOSED, true);
+  setDeco(10, 0, TILES.PORTAL_GATE_CLOSED, true);
 
   return {
     title: 'Minas de la Recursión · Cámara del Stack Overflow',
@@ -915,8 +911,8 @@ function buildMinesBossArenaScene(tilemap) {
     layers: { ground, decoration, collision },
     lightSources,
     exitDoor: {
-      worldX: 5.5 * 16,
-      worldY: 7 * 16,
+      worldX: 10 * 16,
+      worldY: (rows - 1) * 16,
       returnX: 11.5 * 16,
       returnY: 2.5 * 16,
       returnScene: 'mines_puzzle'
@@ -1026,17 +1022,13 @@ function buildFortressGateScene(tilemap) {
 
   applyRoomBorderWalls(setDeco, cols, rows, TILES.FORGE_BOILER_WALL);
 
-  fillRect(ground, 3, 3, 18, 12, TILES.STONE_PATH);
-
-  setDeco(5, 5, TILES.FORGE_BOILER_WALL, true);
-  setDeco(18, 5, TILES.FORGE_BOILER_WALL, true);
-  setDeco(5, 11, TILES.FORGE_BOILER_WALL, true);
-  setDeco(18, 11, TILES.FORGE_BOILER_WALL, true);
+  // Pasarela amplia y centro 100% libre de columnas para correr entre los fusibles y esquivar ondas
+  fillRect(ground, 2, 2, 20, 14, TILES.STONE_PATH);
 
   lightSources.push(
-    { x: 5.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#f97316' },
-    { x: 18.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#f97316' },
-    { x: 11.5 * 16, y: 8.5 * 16, radius: 64, intensity: 1.0, color: '#ef4444' }
+    { x: 2.5 * 16, y: 2.5 * 16, radius: 56, intensity: 0.9, color: '#f97316' },
+    { x: 21.5 * 16, y: 2.5 * 16, radius: 56, intensity: 0.9, color: '#f97316' },
+    { x: 11.5 * 16, y: 8.5 * 16, radius: 74, intensity: 1.0, color: '#ef4444' }
   );
 
   setDeco(11, rows - 1, -1, false);
@@ -1115,18 +1107,14 @@ function buildCitadelScene(tilemap) {
 
   applyRoomBorderWalls(setDeco, cols, rows, TILES.MAINFRAME_WALL);
 
-  setDeco(5, 5, TILES.MAINFRAME_WALL, true);
-  setDeco(18, 5, TILES.MAINFRAME_WALL, true);
-  setDeco(5, 12, TILES.MAINFRAME_WALL, true);
-  setDeco(18, 12, TILES.MAINFRAME_WALL, true);
-
-  setDeco(11, 3, TILES.CORE_PEDESTAL, false);
-  setDeco(12, 3, TILES.CORE_PEDESTAL, false);
+  // Pedestales decorativos pegados a la pared norte; todo el centro (22x16) 100% despejado para láseres y fases
+  setDeco(11, 1, TILES.CORE_PEDESTAL, false);
+  setDeco(12, 1, TILES.CORE_PEDESTAL, false);
 
   lightSources.push(
-    { x: 11.5 * 16, y: 3.5 * 16, radius: 88, intensity: 1.0, color: '#ec4899' },
-    { x: 5.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#06b6d4' },
-    { x: 18.5 * 16, y: 5.5 * 16, radius: 52, intensity: 0.9, color: '#06b6d4' },
+    { x: 11.5 * 16, y: 2.5 * 16, radius: 88, intensity: 1.0, color: '#ec4899' },
+    { x: 2.5 * 16, y: 2.5 * 16, radius: 56, intensity: 0.9, color: '#06b6d4' },
+    { x: 21.5 * 16, y: 2.5 * 16, radius: 56, intensity: 0.9, color: '#06b6d4' },
     { x: 11.5 * 16, y: 14.5 * 16, radius: 56, intensity: 0.85, color: '#3b82f6' }
   );
 

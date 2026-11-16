@@ -240,10 +240,10 @@ export class ExpansionManager {
   _buildExpansionEnemies(game, mods) {
     const { IñakitoBoss, KernelBoss, AlexUpdateBoss, TechnicalDebtBoss } = mods;
     return [
-      new IñakitoBoss({ x: 6 * 16, y: 4 * 16, sceneId: 'inakito_office', hp: 100 }),
-      new KernelBoss({ x: 5.5 * 16, y: 3.2 * 16, sceneId: 'kernel_arena', hp: 150 }),
-      new AlexUpdateBoss({ x: 6.2 * 16, y: 2.6 * 16, sceneId: 'ai_nucleus_core', hp: 200 }),
-      new TechnicalDebtBoss({ x: 6.2 * 16, y: 2.6 * 16, sceneId: 'ai_nucleus_core', hp: 300 }),
+      new IñakitoBoss({ x: 9.2 * 16, y: 6.5 * 16, sceneId: 'inakito_office', hp: 100 }),
+      new KernelBoss({ x: 9.2 * 16, y: 6.2 * 16, sceneId: 'kernel_arena', hp: 150 }),
+      new AlexUpdateBoss({ x: 11 * 16, y: 7.5 * 16, sceneId: 'ai_nucleus_core', hp: 200 }),
+      new TechnicalDebtBoss({ x: 11 * 16, y: 7.5 * 16, sceneId: 'ai_nucleus_core', hp: 300 }),
       ...this._buildVertederoFloorEnemies(game, mods)
     ];
   }

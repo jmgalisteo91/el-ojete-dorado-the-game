@@ -902,7 +902,13 @@ export class RPGGame {
       this.player.stopMovement();
     }
 
-    this._loadScene('ai_citadel', { x: 11.5 * 16, y: 12 * 16 }, { immediate: true });
+    this._loadScene('ai_citadel', () => {
+      this.tilemap?.loadScene?.('ai_citadel');
+      if (this.player) {
+        this.player.x = 11.5 * 16;
+        this.player.y = 13.5 * 16;
+      }
+    }, { immediate: true });
     if (this.menuSystem) {
       this.menuSystem.state = 'none';
       this.menuSystem.fadeAlpha = 0;
@@ -934,8 +940,8 @@ export class RPGGame {
     }
 
     const boss = new Ctor({
-      x: 11.5 * 16,
-      y: 6.5 * 16,
+      x: 11 * 16,
+      y: 7.5 * 16,
       sceneId: 'ai_citadel'
     });
     this.enemies.push(boss);
@@ -1142,6 +1148,9 @@ export class RPGGame {
     if (options.immediate) {
       if (typeof onMidpoint === 'function') onMidpoint();
       else if (targetScene) this.tilemap?.loadScene?.(targetScene);
+      if (this.tilemap && this.camera && typeof this.camera.setWorldBounds === 'function') {
+        this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
+      }
       const activeScene = this.tilemap?.currentSceneId || targetScene;
       this.premiumEffects?.spawnParticles?.(activeScene, this.tilemap?.chimneys || []);
       this.fadeAlpha = 0;
@@ -1172,6 +1181,9 @@ export class RPGGame {
             fade.onMidpoint();
           } else if (fade.targetScene) {
             this.tilemap?.loadScene?.(fade.targetScene);
+          }
+          if (this.tilemap && this.camera && typeof this.camera.setWorldBounds === 'function') {
+            this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
           }
           const activeScene = this.tilemap?.currentSceneId || fade.targetScene;
           this.premiumEffects?.spawnParticles?.(activeScene, this.tilemap?.chimneys || []);
@@ -5584,8 +5596,11 @@ export class RPGGame {
     if (this.tilemap && this.tilemap.currentSceneId !== 'ai_nucleus_core') {
       this.tilemap.loadScene('ai_nucleus_core');
     }
-    this.player.x = 6.5 * 16;
-    this.player.y = 9.5 * 16;
+    if (this.tilemap && this.camera && typeof this.camera.setWorldBounds === 'function') {
+      this.camera.setWorldBounds(this.tilemap.width, this.tilemap.height);
+    }
+    this.player.x = 11.5 * 16;
+    this.player.y = 14.5 * 16;
     this.player.hp = this.player.effectiveMaxHp;
     this.camera?.snapTo?.(this.player);
 

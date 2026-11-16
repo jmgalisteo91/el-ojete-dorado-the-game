@@ -41,7 +41,7 @@ export const ATLAS_SCENE_SLOTS = {
   // Ala Noreste: Minas de la Recursión
   mines_entry:      { zone: 'north',  ax: 410, ay: 16,  cols: 24, rows: 18, tilePx: 3, biome: 'mines',   inset: true, label: 'MINAS I', accent: '#06b6d4' },
   mines_puzzle:     { zone: 'north',  ax: 492, ay: 16,  cols: 24, rows: 18, tilePx: 3, biome: 'mines',   inset: true, label: 'RUNAS', accent: '#06b6d4' },
-  mines_boss_arena: { zone: 'north',  ax: 576, ay: 28,  cols: 12, rows: 8,  tilePx: 3, biome: 'mines',   inset: true, label: 'STACK BOSS', accent: '#38bdf8' },
+  mines_boss_arena: { zone: 'north',  ax: 576, ay: 28,  cols: 20, rows: 15, tilePx: 2, biome: 'mines',   inset: true, label: 'STACK BOSS', accent: '#38bdf8' },
 
   // Ala Suroeste: Cloacas del Legacy
   sewers_dungeon:   { zone: 'south',  ax: 8,   ay: 214, cols: 24, rows: 18, tilePx: 3, biome: 'sewers',  inset: true, label: 'GARBAGE COL.', accent: '#22c55e' },
@@ -55,16 +55,16 @@ export const ATLAS_SCENE_SLOTS = {
 
   // Expansión v2.0 (oculta bajo niebla hasta que se visita)
   valleverde_corp:  { zone: 'corp',   ax: 102, ay: 18,  cols: 24, rows: 18, tilePx: 2, biome: 'corp',    inset: true, label: 'VALLEVERDE 2.0', accent: '#22d3ee' },
-  inakito_office:   { zone: 'corp',   ax: 158, ay: 24,  cols: 12, rows: 10, tilePx: 2, biome: 'corp',    inset: true, label: 'IÑAKITO', accent: '#38bdf8' },
+  inakito_office:   { zone: 'corp',   ax: 158, ay: 24,  cols: 20, rows: 15, tilePx: 1.5, biome: 'corp',    inset: true, label: 'IÑAKITO', accent: '#38bdf8' },
   vertedero_digital:{ zone: 'corp',   ax: 102, ay: 58,  cols: 24, rows: 18, tilePx: 2, biome: 'corp',    inset: true, label: 'VERTEDERO 2.0', accent: '#a855f7' },
   vertedero_piso_1: { zone: 'corp',   ax: 102, ay: 58,  cols: 24, rows: 18, tilePx: 2, biome: 'corp',    inset: true, label: 'VERTEDERO P1', accent: '#a855f7' },
   vertedero_piso_2: { zone: 'corp',   ax: 102, ay: 58,  cols: 24, rows: 18, tilePx: 2, biome: 'corp',    inset: true, label: 'VERTEDERO P2', accent: '#a855f7' },
   vertedero_piso_3: { zone: 'corp',   ax: 102, ay: 58,  cols: 24, rows: 18, tilePx: 2, biome: 'corp',    inset: true, label: 'VERTEDERO P3', accent: '#a855f7' },
   vertedero_piso_4: { zone: 'corp',   ax: 102, ay: 58,  cols: 24, rows: 18, tilePx: 2, biome: 'corp',    inset: true, label: 'VERTEDERO P4', accent: '#a855f7' },
   vertedero_piso_5: { zone: 'corp',   ax: 102, ay: 58,  cols: 24, rows: 18, tilePx: 2, biome: 'corp',    inset: true, label: 'VERTEDERO P5', accent: '#a855f7' },
-  kernel_arena:     { zone: 'corp',   ax: 158, ay: 56,  cols: 12, rows: 10, tilePx: 2, biome: 'corp',    inset: true, label: 'KERNEL', accent: '#22c55e' },
+  kernel_arena:     { zone: 'corp',   ax: 158, ay: 56,  cols: 20, rows: 15, tilePx: 1.5, biome: 'corp',    inset: true, label: 'KERNEL', accent: '#22c55e' },
   rosa_bar:         { zone: 'corp',   ax: 158, ay: 40,  cols: 10, rows: 8,  tilePx: 2, biome: 'corp',    inset: true, label: 'BAR ROSA', accent: '#f59e0b' },
-  ai_nucleus_core:  { zone: 'corp',   ax: 158, ay: 78,  cols: 14, rows: 12, tilePx: 2, biome: 'corp',    inset: true, label: 'NÚCLEO ALEX', accent: '#22d3ee' }
+  ai_nucleus_core:  { zone: 'corp',   ax: 158, ay: 78,  cols: 24, rows: 18, tilePx: 1.5, biome: 'corp',    inset: true, label: 'NÚCLEO ALEX', accent: '#22d3ee' }
 };
 
 /** Metadatos descriptivos de cada escena para el HUD y marcador del jugador. */
@@ -702,12 +702,12 @@ export class WorldMap {
 
   _getQuestTarget(status, currentSceneId) {
     if (currentSceneId === 'valleverde_corp' || currentSceneId === 'inakito_office') {
-      return { sceneId: 'inakito_office', tx: 6, ty: 5, label: 'Iñakito 2.0' };
+      return { sceneId: 'inakito_office', tx: 10, ty: 7, label: 'Iñakito 2.0' };
     }
     if (!status.hasArmor) return { sceneId: 'armor_temple', tx: 11, ty: 9, label: 'Armadura Binaria' };
     if (!status.hasSword) return { sceneId: 'sword_temple', tx: 12, ty: 9, label: 'Espada Recursiva' };
     if (!status.gcDefeated) return { sceneId: 'sewers_dungeon', tx: 12, ty: 9, label: 'Garbage Collector' };
-    if (!status.stackDefeated) return { sceneId: 'mines_boss_arena', tx: 6, ty: 4, label: 'Stack Overflow' };
+    if (!status.stackDefeated) return { sceneId: 'mines_boss_arena', tx: 10, ty: 7, label: 'Stack Overflow' };
     if (!status.microwaveDefeated) return { sceneId: 'ai_fortress_gate', tx: 12, ty: 9, label: 'Microondas Prototipo' };
     if (!status.alexDefeated) return { sceneId: 'ai_citadel', tx: 12, ty: 9, label: 'Mister AI Alex' };
     return null;
@@ -835,7 +835,7 @@ export class WorldMap {
       { sceneId: 'armor_temple', tx: 11, ty: 9, cleared: status.hasArmor, zone: 'east', color: '#38bdf8', kind: 'checkOnly' },
       { sceneId: 'sword_temple', tx: 12, ty: 9, cleared: status.hasSword, zone: 'east', color: '#fbbf24', kind: 'checkOnly' },
       { sceneId: 'sewers_dungeon', tx: 12, ty: 9, cleared: status.gcDefeated, zone: 'south', color: '#22c55e', kind: 'boss' },
-      { sceneId: 'mines_boss_arena', tx: 6, ty: 4, cleared: status.stackDefeated, zone: 'north', color: '#06b6d4', kind: 'boss' },
+      { sceneId: 'mines_boss_arena', tx: 10, ty: 7, cleared: status.stackDefeated, zone: 'north', color: '#06b6d4', kind: 'boss' },
       { sceneId: 'ai_fortress_gate', tx: 12, ty: 9, cleared: status.microwaveDefeated, zone: 'south', color: '#f97316', kind: 'boss' },
       { sceneId: 'ai_citadel', tx: 12, ty: 9, cleared: status.alexDefeated, zone: 'west', color: '#ef4444', kind: 'crownBoss' }
     ];

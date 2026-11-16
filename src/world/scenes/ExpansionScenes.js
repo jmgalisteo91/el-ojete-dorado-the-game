@@ -122,8 +122,8 @@ function buildValleverdeCorpScene(tilemap) {
 }
 
 function buildInakitoOfficeScene(tilemap) {
-  const cols = 12;
-  const rows = 10;
+  const cols = 20;
+  const rows = 15;
   const { ground, decoration, collision, setDeco } = createSceneHelpers(tilemap, cols, rows, TILES.INAKITO_CARPET);
   const lightSources = [];
 
@@ -136,27 +136,23 @@ function buildInakitoOfficeScene(tilemap) {
     setDeco(cols - 1, r, TILES.INAKITO_CUBICLE_WALL, true);
   }
 
-  setDeco(5, rows - 1, -1, false);
-  setDeco(6, rows - 1, -1, false);
-  setDeco(5, 0, TILES.CRYSTAL_BARRIER, true);
-  setDeco(6, 0, TILES.CRYSTAL_BARRIER, true);
+  // Puerta sur abierta y barrera norte centrada en columnas [9, 10]
+  setDeco(9, rows - 1, -1, false);
+  setDeco(10, rows - 1, -1, false);
+  setDeco(9, 0, TILES.CRYSTAL_BARRIER, true);
+  setDeco(10, 0, TILES.CRYSTAL_BARRIER, true);
 
-  setDeco(2, 2, TILES.INAKITO_OVERTURNED_DESK, true);
-  setDeco(2, 6, TILES.INAKITO_OVERTURNED_DESK, true);
-  setDeco(9, 6, TILES.INAKITO_OVERTURNED_DESK, true);
-  setDeco(9, 2, TILES.INAKITO_COPIER, true);
-  setDeco(1, 3, TILES.INAKITO_COFFEE_MOUND, true);
-  setDeco(10, 4, TILES.INAKITO_COFFEE_MOUND, true);
-  setDeco(3, 7, TILES.INAKITO_COFFEE_MOUND, false);
-
-  setDeco(4, 3, TILES.INAKITO_PAPERS, false);
-  setDeco(7, 4, TILES.INAKITO_PAPERS, false);
-  setDeco(5, 6, TILES.INAKITO_PAPERS, false);
-  setDeco(8, 7, TILES.INAKITO_PAPERS, false);
+  // Centro 100% libre de mesas, sillas y papeles; tazas de café pegadas a las paredes
+  setDeco(1, 2, TILES.INAKITO_COFFEE_MOUND, false);
+  setDeco(18, 2, TILES.INAKITO_COFFEE_MOUND, false);
+  setDeco(1, 7, TILES.INAKITO_COFFEE_MOUND, false);
+  setDeco(18, 7, TILES.INAKITO_COFFEE_MOUND, false);
+  setDeco(1, 12, TILES.INAKITO_COFFEE_MOUND, false);
+  setDeco(18, 12, TILES.INAKITO_COFFEE_MOUND, false);
 
   lightSources.push(
-    { x: 6 * 16, y: 4.5 * 16, radius: 96, intensity: 0.9, color: '#93c5fd' },
-    { x: 5.5 * 16, y: 0.8 * 16, radius: 42, intensity: 0.8, color: '#f59e0b' }
+    { x: 10 * 16, y: 7.5 * 16, radius: 112, intensity: 0.9, color: '#93c5fd' },
+    { x: 10 * 16, y: 1.0 * 16, radius: 48, intensity: 0.8, color: '#f59e0b' }
   );
 
   tilemap.scenes.inakito_office = {
@@ -166,8 +162,8 @@ function buildInakitoOfficeScene(tilemap) {
     layers: { ground, decoration, collision },
     lightSources,
     exitDoor: {
-      worldX: 5.5 * 16,
-      worldY: 9.0 * 16,
+      worldX: 10 * 16,
+      worldY: (rows - 1) * 16,
       returnX: 9.5 * 16,
       returnY: 2.5 * 16,
       returnScene: 'valleverde_corp'
@@ -249,8 +245,8 @@ function buildVertederoDigitalScene(tilemap) {
 }
 
 function buildKernelArenaScene(tilemap) {
-  const cols = 12;
-  const rows = 10;
+  const cols = 20;
+  const rows = 15;
   const { ground, decoration, collision, setDeco } = createSceneHelpers(tilemap, cols, rows, TILES.MAINFRAME_FLOOR);
 
   for (let c = 0; c < cols; c++) {
@@ -263,28 +259,29 @@ function buildKernelArenaScene(tilemap) {
     setDeco(cols - 1, r, TILES.MAINFRAME_WALL, true);
   }
 
+  // Terminales pegados a la pared norte; todo el espacio central libre para esquivar firewalls y distinguir clones
   setDeco(2, 1, TILES.CORP_CRT_WALL, true);
   setDeco(3, 1, TILES.CORP_CRT_WALL, true);
-  setDeco(8, 1, TILES.CORP_CRT_WALL, true);
-  setDeco(9, 1, TILES.CORP_CRT_WALL, true);
-  setDeco(5, 1, TILES.PORTAL_GATE_CLOSED, true);
-  setDeco(6, 1, TILES.PORTAL_GATE_CLOSED, true);
+  setDeco(16, 1, TILES.CORP_CRT_WALL, true);
+  setDeco(17, 1, TILES.CORP_CRT_WALL, true);
+  setDeco(9, 1, TILES.PORTAL_GATE_CLOSED, true);
+  setDeco(10, 1, TILES.PORTAL_GATE_CLOSED, true);
 
-  setDeco(5, rows - 1, TILES.EXIT_MAT, false);
-  setDeco(6, rows - 1, TILES.EXIT_MAT, false);
+  setDeco(9, rows - 1, TILES.EXIT_MAT, false);
+  setDeco(10, rows - 1, TILES.EXIT_MAT, false);
 
   tilemap.scenes.kernel_arena = {
-    title: 'Arena del Kernel · Servidor Central (12x10)',
+    title: 'Arena del Kernel · Servidor Central (20x15)',
     cols,
     rows,
     layers: { ground, decoration, collision },
     lightSources: [
-      { x: 6.0 * 16, y: 4.5 * 16, radius: 92, intensity: 1.0, color: '#22c55e' },
-      { x: 5.5 * 16, y: 8.5 * 16, radius: 44, intensity: 0.75, color: '#0ea5e9' }
+      { x: 10.0 * 16, y: 7.0 * 16, radius: 112, intensity: 1.0, color: '#22c55e' },
+      { x: 10.0 * 16, y: 13.5 * 16, radius: 52, intensity: 0.75, color: '#0ea5e9' }
     ],
     exitDoor: {
-      worldX: 5.5 * 16,
-      worldY: 9.0 * 16,
+      worldX: 10 * 16,
+      worldY: (rows - 1) * 16,
       returnX: 20.5 * 16,
       returnY: 14.2 * 16,
       returnScene: 'valleverde_corp'
@@ -336,8 +333,8 @@ function buildRosaBarScene(tilemap) {
 }
 
 function buildAiNucleusCoreScene(tilemap) {
-  const cols = 14;
-  const rows = 12;
+  const cols = 24;
+  const rows = 18;
   const { ground, decoration, collision } = createSceneHelpers(tilemap, cols, rows);
 
   for (let r = 0; r < rows; r++) {
@@ -348,16 +345,14 @@ function buildAiNucleusCoreScene(tilemap) {
     }
   }
 
-  collision[rows - 1][6] = 0;
-  collision[rows - 1][7] = 0;
-  decoration[rows - 1][6] = TILES.DOOR;
-  decoration[rows - 1][7] = TILES.DOOR;
+  collision[rows - 1][11] = 0;
+  collision[rows - 1][12] = 0;
+  decoration[rows - 1][11] = TILES.DOOR;
+  decoration[rows - 1][12] = TILES.DOOR;
 
+  // Gran plataforma flotante abierta 22x16 sobre el vacío binario sin bloques ni huecos que estorben
   tilemap._coreDataPlatforms = [
-    { col: 2, row: 2, w: 10, h: 6 },
-    { col: 5, row: 8, w: 4, h: 3 },
-    { col: 1, row: 4, w: 1, h: 3 },
-    { col: 12, row: 4, w: 1, h: 3 }
+    { col: 1, row: 1, w: cols - 2, h: rows - 2 }
   ];
 
   const ts = tilemap.tileSize ?? 16;
@@ -367,8 +362,8 @@ function buildAiNucleusCoreScene(tilemap) {
     cols,
     rows,
     tileSize: ts,
-    spawnX: 6.5 * ts,
-    spawnY: 9.8 * ts,
+    spawnX: 11.5 * ts,
+    spawnY: 14.5 * ts,
     layers: { ground, decoration, collision }
   };
 }
@@ -387,7 +382,7 @@ export function setAlexCoreUnlocked(tilemap, unlocked) {
   }
   const arena = tilemap.scenes.kernel_arena;
   if (arena && arena.layers) {
-    for (const c of [5, 6]) {
+    for (const c of [9, 10]) {
       arena.layers.decoration[1][c] = gateTile;
       arena.layers.collision[1][c] = blocked;
     }
@@ -540,12 +535,14 @@ function drawKernelArenaOverlay(tilemap, ctx, camera) {
   const camX = camera.renderX;
   const camY = camera.renderY;
   const ts = tilemap.tileSize;
+  const cols = tilemap.cols || 20;
+  const rows = tilemap.rows || 15;
   ctx.save();
 
   ctx.strokeStyle = 'rgba(34, 197, 94, 0.16)';
   ctx.lineWidth = 1;
-  for (let r = 2; r < 9; r++) {
-    for (let c = 1; c < 11; c++) {
+  for (let r = 2; r < rows - 1; r++) {
+    for (let c = 1; c < cols - 1; c++) {
       const sx = Math.round(c * ts - camX);
       const sy = Math.round(r * ts - camY);
       ctx.strokeRect(sx + 2.5, sy + 2.5, 5, 5);
@@ -553,7 +550,7 @@ function drawKernelArenaOverlay(tilemap, ctx, camera) {
     }
   }
 
-  for (const col of [2, 8]) {
+  for (const col of [2, Math.max(4, cols - 4)]) {
     const rx = Math.round(col * ts - camX) + 2;
     const ry = Math.round(1 * ts - camY) + 2;
     ctx.fillStyle = '#052e16';
@@ -614,8 +611,8 @@ function drawAiNucleusCoreOverlay(tilemap, ctx, camera) {
   const camX = camera.renderX;
   const camY = camera.renderY;
   const ts = tilemap.tileSize;
-  const cols = 14;
-  const rows = 12;
+  const cols = tilemap.cols || 24;
+  const rows = tilemap.rows || 18;
   const totalW = cols * ts;
   const totalH = rows * ts;
   const t = tilemap.animationClock || 0;
@@ -639,8 +636,7 @@ function drawAiNucleusCoreOverlay(tilemap, ctx, camera) {
   }
 
   const platforms = tilemap._coreDataPlatforms || [
-    { col: 2, row: 2, w: 10, h: 6 },
-    { col: 5, row: 8, w: 4, h: 3 }
+    { col: 1, row: 1, w: cols - 2, h: rows - 2 }
   ];
   for (const p of platforms) {
     for (let r = p.row; r < p.row + p.h; r++) {
@@ -659,8 +655,9 @@ function drawAiNucleusCoreOverlay(tilemap, ctx, camera) {
     }
   }
 
-  const portalX = Math.round(6 * ts - camX);
-  const portalY = Math.round(10.85 * ts - camY);
+  const doorCol = Math.floor(cols / 2) - 1;
+  const portalX = Math.round(doorCol * ts - camX);
+  const portalY = Math.round((rows - 1.15) * ts - camY);
   ctx.fillStyle = 'rgba(34, 211, 238, 0.22)';
   ctx.fillRect(portalX, portalY, ts * 2, 6);
   ctx.strokeStyle = '#67e8f9';

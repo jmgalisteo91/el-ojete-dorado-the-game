@@ -35,7 +35,7 @@ function rectsOverlap(a, b) {
 }
 
 export class AlexUpdateBoss extends Boss {
-  constructor({ x = 6.2 * 16, y = 2.6 * 16, sceneId = 'ai_nucleus_core', hp = 200 } = {}) {
+  constructor({ x = 11 * 16, y = 7.5 * 16, sceneId = 'ai_nucleus_core', hp = 200 } = {}) {
     super({
       id: 'boss_alex_update',
       name: 'Mister Alex IA · El Update',
@@ -205,6 +205,10 @@ export class AlexUpdateBoss extends Boss {
   }
 
   update(dt, tilemap, player, paused, soundEngine) {
+    if (tilemap) {
+      if (tilemap.cols) this.arenaCols = tilemap.cols;
+      if (tilemap.rows) this.arenaRows = tilemap.rows;
+    }
     if (paused) return;
     if (this.dead) {
       this.deathTimer += dt;
@@ -228,18 +232,20 @@ export class AlexUpdateBoss extends Boss {
     this._syncPhase();
     this.floatTime += dt;
 
-    // Movimiento flotante sobre la arena de datos
+    // Movimiento flotante sobre la arena abierta 24x18
+    const arenaCols = this.arenaCols || tilemap?.cols || 24;
+    const arenaRows = this.arenaRows || tilemap?.rows || 18;
     const arenaMinX = 1.8 * 16;
-    const arenaMaxX = 10.6 * 16;
+    const arenaMaxX = (arenaCols - 3.4) * 16;
     const arenaMinY = 1.6 * 16;
-    const arenaMaxY = 6.0 * 16;
+    const arenaMaxY = (arenaRows - 5.0) * 16;
 
     const targetX = this.phase <= 2
-      ? this.baseX + Math.sin(this.floatTime * 1.6) * 44
-      : player.x + Math.sin(this.floatTime * 2.1) * 26;
+      ? this.baseX + Math.sin(this.floatTime * 1.6) * 80
+      : player.x + Math.sin(this.floatTime * 2.1) * 32;
     const targetY = this.phase <= 3
-      ? this.baseY + Math.cos(this.floatTime * 1.9) * 14
-      : 2.8 * 16 + Math.sin(this.floatTime * 1.2) * 10;
+      ? this.baseY + Math.cos(this.floatTime * 1.9) * 24
+      : 4.5 * 16 + Math.sin(this.floatTime * 1.2) * 16;
 
     const dx = targetX - this.x;
     const dy = targetY - this.y;
@@ -344,13 +350,15 @@ export class AlexUpdateBoss extends Boss {
   }
 
   summonInterns(count = 2) {
+    const arenaCols = this.arenaCols || 24;
+    const arenaRows = this.arenaRows || 18;
     for (let i = 0; i < count && this.interns.length < 2; i++) {
       const side = (this.interns.length % 2 === 0) ? -28 : 28;
       this.interns.push({
         id: `becario_${Date.now()}_${this.interns.length}`,
         name: 'Becario',
-        x: Math.max(2 * 16, Math.min(11 * 16, this.centerX + side - 6)),
-        y: Math.min(9.5 * 16, this.centerY + 26),
+        x: Math.max(2 * 16, Math.min((arenaCols - 3) * 16, this.centerX + side - 6)),
+        y: Math.min((arenaRows - 2.5) * 16, this.centerY + 26),
         width: 12,
         height: 14,
         hp: 2,
@@ -434,9 +442,10 @@ export class AlexUpdateBoss extends Boss {
     this.laserAoeTimer -= dt;
     if (this.laserAoeTimer <= 0) {
       this.laserAoeTimer = 2.8;
+      const arenaRows = this.arenaRows || 18;
       this.lasers.push({
         orientation: 'horizontal',
-        pos: Math.max(2 * 16, Math.min(10 * 16, player.centerY)),
+        pos: Math.max(2 * 16, Math.min((arenaRows - 2) * 16, player.centerY)),
         thickness: 14,
         telegraphTimer: 0.75,
         activeTimer: 0.55,
@@ -481,9 +490,11 @@ export class AlexUpdateBoss extends Boss {
     this.fineTimer -= dt;
     if (this.fineTimer <= 0) {
       this.fineTimer = 1.6;
+      const arenaCols = this.arenaCols || 24;
+      const arenaRows = this.arenaRows || 18;
       this.fines.push({
-        x: Math.max(2 * 16, Math.min(12 * 16, player.centerX)),
-        y: Math.max(2 * 16, Math.min(10 * 16, player.centerY)),
+        x: Math.max(2 * 16, Math.min((arenaCols - 2) * 16, player.centerX)),
+        y: Math.max(2 * 16, Math.min((arenaRows - 2) * 16, player.centerY)),
         radius: 20,
         chargeTimer: 1.05,
         detonatedTimer: 0.35,
@@ -517,8 +528,10 @@ export class AlexUpdateBoss extends Boss {
     this.serverShutdownTimer -= dt;
     if (this.serverShutdownTimer <= 0) {
       this.serverShutdownTimer = 2.6;
-      const cx = Math.max(2.5 * 16, Math.min(11.5 * 16, player.centerX));
-      const cy = Math.max(2.0 * 16, Math.min(9.5 * 16, player.centerY));
+      const arenaCols = this.arenaCols || 24;
+      const arenaRows = this.arenaRows || 18;
+      const cx = Math.max(2.5 * 16, Math.min((arenaCols - 2.5) * 16, player.centerX));
+      const cy = Math.max(2.0 * 16, Math.min((arenaRows - 2.5) * 16, player.centerY));
       this.lasers.push(
         { orientation: 'vertical', pos: cx, thickness: 12, telegraphTimer: 0.85, activeTimer: 0.55, color: '#22d3ee', hitApplied: false },
         { orientation: 'horizontal', pos: cy, thickness: 12, telegraphTimer: 0.85, activeTimer: 0.55, color: '#22d3ee', hitApplied: false }
@@ -529,9 +542,9 @@ export class AlexUpdateBoss extends Boss {
 
   _updateAlexProjectiles(dt, tilemap, player, soundEngine) {
     const minX = 1.2 * (tilemap?.tileSize || 16);
-    const maxX = ((tilemap?.cols || 14) - 1.2) * (tilemap?.tileSize || 16);
+    const maxX = ((tilemap?.cols || this.arenaCols || 24) - 1.2) * (tilemap?.tileSize || 16);
     const minY = 1.2 * (tilemap?.tileSize || 16);
-    const maxY = ((tilemap?.rows || 12) - 1.2) * (tilemap?.tileSize || 16);
+    const maxY = ((tilemap?.rows || this.arenaRows || 18) - 1.2) * (tilemap?.tileSize || 16);
 
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
@@ -628,8 +641,8 @@ export class AlexUpdateBoss extends Boss {
     if (this.fireTickTimer > 0) this.fireTickTimer = Math.max(0, this.fireTickTimer - dt);
 
     const ts = tilemap?.tileSize || 16;
-    const w = (tilemap?.cols || 14) * ts;
-    const h = (tilemap?.rows || 12) * ts;
+    const w = (tilemap?.cols || this.arenaCols || 24) * ts;
+    const h = (tilemap?.rows || this.arenaRows || 18) * ts;
     const margin = 20;
     const onBorder =
       player.centerX <= margin ||
@@ -650,9 +663,11 @@ export class AlexUpdateBoss extends Boss {
     const ts = 16;
 
     // 1. Borde de fuego en Fase 4 y Fase 5
+    const arenaCols = this.arenaCols || 24;
+    const arenaRows = this.arenaRows || 18;
     if (this.fireBorderActive) {
-      const w = 14 * ts;
-      const h = 12 * ts;
+      const w = arenaCols * ts;
+      const h = arenaRows * ts;
       const pulse = 0.45 + 0.35 * Math.sin(this.floatTime * 10);
       ctx.save();
       ctx.strokeStyle = `rgba(249, 115, 22, ${pulse})`;
@@ -687,10 +702,10 @@ export class AlexUpdateBoss extends Boss {
       ctx.fillStyle = isTelegraph ? 'rgba(248, 113, 113, 0.35)' : l.color;
       if (l.orientation === 'horizontal') {
         const y = Math.round(l.pos - l.thickness * 0.5 + oy);
-        ctx.fillRect(ox, y, 14 * ts, l.thickness);
+        ctx.fillRect(ox, y, arenaCols * ts, l.thickness);
       } else {
         const x = Math.round(l.pos - l.thickness * 0.5 + ox);
-        ctx.fillRect(x, oy, l.thickness, 12 * ts);
+        ctx.fillRect(x, oy, l.thickness, arenaRows * ts);
       }
       ctx.restore();
     }
