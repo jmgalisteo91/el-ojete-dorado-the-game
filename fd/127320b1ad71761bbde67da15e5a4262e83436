@@ -1,0 +1,22 @@
+src/core/SceneTransitionController.js
+  h_e1bbc662b18209 12-28,251-282,284-286,290,293,297-299
+src/expansion/ExpansionManager.js
+  h_e1bbc662b18209 312-323
+src/main.js
+  h_e1bbc662b18209 92-106,1185-1188,1506-1508,1526-1582,3076-3087
+src/ui/MainMenuAndScenes.js
+  h_e1bbc662b18209 679,732,905-908,910-919
+tests/suites/world.test.mjs
+  h_e1bbc662b18209 2475-2654
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "fd127320b1ad71761bbde67da15e5a4262e83436",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
