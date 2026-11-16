@@ -1,0 +1,26 @@
+src/core/SceneTransitionController.js
+  h_e1bbc662b18209 4,297-320,326,376-377,511-524
+src/data/EnemyData.js
+  h_e1bbc662b18209 560-567
+src/expansion/ExpansionData.js
+  h_e1bbc662b18209 280-288
+src/expansion/ExpansionManager.js
+  h_e1bbc662b18209 48,257
+src/main.js
+  h_e1bbc662b18209 92-101,480,786-789,1262-1301,1394,1884-1887,5047
+src/ui/DialogueBox.js
+  h_e1bbc662b18209 32,47,51-55,192,194,221,223,341,354-362
+tests/suites/bosses.test.mjs
+  h_e1bbc662b18209 20-21,903-996
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "d5d4bacdc0524c90ce317557082b700cc24efe46",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
