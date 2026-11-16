@@ -3807,6 +3807,71 @@ export async function run(test, assert) {
       playedScript = null;
       RPGGame.prototype.startExpansion.call(fakeGame);
       assert.equal(playedScript, null, 'Con introSeen=true, reanudar entra directo sin repetir la intro');
+
+      // Al iniciar desde el menú principal (freshStart: true), SIEMPRE vuelve a reproducir PROLOGUE_EXPANSION
+      storeMap.set('el_ojete_dorado_expansion_save_v1', JSON.stringify({ introSeen: true, curriculum: 18, coins: 250 }));
+      playedScript = null;
+      let menuPassedOpts = null;
+      const titleMenu = new MainMenuAndScenes(320, 180, {}, {
+        playMenuSelect: () => {},
+        playCaughtSkipSound: () => {},
+        stopTitleMusic: () => {}
+      }, {
+        game: fakeGame,
+        onStartExpansion: (opts) => {
+          menuPassedOpts = opts;
+          return RPGGame.prototype.startExpansion.call(fakeGame, opts);
+        }
+      });
+      const menuExpansionItem = titleMenu._getCurrentMenuItems().find((it) => it.label === 'El Resurgir de Mister Alex IA');
+      assert.ok(menuExpansionItem && !menuExpansionItem.locked);
+      menuExpansionItem.action();
+      assert.deepEqual(menuPassedOpts, { freshStart: true }, 'El botón del menú principal debe iniciar la expansión en modo freshStart');
+      assert.equal(playedScript?.id, 'prologue_expansion', 'Iniciar desde el menú principal debe reproducir siempre la cinemática PROLOGUE_EXPANSION');
+      assert.equal(fakeGame.curriculum, 0, 'freshStart debe empezar una partida limpia en Valleverde 2.0');
+    } finally {
+      globalThis.localStorage = prevStorage;
+    }
+  });
+
+  test('Desbloqueo automático de expansión si la partida guardada derrotó al boss final del juego base', async () => {
+    const prevStorage = globalThis.localStorage;
+    const storeMap = new Map();
+    globalThis.localStorage = {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k)
+    };
+
+    try {
+      const { hasExpansionUnlocked } = await import('../../src/expansion/ExpansionData.js');
+      assert.equal(hasExpansionUnlocked(), false, 'Sin trofeo ni partida completada debe estar bloqueada');
+
+      // Partida guardada donde aún no se derrotó al boss final
+      storeMap.set('el_ojete_dorado_save_v1', JSON.stringify({
+        savePayload: {
+          gameCompleted: false,
+          defeatedEnemyIds: ['goblin_1']
+        }
+      }));
+      assert.equal(hasExpansionUnlocked(), false, 'Una partida sin boss final derrotado no desbloquea la expansión');
+
+      // Partida guardada (formato contenedor) con boss_final_ai_alex derrotado, sin cookie victory_trophy
+      storeMap.set('el_ojete_dorado_save_v1', JSON.stringify({
+        savePayload: {
+          gameCompleted: false,
+          defeatedEnemyIds: ['boss_final_ai_alex']
+        }
+      }));
+      assert.equal(hasExpansionUnlocked(), true, 'Derrotar a boss_final_ai_alex en la partida guardada desbloquea la expansión');
+
+      const menuFromBossKill = new MainMenuAndScenes(320, 180, {}, {}, { game: null });
+      assert.equal(menuFromBossKill._hasVictoryTrophy(), true, 'El menú debe desbloquearse con boss_final_ai_alex derrotado en save');
+      assert.equal(menuFromBossKill._getCurrentMenuItems().find((it) => it.label === 'El Resurgir de Mister Alex IA').locked, false);
+
+      // Partida guardada con gameCompleted=true en formato plano heredado
+      storeMap.set('el_ojete_dorado_save_v1', JSON.stringify({ gameCompleted: true }));
+      assert.equal(hasExpansionUnlocked(), true, 'gameCompleted=true en partida guardada desbloquea la expansión');
     } finally {
       globalThis.localStorage = prevStorage;
     }

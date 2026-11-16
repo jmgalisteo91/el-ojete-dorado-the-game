@@ -5,6 +5,8 @@
  * El juego base NO carga escenas, pistas musicales ni entidades de la expansión
  * hasta que el jugador pulsa la opción desbloqueada en el menú y se llama a `init(game)`.
  */
+import { hasExpansionUnlocked } from './ExpansionData.js?v=8';
+
 export class ExpansionManager {
   constructor(game = null) {
     this.game = game;
@@ -397,19 +399,12 @@ export class ExpansionManager {
    * 1) Inyecta las escenas en Tilemap, 2) carga los audios en AudioManager,
    * 3) arranca el estado 'expansion' y 4) crea los NPCs y jefes de la expansión.
    */
-  async init(game = this.game) {
+  async init(game = this.game, options = {}) {
     const target = game || this.game;
     if (!target) return null;
     this.game = target;
 
-    const hasVictoryTrophy = (() => {
-      try {
-        return typeof localStorage !== 'undefined' && localStorage.getItem('el_ojete_dorado_victory_trophy') === 'true';
-      } catch {
-        return false;
-      }
-    })();
-    if (!hasVictoryTrophy) {
+    if (!hasExpansionUnlocked(target)) {
       target.menuSystem?.showNotice?.('🔒 Completa el juego base para desbloquear la expansión.', 3.0);
       return null;
     }
@@ -436,7 +431,7 @@ export class ExpansionManager {
         this.initialized = true;
 
         if (typeof target.startExpansion === 'function') {
-          target.startExpansion();
+          target.startExpansion(options);
         }
 
         this.attachCachedEntities(target);

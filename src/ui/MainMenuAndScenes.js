@@ -6,8 +6,7 @@ import { getLocalLeaderboard, fetchGlobalLeaderboard } from '../core/ScoreSystem
 import { LeaderboardView } from './LeaderboardView.js?v=8';
 import { UILayout, GAME_VERSION } from './UILayout.js?v=8';
 import { JUKEBOX_TRACKS } from '../audio/AudioManager.js?v=8';
-
-const EXPANSION_UNLOCK_KEY = 'el_ojete_dorado_victory_trophy';
+import { EXPANSION_UNLOCK_KEY, hasExpansionUnlocked } from '../expansion/ExpansionData.js?v=8';
 const EXPANSION_MENU_INFO = {
   id: 'resurgir_mister_alex',
   version: 'v2.0',
@@ -798,13 +797,7 @@ export class MainMenuAndScenes {
   }
 
   _hasVictoryTrophy() {
-    try {
-      if (typeof localStorage === 'undefined') return false;
-      const val = localStorage.getItem(EXPANSION_UNLOCK_KEY);
-      return val === 'true';
-    } catch {
-      return false;
-    }
+    return hasExpansionUnlocked(this.callbacks?.game || null);
   }
 
   _isBossRushUnlocked() {
@@ -904,16 +897,17 @@ export class MainMenuAndScenes {
               return;
             }
             this.music.playMenuSelect();
+            const startOpts = { freshStart: true };
             if (typeof this.callbacks.onStartExpansion === 'function') {
               if (typeof this.music.stopTitleMusic === 'function') {
                 this.music.stopTitleMusic(350);
               }
-              this.callbacks.onStartExpansion();
+              this.callbacks.onStartExpansion(startOpts);
             } else if (typeof this.callbacks.game?.expansionManager?.init === 'function') {
               if (typeof this.music.stopTitleMusic === 'function') {
                 this.music.stopTitleMusic(350);
               }
-              this.callbacks.game.expansionManager.init(this.callbacks.game);
+              this.callbacks.game.expansionManager.init(this.callbacks.game, startOpts);
             } else {
               this.expansionTeaserOpen = true;
             }

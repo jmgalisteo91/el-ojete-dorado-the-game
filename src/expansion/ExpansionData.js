@@ -6,6 +6,8 @@
  */
 
 export const EXPANSION_UNLOCK_KEY = 'el_ojete_dorado_victory_trophy';
+const BASE_SAVE_STORAGE_KEY = 'el_ojete_dorado_save_v1';
+const ACHIEVEMENTS_STORAGE_KEY = 'el_ojete_dorado_achievements_v1';
 
 export const EXPANSION_BGM = {
   valleverde_corp: 'assets/music/11_valleverde_corporativo.mp3',
@@ -15,10 +17,53 @@ export const EXPANSION_BGM = {
   boss_alex_final: 'assets/music/15_boss_alex_final.mp3'
 };
 
-export function hasExpansionUnlocked() {
+function _savePayloadDefeatedFinalBoss(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  if (payload.gameCompleted === true) return true;
+  if (payload.player?.hasGoldenAnus === true) return true;
+  if (Array.isArray(payload.defeatedEnemyIds) && payload.defeatedEnemyIds.includes('boss_final_ai_alex')) {
+    return true;
+  }
+  if (payload.achievementsData && typeof payload.achievementsData === 'object' && payload.achievementsData.ach_golden_anus) {
+    return true;
+  }
+  return false;
+}
+
+export function hasExpansionUnlocked(game = null) {
+  if (game && typeof game === 'object') {
+    if (game.gameCompleted === true) return true;
+    if (game.player?.hasGoldenAnus === true) return true;
+    if (game.achievementManager?.isUnlocked?.('ach_golden_anus')) return true;
+    if (Array.isArray(game.enemies) && game.enemies.some((e) => e?.id === 'boss_final_ai_alex' && e.dead)) {
+      return true;
+    }
+  }
   try {
-    return typeof localStorage !== 'undefined' &&
-      Boolean(localStorage.getItem(EXPANSION_UNLOCK_KEY));
+    if (typeof localStorage === 'undefined') return false;
+    if (localStorage.getItem(EXPANSION_UNLOCK_KEY) === 'true') return true;
+
+    const rawAchievements = localStorage.getItem(ACHIEVEMENTS_STORAGE_KEY);
+    if (rawAchievements) {
+      const parsedAch = JSON.parse(rawAchievements);
+      if (parsedAch && typeof parsedAch === 'object' && parsedAch.ach_golden_anus) {
+        return true;
+      }
+    }
+
+    const rawSave = localStorage.getItem(BASE_SAVE_STORAGE_KEY);
+    if (rawSave) {
+      const parsedSave = JSON.parse(rawSave);
+      if (parsedSave && typeof parsedSave === 'object') {
+        const payload = parsedSave.savePayload && typeof parsedSave.savePayload === 'object'
+          ? parsedSave.savePayload
+          : parsedSave;
+        if (_savePayloadDefeatedFinalBoss(payload)) {
+          return true;
+        }
+      }
+    }
+    return false;
   } catch {
     return false;
   }

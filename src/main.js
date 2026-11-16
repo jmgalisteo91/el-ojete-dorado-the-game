@@ -16,7 +16,7 @@ import { CollisionSystem } from './physics/CollisionSystem.js?v=8';
 import { Player, MAX_PLAYER_LEVEL, DIVINE_BLESSINGS } from './entities/Player.js?v=8';
 import { NPC, getBromForgeChoices } from './entities/NPC.js?v=8';
 import { ExpansionManager } from './expansion/ExpansionManager.js?v=8';
-import { STARTING_EXPANSION_GEAR, EXPANSION_EQUIPMENT } from './expansion/ExpansionData.js?v=8';
+import { STARTING_EXPANSION_GEAR, EXPANSION_EQUIPMENT, hasExpansionUnlocked } from './expansion/ExpansionData.js?v=8';
 import { DemonVengador } from './expansion/entities/DemonVengador.js?v=8';
 import { Animal } from './entities/Animal.js?v=8';
 import { Enemy, setParticleScale } from './entities/Enemy.js?v=8';
@@ -505,7 +505,7 @@ export class RPGGame {
         onStartGodMode: () => this._startGodModeDebug(),
         onStartBossRush: () => this.startBossRush(),
         onLoadGame: () => this._loadGameFromStorage(),
-        onStartExpansion: () => this.expansionManager.init(this),
+        onStartExpansion: (options = {}) => this.expansionManager.init(this, options),
         onSaveGame: (opts) => this._saveGameToStorage(opts || { manual: true }),
         // (FIX EXIT) Fallback real cuando el navegador bloquea window.close()
         onExit: () => {
@@ -3527,30 +3527,26 @@ export class RPGGame {
    * Inicia o reanuda la expansión "El Resurgir de Mister Alex IA" desde el slot independiente
    * `el_ojete_dorado_expansion_save_v1` y teletransporta al jugador a `valleverde_corp`.
    */
-  startExpansion() {
-    const hasTrophy = (() => {
-      try {
-        return typeof localStorage !== 'undefined' && localStorage.getItem(EXPANSION_UNLOCK_KEY) === 'true';
-      } catch {
-        return false;
-      }
-    })();
-    if (!hasTrophy) {
+  startExpansion(options = {}) {
+    if (!hasExpansionUnlocked(this)) {
       this.menuSystem?.showNotice?.('🔒 Completa el juego base para desbloquear la expansión.', 3.0);
       return false;
     }
 
+    const freshStart = Boolean(options?.freshStart);
     let savedSlot = null;
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const raw = localStorage.getItem(EXPANSION_SLOT_SAVE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === 'object') savedSlot = parsed;
+    if (!freshStart) {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const raw = localStorage.getItem(EXPANSION_SLOT_SAVE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') savedSlot = parsed;
+          }
         }
+      } catch {
+        savedSlot = null;
       }
-    } catch {
-      savedSlot = null;
     }
 
     // Limpiar estado del juego base antes de arrancar o reanudar la expansión
