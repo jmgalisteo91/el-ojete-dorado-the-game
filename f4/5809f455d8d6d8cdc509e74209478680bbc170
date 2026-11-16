@@ -1,0 +1,22 @@
+src/data/DialogueData.js
+  h_e1bbc662b18209 374-375,379-381
+src/entities/Player.js
+  h_e1bbc662b18209 9-29,76-77,262-266,271-283,323-326,476-477,876-878,1146-1148
+src/main.js
+  h_e1bbc662b18209 16,1267-1270,1922,1924-1934,3094,3103-3321
+src/services/CloudStorage.js
+  h_e1bbc662b18209 161-164
+tests/suites/player.test.mjs
+  h_e1bbc662b18209 2,1097-1223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f45809f455d8d6d8cdc509e74209478680bbc170",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
