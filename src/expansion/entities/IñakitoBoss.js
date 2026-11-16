@@ -622,7 +622,7 @@ export class IñakitoBoss extends Boss {
       ctx.fillStyle = '#38bdf8';
       ctx.font = '3.5px monospace';
       ctx.fillText(
-        this.chargeState === 'windup' ? '¡EMBESTIDA! USA PARRY [C]' : 'PARRY PARA ROMPER',
+        this.chargeState === 'windup' ? '¡EMBESTIDA! PARRY [Clic Dcho / Q]' : 'PARRY PARA ROMPER',
         sx,
         sy + 39
       );

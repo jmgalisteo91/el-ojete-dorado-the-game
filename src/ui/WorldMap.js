@@ -125,6 +125,47 @@ const ATLAS_CONNECTOR_LINES = [
   { ax1: 54,  ay1: 72,  ax2: 54,  ay2: 108, color: '#d946ef', zone: 'west'  }  // quantum_gate -> ai_citadel
 ];
 
+/** Atlas exclusivo de la expansión "El Resurgir de Mister Alex IA" (ocupa todo el lienzo 652x288). */
+export const EXPANSION_ATLAS_SLOTS = {
+  valleverde_corp:   { zone: 'corp_hub',       ax: 254, ay: 94,  cols: 24, rows: 18, tilePx: 6, biome: 'corp', inset: false, isExpansion: true },
+  inakito_office:    { zone: 'corp_inakito',   ax: 286, ay: 18,  cols: 20, rows: 15, tilePx: 4, biome: 'corp', inset: true,  isExpansion: true, label: 'OFICINA IÑAKITO', accent: '#38bdf8' },
+  rosa_bar:          { zone: 'corp_hub',       ax: 152, ay: 124, cols: 10, rows: 8,  tilePx: 6, biome: 'corp', inset: true,  isExpansion: true, label: 'BAR DE ROSA',     accent: '#f59e0b' },
+  ai_nucleus_core:   { zone: 'corp_nucleus',   ax: 26,  ay: 112, cols: 24, rows: 18, tilePx: 4, biome: 'corp', inset: true,  isExpansion: true, label: 'NÚCLEO ALEX IA',  accent: '#22d3ee' },
+  kernel_arena:      { zone: 'corp_kernel',    ax: 286, ay: 218, cols: 20, rows: 15, tilePx: 4, biome: 'corp', inset: true,  isExpansion: true, label: 'SALA DEL KERNEL', accent: '#22c55e' },
+  vertedero_piso_1:  { zone: 'corp_vertedero', ax: 444, ay: 20,  cols: 24, rows: 18, tilePx: 3, biome: 'corp', inset: true,  isExpansion: true, label: 'VERTEDERO P1',    accent: '#a855f7' },
+  vertedero_piso_2:  { zone: 'corp_vertedero', ax: 548, ay: 20,  cols: 24, rows: 18, tilePx: 3, biome: 'corp', inset: true,  isExpansion: true, label: 'VERTEDERO P2',    accent: '#a855f7' },
+  vertedero_piso_3:  { zone: 'corp_vertedero', ax: 444, ay: 112, cols: 24, rows: 18, tilePx: 3, biome: 'corp', inset: true,  isExpansion: true, label: 'P3 · FRANCO',     accent: '#f59e0b' },
+  vertedero_piso_4:  { zone: 'corp_vertedero', ax: 548, ay: 112, cols: 24, rows: 18, tilePx: 3, biome: 'corp', inset: true,  isExpansion: true, label: 'VERTEDERO P4',    accent: '#a855f7' },
+  vertedero_piso_5:  { zone: 'corp_vertedero', ax: 496, ay: 204, cols: 24, rows: 18, tilePx: 3, biome: 'corp', inset: true,  isExpansion: true, label: 'VERTEDERO P5',    accent: '#ef4444' },
+  vertedero_digital: { zone: 'corp_vertedero', ax: 444, ay: 20,  cols: 24, rows: 18, tilePx: 3, biome: 'corp', inset: true,  isExpansion: true, label: 'VERTEDERO 2.0',   accent: '#a855f7', aliasOf: 'vertedero_piso_1' }
+};
+
+const EXPANSION_SCENE_ZONES = {
+  valleverde_corp: 'corp_hub',
+  rosa_bar: 'corp_hub',
+  inakito_office: 'corp_inakito',
+  vertedero_digital: 'corp_vertedero',
+  vertedero_piso_1: 'corp_vertedero',
+  vertedero_piso_2: 'corp_vertedero',
+  vertedero_piso_3: 'corp_vertedero',
+  vertedero_piso_4: 'corp_vertedero',
+  vertedero_piso_5: 'corp_vertedero',
+  kernel_arena: 'corp_kernel',
+  ai_nucleus_core: 'corp_nucleus'
+};
+
+const EXPANSION_CONNECTOR_LINES = [
+  { ax1: 326, ay1: 94,  ax2: 326, ay2: 78,  color: '#38bdf8' }, // valleverde_corp -> inakito_office
+  { ax1: 254, ay1: 148, ax2: 212, ay2: 148, color: '#f59e0b' }, // valleverde_corp -> rosa_bar
+  { ax1: 398, ay1: 148, ax2: 444, ay2: 47,  color: '#a855f7' }, // valleverde_corp -> vertedero P1
+  { ax1: 516, ay1: 47,  ax2: 548, ay2: 47,  color: '#a855f7' }, // P1 -> P2
+  { ax1: 584, ay1: 74,  ax2: 480, ay2: 112, color: '#a855f7' }, // P2 -> P3
+  { ax1: 516, ay1: 139, ax2: 548, ay2: 139, color: '#f59e0b' }, // P3 -> P4
+  { ax1: 584, ay1: 166, ax2: 532, ay2: 204, color: '#ef4444' }, // P4 -> P5
+  { ax1: 496, ay1: 238, ax2: 366, ay2: 248, color: '#22c55e' }, // P5 -> kernel_arena
+  { ax1: 286, ay1: 248, ax2: 122, ay2: 160, color: '#22d3ee' }  // kernel_arena -> ai_nucleus_core
+];
+
 export class WorldMap {
   constructor(menuSystem = null) {
     this.menuSystem = menuSystem;
@@ -148,8 +189,33 @@ export class WorldMap {
     this._mapCanvas = null;
     this._realMapBuilt = false;
     this._sourceTilemap = null;
+    this._cachedExpansionMap = null;
     this._fallbackTilemap = null;
     this._visitedScenes = new Set(['overworld']);
+  }
+
+  _isExpansionMode(currentSceneId = '', player = null, tilemap = null) {
+    if (currentSceneId && Boolean(EXPANSION_SCENE_ZONES[currentSceneId])) return true;
+    if (player?.isExpansionActive || player?.game?.isExpansionActive || player?.game?.isExpansionMode) return true;
+    const ctx = this.menuSystem?.worldMapContext;
+    if (ctx?.isExpansion || ctx?.game?.isExpansionActive || ctx?.game?.isExpansionMode) return true;
+    const gs = this.menuSystem?.callbacks?.getGameState?.();
+    if (gs?.isExpansion || gs?.isExpansionActive || gs?.isExpansionMode) return true;
+    const wg = globalThis?.window?.game;
+    if (wg?.isExpansionActive || wg?.isExpansionMode) return true;
+    if (tilemap?.expansionLoaded && !currentSceneId) return true;
+    return false;
+  }
+
+  _getZoneForScene(sceneId, isExpansion = false) {
+    if (isExpansion) {
+      return EXPANSION_SCENE_ZONES[sceneId] || 'corp_hub';
+    }
+    return SCENE_METADATA[sceneId]?.zone || 'center';
+  }
+
+  _getAtlasSlots(isExpansion = false) {
+    return isExpansion ? EXPANSION_ATLAS_SLOTS : ATLAS_SCENE_SLOTS;
   }
 
   setTouchMode(isTouch) {
@@ -251,7 +317,7 @@ export class WorldMap {
    */
   _getTilePalette(groundId, decoId, col, row, biome) {
     const jitter = ((col * 31 + row * 17) & 3);
-    let ground = '#2d5a27'; // Hierba base por defecto
+    let ground = biome === 'corp' ? (jitter === 0 ? '#1e293b' : '#263348') : '#2d5a27';
 
     if (groundId === TILES.WATER_1 || groundId === TILES.WATER_2) {
       ground = jitter === 0 ? '#1d4ed8' : (jitter === 1 ? '#1e40af' : '#1e3a8a');
@@ -280,8 +346,12 @@ export class WorldMap {
       ground = jitter === 0 ? '#64748b' : '#475569';
     } else if (groundId === TILES.INAKITO_CARPET) {
       ground = '#1e3a8a';
+    } else if (groundId === TILES.RUG_RED) {
+      ground = '#7f1d1d';
     } else if (groundId === TILES.GRASS_1 || groundId === TILES.GRASS_2 || groundId === undefined || groundId < 0) {
-      if (biome === 'south') {
+      if (biome === 'corp') {
+        ground = jitter === 0 ? '#1e293b' : '#263348';
+      } else if (biome === 'south') {
         ground = jitter === 0 ? '#21441f' : (jitter === 2 ? '#295025' : '#244821');
       } else if (biome === 'west') {
         ground = jitter === 0 ? '#273d24' : '#2f492a';
@@ -370,24 +440,26 @@ export class WorldMap {
    * Genera UNA SOLA VEZ el mapa offscreen gigante leyendo los tiles reales (`ground` y `decoration`)
    * de todas las escenas registradas en `game.tilemap.scenes`.
    */
-  _generateRealMapTexture(explicitTilemap = null) {
+  _generateRealMapTexture(explicitTilemap = null, explicitExpansion = null, currentSceneId = '') {
     const tilemap = this._resolveTilemap(explicitTilemap);
-    const expansionState = Boolean(
-      tilemap?.expansionLoaded ||
-      globalThis?.window?.game?.isExpansionActive ||
-      globalThis?.window?.game?.isExpansionMode
-    );
+    const isExpansion = typeof explicitExpansion === 'boolean'
+      ? explicitExpansion
+      : this._isExpansionMode(currentSceneId || this.menuSystem?.currentSceneId || '', null, tilemap);
+    const expansionLoaded = Boolean(tilemap?.expansionLoaded || isExpansion);
+
     if (
       this._realMapBuilt &&
       this._mapCanvas &&
-      this._cachedExpansionLoaded === expansionState &&
+      this._cachedExpansionMap === isExpansion &&
+      this._cachedExpansionLoaded === expansionLoaded &&
       (!explicitTilemap || this._sourceTilemap === tilemap)
     ) {
       return this._mapCanvas;
     }
 
     this._sourceTilemap = tilemap;
-    this._cachedExpansionLoaded = expansionState;
+    this._cachedExpansionMap = isExpansion;
+    this._cachedExpansionLoaded = expansionLoaded;
     this._realMapBuilt = true;
 
     const canvas = this._createOffscreenCanvas(ATLAS_WIDTH, ATLAS_HEIGHT);
@@ -402,76 +474,120 @@ export class WorldMap {
     }
     offCtx.imageSmoothingEnabled = false;
 
-    // 1. Fondo oceánico oscuro con gradiente abisal y retícula náutica sutil
-    const ocean = offCtx.createRadialGradient(
-      ATLAS_WIDTH * 0.5, ATLAS_HEIGHT * 0.5, 40,
-      ATLAS_WIDTH * 0.5, ATLAS_HEIGHT * 0.5, ATLAS_WIDTH * 0.65
-    );
-    ocean.addColorStop(0, '#0f223d');
-    ocean.addColorStop(0.55, '#091529');
-    ocean.addColorStop(1, '#040914');
-    offCtx.fillStyle = ocean;
-    offCtx.fillRect(0, 0, ATLAS_WIDTH, ATLAS_HEIGHT);
+    if (isExpansion) {
+      // Fondo cibernético oscuro exclusivo de Valleverde 2.0 (sin mapa medieval)
+      const bg = offCtx.createRadialGradient(
+        ATLAS_WIDTH * 0.5, ATLAS_HEIGHT * 0.5, 36,
+        ATLAS_WIDTH * 0.5, ATLAS_HEIGHT * 0.5, ATLAS_WIDTH * 0.7
+      );
+      bg.addColorStop(0, '#0c1b33');
+      bg.addColorStop(0.55, '#071122');
+      bg.addColorStop(1, '#030712');
+      offCtx.fillStyle = bg;
+      offCtx.fillRect(0, 0, ATLAS_WIDTH, ATLAS_HEIGHT);
 
-    // Retícula cartográfica pixel-art y oleaje tenue sobre el mar
-    offCtx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
-    offCtx.lineWidth = 1;
-    for (let x = 32; x < ATLAS_WIDTH; x += 48) {
-      offCtx.beginPath();
-      offCtx.moveTo(x, 0);
-      offCtx.lineTo(x, ATLAS_HEIGHT);
-      offCtx.stroke();
-    }
-    for (let y = 24; y < ATLAS_HEIGHT; y += 48) {
-      offCtx.beginPath();
-      offCtx.moveTo(0, y);
-      offCtx.lineTo(ATLAS_WIDTH, y);
-      offCtx.stroke();
-    }
-    for (let i = 0; i < 160; i++) {
-      const wx = (i * 97 + 19) % (ATLAS_WIDTH - 6);
-      const wy = (i * 53 + 11) % (ATLAS_HEIGHT - 2);
-      offCtx.fillStyle = i % 5 === 0 ? 'rgba(56, 189, 248, 0.16)' : 'rgba(30, 58, 138, 0.25)';
-      offCtx.fillRect(wx, wy, 4 + (i % 3) * 2, 1);
-    }
-
-    // 2. Halo costero alrededor de los 5 continentes principales
-    for (const slot of Object.values(ATLAS_SCENE_SLOTS)) {
-      const w = slot.cols * slot.tilePx;
-      const h = slot.rows * slot.tilePx;
-      if (!slot.inset) {
-        offCtx.fillStyle = 'rgba(30, 58, 138, 0.55)';
-        offCtx.fillRect(slot.ax - 4, slot.ay - 4, w + 8, h + 8);
-        offCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        offCtx.fillRect(slot.ax - 2, slot.ay - 2, w + 4, h + 4);
+      offCtx.strokeStyle = 'rgba(34, 211, 238, 0.08)';
+      offCtx.lineWidth = 1;
+      for (let x = 28; x < ATLAS_WIDTH; x += 36) {
+        offCtx.beginPath();
+        offCtx.moveTo(x, 0);
+        offCtx.lineTo(x, ATLAS_HEIGHT);
+        offCtx.stroke();
       }
+      for (let y = 24; y < ATLAS_HEIGHT; y += 36) {
+        offCtx.beginPath();
+        offCtx.moveTo(0, y);
+        offCtx.lineTo(ATLAS_WIDTH, y);
+        offCtx.stroke();
+      }
+
+      const hub = EXPANSION_ATLAS_SLOTS.valleverde_corp;
+      offCtx.fillStyle = 'rgba(14, 116, 144, 0.35)';
+      offCtx.fillRect(hub.ax - 4, hub.ay - 4, hub.cols * hub.tilePx + 8, hub.rows * hub.tilePx + 8);
+      offCtx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      offCtx.fillRect(hub.ax - 2, hub.ay - 2, hub.cols * hub.tilePx + 4, hub.rows * hub.tilePx + 4);
+
+      offCtx.save();
+      offCtx.setLineDash([4, 3]);
+      offCtx.lineWidth = 1.5;
+      for (const link of EXPANSION_CONNECTOR_LINES) {
+        offCtx.strokeStyle = link.color;
+        offCtx.globalAlpha = 0.65;
+        offCtx.beginPath();
+        offCtx.moveTo(link.ax1, link.ay1);
+        offCtx.lineTo(link.ax2, link.ay2);
+        offCtx.stroke();
+      }
+      offCtx.restore();
+    } else {
+      // 1. Fondo oceánico oscuro con gradiente abisal y retícula náutica sutil
+      const ocean = offCtx.createRadialGradient(
+        ATLAS_WIDTH * 0.5, ATLAS_HEIGHT * 0.5, 40,
+        ATLAS_WIDTH * 0.5, ATLAS_HEIGHT * 0.5, ATLAS_WIDTH * 0.65
+      );
+      ocean.addColorStop(0, '#0f223d');
+      ocean.addColorStop(0.55, '#091529');
+      ocean.addColorStop(1, '#040914');
+      offCtx.fillStyle = ocean;
+      offCtx.fillRect(0, 0, ATLAS_WIDTH, ATLAS_HEIGHT);
+
+      // Retícula cartográfica pixel-art y oleaje tenue sobre el mar
+      offCtx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+      offCtx.lineWidth = 1;
+      for (let x = 32; x < ATLAS_WIDTH; x += 48) {
+        offCtx.beginPath();
+        offCtx.moveTo(x, 0);
+        offCtx.lineTo(x, ATLAS_HEIGHT);
+        offCtx.stroke();
+      }
+      for (let y = 24; y < ATLAS_HEIGHT; y += 48) {
+        offCtx.beginPath();
+        offCtx.moveTo(0, y);
+        offCtx.lineTo(ATLAS_WIDTH, y);
+        offCtx.stroke();
+      }
+      for (let i = 0; i < 160; i++) {
+        const wx = (i * 97 + 19) % (ATLAS_WIDTH - 6);
+        const wy = (i * 53 + 11) % (ATLAS_HEIGHT - 2);
+        offCtx.fillStyle = i % 5 === 0 ? 'rgba(56, 189, 248, 0.16)' : 'rgba(30, 58, 138, 0.25)';
+        offCtx.fillRect(wx, wy, 4 + (i % 3) * 2, 1);
+      }
+
+      // 2. Halo costero alrededor de los 5 continentes principales
+      for (const slot of Object.values(ATLAS_SCENE_SLOTS)) {
+        const w = slot.cols * slot.tilePx;
+        const h = slot.rows * slot.tilePx;
+        if (!slot.inset) {
+          offCtx.fillStyle = 'rgba(30, 58, 138, 0.55)';
+          offCtx.fillRect(slot.ax - 4, slot.ay - 4, w + 8, h + 8);
+          offCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+          offCtx.fillRect(slot.ax - 2, slot.ay - 2, w + 4, h + 4);
+        }
+      }
+
+      // 3. Rutas submarinas hacia las cámaras de mazmorras y templos
+      offCtx.save();
+      offCtx.setLineDash([4, 3]);
+      offCtx.lineWidth = 1.5;
+      for (const link of ATLAS_CONNECTOR_LINES) {
+        offCtx.strokeStyle = link.color;
+        offCtx.globalAlpha = 0.5;
+        offCtx.beginPath();
+        offCtx.moveTo(link.ax1, link.ay1);
+        offCtx.lineTo(link.ax2, link.ay2);
+        offCtx.stroke();
+      }
+      offCtx.restore();
     }
 
-    // 3. Rutas submarinas hacia las cámaras de mazmorras y templos
-    offCtx.save();
-    offCtx.setLineDash([4, 3]);
-    offCtx.lineWidth = 1.5;
-    for (const link of ATLAS_CONNECTOR_LINES) {
-      offCtx.strokeStyle = link.color;
-      offCtx.globalAlpha = 0.5;
-      offCtx.beginPath();
-      offCtx.moveTo(link.ax1, link.ay1);
-      offCtx.lineTo(link.ax2, link.ay2);
-      offCtx.stroke();
-    }
-    offCtx.restore();
-
-    // 4. Recorrer todas las escenas de `tilemap.scenes` y pintar tiles reales (`ground` + `decoration`)
-    const expansionActive = Boolean(
-      tilemap?.expansionLoaded ||
-      globalThis?.window?.game?.isExpansionActive ||
-      globalThis?.window?.game?.isExpansionMode
-    );
+    // 4. Recorrer únicamente las escenas del atlas activo (base o expansión)
+    const activeSlots = this._getAtlasSlots(isExpansion);
     const scenes = tilemap?.scenes || {};
-    for (const [sceneId, scene] of Object.entries(scenes)) {
-      const slot = ATLAS_SCENE_SLOTS[sceneId];
-      if (!slot || !scene?.layers) continue;
-      if (slot.zone === 'corp' && !expansionActive) continue;
+    for (const [sceneId, slot] of Object.entries(activeSlots)) {
+      if (!isExpansion && slot.zone === 'corp') continue;
+      if (slot.aliasOf && scenes[slot.aliasOf]) continue;
+      const scene = scenes[sceneId];
+      if (!scene?.layers) continue;
 
       const groundLayer = scene.layers.ground;
       const decoLayer = scene.layers.decoration;
@@ -634,9 +750,23 @@ export class WorldMap {
   /**
    * Definición cartográfica de las regiones alineada con la geometría real del atlas.
    */
-  _getRegionDefs() {
+  _getRegionDefs(isExpansion = false) {
     const tf = this._getMapTransform();
     const pt = (ax, ay) => this._atlasToScreen(ax, ay, tf);
+    if (isExpansion) {
+      const hub = pt(326, 148);
+      const inakito = pt(326, 48);
+      const vertedero = pt(532, 138);
+      const kernel = pt(326, 248);
+      const nucleus = pt(74, 148);
+      return [
+        { id: 'corp_hub',       name: 'Valleverde 2.0 & Bar Rosa', short: 'VALLEVERDE 2.0', cx: hub.x,       cy: hub.y,       rx: 56, ry: 28, ax: 152, ay: 94,  aw: 246, ah: 108, color: '#22d3ee', icon: 'valley',   desc: 'Plaza Corporativa, Taller y Bar Rosa' },
+        { id: 'corp_inakito',   name: 'Oficina de Iñakito 2.0',    short: 'IÑAKITO 2.0',    cx: inakito.x,   cy: inakito.y,   rx: 30, ry: 20, ax: 286, ay: 18,  aw: 80,  ah: 60,  color: '#38bdf8', icon: 'skull',    desc: 'Acto 1 · Llave del Vertedero' },
+        { id: 'corp_vertedero', name: 'Vertedero Digital (5P)',    short: 'VERTEDERO 2.0',  cx: vertedero.x, cy: vertedero.y, rx: 56, ry: 50, ax: 444, ay: 20,  aw: 178, ah: 238, color: '#a855f7', icon: 'skull',    desc: '5 Pisos, Currículums y Franco' },
+        { id: 'corp_kernel',    name: 'Sala de El Kernel',         short: 'EL KERNEL',      cx: kernel.x,    cy: kernel.y,    rx: 30, ry: 20, ax: 286, ay: 218, aw: 80,  ah: 60,  color: '#22c55e', icon: 'shield',   desc: 'Acto 2 · Llave del Núcleo' },
+        { id: 'corp_nucleus',   name: 'Núcleo de Mister Alex IA',  short: 'NÚCLEO ALEX',    cx: nucleus.x,   cy: nucleus.y,   rx: 36, ry: 24, ax: 26,  ay: 112, aw: 96,  ah: 72,  color: '#22d3ee', icon: 'eye',      desc: 'Acto 3 · Update Universal' }
+      ];
+    }
     const north = pt(326, 48);
     const west = pt(158, 144);
     const center = pt(326, 144);
@@ -658,7 +788,8 @@ export class WorldMap {
     const cy = rect.y + rect.h / 2;
     const localX = (px - (cx + this.view.panX)) / this.view.zoom + cx;
     const localY = (py - (cy + this.view.panY)) / this.view.zoom + cy;
-    for (const def of this._getRegionDefs()) {
+    const isExp = Boolean(this._cachedExpansionMap);
+    for (const def of this._getRegionDefs(isExp)) {
       if (
         localX >= def.cx - def.rx &&
         localX <= def.cx + def.rx &&
@@ -672,7 +803,7 @@ export class WorldMap {
   }
 
   _cycleSelection(direction) {
-    const defs = this._getRegionDefs();
+    const defs = this._getRegionDefs(Boolean(this._cachedExpansionMap));
     if (defs.length === 0) return;
     let idx = defs.findIndex((d) => d.id === (this._selectedRegion || this._lastZoneId));
     if (idx < 0) idx = 0;
@@ -680,16 +811,41 @@ export class WorldMap {
     this._selectedRegion = defs[(idx + delta + defs.length) % defs.length].id;
   }
 
-  _getExploredZones(currentZone, status, player = null) {
+  _getExploredZones(currentZone, status, player = null, isExpansion = false) {
+    if (isExpansion) {
+      const visited = new Set(['corp_hub', currentZone]);
+      for (const sceneId of this._visitedScenes) {
+        const z = EXPANSION_SCENE_ZONES[sceneId];
+        if (z) visited.add(z);
+      }
+      if (Array.isArray(player?.visitedScenes)) {
+        for (const sceneId of player.visitedScenes) {
+          const z = EXPANSION_SCENE_ZONES[sceneId];
+          if (z) visited.add(z);
+        }
+      }
+      if (status.inakitoDefeated) {
+        visited.add('corp_inakito');
+        visited.add('corp_vertedero');
+      }
+      if (status.francoRescued) visited.add('corp_vertedero');
+      if (status.kernelDefeated) {
+        visited.add('corp_kernel');
+        visited.add('corp_nucleus');
+      }
+      if (status.alexCorpDefeated) visited.add('corp_nucleus');
+      return visited;
+    }
+
     const visited = new Set(['center', currentZone]);
     for (const sceneId of this._visitedScenes) {
       const z = SCENE_METADATA[sceneId]?.zone;
-      if (z) visited.add(z);
+      if (z && z !== 'corp') visited.add(z);
     }
     if (Array.isArray(player?.visitedScenes)) {
       for (const sceneId of player.visitedScenes) {
         const z = SCENE_METADATA[sceneId]?.zone;
-        if (z) visited.add(z);
+        if (z && z !== 'corp') visited.add(z);
       }
     }
     if (status.hasDash || status.gcDefeated) visited.add('south');
@@ -700,9 +856,13 @@ export class WorldMap {
     return visited;
   }
 
-  _getQuestTarget(status, currentSceneId) {
-    if (currentSceneId === 'valleverde_corp' || currentSceneId === 'inakito_office') {
-      return { sceneId: 'inakito_office', tx: 10, ty: 7, label: 'Iñakito 2.0' };
+  _getQuestTarget(status, currentSceneId, isExpansion = false) {
+    if (isExpansion) {
+      if (!status.inakitoDefeated) return { sceneId: 'inakito_office', tx: 10, ty: 7, label: 'Iñakito 2.0' };
+      if (!status.francoRescued) return { sceneId: 'vertedero_piso_3', tx: 3, ty: 4, label: 'Franco el Pancho' };
+      if (!status.kernelDefeated) return { sceneId: 'kernel_arena', tx: 10, ty: 7, label: 'El Kernel' };
+      if (!status.alexCorpDefeated) return { sceneId: 'ai_nucleus_core', tx: 12, ty: 8, label: 'Mister Alex IA' };
+      return null;
     }
     if (!status.hasArmor) return { sceneId: 'armor_temple', tx: 11, ty: 9, label: 'Armadura Binaria' };
     if (!status.hasSword) return { sceneId: 'sword_temple', tx: 12, ty: 9, label: 'Espada Recursiva' };
@@ -716,8 +876,8 @@ export class WorldMap {
   /**
    * Resuelve el centro o posición exacta en pantalla de un tile dentro de una escena.
    */
-  _sceneTileToScreen(sceneId, tileX, tileY, tf = null) {
-    const slot = ATLAS_SCENE_SLOTS[sceneId];
+  _sceneTileToScreen(sceneId, tileX, tileY, tf = null, isExpansion = false) {
+    const slot = this._getAtlasSlots(isExpansion)[sceneId];
     if (!slot) return null;
     const clampedX = Math.max(0.5, Math.min(slot.cols - 0.5, tileX));
     const clampedY = Math.max(0.5, Math.min(slot.rows - 0.5, tileY));
@@ -770,14 +930,10 @@ export class WorldMap {
   /**
    * Cubre con nubes y niebla oscura cualquier zona/mazmorra aún no visitada.
    */
-  _drawUnexploredClouds(ctx, explored, tf, t) {
-    const expansionActive = Boolean(
-      this._cachedExpansionLoaded ||
-      globalThis?.window?.game?.isExpansionActive ||
-      globalThis?.window?.game?.isExpansionMode
-    );
-    const fogEntries = Object.entries(ATLAS_SCENE_SLOTS).filter(
-      ([, s]) => (s.zone !== 'corp' || expansionActive) && !explored.has(s.zone)
+  _drawUnexploredClouds(ctx, explored, tf, t, isExpansion = false) {
+    const activeSlots = this._getAtlasSlots(isExpansion);
+    const fogEntries = Object.entries(activeSlots).filter(
+      ([, s]) => !s.aliasOf && (isExpansion || s.zone !== 'corp') && !explored.has(s.zone)
     );
     if (fogEntries.length === 0) return;
 
@@ -830,19 +986,26 @@ export class WorldMap {
   /**
    * Dibuja los iconos de jefes (calavera / check) y la "!" dorada sobre el objetivo actual.
    */
-  _drawQuestAndBossMarkers(ctx, currentSceneId, explored, status, tf, t) {
-    const markers = [
-      { sceneId: 'armor_temple', tx: 11, ty: 9, cleared: status.hasArmor, zone: 'east', color: '#38bdf8', kind: 'checkOnly' },
-      { sceneId: 'sword_temple', tx: 12, ty: 9, cleared: status.hasSword, zone: 'east', color: '#fbbf24', kind: 'checkOnly' },
-      { sceneId: 'sewers_dungeon', tx: 12, ty: 9, cleared: status.gcDefeated, zone: 'south', color: '#22c55e', kind: 'boss' },
-      { sceneId: 'mines_boss_arena', tx: 10, ty: 7, cleared: status.stackDefeated, zone: 'north', color: '#06b6d4', kind: 'boss' },
-      { sceneId: 'ai_fortress_gate', tx: 12, ty: 9, cleared: status.microwaveDefeated, zone: 'south', color: '#f97316', kind: 'boss' },
-      { sceneId: 'ai_citadel', tx: 12, ty: 9, cleared: status.alexDefeated, zone: 'west', color: '#ef4444', kind: 'crownBoss' }
-    ];
+  _drawQuestAndBossMarkers(ctx, currentSceneId, explored, status, tf, t, isExpansion = false) {
+    const markers = isExpansion
+      ? [
+          { sceneId: 'inakito_office',   tx: 10, ty: 7, cleared: status.inakitoDefeated,  zone: 'corp_inakito',   color: '#38bdf8', kind: 'boss' },
+          { sceneId: 'vertedero_piso_3', tx: 3,  ty: 4, cleared: status.francoRescued,    zone: 'corp_vertedero', color: '#f59e0b', kind: 'checkOnly' },
+          { sceneId: 'kernel_arena',     tx: 10, ty: 7, cleared: status.kernelDefeated,   zone: 'corp_kernel',    color: '#22c55e', kind: 'boss' },
+          { sceneId: 'ai_nucleus_core',  tx: 12, ty: 8, cleared: status.alexCorpDefeated, zone: 'corp_nucleus',   color: '#22d3ee', kind: 'crownBoss' }
+        ]
+      : [
+          { sceneId: 'armor_temple',     tx: 11, ty: 9, cleared: status.hasArmor,          zone: 'east',  color: '#38bdf8', kind: 'checkOnly' },
+          { sceneId: 'sword_temple',     tx: 12, ty: 9, cleared: status.hasSword,          zone: 'east',  color: '#fbbf24', kind: 'checkOnly' },
+          { sceneId: 'sewers_dungeon',   tx: 12, ty: 9, cleared: status.gcDefeated,        zone: 'south', color: '#22c55e', kind: 'boss' },
+          { sceneId: 'mines_boss_arena', tx: 10, ty: 7, cleared: status.stackDefeated,     zone: 'north', color: '#06b6d4', kind: 'boss' },
+          { sceneId: 'ai_fortress_gate', tx: 12, ty: 9, cleared: status.microwaveDefeated, zone: 'south', color: '#f97316', kind: 'boss' },
+          { sceneId: 'ai_citadel',       tx: 12, ty: 9, cleared: status.alexDefeated,      zone: 'west',  color: '#ef4444', kind: 'crownBoss' }
+        ];
 
     for (const m of markers) {
       if (!explored.has(m.zone) && !m.cleared) continue;
-      const pos = this._sceneTileToScreen(m.sceneId, m.tx, m.ty, tf);
+      const pos = this._sceneTileToScreen(m.sceneId, m.tx, m.ty, tf, isExpansion);
       if (!pos) continue;
       if (m.cleared) {
         this._drawMiniCheck(ctx, pos.x, pos.y);
@@ -852,9 +1015,9 @@ export class WorldMap {
     }
 
     // "!" dorada animada sobre la sala de la misión principal actual
-    const target = this._getQuestTarget(status, currentSceneId);
+    const target = this._getQuestTarget(status, currentSceneId, isExpansion);
     if (target) {
-      const pos = this._sceneTileToScreen(target.sceneId, target.tx, target.ty, tf);
+      const pos = this._sceneTileToScreen(target.sceneId, target.tx, target.ty, tf, isExpansion);
       if (pos) {
         const bob = Math.sin(t * 5) * 1.6;
         const qx = pos.x;
@@ -936,9 +1099,10 @@ export class WorldMap {
     const t = performance.now() * 0.001;
     const rect = this._mapRect();
     const resolvedTm = this._resolveTilemap(tilemap);
+    const isExpansion = this._isExpansionMode(currentSceneId, player, resolvedTm);
 
     if (currentSceneId) this._visitedScenes.add(currentSceneId);
-    this._generateRealMapTexture(resolvedTm);
+    this._generateRealMapTexture(resolvedTm, isExpansion, currentSceneId);
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
@@ -971,27 +1135,27 @@ export class WorldMap {
     ctx.fillRect(tf.originX, tf.originY, tf.drawW, tf.drawH);
 
     const status = this._computeProgressStatus(player, enemies);
-    const locInfo = this._resolvePlayerLocation(currentSceneId, player, resolvedTm);
+    const locInfo = this._resolvePlayerLocation(currentSceneId, player, resolvedTm, isExpansion);
     this._lastLocationName = locInfo.title;
     this._lastZoneId = locInfo.zone;
-    const defs = this._getRegionDefs();
-    const explored = this._getExploredZones(locInfo.zone, status, player);
-    const questTarget = this._getQuestTarget(status, currentSceneId);
-    const questZone = questTarget ? (SCENE_METADATA[questTarget.sceneId]?.zone || null) : null;
+    const defs = this._getRegionDefs(isExpansion);
+    const explored = this._getExploredZones(locInfo.zone, status, player, isExpansion);
+    const questTarget = this._getQuestTarget(status, currentSceneId, isExpansion);
+    const questZone = questTarget ? this._getZoneForScene(questTarget.sceneId, isExpansion) : null;
 
     // 4. Niebla negra / nubes en zonas sin explorar
-    this._drawUnexploredClouds(ctx, explored, tf, t);
+    this._drawUnexploredClouds(ctx, explored, tf, t, isExpansion);
 
     // 5. Resalte de regiones exploradas + iconos de misiones/jefes + brújula + posición exacta
     this._drawRegionOverlays(ctx, defs, locInfo.zone, explored, tf, t);
-    this._drawQuestAndBossMarkers(ctx, currentSceneId, explored, status, tf, t);
+    this._drawQuestAndBossMarkers(ctx, currentSceneId, explored, status, tf, t, isExpansion);
     this._drawCompassRose(ctx, 20, 140);
     this._drawHeroLocationMarker(ctx, locInfo, t);
     ctx.restore();
 
     // 6. Cabecera superior, panel inferior HUD y controles táctiles
-    this._drawZeldaHeader(ctx, W);
-    this._drawZeldaHUD(ctx, W, H, locInfo, status, player);
+    this._drawZeldaHeader(ctx, W, isExpansion);
+    this._drawZeldaHUD(ctx, W, H, locInfo, status, isExpansion);
     this._drawMapButtons(ctx, W);
 
     const tooltipDef = defs.find((d) => d.id === (this._selectedRegion || this._hoverRegion));
@@ -1004,13 +1168,21 @@ export class WorldMap {
    * Calcula las coordenadas cartográficas exactas del jugador en el mapa real
    * usando `sceneId`, `player.x / player.y` y `tilemap.tileSize`.
    */
-  _resolvePlayerLocation(sceneId, player = null, tilemap = null) {
-    const meta = SCENE_METADATA[sceneId] || { zone: 'center', title: 'Reino del Gran Ojal', detail: 'Tierras Conocidas' };
+  _resolvePlayerLocation(sceneId, player = null, tilemap = null, explicitExpansion = null) {
+    const isExpansion = typeof explicitExpansion === 'boolean'
+      ? explicitExpansion
+      : this._isExpansionMode(sceneId, player, tilemap);
+    const meta = SCENE_METADATA[sceneId] || {
+      zone: isExpansion ? 'corp_hub' : 'center',
+      title: isExpansion ? 'Valleverde 2.0' : 'Reino del Gran Ojal',
+      detail: isExpansion ? 'Distrito Corporativo' : 'Tierras Conocidas'
+    };
+    const resolvedZone = this._getZoneForScene(sceneId, isExpansion);
     const tm = this._resolveTilemap(tilemap);
     const tileSize = tm?.tileSize || 16;
     const tf = this._getMapTransform();
 
-    const directSlot = ATLAS_SCENE_SLOTS[sceneId];
+    const directSlot = this._getAtlasSlots(isExpansion)[sceneId];
     if (directSlot) {
       let tileX = directSlot.cols / 2;
       let tileY = directSlot.rows / 2;
@@ -1020,16 +1192,21 @@ export class WorldMap {
         tileX = px / tileSize;
         tileY = py / tileSize;
       }
-      const pos = this._sceneTileToScreen(sceneId, tileX, tileY, tf);
-      return { zone: meta.zone, x: pos.x, y: pos.y, title: meta.title, detail: meta.detail };
+      const pos = this._sceneTileToScreen(sceneId, tileX, tileY, tf, isExpansion);
+      return { zone: resolvedZone, x: pos.x, y: pos.y, title: meta.title, detail: meta.detail };
+    }
+
+    if (isExpansion) {
+      const pos = this._sceneTileToScreen('valleverde_corp', 12, 9, tf, true);
+      return { zone: 'corp_hub', x: pos.x, y: pos.y, title: meta.title, detail: meta.detail };
     }
 
     // Interiores de Valleverde: ubicar sobre el tejado real de su edificio en `overworld`
     const doorMatch = tm?.houseDoors?.find((d) => d.sceneId === sceneId);
     const houseCol = doorMatch ? doorMatch.doorCol : (meta.houseCol ?? 18);
     const houseRow = doorMatch ? Math.max(0, doorMatch.doorRow - 1) : (meta.houseRow ?? 12);
-    const pos = this._sceneTileToScreen('overworld', houseCol + 0.5, houseRow + 0.5, tf);
-    return { zone: meta.zone, x: pos.x, y: pos.y, title: meta.title, detail: meta.detail };
+    const pos = this._sceneTileToScreen('overworld', houseCol + 0.5, houseRow + 0.5, tf, false);
+    return { zone: resolvedZone, x: pos.x, y: pos.y, title: meta.title, detail: meta.detail };
   }
 
   /**
@@ -1060,11 +1237,18 @@ export class WorldMap {
     );
 
     const alexDefeated = isEnemyDead('boss_final_ai_alex');
+    const inakitoDefeated = isEnemyDead('boss_inakito');
+    const kernelDefeated = isEnemyDead('boss_kernel');
+    const alexCorpDefeated = isEnemyDead('boss_alex_update');
+    const ctx = this.menuSystem?.worldMapContext;
+    const gs = this.menuSystem?.callbacks?.getGameState?.();
+    const francoRescued = Boolean(ctx?.francoRescued || gs?.francoRescued);
     const hasArmor = Boolean(player?.hasArmor);
     const hasSword = Boolean(player?.hasSword);
     const swordLevel = player?.swordLevel || (hasSword ? 1 : 0);
     const armorLevel = player?.armorLevel || (hasArmor ? 1 : 0);
     const coresCount = (gcDefeated ? 1 : 0) + (stackDefeated ? 1 : 0) + (microwaveDefeated ? 1 : 0);
+    const corpCleared = (inakitoDefeated ? 1 : 0) + (kernelDefeated ? 1 : 0) + (alexCorpDefeated ? 1 : 0);
     const placedCount = Math.max(0, Math.min(3, Number(player?.gatesUnlocked) || 0));
 
     return {
@@ -1072,11 +1256,16 @@ export class WorldMap {
       stackDefeated,
       microwaveDefeated,
       alexDefeated,
+      inakitoDefeated,
+      kernelDefeated,
+      alexCorpDefeated,
+      francoRescued,
       hasArmor,
       hasSword,
       swordLevel,
       armorLevel,
       coresCount,
+      corpCleared,
       placedCount
     };
   }
@@ -1148,26 +1337,32 @@ export class WorldMap {
   /**
    * Encabezado superior del mapa estilo pergamino Zelda.
    */
-  _drawZeldaHeader(ctx, W) {
+  _drawZeldaHeader(ctx, W, isExpansion = false) {
     UILayout.drawShadow(ctx, 6, 4, W - 12, 11, 0.4);
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+    ctx.fillStyle = isExpansion ? 'rgba(8, 20, 38, 0.96)' : 'rgba(15, 23, 42, 0.94)';
     ctx.fillRect(6, 4, W - 12, 11);
-    ctx.strokeStyle = '#e5c07b';
+    ctx.strokeStyle = isExpansion ? '#22d3ee' : '#e5c07b';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(6.75, 4.75, W - 13.5, 9.5);
-    UILayout.drawIcon(ctx, 'map', 13, 9.5, 8, '#e5c07b');
-    UILayout.drawText(ctx, 'MAPA DEL REINO DEL GRAN OJAL · CARTOGRAFÍA SAGRADA', 20, 9.5, {
-      font: 'bold 5px monospace', color: '#ffd700', shadow: true
-    });
+    UILayout.drawIcon(ctx, 'map', 13, 9.5, 8, isExpansion ? '#22d3ee' : '#e5c07b');
+    UILayout.drawText(
+      ctx,
+      isExpansion
+        ? 'RED CORPORATIVA VALLEVERDE 2.0 · MAPA DEL SISTEMA'
+        : 'MAPA DEL REINO DEL GRAN OJAL · CARTOGRAFÍA SAGRADA',
+      20,
+      9.5,
+      { font: 'bold 5px monospace', color: isExpansion ? '#67e8f9' : '#ffd700', shadow: true }
+    );
     UILayout.drawText(ctx, '[Esc / M] Cerrar', W - 12, 9.5, {
       font: 'bold 4.5px monospace', color: '#e2e8f0', align: 'right', shadow: true
     });
   }
 
   /**
-   * Barra inferior HUD estilo Zelda (Zona Actual · Progreso · Núcleos).
+   * Barra inferior HUD estilo Zelda (Zona Actual · Progreso · Núcleos / Objetivos).
    */
-  _drawZeldaHUD(ctx, W, H, locInfo, status) {
+  _drawZeldaHUD(ctx, W, H, locInfo, status, isExpansion = false) {
     const barX = 6;
     const barY = H - 24;
     const barW = W - 12;
@@ -1227,16 +1422,28 @@ export class WorldMap {
 
     ctx.beginPath(); ctx.moveTo(barX + 222, barY + 4); ctx.lineTo(barX + 222, barY + barH - 4); ctx.stroke();
 
-    // Columna 3: Núcleos
-    UILayout.drawText(ctx, 'NÚCLEOS', barX + 230, barY + 5.5, {
-      font: 'bold 3.8px monospace', color: '#a7f3d0', shadow: true
-    });
-    this._drawCrystalGem(ctx, barX + 238, barY + 12, status.gcDefeated, '#22c55e', 'GC');
-    this._drawCrystalGem(ctx, barX + 258, barY + 12, status.stackDefeated, '#06b6d4', 'STACK');
-    this._drawCrystalGem(ctx, barX + 283, barY + 12, status.microwaveDefeated, '#ef4444', 'FORJA');
-    UILayout.drawText(ctx, `${status.coresCount}/3`, barX + barW - 6, barY + 15.5, {
-      font: 'bold 4.4px monospace', color: '#ffd700', align: 'right', shadow: true
-    });
+    // Columna 3: Núcleos (Base) o Actos Corporativos (Expansión)
+    if (isExpansion) {
+      UILayout.drawText(ctx, 'ACTOS CORP.', barX + 230, barY + 5.5, {
+        font: 'bold 3.8px monospace', color: '#67e8f9', shadow: true
+      });
+      this._drawCrystalGem(ctx, barX + 238, barY + 12, status.inakitoDefeated, '#38bdf8', 'IÑAK');
+      this._drawCrystalGem(ctx, barX + 258, barY + 12, status.kernelDefeated, '#22c55e', 'KERN');
+      this._drawCrystalGem(ctx, barX + 281, barY + 12, status.alexCorpDefeated, '#22d3ee', 'ALEX');
+      UILayout.drawText(ctx, `${status.corpCleared || 0}/3`, barX + barW - 6, barY + 15.5, {
+        font: 'bold 4.4px monospace', color: '#22d3ee', align: 'right', shadow: true
+      });
+    } else {
+      UILayout.drawText(ctx, 'NÚCLEOS', barX + 230, barY + 5.5, {
+        font: 'bold 3.8px monospace', color: '#a7f3d0', shadow: true
+      });
+      this._drawCrystalGem(ctx, barX + 238, barY + 12, status.gcDefeated, '#22c55e', 'GC');
+      this._drawCrystalGem(ctx, barX + 258, barY + 12, status.stackDefeated, '#06b6d4', 'STACK');
+      this._drawCrystalGem(ctx, barX + 283, barY + 12, status.microwaveDefeated, '#ef4444', 'FORJA');
+      UILayout.drawText(ctx, `${status.coresCount}/3`, barX + barW - 6, barY + 15.5, {
+        font: 'bold 4.4px monospace', color: '#ffd700', align: 'right', shadow: true
+      });
+    }
 
     ctx.restore();
   }

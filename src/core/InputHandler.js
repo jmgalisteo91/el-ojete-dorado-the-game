@@ -36,6 +36,7 @@ export class InputHandler {
     this.pointerCanvasY = -1;
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
+    this.pointerBarrierJustPressed = false;
     this.isPointerDown = false;
     this.lastAttackSource = null;
 
@@ -64,6 +65,7 @@ export class InputHandler {
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerDown = this._onPointerDown.bind(this);
     this._onPointerUp = this._onPointerUp.bind(this);
+    this._onContextMenu = this._onContextMenu.bind(this);
     this._onWheel = this._onWheel.bind(this);
     this._onVisibilityChange = this._onVisibilityChange.bind(this);
 
@@ -75,6 +77,7 @@ export class InputHandler {
       window.addEventListener('pointerdown', this._onPointerDown);
       window.addEventListener('pointerup', this._onPointerUp);
       window.addEventListener('pointercancel', this._onPointerUp);
+      window.addEventListener('contextmenu', this._onContextMenu);
       if (typeof window.addEventListener === 'function') {
         window.addEventListener('wheel', this._onWheel, { passive: true });
       }
@@ -95,6 +98,7 @@ export class InputHandler {
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
+    this.pointerBarrierJustPressed = false;
     this.isPointerDown = false;
     this.activePointers.clear();
     this.resetTouchState();
@@ -269,6 +273,13 @@ export class InputHandler {
     }
   }
 
+  _onContextMenu(event) {
+    if (this._isDOMModalBlocking()) return;
+    if (typeof event?.preventDefault === 'function') {
+      event.preventDefault();
+    }
+  }
+
   _onPointerDown(event) {
     this._notifyFirstInteraction();
     if (this._isDOMModalBlocking()) return;
@@ -292,6 +303,14 @@ export class InputHandler {
         );
         return;
       }
+    }
+
+    if (event && event.button === 2) {
+      if (typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+      this.pointerBarrierJustPressed = true;
+      return;
     }
 
     if (!event || event.button === 0 || event.button === undefined) {
@@ -432,6 +451,7 @@ export class InputHandler {
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
+    this.pointerBarrierJustPressed = false;
     this.isPointerDown = false;
     this.activePointers.clear();
     // (FIX M1.1/M1.8) Al limpiar/perder el foco no debe quedar un joystick moviendo al jugador
@@ -554,7 +574,9 @@ export class InputHandler {
   consumeBarrier() {
     const touchBarrier = this.touchState.pressed.has('barrier');
     this.touchState.pressed.delete('barrier');
-    const val = touchBarrier || this.keysJustPressed.has('KeyQ');
+    const rightClicked = this.pointerBarrierJustPressed;
+    this.pointerBarrierJustPressed = false;
+    const val = touchBarrier || rightClicked || this.keysJustPressed.has('KeyQ');
     this.keysJustPressed.delete('KeyQ');
     return val;
   }
@@ -612,6 +634,7 @@ export class InputHandler {
     this.keysJustPressed.clear();
     this.pointerJustClicked = false;
     this.pointerAttackJustPressed = false;
+    this.pointerBarrierJustPressed = false;
     // (FIX M1.1) Los flancos táctiles no consumidos caducan como los del teclado
     this.touchState.pressed.clear();
   }

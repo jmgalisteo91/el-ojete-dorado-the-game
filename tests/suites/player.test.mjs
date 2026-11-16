@@ -1621,4 +1621,45 @@ export async function run(test, assert) {
       globalThis.localStorage = prevStorage;
     }
   });
+
+  test('Parry con botón derecho del ratón (InputHandler) y texto actualizado en IñakitoBoss', () => {
+    const input = new InputHandler(null);
+    let preventedDown = false;
+    input._onPointerDown({ button: 2, preventDefault: () => { preventedDown = true; } });
+    assert.equal(preventedDown, true, 'El clic derecho debe evitar menú por defecto al pulsarse');
+    assert.equal(input.pointerAttackJustPressed, false, 'El clic derecho no debe disparar ataque');
+    assert.equal(input.consumeAttack(), false);
+    assert.equal(input.consumeBarrier(), true, 'El clic derecho debe activar consumeBarrier()');
+    assert.equal(input.consumeBarrier(), false, 'consumeBarrier() debe consumirse una sola vez');
+
+    let preventedMenu = false;
+    input._onContextMenu({ preventDefault: () => { preventedMenu = true; } });
+    assert.equal(preventedMenu, true, 'Debe bloquear contextmenu dentro del juego');
+
+    // Player.tryBarrier se activa mediante clic derecho cuando tiene hasBarrier
+    const p = new Player({ x: 32, y: 32 });
+    p.hasBarrier = true;
+    input._onPointerDown({ button: 2, preventDefault: () => {} });
+    p.update(0.016, input, null, []);
+    assert.equal(p.barrierActive, true, 'El clic derecho debe activar la Barrera/Parry en Player.update()');
+    assert.ok(p.parryTimer > 0);
+
+    // Iñakito en fase 3 ya no sugiere [C], sino [Clic Dcho / Q]
+    const boss = new IñakitoBoss({ x: 64, y: 64, sceneId: 'inakito_office', hp: 100 });
+    boss.phase = 3;
+    boss.inWhileLoop = true;
+    boss.chargeState = 'windup';
+    const drawnTexts = [];
+    const bossCtx = new Proxy(
+      {
+        fillText(t) { drawnTexts.push(String(t)); },
+        createLinearGradient() { return { addColorStop() {} }; },
+        createRadialGradient() { return { addColorStop() {} }; }
+      },
+      { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true; } }
+    );
+    boss.render(bossCtx, { renderX: 0, renderY: 0 });
+    assert.equal(drawnTexts.some((t) => t.includes('[C]')), false, 'Iñakito no debe indicar [C] para parry');
+    assert.ok(drawnTexts.some((t) => t.includes('[Clic Dcho / Q]')), 'Iñakito debe mostrar [Clic Dcho / Q]');
+  });
 }

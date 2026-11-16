@@ -587,7 +587,7 @@ export class CharacterStats {
       cardW,
       cardH,
       '🛡️ Escudo TypeScript',
-      '[Q]',
+      '[Clic Dcho / Q]',
       Boolean(player && player.hasBarrier),
       'Campo que absorbe proyectiles 3s.',
       expansionActive ? 'Maestría de Veterano (Base)' : 'Ciber-Horno Termonuclear',

@@ -3660,4 +3660,86 @@ export async function run(test, assert) {
     assert.ok(texts.some((t) => t.t === '🔒'), 'Debe dibujar el candado junto a la expansión bloqueada');
     assert.ok(texts.some((t) => t.t.includes('Valleverde · 15 obj')), 'Debe mostrar el resumen del save debajo de Cargar Partida');
   });
+
+  test('WorldMap en Expansión: muestra solo su zona corporativa (sin continentes ni núcleos del juego base)', async () => {
+    const prevDoc = globalThis.document;
+    const offFillStyles = new Set();
+    const offFillTexts = [];
+    const offMockCtx = {
+      imageSmoothingEnabled: true,
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      globalAlpha: 1,
+      font: '',
+      textAlign: 'left',
+      textBaseline: 'top',
+      createRadialGradient: () => ({ addColorStop: () => {} }),
+      createLinearGradient: () => ({ addColorStop: () => {} }),
+      setLineDash: () => {},
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      arc: () => {},
+      closePath: () => {},
+      stroke: () => {},
+      fill: () => {},
+      strokeRect: () => {},
+      fillText: (t) => { offFillTexts.push(String(t)); },
+      save: () => {},
+      restore: () => {},
+      fillRect: () => { offFillStyles.add(offMockCtx.fillStyle); }
+    };
+    globalThis.document = {
+      createElement: (tag) => (tag === 'canvas' ? { width: 0, height: 0, getContext: () => offMockCtx } : {})
+    };
+
+    try {
+      const tm = new Tilemap(null, 16);
+      await tm.loadExpansionScenes();
+      const player = new Player({ x: 12 * 16, y: 10 * 16 });
+      player.isExpansionActive = true;
+      const wm = new WorldMap();
+
+      const renderTexts = [];
+      const renderCtx = new Proxy(
+        {
+          fillText: (t) => { renderTexts.push(String(t)); },
+          measureText: (t) => ({ width: String(t).length * 4 }),
+          createLinearGradient: () => ({ addColorStop: () => {} }),
+          createRadialGradient: () => ({ addColorStop: () => {} })
+        },
+        { get: (o, k) => (k in o ? o[k] : () => {}), set: (o, k, v) => { o[k] = v; return true; } }
+      );
+
+      wm.render(renderCtx, 'valleverde_corp', player, [], tm);
+
+      assert.equal(wm._cachedExpansionMap, true);
+      // En textura offscreen de expansión NO debe haberse pintado césped ni caminos medievales del juego base
+      assert.equal(offFillStyles.has('#2d5a27'), false, 'No debe pintar el bioma base de Valleverde');
+      assert.equal(offFillStyles.has('#8b5a2b'), false, 'No debe pintar caminos de tierra del juego base');
+      assert.ok(offFillTexts.includes('OFICINA IÑAKITO'));
+      assert.ok(offFillTexts.includes('VERTEDERO P1'));
+      assert.ok(offFillTexts.includes('SALA DEL KERNEL'));
+      assert.ok(offFillTexts.includes('NÚCLEO ALEX IA'));
+
+      // En cabecera y HUD solo deben salir etiquetas de la expansión
+      assert.ok(renderTexts.includes('RED CORPORATIVA VALLEVERDE 2.0 · MAPA DEL SISTEMA'));
+      assert.ok(renderTexts.includes('ACTOS CORP.'));
+      assert.ok(renderTexts.includes('IÑAK') && renderTexts.includes('KERN') && renderTexts.includes('ALEX'));
+      assert.equal(renderTexts.includes('NÚCLEOS'), false, 'No debe mostrar los núcleos del juego base');
+      assert.equal(renderTexts.includes('CUMBRES'), false);
+      assert.equal(renderTexts.includes('MARISMAS'), false);
+      assert.equal(renderTexts.includes('VALLEVERDE'), false);
+
+      // Si vuelve al juego base, regenera textura base limpia
+      player.isExpansionActive = false;
+      renderTexts.length = 0;
+      wm.render(renderCtx, 'overworld', player, [], tm);
+      assert.equal(wm._cachedExpansionMap, false);
+      assert.ok(renderTexts.includes('MAPA DEL REINO DEL GRAN OJAL · CARTOGRAFÍA SAGRADA'));
+    } finally {
+      globalThis.document = prevDoc;
+    }
+  });
 }

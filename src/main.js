@@ -531,7 +531,15 @@ export class RPGGame {
           if (this.menuSystem && this.menuSystem.state === 'world_map') this.menuSystem.closeWorldMap();
           if (this.questLogView) this.questLogView.open();
         },
-        getGameState: () => ({ player: this.player, enemies: this.enemies, tilemap: this.tilemap })
+        getGameState: () => ({
+          player: this.player,
+          enemies: this.enemies,
+          tilemap: this.tilemap,
+          isExpansion: Boolean(this.isExpansionActive || this.isExpansionMode),
+          isExpansionActive: Boolean(this.isExpansionActive),
+          isExpansionMode: Boolean(this.isExpansionMode),
+          francoRescued: Boolean(this.francoRescued)
+        })
       }
     );
     this.menuSystem.setAnimeCutsceneManager(this.animeCutscenes);
