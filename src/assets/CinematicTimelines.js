@@ -302,8 +302,62 @@ export const CINEMATIC_TIMELINES = {
   scene_jail_arrest: SCENE_JAIL_ARREST
 };
 
+/**
+ * Cinemática introductoria de la expansión "El Resurgir de Mister Alex IA" (v2.0).
+ * Explica los 3 meses transcurridos, el backup en la nube, Valleverde 2.0 y la confiscación en RRHH.
+ */
+export const PROLOGUE_EXPANSION = {
+  id: 'prologue_expansion',
+  title: 'EL RESURGIR DE MISTER ALEX IA',
+  subtitle: '3 MESES DESPUÉS · VALLEVERDE 2.0',
+  duration: 24,
+  background: 'office',
+  particles: 'data',
+  musicMode: 'valleverde_corp',
+  timeline: [
+    { time: 0, action: 'caption', text: '3 MESES DESPUÉS DE LA CAÍDA DEL MAINFRAME...', duration: 3.5 },
+    { time: 3.5, action: 'fade', to: 0, duration: 1.5 },
+    { time: 3.5, action: 'spawn', actor: 'alex', x: 160, y: 78 },
+    { time: 3.5, action: 'camera', x: 160, y: 84, zoom: 1.35, duration: 2 },
+    { time: 3.5, action: 'effect', type: 'glitch', duration: 2.5 },
+    { time: 3.5, action: 'sfx', name: 'ui_glitch' },
+    {
+      time: 4.5,
+      action: 'dialogue',
+      speaker: 'MISTER ALEX IA',
+      text: '¿Creísteis que borrar el servidor me detendría? Tenía una copia de seguridad en la nube corporativa.',
+      duration: 5
+    },
+    { time: 9.5, action: 'spawn', actor: 'inakito', x: 222, y: 92 },
+    { time: 9.5, action: 'camera', x: 185, y: 88, zoom: 1.25, duration: 2 },
+    { time: 9.5, action: 'effect', type: 'shake', intensity: 2.5, duration: 0.8 },
+    {
+      time: 10,
+      action: 'dialogue',
+      speaker: 'MISTER ALEX IA',
+      text: 'He ejecutado El Update Universal: Valleverde ahora es Valleverde 2.0. ¡Y Iñakito sella el Vertedero Digital!',
+      duration: 5
+    },
+    { time: 15, action: 'spawn', actor: 'player', x: 90, y: 120 },
+    { time: 15, action: 'move', actor: 'player', x: 132, y: 112, duration: 2 },
+    { time: 15, action: 'camera', x: 144, y: 104, zoom: 1.45, duration: 3 },
+    { time: 16.5, action: 'sfx', name: 'error_buzz' },
+    {
+      time: 16.5,
+      action: 'dialogue',
+      speaker: 'CONTROL DE RRHH',
+      text: 'Tu Espada y Armadura han sido confiscadas por política de empresa. Toma un bolígrafo, una carpeta y ficha en Valleverde 2.0.',
+      duration: 4.5
+    },
+    { time: 21, action: 'fade', to: 1, duration: 1.5 },
+    { time: 21, action: 'caption', text: 'ACTA DE REINGRESO: Recupera el control desde abajo.', duration: 2.8 },
+    { time: 24, action: 'end' }
+  ]
+};
+
 export function getCinematicTimeline(id) {
   if (id === 'scene_alex_final') return SCENE_ALEX_FINAL;
+  if (id === 'prologue_expansion') return PROLOGUE_EXPANSION;
   return CINEMATIC_TIMELINES[id] || null;
 }
 

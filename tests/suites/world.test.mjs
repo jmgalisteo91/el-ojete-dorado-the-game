@@ -3742,4 +3742,59 @@ export async function run(test, assert) {
       globalThis.document = prevDoc;
     }
   });
+
+  test('Cinemática introductoria de Expansión (PROLOGUE_EXPANSION) se reproduce al iniciar nueva expansión', async () => {
+    const { PROLOGUE_EXPANSION, getCinematicTimeline } = await import('../../src/assets/CinematicTimelines.js');
+    assert.equal(PROLOGUE_EXPANSION.id, 'prologue_expansion');
+    assert.equal(PROLOGUE_EXPANSION.duration, 24);
+    assert.equal(getCinematicTimeline('prologue_expansion'), PROLOGUE_EXPANSION);
+    assert.equal(PROLOGUE_EXPANSION.timeline[PROLOGUE_EXPANSION.timeline.length - 1].action, 'end');
+
+    const prevStorage = globalThis.localStorage;
+    const storeMap = new Map([['el_ojete_dorado_victory_trophy', 'true']]);
+    globalThis.localStorage = {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => storeMap.set(k, String(v)),
+      removeItem: (k) => storeMap.delete(k)
+    };
+
+    try {
+      const tm = new Tilemap(null, 16);
+      await tm.loadExpansionScenes();
+      const player = new Player({ x: 32, y: 32 });
+      let playedScript = null;
+      let finishCallback = null;
+      let dialogShown = null;
+      const fakeGame = {
+        tilemap: tm,
+        player,
+        camera: { setWorldBounds: () => {}, resetCinematic: () => {}, snapTo: () => {} },
+        music: { loadExpansionMusic: () => {}, setMode: () => {} },
+        menuSystem: { state: 'title', fadeAlpha: 0, fadeDirection: 0, showNotice: () => {} },
+        dialogueBox: { showMessage: (t, l) => { dialogShown = { t, l }; } },
+        cinematicDirector: {
+          play: (script, cb) => {
+            playedScript = script;
+            finishCallback = cb;
+          }
+        },
+        _resetWorldToInitialState: () => player.unequipAllForNewGame(),
+        _syncFrancoNPCState: () => {},
+        _saveExpansionProgress: () => RPGGame.prototype._saveExpansionProgress.call(fakeGame)
+      };
+
+      RPGGame.prototype.startExpansion.call(fakeGame);
+      assert.equal(playedScript?.id, 'prologue_expansion', 'startExpansion debe lanzar la cinemática PROLOGUE_EXPANSION');
+      assert.deepEqual(playedScript, PROLOGUE_EXPANSION);
+      assert.equal(dialogShown, null, 'El diálogo de RRHH espera a que concluya la cinemática');
+
+      finishCallback();
+      assert.equal(tm.currentSceneId, 'valleverde_corp');
+      assert.equal(player.x, 12 * 16);
+      assert.equal(player.y, 15 * 16);
+      assert.ok(dialogShown && dialogShown.t.includes('RRHH'), 'Al terminar la cinemática aparece el diálogo inicial de RRHH en Valleverde 2.0');
+    } finally {
+      globalThis.localStorage = prevStorage;
+    }
+  });
 }

@@ -13,9 +13,9 @@ import { SpriteAnimator } from '../graphics/Animator.js?v=8';
 import { CHARACTER_TYPES } from '../graphics/SpriteSheetGenerator.js?v=8';
 import { UILayout, UI_COLORS, UI_FONT, LOGICAL_WIDTH, LOGICAL_HEIGHT } from './UILayout.js?v=8';
 import { CinematicTimeline } from './CinematicTimeline.js?v=8';
-import { PROLOGUE_ALEX, CINEMATIC_TIMELINES } from '../assets/CinematicTimelines.js?v=8';
+import { PROLOGUE_ALEX, PROLOGUE_EXPANSION, CINEMATIC_TIMELINES, getCinematicTimeline } from '../assets/CinematicTimelines.js?v=8';
 
-export { PROLOGUE_ALEX };
+export { PROLOGUE_ALEX, PROLOGUE_EXPANSION };
 
 const ACTOR_SPRITES = {
   alex: CHARACTER_TYPES.ALEX_TV,
@@ -178,7 +178,7 @@ export class CinematicDirector {
 
   play(scriptOrId, onComplete = null) {
     const script = typeof scriptOrId === 'string'
-      ? (CINEMATIC_LIBRARY[scriptOrId] || PROLOGUE_ALEX)
+      ? (getCinematicTimeline(scriptOrId) || CINEMATIC_LIBRARY[scriptOrId] || PROLOGUE_ALEX)
       : scriptOrId;
     this.script = script;
     this.timeline = script.timeline

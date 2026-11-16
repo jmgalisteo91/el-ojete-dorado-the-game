@@ -65,7 +65,7 @@ import {
   getSavedCloudCode,
   setSavedCloudCode
 } from './core/ScoreSystem.js?v=8';
-import { CinematicDirector, PROLOGUE_ALEX } from './ui/CinematicDirector.js?v=8';
+import { CinematicDirector, PROLOGUE_ALEX, PROLOGUE_EXPANSION } from './ui/CinematicDirector.js?v=8';
 import {
   AnimeCutsceneManager,
   SCENE_JAIL_ARREST,
@@ -3679,11 +3679,35 @@ export class RPGGame {
       this.menuSystem.fadeDirection = 0;
       this.menuSystem.showNotice('3 meses después...', 4.0);
     }
-    if (!savedSlot && this.dialogueBox && typeof this.dialogueBox.showMessage === 'function') {
-      this.dialogueBox.showMessage(
-        STARTING_EXPANSION_GEAR.confiscationTitle,
-        STARTING_EXPANSION_GEAR.confiscationLines
-      );
+    const showRrhhConfiscationDialog = () => {
+      if (this.dialogueBox && typeof this.dialogueBox.showMessage === 'function') {
+        this.dialogueBox.showMessage(
+          STARTING_EXPANSION_GEAR.confiscationTitle,
+          STARTING_EXPANSION_GEAR.confiscationLines
+        );
+      }
+    };
+
+    if (!savedSlot && this.cinematicDirector && typeof this.cinematicDirector.play === 'function') {
+      this.cinematicDirector.play(PROLOGUE_EXPANSION, () => {
+        if (this.menuSystem) {
+          this.menuSystem.state = 'none';
+          this.menuSystem.fadeAlpha = 0;
+          this.menuSystem.fadeDirection = 0;
+        }
+        if (this.player) {
+          this.player.x = 12 * 16;
+          this.player.y = 15 * 16;
+          this.player.direction = 'up';
+          this.player.stopMovement?.();
+        }
+        this.camera?.resetCinematic?.();
+        this.camera?.snapTo?.(this.player);
+        this.music?.setMode?.('valleverde_corp');
+        showRrhhConfiscationDialog();
+      });
+    } else if (!savedSlot) {
+      showRrhhConfiscationDialog();
     }
     this.input?.clear?.();
     this._saveExpansionProgress();
