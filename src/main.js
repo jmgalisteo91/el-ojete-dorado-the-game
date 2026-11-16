@@ -798,6 +798,7 @@ export class RPGGame {
     this.sceneSurvivalTimer = 0;
     this._deathRegistered = false;
     this.prebattleAlexCutscenePlayed = false;
+    this.alexFinalCutscenePlayed = false;
     this.bossCutscenesSeen = {
       boss_garbage_collector: false,
       boss_stack_overflow: false,
@@ -2079,7 +2080,9 @@ export class RPGGame {
       }
 
       this.camera.snapTo(this.player);
-      this._restoreExpansionSaveData(data);
+      if (this.isExpansionMode || this.isExpansionActive || data?.expansionMode) {
+        this._restoreExpansionSaveData(data);
+      }
       const isVertederoScene =
         targetScene.startsWith('vertedero_') || targetScene === 'kernel_arena';
       if (targetScene === 'valleverde_corp' || targetScene === 'rosa_bar' || isVertederoScene || targetScene === 'ai_nucleus_core') {

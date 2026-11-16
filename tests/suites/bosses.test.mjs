@@ -21,6 +21,12 @@ import { EXPANSION_INFO, EXPANSION_NPCS, EXPANSION_UNLOCK_KEY } from '../../src/
 import { TonyRandazzo } from '../../src/expansion/entities/TonyRandazzo.js';
 import { FrancoPancho } from '../../src/expansion/entities/FrancoPancho.js';
 import { IñakitoBoss } from '../../src/expansion/entities/IñakitoBoss.js';
+import {
+  SCENE_AI_ALEX_PREBATTLE,
+  SCENE_ALEX_FINAL,
+  getCinematicTimeline
+} from '../../src/assets/CinematicTimelines.js';
+import { SCENE_AI_ALEX_PREBATTLE as VILLAIN_PREBATTLE } from '../../src/assets/VillainDialogues.js';
 import { HUD } from '../../src/ui/HUD.js?v=8';
 import {
   makeMap,
@@ -808,5 +814,89 @@ export async function run(test, assert) {
     } finally {
       globalThis.localStorage = prevStorage;
     }
+  });
+
+  test('Aislamiento FinalBossAlex: el juego base usa cinemática, música y jefe originales (no expansión)', async () => {
+    // 1. La cinemática pre-combate de ai_citadel es la del juego base, nunca SCENE_ALEX_FINAL
+    assert.notEqual(SCENE_AI_ALEX_PREBATTLE, SCENE_ALEX_FINAL);
+    assert.equal(SCENE_AI_ALEX_PREBATTLE.id, 'scene_ai_alex_prebattle');
+    assert.equal(SCENE_AI_ALEX_PREBATTLE.musicMode, 'theme_main_villain');
+    assert.equal(VILLAIN_PREBATTLE.musicMode, 'theme_main_villain');
+    assert.equal(SCENE_ALEX_FINAL.id, 'scene_alex_final');
+    assert.equal(SCENE_ALEX_FINAL.musicMode, 'boss_alex_final');
+
+    const baseTimelineText = JSON.stringify(SCENE_AI_ALEX_PREBATTLE.timeline);
+    assert.equal(/RESUCITADO|finiquito|reestructurado|alex_phase2/i.test(baseTimelineText), false);
+    assert.match(baseTimelineText, /Microondas Cuántico|Gran Ojal/i);
+    assert.equal(getCinematicTimeline('scene_ai_alex_prebattle'), SCENE_AI_ALEX_PREBATTLE);
+    assert.equal(getCinematicTimeline('scene_alex_final'), SCENE_ALEX_FINAL);
+
+    // 2. SceneTransitionController: ai_citadel dispara SCENE_AI_ALEX_PREBATTLE y ai_nucleus_core dispara SCENE_ALEX_FINAL
+    const tm = new Tilemap(null, 16);
+    await tm.loadExpansionScenes();
+    tm.setAlexCoreUnlocked(true);
+    const playedCutscenes = [];
+    const baseGame = {
+      isExpansionActive: false,
+      isExpansionMode: false,
+      prebattleAlexCutscenePlayed: false,
+      alexFinalCutscenePlayed: false,
+      tilemap: tm,
+      player: new Player({ x: 11.5 * 16, y: 15 * 16 }),
+      camera: { snapTo: () => {}, setWorldBounds: () => {} },
+      music: { setMode: () => {}, stopBossMusic: () => {}, playDoorOpenSound: () => {} },
+      npcs: [],
+      enemies: [],
+      bossCutscenesSeen: {},
+      animeCutscenes: { playCutscene: (scene) => playedCutscenes.push(scene?.id) },
+      _resolveStageSpawn: () => ({ x: 11.5 * 16, y: 15 * 16, facing: 'up' }),
+      _saveGameToStorage: () => {},
+      _restoreAllNPCsToOverworld: () => {}
+    };
+    const baseStc = new SceneTransitionController(baseGame);
+    baseStc.executeStageTransition({ type: 'stage_transition', targetScene: 'ai_citadel' }, { immediate: true });
+    assert.deepEqual(playedCutscenes, ['scene_ai_alex_prebattle']);
+
+    baseGame.isExpansionActive = true;
+    baseGame.isExpansionMode = true;
+    baseStc.executeStageTransition({ type: 'stage_transition', targetScene: 'ai_nucleus_core' }, { immediate: true });
+    assert.deepEqual(playedCutscenes, ['scene_ai_alex_prebattle', 'scene_alex_final']);
+
+    // 3. FinalBossAlex en ai_citadel mantiene su identidad original (Microondas Cuántico, sin billetes ni caja fuerte)
+    const originalAlex = new FinalBossAlex({ x: 11 * 16, y: 7.5 * 16, sceneId: 'ai_citadel' });
+    assert.equal(originalAlex.id, 'boss_final_ai_alex');
+    assert.equal(originalAlex.trackName, 'theme_main_villain');
+    assert.equal(originalAlex.rewardAbility, 'hasGoldenAnus');
+    assert.equal(typeof originalAlex._drawSafe, 'undefined');
+
+    originalAlex._spawnGoreParticles(6);
+    assert.ok(originalAlex._damageParticles.every((p) => p.type !== 'bill'));
+
+    const fillTexts = [];
+    const mockCtx = new Proxy(
+      {
+        fillText: (t) => fillTexts.push(String(t)),
+        beginPath: () => {},
+        moveTo: () => {},
+        lineTo: () => {},
+        arc: () => {},
+        fill: () => {},
+        stroke: () => {},
+        fillRect: () => {},
+        strokeRect: () => {},
+        save: () => {},
+        restore: () => {},
+        translate: () => {},
+        scale: () => {}
+      },
+      { get: (o, k) => (k in o ? o[k] : () => {}), set: (o, k, v) => { o[k] = v; return true; } }
+    );
+    originalAlex.phase = 1;
+    originalAlex.render(mockCtx, { renderX: 0, renderY: 0 });
+    originalAlex.phase = 3;
+    originalAlex.render(mockCtx, { renderX: 0, renderY: 0 });
+    assert.ok(fillTexts.includes('00:03'), 'Fase 1 debe mostrar el contador del Microondas Cuántico');
+    assert.ok(fillTexts.includes('00:00'), 'Fase 3 debe mostrar el núcleo 00:00 del Gran Ojal');
+    assert.equal(fillTexts.includes('ALEX'), false, 'No debe dibujar la caja fuerte corporativa ALEX');
   });
 }

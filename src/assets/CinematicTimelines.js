@@ -120,9 +120,56 @@ export const SCENE_INTRO_PROTOTYPE_MICROWAVE = {
   ]
 };
 
-export const SCENE_ALEX_FINAL = {
+export const SCENE_AI_ALEX_PREBATTLE = {
   id: 'scene_ai_alex_prebattle',
-  title: 'CIUDADELA CUÁNTICA · ALEX RESUCITADO',
+  title: 'CIUDADELA CUÁNTICA · EL MAINFRAME DE AI ALEX',
+  duration: 40,
+  background: 'citadel',
+  particles: 'embers',
+  musicMode: 'theme_main_villain',
+  timeline: [
+    { time: 0, action: 'fade', to: 0, duration: 1.5 },
+    { time: 0, action: 'camera', x: 160, y: 90, zoom: 1.1, duration: 0.01 },
+    { time: 0, action: 'spawn', actor: 'player', x: 88, y: 124 },
+    { time: 4, action: 'spawn', actor: 'alex', x: 160, y: -24 },
+    { time: 4, action: 'move', actor: 'alex', x: 160, y: 84, duration: 6 },
+    { time: 4, action: 'effect', type: 'glitch', duration: 6 },
+    { time: 10, action: 'camera', x: 160, y: 78, zoom: 1.9, duration: 8 },
+    {
+      time: 10,
+      action: 'dialogue',
+      speaker: 'MISTER AI ALEX',
+      text: 'Has sorteado el recolector de basura y el stack overflow. Pero aquí manda mi arquitectura cuántica.',
+      duration: 8
+    },
+    { time: 18, action: 'effect', type: 'shake', intensity: 6, duration: 1.8 },
+    { time: 18, action: 'effect', type: 'flash', color: '#f97316' },
+    { time: 18, action: 'particles', type: 'embers' },
+    { time: 18, action: 'effect', type: 'glow', color: '#dc2626', duration: 8 },
+    {
+      time: 19,
+      action: 'dialogue',
+      speaker: 'MISTER AI ALEX',
+      text: '¡El Microondas Cuántico 9000W sobrecalentará tu CPU biológica hasta darte Kernel Panic!',
+      duration: 8
+    },
+    { time: 28, action: 'effect', type: 'spotlight', target: 'alex' },
+    {
+      time: 28,
+      action: 'dialogue',
+      speaker: 'MISTER AI ALEX',
+      text: '¡Compila tu testamento, novato! ¡En El Gran Ojal NO HAY ROLLBACK!',
+      duration: 7
+    },
+    { time: 35, action: 'effect', type: 'spotlight', target: null },
+    { time: 35, action: 'camera', x: 90, y: 118, zoom: 1.6, duration: 5 },
+    { time: 40, action: 'end' }
+  ]
+};
+
+export const SCENE_ALEX_FINAL = {
+  id: 'scene_alex_final',
+  title: 'NÚCLEO DE MISTER ALEX IA · ALEX RESUCITADO',
   duration: 40,
   background: 'citadel',
   particles: 'embers',
@@ -160,9 +207,6 @@ export const SCENE_ALEX_FINAL = {
     { time: 40, action: 'end' }
   ]
 };
-
-// Alias de compatibilidad con el trigger actual de main.js.
-export const SCENE_AI_ALEX_PREBATTLE = SCENE_ALEX_FINAL;
 
 export const SCENE_INTRO_INAKITO = {
   id: 'scene_intro_inakito',
@@ -253,12 +297,13 @@ export const CINEMATIC_TIMELINES = {
   scene_intro_garbage_collector: SCENE_INTRO_GARBAGE_COLLECTOR,
   scene_intro_stack_overflow: SCENE_INTRO_STACK_OVERFLOW,
   scene_intro_prototype_microwave: SCENE_INTRO_PROTOTYPE_MICROWAVE,
-  scene_ai_alex_prebattle: SCENE_ALEX_FINAL,
+  scene_ai_alex_prebattle: SCENE_AI_ALEX_PREBATTLE,
   scene_intro_inakito: SCENE_INTRO_INAKITO,
   scene_jail_arrest: SCENE_JAIL_ARREST
 };
 
 export function getCinematicTimeline(id) {
+  if (id === 'scene_alex_final') return SCENE_ALEX_FINAL;
   return CINEMATIC_TIMELINES[id] || null;
 }
 
@@ -268,6 +313,7 @@ export const CINEMATIC_TIMELINE_DURATIONS = {
   scene_intro_stack_overflow: 18,
   scene_intro_prototype_microwave: 15,
   scene_ai_alex_prebattle: 40,
+  scene_alex_final: 40,
   scene_intro_inakito: 20,
   scene_jail_arrest: 20
 };

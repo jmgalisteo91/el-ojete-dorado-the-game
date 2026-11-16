@@ -170,7 +170,7 @@ export class FinalBossAlex extends Boss {
       this._ensureUnstuck(this.arenaTilemap);
       this.glitchActive = true;
       this._hudHiddenUntil = 0;
-      this.statusText = '🗼 EL UPDATE FINAL · ¡SOBRESCRITURA INMINENTE!';
+      this.statusText = '🗼 ¡KERNEL PANIC CUÁNTICO · MICROONDAS AL 300%!';
     }
 
     if (soundEngine && typeof soundEngine.playHitHurt === 'function') {
@@ -374,7 +374,7 @@ export class FinalBossAlex extends Boss {
     }
     this.statusText = kind === 'mini'
       ? '👾 ¡MINI-JEFES DEL PASADO!'
-      : '👾 ¡ACCIONISTAS INVOCADOS!';
+      : '👾 ¡SUBPROCESOS CUÁNTICOS INVOCADOS!';
   }
 
   _updateMovement(dt, player, tilemap) {
@@ -737,149 +737,6 @@ export class FinalBossAlex extends Boss {
     ctx.restore();
   }
 
-  // ==================== ARTE GROTESCO (Canvas 2D puro) ====================
-
-  _drawLongArm(ctx, sx, sy, dx, dy, sleeveColor, skinColor, jitter = 0) {
-    const ex = sx + dx;
-    const ey = sy + dy + jitter;
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = sleeveColor;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(sx, sy);
-    ctx.quadraticCurveTo(sx + dx * 0.4, sy + dy * 0.55, ex, ey);
-    ctx.stroke();
-    ctx.fillStyle = sleeveColor;
-    ctx.fillRect(ex - 2, ey - 2, 4, 4);
-    ctx.fillStyle = skinColor;
-    ctx.beginPath();
-    ctx.arc(ex, ey + 2, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = skinColor;
-    ctx.lineWidth = 0.8;
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath();
-      ctx.moveTo(ex + i * 1.2, ey + 3);
-      ctx.lineTo(ex + i * 1.2, ey + 5.5);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  _drawCRT(ctx, x, y, w, h, cracked = false) {
-    ctx.save();
-    ctx.fillStyle = '#374151';
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = '#6b7280';
-    ctx.fillRect(x + 1, y + 1, w - 2, 1);
-    ctx.fillStyle = '#0b1220';
-    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
-    ctx.fillStyle = '#052e16';
-    ctx.fillRect(x + 3, y + 3, w - 6, h - 6);
-    ctx.fillStyle = 'rgba(34, 197, 94, 0.16)';
-    for (let row = y + 3; row < y + h - 3; row += 2) {
-      ctx.fillRect(x + 3, row, w - 6, 1);
-    }
-    if (cracked) {
-      ctx.strokeStyle = '#e5e7eb';
-      ctx.lineWidth = 0.7;
-      ctx.beginPath();
-      ctx.moveTo(x + w * 0.2, y + 3);
-      ctx.lineTo(x + w * 0.4, y + h * 0.45);
-      ctx.lineTo(x + w * 0.3, y + h - 4);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(x + w * 0.55, y + 3);
-      ctx.lineTo(x + w * 0.5, y + h * 0.4);
-      ctx.lineTo(x + w * 0.75, y + h * 0.6);
-      ctx.stroke();
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
-      ctx.beginPath();
-      ctx.moveTo(x + w * 0.4, y + h * 0.45);
-      ctx.lineTo(x + w * 0.5, y + h * 0.4);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  _drawSmile(ctx, x, y, w, h, open = 0.8) {
-    ctx.save();
-    ctx.fillStyle = '#f8fafc';
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.quadraticCurveTo(x + w / 2, y + h * open, x + w, y);
-    ctx.quadraticCurveTo(x + w / 2, y + h * 0.2, x, y);
-    ctx.fill();
-    ctx.strokeStyle = '#111827';
-    ctx.lineWidth = 0.5;
-    for (let i = 1; i < 4; i++) {
-      const tx = x + w * (i / 4);
-      ctx.beginPath();
-      ctx.moveTo(tx, y + 0.5);
-      ctx.lineTo(tx, y + h * open * 0.55);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = '#7f1d1d';
-    ctx.beginPath();
-    ctx.moveTo(x + 1, y + 0.5);
-    ctx.quadraticCurveTo(x + w / 2, y + h * open * 0.9, x + w - 1, y + 0.5);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  _drawPlasticFace(ctx, x, y, w, h) {
-    const eyeY = y + h * 0.34;
-    for (const ex of [0.3, 0.7]) {
-      const cx = x + w * ex;
-      ctx.fillStyle = '#f8fafc';
-      ctx.beginPath();
-      ctx.arc(cx, eyeY, 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#111827';
-      ctx.beginPath();
-      ctx.arc(cx + (Math.random() - 0.5) * 0.9, eyeY + (Math.random() - 0.5) * 0.5, 1, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 0.4;
-      ctx.beginPath();
-      ctx.moveTo(cx - 2, eyeY);
-      ctx.lineTo(cx + 2, eyeY);
-      ctx.stroke();
-    }
-    this._drawSmile(ctx, x + w * 0.18, y + h * 0.58, w * 0.64, h * 0.3, 0.95);
-  }
-
-  _drawFleshEye(ctx, x, y, radius, index) {
-    ctx.save();
-    ctx.fillStyle = '#fca5a5';
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#7f1d1d';
-    ctx.lineWidth = 0.6;
-    ctx.stroke();
-    ctx.fillStyle = '#111827';
-    ctx.beginPath();
-    ctx.arc(
-      x + (Math.random() - 0.5) * radius * 0.8,
-      y + (Math.random() - 0.5) * radius * 0.8,
-      Math.max(0.7, radius * 0.45),
-      0, Math.PI * 2
-    );
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(127, 29, 29, 0.8)';
-    ctx.lineWidth = 0.4;
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2 + index;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + Math.cos(a) * radius, y + Math.sin(a) * radius);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
   _drawStatic(ctx, x, y, w, h) {
     ctx.save();
     for (let i = 0; i < 7; i++) {
@@ -890,216 +747,161 @@ export class FinalBossAlex extends Boss {
     ctx.restore();
   }
 
-  _drawGroundCables(ctx, cx, cy, clock) {
-    ctx.save();
-    ctx.strokeStyle = '#020617';
-    ctx.lineCap = 'round';
-    for (let i = -2; i <= 2; i++) {
-      ctx.lineWidth = 2 + (i % 2 === 0 ? 1 : 0);
-      ctx.beginPath();
-      ctx.moveTo(cx + i * 5, cy);
-      ctx.bezierCurveTo(
-        cx + i * 10, cy + 18,
-        cx + i * 4, cy + 36,
-        cx + i * 14, cy + 52 + Math.sin(clock * 2 + i) * 3
-      );
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  _drawSafe(ctx, cx, cy) {
-    const w = 18;
-    const h = 14;
-    const x = cx - w / 2;
-    const y = cy - h / 2;
-    ctx.save();
-    ctx.fillStyle = '#374151';
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = '#6b7280';
-    ctx.fillRect(x + 1, y + 1, w - 2, 1);
-    ctx.fillStyle = '#1f2937';
-    ctx.fillRect(x + 1, y + h - 3, w - 2, 2);
-    ctx.fillStyle = '#b45309';
-    ctx.fillRect(x + 2, y + 2, 3, 1);
-    ctx.fillRect(x + 12, y + 9, 4, 1);
-    ctx.fillRect(x + 4, y + 11, 2, 1);
-    ctx.strokeStyle = '#111827';
-    ctx.lineWidth = 0.7;
-    ctx.strokeRect(x + 3.5, y + 3.5, w - 7, h - 6);
-    ctx.fillStyle = '#6b7280';
-    ctx.beginPath();
-    ctx.arc(x + w / 2, y + h / 2, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#111827';
-    ctx.stroke();
-    ctx.fillStyle = '#fde047';
-    ctx.font = 'bold 4px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('ALEX', cx, y + 3.2);
-    ctx.fillStyle = 'rgba(253, 224, 71, 0.65)';
-    ctx.fillRect(x + 1, y + h - 2, w - 2, 1);
-    ctx.restore();
-  }
-
   _renderPhase1(ctx, sx, sy, clock) {
-    const hover = Math.sin(clock * 2) * 1.5;
+    const hover = Math.sin(clock * 2.5) * 1.5;
     const x = sx;
     const y = sy + hover;
 
-    this._drawLongArm(ctx, x + 5, y + 14, -18, 20, '#111827', '#e0b090');
-    this._drawLongArm(ctx, x + 27, y + 14, 18, 20, '#111827', '#e0b090');
+    if (this.hitFlashTimer > 0) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x, y, this.width, this.height);
+      return;
+    }
 
-    ctx.fillStyle = '#0b1220';
-    ctx.fillRect(x + 4, y + 10, 24, 20);
-    ctx.fillStyle = '#111827';
-    ctx.fillRect(x + 4, y + 10, 24, 3);
-    ctx.fillStyle = '#1f2937';
-    ctx.beginPath();
-    ctx.moveTo(x + 12, y + 10);
-    ctx.lineTo(x + 16, y + 22);
-    ctx.lineTo(x + 12, y + 17);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(x + 20, y + 10);
-    ctx.lineTo(x + 16, y + 22);
-    ctx.lineTo(x + 20, y + 17);
-    ctx.fill();
-    ctx.fillStyle = '#e5e7eb';
-    ctx.fillRect(x + 14, y + 10, 4, 11);
-    ctx.fillStyle = '#991b1b';
-    ctx.beginPath();
-    ctx.moveTo(x + 15, y + 11);
-    ctx.lineTo(x + 17, y + 11);
-    ctx.lineTo(x + 16, y + 18);
-    ctx.fill();
+    // Capa y hombreras mecha cibernéticas del juego base
+    ctx.fillStyle = '#1e1b4b';
+    ctx.fillRect(x + 2, y + 6, 28, 24);
+
+    // Pechera metálica con Microondas Cuántico integrado
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x + 6, y + 10, 20, 18);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 6.5, y + 10.5, 19, 17);
+
+    // Display digital del Microondas Cuántico
+    ctx.fillStyle = '#052e16';
+    ctx.fillRect(x + 9, y + 13, 14, 7);
+    ctx.font = 'bold 5px monospace';
+    ctx.fillStyle = '#22c55e';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`00:0${this.microwaveTimerSec}`, x + 16, y + 16.5);
+
+    // Cabeza / Visor láser
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(x + 8, y + 1, 16, 9);
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(x + 10, y + 4, 12, 3);
+
+    // Corona de antenas cuánticas
     ctx.fillStyle = '#fde047';
-    ctx.fillRect(x + 20, y + 15, 1.5, 1.5);
-    ctx.fillRect(x + 20, y + 19, 1.5, 1.5);
-
-    this._drawCRT(ctx, x + 7, y - 2, 18, 13, false);
-    this._drawPlasticFace(ctx, x + 8, y - 1, 16, 11);
-    if (this._staticTimer > 0) this._drawStatic(ctx, x + 7, y - 2, 18, 13);
+    ctx.fillRect(x + 9, y - 1, 2, 2);
+    ctx.fillRect(x + 15, y - 2, 2, 3);
+    ctx.fillRect(x + 21, y - 1, 2, 2);
+    if (this._staticTimer > 0) this._drawStatic(ctx, x + 7, y + 2, 18, 12);
   }
 
   _renderPhase2(ctx, sx, sy, clock) {
-    const jitter = Math.sin(clock * 10) * 2;
+    const jitter = Math.sin(clock * 12) * 1.5;
     const x = sx;
     const y = sy;
 
-    ctx.save();
-    ctx.strokeStyle = '#020617';
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 2;
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath();
-      ctx.moveTo(x + 16, y + 6);
-      ctx.bezierCurveTo(x + 16 + i * 12, y + 2, x + 16 + i * 20, y + 18, x + 16 + i * 24, y + 30);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    this._drawLongArm(ctx, x + 4, y + 14, -20, 20, '#1f2937', '#b91c1c', jitter);
-    this._drawLongArm(ctx, x + 28, y + 14, 20, 20, '#1f2937', '#b91c1c', -jitter);
-
-    ctx.fillStyle = '#0b1220';
-    ctx.beginPath();
-    ctx.moveTo(x + 4, y + 12);
-    ctx.lineTo(x + 9, y + 8);
-    ctx.lineTo(x + 15, y + 11);
-    ctx.lineTo(x + 23, y + 8);
-    ctx.lineTo(x + 29, y + 13);
-    ctx.lineTo(x + 27, y + 23);
-    ctx.lineTo(x + 22, y + 28);
-    ctx.lineTo(x + 10, y + 27);
-    ctx.lineTo(x + 4, y + 22);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#1f2937';
-    ctx.fillRect(x + 5, y + 14, 6, 8);
-    ctx.fillRect(x + 21, y + 14, 5, 7);
-
-    ctx.fillStyle = '#7f1d1d';
-    for (const [fx, fy, fr] of [[9, 9, 4], [23, 9, 4], [13, 21, 5], [21, 22, 4]]) {
-      ctx.beginPath();
-      ctx.arc(x + fx, y + fy, fr, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = '#b91c1c';
-    for (const [fx, fy, fr] of [[11, 12, 2], [20, 18, 2.5], [25, 11, 1.8]]) {
-      ctx.beginPath();
-      ctx.arc(x + fx, y + fy, fr, 0, Math.PI * 2);
-      ctx.fill();
+    if (this.hitFlashTimer > 0) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x, y, this.width, this.height);
+      return;
     }
 
-    this._drawCRT(ctx, x + 7, y - 2, 18, 13, true);
-    this._drawPlasticFace(ctx, x + 8, y - 1, 16, 11);
-    this._drawFleshEye(ctx, x + 4, y + 5, 2.2, 0);
-    this._drawFleshEye(ctx, x + 29, y + 5, 2.2, 1);
-    this._drawFleshEye(ctx, x + 7, y + 14, 2.4, 2);
-    this._drawFleshEye(ctx, x + 26, y + 15, 2.4, 3);
-    if (this._staticTimer > 0) this._drawStatic(ctx, x + 7, y - 2, 18, 13);
+    // Hombreras Overclocked con arcos de energía
+    ctx.fillStyle = '#31102f';
+    ctx.fillRect(x + 1, y + 6, 30, 24);
+    ctx.strokeStyle = '#f43f5e';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 1.5, y + 6.5, 29, 23);
+
+    // Núcleo del Microondas en sobrecarga
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x + 5, y + 10, 22, 18);
+    ctx.strokeStyle = '#ef4444';
+    ctx.strokeRect(x + 5.5, y + 10.5, 21, 17);
+
+    ctx.fillStyle = '#450a0a';
+    ctx.fillRect(x + 8, y + 13, 16, 7);
+    ctx.font = 'bold 5px monospace';
+    ctx.fillStyle = '#fca5a5';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`00:0${this.microwaveTimerSec}`, x + 16, y + 16.5);
+
+    // Visor Kernel Panic y chispas cuánticas
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(x + 7, y + 1, 18, 9);
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillRect(x + 9 + jitter * 0.3, y + 4, 14, 3);
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillRect(x + 6, y + 3, 2, 4);
+    ctx.fillRect(x + 24, y + 3, 2, 4);
+
+    // Antenas energizadas
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(x + 8, y - 2, 2, 3);
+    ctx.fillRect(x + 15, y - 3, 2, 4);
+    ctx.fillRect(x + 22, y - 2, 2, 3);
+    if (this._staticTimer > 0) this._drawStatic(ctx, x + 7, y + 2, 18, 12);
   }
 
   _renderPhase3(ctx, sx, sy, clock) {
     const cx = sx + this.width / 2;
     const cy = sy + this.height / 2;
-    const pulse = 1 + Math.sin(clock * 5) * 0.04;
+    const pulse = 1 + Math.sin(clock * 6) * 0.03;
 
-    this._drawGroundCables(ctx, cx, sy + this.height * 0.65, clock);
+    if (this.hitFlashTimer > 0) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(sx, sy, this.width, this.height);
+      return;
+    }
 
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(pulse, pulse);
     ctx.translate(-cx, -cy);
 
-    const blobs = [
-      [0, 2, 20, '#450a0a'],
-      [-12, -12, 14, '#7f1d1d'],
-      [12, -10, 13, '#991b1b'],
-      [-14, 12, 12, '#450a0a'],
-      [14, 13, 12, '#7f1d1d'],
-      [0, -20, 11, '#991b1b'],
-      [0, 20, 11, '#450a0a'],
-      [-22, 0, 8, '#7f1d1d'],
-      [22, 0, 8, '#7f1d1d']
-    ];
-    for (const [dx, dy, radius, color] of blobs) {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(cx + dx, cy + dy, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Torre del Mainframe Cuántico / Microondas Definitivo (48x56)
+    ctx.fillStyle = '#1e1b4b';
+    ctx.fillRect(sx + 4, sy + 8, this.width - 8, this.height - 10);
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(sx + 4.5, sy + 8.5, this.width - 9, this.height - 11);
 
-    ctx.strokeStyle = '#020617';
-    ctx.lineWidth = 1.2;
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.quadraticCurveTo(
-        cx + Math.cos(a + 0.4) * 14,
-        cy + Math.sin(a + 0.4) * 14,
-        cx + Math.cos(a) * 24,
-        cy + Math.sin(a) * 23
-      );
-      ctx.stroke();
-    }
+    // Pilones laterales cuánticos
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(sx, sy + 16, 8, 32);
+    ctx.fillRect(sx + this.width - 8, sy + 16, 8, 32);
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillRect(sx + 2, sy + 18, 3, 26);
+    ctx.fillRect(sx + this.width - 5, sy + 18, 3, 26);
 
-    const smiles = [
-      { x: cx - 17, y: cy - 18, w: 10, h: 4 },
-      { x: cx + 7, y: cy - 16, w: 9, h: 4 },
-      { x: cx - 16, y: cy + 12, w: 9, h: 4 },
-      { x: cx + 7, y: cy + 11, w: 10, h: 4 }
-    ];
-    smiles.forEach((smile, i) => {
-      const open = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(clock * 3 + i * 1.3));
-      this._drawSmile(ctx, smile.x, smile.y, smile.w, smile.h, open);
-    });
+    // Cámara central del Microondas Cuántico (El Gran Ojal)
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(sx + 10, sy + 16, this.width - 20, 26);
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(sx + 10.5, sy + 16.5, this.width - 21, 25);
 
-    this._drawSafe(ctx, cx, cy);
+    // Núcleo óptico carmesí y temporizador 00:00
+    ctx.fillStyle = '#450a0a';
+    ctx.fillRect(sx + 13, sy + 20, this.width - 26, 10);
+    ctx.font = 'bold 6px monospace';
+    ctx.fillStyle = '#ef4444';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('00:00', cx, sy + 25);
+
+    ctx.fillStyle = '#f43f5e';
+    ctx.beginPath();
+    ctx.arc(cx, sy + 36, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fde047';
+    ctx.beginPath();
+    ctx.arc(cx, sy + 36, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Antenas superiores del Mainframe
+    ctx.fillStyle = '#fde047';
+    ctx.fillRect(sx + 12, sy, 3, 8);
+    ctx.fillRect(cx - 1.5, sy - 2, 3, 10);
+    ctx.fillRect(sx + this.width - 15, sy, 3, 8);
     ctx.restore();
   }
 
@@ -1121,8 +923,8 @@ export class FinalBossAlex extends Boss {
         vy: Math.sin(angle) * speed - 28,
         life: 0.55 + Math.random() * 0.45,
         maxLife: 1.0,
-        type: i % 2 === 0 ? 'bill' : 'binary',
-        text: Math.random() < 0.5 ? '0' : '1'
+        type: i % 2 === 0 ? 'spark' : 'binary',
+        text: i % 2 === 0 ? '*' : (Math.random() < 0.5 ? '0' : '1')
       });
     }
   }
@@ -1146,20 +948,9 @@ export class FinalBossAlex extends Boss {
       ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 0.35));
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      if (p.type === 'bill') {
-        ctx.fillStyle = '#16a34a';
-        ctx.fillRect(px - 2, py - 1, 5, 3);
-        ctx.strokeStyle = '#fde047';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(px - 2, py - 1, 5, 3);
-        ctx.fillStyle = '#fde047';
-        ctx.font = 'bold 3px monospace';
-        ctx.fillText('$', px, py);
-      } else {
-        ctx.fillStyle = '#22d3ee';
-        ctx.font = 'bold 4px monospace';
-        ctx.fillText(p.text, px, py);
-      }
+      ctx.fillStyle = p.type === 'spark' ? '#f43f5e' : '#22d3ee';
+      ctx.font = 'bold 4px monospace';
+      ctx.fillText(p.text, px, py);
       ctx.restore();
     }
   }

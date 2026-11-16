@@ -1,5 +1,5 @@
 import { pushBackPlayer } from './DoorGatekeeper.js?v=8';
-import { SCENE_AI_ALEX_PREBATTLE } from '../ui/AnimeCutsceneManager.js?v=8';
+import { SCENE_AI_ALEX_PREBATTLE, SCENE_ALEX_FINAL } from '../ui/AnimeCutsceneManager.js?v=8';
 import { registerExpansionMusic } from '../audio/AudioManager.js?v=8';
 
 const STAGE_TRANSITION_SCENE_IDS = new Set([
@@ -446,6 +446,15 @@ export class SceneTransitionController {
       g.prebattleAlexCutscenePlayed = true;
       if (g.animeCutscenes) {
         g.animeCutscenes.playCutscene(SCENE_AI_ALEX_PREBATTLE);
+      }
+    } else if (
+      activeDoor.targetScene === 'ai_nucleus_core' &&
+      (g.isExpansionActive || g.isExpansionMode) &&
+      !g.alexFinalCutscenePlayed
+    ) {
+      g.alexFinalCutscenePlayed = true;
+      if (g.animeCutscenes) {
+        g.animeCutscenes.playCutscene(SCENE_ALEX_FINAL);
       }
     } else if (door.targetScene === 'sewers_dungeon' && !g.bossCutscenesSeen.boss_garbage_collector) {
       const gcBoss = g.enemies.find((e) => e.id === 'boss_garbage_collector');

@@ -22,7 +22,8 @@ import {
   SCENE_ALEX_FINAL,
   SCENE_AI_ALEX_PREBATTLE,
   SCENE_INTRO_INAKITO,
-  SCENE_JAIL_ARREST
+  SCENE_JAIL_ARREST,
+  getCinematicTimeline
 } from '../assets/CinematicTimelines.js?v=8';
 
 import {
@@ -125,7 +126,7 @@ export class AnimeCutsceneManager {
   _resolveTimeline(scene) {
     if (!scene) return null;
     const id = typeof scene === 'string' ? scene : scene.id;
-    return CINEMATIC_TIMELINES[id] || null;
+    return getCinematicTimeline(id) || CINEMATIC_TIMELINES[id] || null;
   }
 
   playCutscene(scene, onComplete = null) {
