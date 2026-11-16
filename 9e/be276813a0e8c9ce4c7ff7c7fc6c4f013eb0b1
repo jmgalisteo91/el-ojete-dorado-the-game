@@ -1,0 +1,22 @@
+src/expansion/ExpansionData.js
+  h_e1bbc662b18209 9-10,20-41,43-66
+src/expansion/ExpansionManager.js
+  h_e1bbc662b18209 8-9,402,407,434
+src/main.js
+  h_e1bbc662b18209 19,508,3530-3531,3536,3538-3545,3547-3548
+src/ui/MainMenuAndScenes.js
+  h_e1bbc662b18209 9,800,900,905,910
+tests/suites/world.test.mjs
+  h_e1bbc662b18209 3810-3874
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9ebe276813a0e8c9ce4c7ff7c7fc6c4f013eb0b1",
+  "prompts": {},
+  "humans": {
+    "h_e1bbc662b18209": {
+      "author": "jmgalisteo91 <josempgal@ext.inditex.com>"
+    }
+  }
+}
